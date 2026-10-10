@@ -1,6 +1,6 @@
 # Smoke test: portfolio risk aggregator compiles + drives the C API.
 
-from flox.portfolio_risk import (
+from lrvx.portfolio_risk import (
     PortfolioRiskAggregator, RiskRules, StrategyFields,
 )
 

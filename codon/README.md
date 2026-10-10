@@ -1,20 +1,20 @@
-# Flox Codon Bindings
+# lrvx Codon Bindings
 
 High-performance trading strategies in Python-like syntax, compiled to native code.
 
 ## Overview
 
 Codon compiles Python-like code to native binaries via LLVM.
-Flox Codon bindings provide an event-driven Strategy base class that
-mirrors the C++ `flox::Strategy` interface.
+lrvx Codon bindings provide an event-driven Strategy base class that
+mirrors the C++ `lrvx::Strategy` interface.
 
 ## Quick Start
 
 ```python
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import StreamingEMA
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData
+from lrvx.indicators import StreamingEMA
 
 class MyStrategy(Strategy):
     ema: StreamingEMA
@@ -32,22 +32,22 @@ class MyStrategy(Strategy):
 ## Build
 
 ```bash
-# Build Flox with C API
-cmake -B build -DFLOX_ENABLE_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+# Build lrvx with C API
+cmake -B build -DLRVX_BUILD_CAPI=ON -DLRVX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
 # Compile Codon strategy
-codon build -exe -o my_strategy -L build/src/capi -lflox_capi my_strategy.codon
+codon build -exe -o my_strategy -L build/src/capi -llrvx_capi my_strategy.codon
 ```
 
 ## Modules
 
 | Module | Description |
 |--------|-------------|
-| `flox.strategy` | Strategy base class |
-| `flox.types` | Price, Quantity, TradeData |
-| `flox.context` | SymbolContext (position, book queries) |
-| `flox.indicators` | Batch and streaming indicators |
+| `lrvx.strategy` | Strategy base class |
+| `lrvx.types` | Price, Quantity, TradeData |
+| `lrvx.context` | SymbolContext (position, book queries) |
+| `lrvx.indicators` | Batch and streaming indicators |
 
 ## Examples
 

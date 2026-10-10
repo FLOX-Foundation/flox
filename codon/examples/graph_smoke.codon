@@ -2,7 +2,7 @@
 # Tests the surface that doesn't need a Codon-side closure
 # (set_bars / require on field accessor / get).
 
-from flox.graph import IndicatorGraph
+from lrvx.graph import IndicatorGraph
 
 failed = 0
 

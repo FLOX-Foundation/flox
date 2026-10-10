@@ -17,7 +17,7 @@ Register every node before requiring it:
 
 === "Python"
     ```python
-    from flox import IndicatorGraph
+    from lrvx import IndicatorGraph
 
     g = IndicatorGraph()
     g.add_node("close", deps=[], fn=...)

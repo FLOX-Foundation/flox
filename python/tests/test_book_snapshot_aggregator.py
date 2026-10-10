@@ -1,8 +1,8 @@
-"""Tests for ``flox_py.BookSnapshotBinAggregator``.
+"""Tests for ``lrvx.BookSnapshotBinAggregator``.
 
 Parity contract: on the same tape, the C++ aggregator run through
 ``DataReader.run([...], n_threads=1)`` must reproduce exactly the
-snapshots that ``flox_py.orderbook.OrderBookIterator`` yields —
+snapshots that ``lrvx.orderbook.OrderBookIterator`` yields —
 same buckets, same levels, same crossed flag. Plus aggregator-only
 semantics: zero-padding of the shorter side and the parallel-run
 refusal.
@@ -28,8 +28,8 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py  # noqa: E402
-from flox_py import orderbook as ob  # noqa: E402
+import lrvx  # noqa: E402
+from lrvx import orderbook as ob  # noqa: E402
 
 _LEVEL_DTYPE = np.dtype([
     ("price_raw", np.int64),
@@ -52,7 +52,7 @@ def _arr(items):
 def _write_book_tape(tape_dir: Path, events) -> Path:
     """events: list of (ts_ns, symbol_id, is_snapshot, [(p, q)] bids, [(p, q)] asks)."""
     tape_dir.mkdir(parents=True, exist_ok=True)
-    w = flox_py.DataWriter(str(tape_dir), max_segment_mb=4,
+    w = lrvx.DataWriter(str(tape_dir), max_segment_mb=4,
                            exchange_id=0, compression="none")
     try:
         for i, (ts, sym, is_snap, bids, asks) in enumerate(events):
@@ -69,8 +69,8 @@ def _write_book_tape(tape_dir: Path, events) -> Path:
 
 
 def _run_aggregator(tape: Path, *, levels: int):
-    agg = flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=levels)
-    reader = flox_py.DataReader(str(tape))
+    agg = lrvx.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=levels)
+    reader = lrvx.DataReader(str(tape))
     self_ok = reader.run([agg], n_threads=1)
     assert self_ok
     return agg.result()
@@ -184,8 +184,8 @@ class AggregatorSemanticsTests(unittest.TestCase):
         # to depend on the tape: a small or uncompressed tape ran on the master
         # panel and succeeded, while a tape with enough compressed blocks threw
         # from inside a worker partway through.
-        agg = flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
-        reader = flox_py.DataReader(str(self.tape))
+        agg = lrvx.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
+        reader = lrvx.DataReader(str(self.tape))
         with self.assertRaises(Exception) as ctx:
             reader.run([agg], n_threads=2)
         self.assertIn("n_threads", str(ctx.exception))
@@ -195,33 +195,33 @@ class AggregatorSemanticsTests(unittest.TestCase):
     def test_auto_thread_count_resolves_to_single(self) -> None:
         # n_threads=0 is "auto"; with an order-dependent aggregator in the
         # panel it resolves to one thread instead of failing.
-        agg = flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
-        reader = flox_py.DataReader(str(self.tape))
+        agg = lrvx.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
+        reader = lrvx.DataReader(str(self.tape))
         self.assertTrue(reader.run([agg], n_threads=0))
         self.assertEqual(len(agg.result()), 3)
 
     def test_combines_with_trade_aggregators_in_one_pass(self) -> None:
         # A trade in the tape alongside books: one run() feeds both
         # aggregator kinds.
-        w = flox_py.DataWriter(str(self.tape), max_segment_mb=4,
+        w = lrvx.DataWriter(str(self.tape), max_segment_mb=4,
                                exchange_id=0, compression="none")
         try:
             w.write_trade(exchange_ts_ns=_BASE_NS + 1_000, recv_ts_ns=_BASE_NS + 1_000,
                           price=100.5, qty=1.0, trade_id=1, symbol_id=1, side=0)
         finally:
             w.close()
-        book_agg = flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
-        ohlc = flox_py.OHLCBinAggregator(bucket_ns=_BUCKET, by_symbol=True)
-        reader = flox_py.DataReader(str(self.tape))
+        book_agg = lrvx.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
+        ohlc = lrvx.OHLCBinAggregator(bucket_ns=_BUCKET, by_symbol=True)
+        reader = lrvx.DataReader(str(self.tape))
         self.assertTrue(reader.run([book_agg, ohlc], n_threads=1))
         self.assertEqual(len(book_agg.result()), 3)  # 3 bid levels
         self.assertEqual(len(ohlc.result()), 1)
 
     def test_bad_args(self) -> None:
         with self.assertRaises(Exception):
-            flox_py.BookSnapshotBinAggregator(bucket_ns=0, levels=5)
+            lrvx.BookSnapshotBinAggregator(bucket_ns=0, levels=5)
         with self.assertRaises(Exception):
-            flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=0)
+            lrvx.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=0)
 
 
 if __name__ == "__main__":

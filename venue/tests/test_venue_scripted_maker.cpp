@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -21,21 +21,21 @@
  * gets its own verification: a scripted picker must be visible in
  * fme_last_look_rejects_favourable_total and invisible in the total.
  */
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/prometheus.h"
-#include "flox-venue/script/quote_generators.h"
-#include "flox-venue/script/scripted_maker.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/prometheus.h"
+#include "lrvx-venue/script/quote_generators.h"
+#include "lrvx-venue/script/scripted_maker.h"
 
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using namespace flox::venue::script;
+using namespace lrvx;
+using namespace lrvx::venue;
+using namespace lrvx::venue::script;
 
 namespace
 {

@@ -1,0 +1,165 @@
+/*
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
+ *
+ * Copyright (c) 2025 lrvx contributors
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
+#pragma once
+
+#include "lrvx-connectors/execution/executor_policies.h"
+
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/bus/order_execution_bus.h>
+#include <lrvx/execution/order_tracker.h>
+#include <lrvx/log/abstract_logger.h>
+#include <lrvx/net/abstract_transport.h>
+
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+
+namespace lrvx
+{
+
+template <typename Policies = NoPolicies>
+class HyperliquidOrderExecutorT
+{
+ public:
+  using RateLimitPolicy = typename Policies::RateLimitType;
+  using TimeoutPolicy = typename Policies::TimeoutType;
+
+  HyperliquidOrderExecutorT(std::string restUrl, std::string privateKeyHex,
+                            SymbolRegistry* registry, OrderTracker* orderTracker,
+                            std::shared_ptr<ILogger> logger, std::string accountAddress,
+                            std::optional<std::string> vaultAddress, bool mainnet);
+
+  // Transport-injecting overload. Production code always goes through the
+  // constructor above, which owns a real CurlTransport; this one exists so
+  // tests can hand in a fake ITransport and observe the exact request body
+  // this executor builds, without a live signing helper or network access.
+  HyperliquidOrderExecutorT(std::unique_ptr<ITransport> transport, std::string restUrl,
+                            std::string privateKeyHex, SymbolRegistry* registry,
+                            OrderTracker* orderTracker, std::shared_ptr<ILogger> logger,
+                            std::string accountAddress, std::optional<std::string> vaultAddress,
+                            bool mainnet);
+
+  // Transport-injecting overload of the rate-limited constructor. The
+  // rate-limited constructor below builds its own CurlTransport and fetches
+  // the asset map from api.hyperliquid.xyz before it returns, so the limiter
+  // could not be exercised without a network; this one takes both the
+  // transport and the budget.
+  //
+  // Defined here rather than in the .cpp on purpose: an explicit
+  // instantiation of a class template does not instantiate its member
+  // templates, so a constructor template defined in the .cpp is not available
+  // to any other translation unit.
+  template <typename P = Policies, typename = std::enable_if_t<P::RateLimitType::enabled>>
+  HyperliquidOrderExecutorT(std::unique_ptr<ITransport> transport, std::string restUrl,
+                            std::string privateKeyHex, SymbolRegistry* registry,
+                            OrderTracker* orderTracker, std::shared_ptr<ILogger> logger,
+                            std::string accountAddress, std::optional<std::string> vaultAddress,
+                            bool mainnet, RateLimitConfig rateLimitConfig)
+      : _url(std::move(restUrl)),
+        _privateKey(std::move(privateKeyHex)),
+        _accountAddress(std::move(accountAddress)),
+        _vaultAddress(std::move(vaultAddress)),
+        _mainnet(mainnet),
+        _registry(registry),
+        _orderTracker(orderTracker),
+        _logger(std::move(logger)),
+        _transport(std::move(transport))
+  {
+    _policies.rateLimit.init(std::move(rateLimitConfig));
+    loadAssetIds();
+  }
+
+  ~HyperliquidOrderExecutorT();
+
+  template <typename P = Policies, typename = std::enable_if_t<P::RateLimitType::enabled>>
+  HyperliquidOrderExecutorT(std::string restUrl, std::string privateKeyHex,
+                            SymbolRegistry* registry, OrderTracker* orderTracker,
+                            std::shared_ptr<ILogger> logger, std::string accountAddress,
+                            std::optional<std::string> vaultAddress, bool mainnet,
+                            RateLimitConfig rateLimitConfig);
+
+  template <typename P = Policies, typename = std::enable_if_t<P::TimeoutType::enabled>>
+  HyperliquidOrderExecutorT(std::string restUrl, std::string privateKeyHex,
+                            SymbolRegistry* registry, OrderTracker* orderTracker,
+                            std::shared_ptr<ILogger> logger, std::string accountAddress,
+                            std::optional<std::string> vaultAddress, bool mainnet,
+                            OrderTimeoutConfig timeoutConfig);
+
+  template <typename P = Policies,
+            typename = std::enable_if_t<P::RateLimitType::enabled && P::TimeoutType::enabled>>
+  HyperliquidOrderExecutorT(std::string restUrl, std::string privateKeyHex,
+                            SymbolRegistry* registry, OrderTracker* orderTracker,
+                            std::shared_ptr<ILogger> logger, std::string accountAddress,
+                            std::optional<std::string> vaultAddress, bool mainnet,
+                            RateLimitConfig rateLimitConfig, OrderTimeoutConfig timeoutConfig);
+
+  void submitOrder(const Order& order);
+  void cancelOrder(OrderId id);
+  void replaceOrder(OrderId oldId, const Order& n);
+
+  // Without this the executor was mute: it held no bus and published no
+  // OrderEvent on any path, so a fill Hyperliquid returned inline with the
+  // submit reached no listener and a venue rejection was not even parsed --
+  // the order was handed to the tracker as submitted and the strategy went on
+  // believing a resting order existed. Same hook BybitOrderExecutorT has.
+  void setOrderBus(OrderExecutionBus* bus) { _orderBus = bus; }
+
+ private:
+  void loadAssetIds();
+  int assetIdFor(std::string_view coin);
+
+  // What the rate-limit gate runs once the venue budget allows the request:
+  // inline on the caller when a token was there, on the policy's sender
+  // thread when the WAIT policy had to wait for one. A deferred send runs
+  // after its entry point returned, so it re-reads the tracker instead of
+  // borrowing state from the caller's frame.
+  void sendSubmitOrder(const Order& order);
+  void sendCancelOrder(OrderId localId);
+  void sendReplaceOrder(OrderId oldLocalId, const Order& n);
+
+  void publishRejection(const Order& order, const std::string& reason);
+  void publishRateLimited(const Order& order);
+  void publishSubmitted(const Order& order);
+  void publishFill(const Order& order, Quantity fillQty, Price fillPrice);
+
+  std::string _url;
+  std::string _privateKey;
+  std::string _accountAddress;
+  std::optional<std::string> _vaultAddress;
+  bool _mainnet{true};
+
+  SymbolRegistry* _registry;
+  OrderTracker* _orderTracker;
+  std::shared_ptr<ILogger> _logger;
+  std::unique_ptr<ITransport> _transport;
+  OrderExecutionBus* _orderBus = nullptr;
+
+  // Thread-safe asset ID cache
+  mutable std::mutex _assetMutex;
+  std::unordered_map<std::string, int> _assetIds;
+  bool _assetsLoaded{false};
+
+  Policies _policies;
+};
+
+using HyperliquidOrderExecutor = HyperliquidOrderExecutorT<NoPolicies>;
+using HyperliquidOrderExecutorWithRateLimit = HyperliquidOrderExecutorT<WithRateLimit>;
+using HyperliquidOrderExecutorWithTimeout = HyperliquidOrderExecutorT<WithTimeout>;
+using HyperliquidOrderExecutorFull = HyperliquidOrderExecutorT<FullPolicies>;
+
+extern template class HyperliquidOrderExecutorT<NoPolicies>;
+extern template class HyperliquidOrderExecutorT<WithRateLimit>;
+extern template class HyperliquidOrderExecutorT<WithTimeout>;
+extern template class HyperliquidOrderExecutorT<FullPolicies>;
+
+}  // namespace lrvx

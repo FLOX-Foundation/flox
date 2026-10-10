@@ -5,19 +5,19 @@ the helper does what the doc claims.
 
 This is the CI-runnable companion to
 [Rolling top-K thresholds](../how-to/rolling-thresholds.md). It runs
-without flox_py's C extension because ``flox_py.rolling`` is pure
+without lrvx's C extension because ``lrvx.rolling`` is pure
 numpy — the import still goes through the package so the example
 also smoke-tests that the module ships.
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_rolling_top_k.py
 """
 from __future__ import annotations
 
 import numpy as np
 
-from flox_py import rolling
+from lrvx import rolling
 
 
 def main() -> None:

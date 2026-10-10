@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #include <gtest/gtest.h>
 
-#include <flox/util/eventing/event_bus.h>
-#include <flox/util/memory/pool.h>
+#include <lrvx/util/eventing/event_bus.h>
+#include <lrvx/util/memory/pool.h>
 
 #include <atomic>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -60,7 +60,7 @@ class CountingBusListener : public BusEvent::IBusListener
 
 }  // namespace
 
-namespace flox
+namespace lrvx
 {
 template <>
 struct EventDispatcher<BusEvent>
@@ -71,7 +71,7 @@ struct EventDispatcher<BusEvent>
     sub.onBusEvent(ev);
   }
 };
-}  // namespace flox
+}  // namespace lrvx
 
 TEST(EventPoolTest, AcquireReturnsValidHandle)
 {

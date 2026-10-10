@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -23,21 +23,21 @@
  * venue reports again -- that the quantity is held rather than dropped.
  */
 
-#include "flox-connectors/bitget/bitget_exchange_connector.h"
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
-#include "flox-connectors/hyperliquid/hl_signer.h"
-#include "flox-connectors/hyperliquid/hyperliquid_order_executor.h"
+#include "lrvx-connectors/bitget/bitget_exchange_connector.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/hyperliquid/hl_signer.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_order_executor.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/execution/abstract_execution_listener.h>
-#include <flox/execution/bus/order_execution_bus.h>
-#include <flox/execution/events/order_event.h>
-#include <flox/execution/order.h>
-#include <flox/execution/order_tracker.h>
-#include <flox/log/atomic_logger.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/abstract_execution_listener.h>
+#include <lrvx/execution/bus/order_execution_bus.h>
+#include <lrvx/execution/events/order_event.h>
+#include <lrvx/execution/order.h>
+#include <lrvx/execution/order_tracker.h>
+#include <lrvx/log/atomic_logger.h>
 
 #include <gtest/gtest.h>
 
@@ -49,15 +49,15 @@
 
 // Shadows the real signing helper at link time, so no signer is ever launched.
 // Same technique as unit_test_order_serialization_hyperliquid.cpp.
-namespace flox::hl
+namespace lrvx::hl
 {
 std::optional<HlSig> hl_sign_with_sdk(const HlSignParams&)
 {
   return HlSig{"0xdeadbeef", "0xcafebabe", 27};
 }
-}  // namespace flox::hl
+}  // namespace lrvx::hl
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -66,7 +66,7 @@ constexpr OrderId kEngineOrderId = 4242;
 
 std::string tempLogDir()
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_unpriced_fill_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_unpriced_fill_logs";
   std::filesystem::create_directories(dir);
   return dir.string();
 }

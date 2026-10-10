@@ -9,4 +9,4 @@ API specifications for all components.
 | [Node.js](node/index.md) | Node.js bindings reference |
 | [Codon](codon/index.md) | Codon bindings reference |
 | [JavaScript](quickjs/index.md) | Embedded QuickJS bindings reference |
-| [C API](api/capi/flox_capi.md) | C interface for custom language integration |
+| [C API](api/capi/lrvx_capi.md) | C interface for custom language integration |

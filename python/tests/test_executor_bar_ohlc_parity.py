@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import flox_py as flox
+import lrvx
 
 MINUTE_NS = 60_000_000_000
 SYMBOL = 1
@@ -75,7 +75,7 @@ def _bar_arrays():
     return start, end, cols[0], cols[1], cols[2], cols[3], volume
 
 
-class _BarZeroStrategy(flox.Strategy):
+class _BarZeroStrategy(lrvx.Strategy):
     """Sends both orders from the callback of bar 0, nothing after."""
 
     def __init__(self, symbols):
@@ -94,9 +94,9 @@ class _BarZeroStrategy(flox.Strategy):
 
 
 def _runner_fills() -> list[tuple[str, float, float]]:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
     strategy = _BarZeroStrategy([SYMBOL])
     runner.set_strategy(strategy)
     runner.run_bars(*_bar_arrays(), symbol="BTCUSDT")
@@ -129,7 +129,7 @@ def test_the_runner_path_is_the_reference() -> None:
 
 
 def test_simulated_executor_exposes_the_bar_path() -> None:
-    missing = _missing(flox.SimulatedExecutor())
+    missing = _missing(lrvx.SimulatedExecutor())
     assert missing == [], (
         "SimulatedExecutor is missing "
         + ", ".join(missing)
@@ -139,7 +139,7 @@ def test_simulated_executor_exposes_the_bar_path() -> None:
 
 
 def test_hand_driven_bars_match_the_runner() -> None:
-    executor = flox.SimulatedExecutor()
+    executor = lrvx.SimulatedExecutor()
     _require_bar_api(executor)
     _drive_by_hand(executor)
     assert _fill_rows(executor) == _runner_fills()
@@ -148,7 +148,7 @@ def test_hand_driven_bars_match_the_runner() -> None:
 def test_a_held_order_fills_at_the_open_not_the_close() -> None:
     """The mutation this is shaped against: on_bar_ohlc forwarding the close
     where the open belongs."""
-    executor = flox.SimulatedExecutor()
+    executor = lrvx.SimulatedExecutor()
     _require_bar_api(executor)
     _drive_by_hand(executor)
 
@@ -162,7 +162,7 @@ def test_a_held_order_fills_at_the_open_not_the_close() -> None:
 
 
 def test_a_resting_order_matches_the_intrabar_extreme() -> None:
-    executor = flox.SimulatedExecutor()
+    executor = lrvx.SimulatedExecutor()
     _require_bar_api(executor)
     _drive_by_hand(executor)
 
@@ -174,7 +174,7 @@ def test_a_resting_order_matches_the_intrabar_extreme() -> None:
 
 
 def test_without_the_window_the_order_is_not_held() -> None:
-    executor = flox.SimulatedExecutor()
+    executor = lrvx.SimulatedExecutor()
     _require_bar_api(executor)
 
     open_, high, low, close = TAPE[0]
@@ -188,7 +188,7 @@ def test_without_the_window_the_order_is_not_held() -> None:
 
 
 def test_reset_makes_a_second_run_report_that_run() -> None:
-    executor = flox.SimulatedExecutor()
+    executor = lrvx.SimulatedExecutor()
     _require_bar_api(executor)
 
     _drive_by_hand(executor)
@@ -214,11 +214,11 @@ def test_aggregated_bars_carry_a_close_reason() -> None:
     quantities = np.ones(5, dtype=np.float64)
     is_buy = np.ones(5, dtype=np.uint8)
 
-    bars = flox.aggregate_time_bars(ts, prices, quantities, is_buy, 60.0)
+    bars = lrvx.aggregate_time_bars(ts, prices, quantities, is_buy, 60.0)
     names = bars.dtype.names or ()
     assert "close_reason" in names, (
         "aggregated bars carry no close_reason; fields are "
-        f"{list(names)}. flox.BarData already has one on the live path"
+        f"{list(names)}. lrvx.BarData already has one on the live path"
     )
     # 0 = Threshold: every bar the batch path returns was closed by its own
     # threshold, and the field has to say so rather than report a leftover.
@@ -262,7 +262,7 @@ def _bracket_bar_arrays():
     return start, end, cols[0], cols[1], cols[2], cols[3], volume
 
 
-class _BarZeroBuyStrategy(flox.Strategy):
+class _BarZeroBuyStrategy(lrvx.Strategy):
     """The entry leg alone, so the runner can be asked the same question."""
 
     def __init__(self, symbols):
@@ -280,9 +280,9 @@ class _BarZeroBuyStrategy(flox.Strategy):
 
 
 def _runner_entry_fill() -> tuple[str, float, float]:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
     strategy = _BarZeroBuyStrategy([SYMBOL])
     runner.set_strategy(strategy)
     runner.run_bars(*_bracket_bar_arrays(), symbol="BTCUSDT")
@@ -317,7 +317,7 @@ def _drive_bracket(executor) -> None:
 
 
 def test_the_walk_reaches_the_low_before_the_high() -> None:
-    executor = flox.SimulatedExecutor()
+    executor = lrvx.SimulatedExecutor()
     _require_bar_api(executor)
     _drive_bracket(executor)
 
@@ -342,7 +342,7 @@ def test_the_walk_reaches_the_low_before_the_high() -> None:
 # A batch run whose every bar closed on its own threshold reports 0 for all of
 # them, and 0 is also what a field nobody wrote reports -- so asserting the
 # column exists and holds zeros passes just as well when `close_reason` is
-# wired to the constant 0 as when it is wired to `flox::Bar::reason`. The only
+# wired to the constant 0 as when it is wired to `lrvx::Bar::reason`. The only
 # assertion that separates the two needs a bar the engine closed for a
 # different reason.
 #
@@ -360,7 +360,7 @@ def _renko(jump_to: float, brick: float = 1.0):
     prices = np.array([100.0, jump_to], dtype=np.float64)
     quantities = np.ones(2, dtype=np.float64)
     is_buy = np.ones(2, dtype=np.uint8)
-    return flox.aggregate_renko_bars(ts, prices, quantities, is_buy, brick)
+    return lrvx.aggregate_renko_bars(ts, prices, quantities, is_buy, brick)
 
 
 def test_a_gap_closed_bar_reports_the_gap_reason() -> None:
@@ -375,7 +375,7 @@ def test_a_gap_closed_bar_reports_the_gap_reason() -> None:
     assert reasons[-1] == GAP, (
         "the brick that absorbed the rest of the jump reports "
         f"{reasons[-1]}, not BarCloseReason::Gap ({GAP}); close_reason is not "
-        "carrying flox::Bar::reason"
+        "carrying lrvx::Bar::reason"
     )
     # Exactly one, and it is the last: a field wired to a constant would report
     # that constant for all 1024.

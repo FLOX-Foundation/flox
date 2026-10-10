@@ -1,5 +1,5 @@
-// Smoke test for the latency models exposed on the flox global.
-// Runs under the flox QuickJS host. Asserts construction, sampling,
+// Smoke test for the latency models exposed on the lrvx global.
+// Runs under the lrvx QuickJS host. Asserts construction, sampling,
 // reproducibility under reset(seed), and validation of bad inputs.
 
 let passed = 0;
@@ -11,7 +11,7 @@ function check(cond, msg) {
 
 // ── ConstantLatency ────────────────────────────────────────────────
 {
-    var c = new flox.ConstantLatency({ feedNs: 100, orderNs: 200, fillNs: 300 });
+    var c = new lrvx.ConstantLatency({ feedNs: 100, orderNs: 200, fillNs: 300 });
     check(c.feedDelay() === 100, 'constant feed_delay returns configured value');
     check(c.orderDelay() === 200, 'constant order_delay returns configured value');
     check(c.fillDelay() === 300, 'constant fill_delay returns configured value');
@@ -23,14 +23,14 @@ function check(cond, msg) {
 
 // ── GaussianLatency reproducibility ────────────────────────────────
 {
-    var g = new flox.GaussianLatency({
+    var g = new lrvx.GaussianLatency({
         feedMeanNs: 1000, feedStddevNs: 200, seed: 42,
     });
     var a = g.feedDelay();
     g.reset(42);
     var b = g.feedDelay();
     check(a === b, 'gaussian sequence is reproducible under reset(seed)');
-    var c = new flox.GaussianLatency({ feedMeanNs: 1500, feedStddevNs: 0, seed: 0 });
+    var c = new lrvx.GaussianLatency({ feedMeanNs: 1500, feedStddevNs: 0, seed: 0 });
     check(c.feedDelay() === 1500, 'stddev=0 collapses to mean');
     g.destroy();
     c.destroy();
@@ -38,7 +38,7 @@ function check(cond, msg) {
 
 // ── ExponentialLatency non-negativity ──────────────────────────────
 {
-    var e = new flox.ExponentialLatency({ feedMeanNs: 500, seed: 7 });
+    var e = new lrvx.ExponentialLatency({ feedMeanNs: 500, seed: 7 });
     var allNonNeg = true;
     for (var i = 0; i < 50; i++) {
         if (e.feedDelay() < 0) { allNonNeg = false; break; }
@@ -49,7 +49,7 @@ function check(cond, msg) {
 
 // ── EmpiricalLatency draws subset ──────────────────────────────────
 {
-    var emp = new flox.EmpiricalLatency({ feedSamples: [10, 20, 30], seed: 0 });
+    var emp = new lrvx.EmpiricalLatency({ feedSamples: [10, 20, 30], seed: 0 });
     var allowed = { 10: 1, 20: 1, 30: 1 };
     var allInSet = true;
     for (var i = 0; i < 30; i++) {
@@ -63,11 +63,11 @@ function check(cond, msg) {
 // ── Validation ─────────────────────────────────────────────────────
 {
     var threw = false;
-    try { new flox.ConstantLatency({ feedNs: -1 }); }
+    try { new lrvx.ConstantLatency({ feedNs: -1 }); }
     catch (e) { threw = true; }
     check(threw, 'negative feed_ns rejected');
     var threw2 = false;
-    try { new flox.EmpiricalLatency({}); }
+    try { new lrvx.EmpiricalLatency({}); }
     catch (e) { threw2 = true; }
     check(threw2, 'all-empty empirical rejected');
 }

@@ -1,8 +1,8 @@
 # Clock domains
 
-flox handles time from three clocks that must never be confused, and one
+lrvx handles time from three clocks that must never be confused, and one
 interval type that belongs to none of them. The types live in
-`flox/util/base/time.h`; this page is the contract behind them.
+`lrvx/util/base/time.h`; this page is the contract behind them.
 
 ## Why types instead of discipline
 

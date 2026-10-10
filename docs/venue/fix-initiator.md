@@ -1,7 +1,7 @@
 # Connecting to another venue over FIX
 
 The venue module answers FIX sessions. This page is the other half: opening
-one. `flox::fix::FixInitiator` is the client end of a FIX 4.4 order-entry
+one. `lrvx::fix::FixInitiator` is the client end of a FIX 4.4 order-entry
 session, written against the acceptor described in
 [Perimeter](perimeter.md) so that the two ends agree about recovery and not
 only about the happy path.
@@ -12,12 +12,12 @@ session.
 
 ## Where it lives, and why not next to the codec
 
-The initiator is in the core, at `include/flox/connector/fix/`. The venue's
+The initiator is in the core, at `include/lrvx/connector/fix/`. The venue's
 `FixCodec` stays in the venue module.
 
 The deciding factor was what the arrangement costs a strategy author who will
-never run a matching engine. `FLOX_BUILD_VENUE=ON` pulls in the matching
-engine, clearing, venue risk and simdjson, forces `FLOX_ENABLE_BACKTEST=ON`,
+never run a matching engine. `LRVX_BUILD_VENUE=ON` pulls in the matching
+engine, clearing, venue risk and simdjson, forces `LRVX_ENABLE_BACKTEST=ON`,
 and is off entirely on MSVC and clang-cl because the module needs native
 128-bit integers. Putting the initiator there would charge that whole bill for
 a FIX client, and would leave Windows with no FIX client at all.
@@ -25,39 +25,39 @@ a FIX client, and would leave Windows with no FIX client at all.
 What the two ends share is smaller than a module: field parsing, the
 `BodyLength`/`CheckSum` framing, the header field order, the SendingTime
 format, and the decimal printing. Those moved to
-`flox/connector/fix/fix_wire.h` and `flox/util/decimal_wire.h`, where both
+`lrvx/connector/fix/fix_wire.h` and `lrvx/util/decimal_wire.h`, where both
 sides read them. `FixCodec` calls into them now instead of keeping its own
 copies, so a change to the checksum or the header order lands on both ends at
 once.
 
 | Header | What it holds |
 |---|---|
-| `flox/connector/fix/fix_wire.h` | framing, field parsing, checksum, header, SendingTime |
-| `flox/connector/fix/fix_client_codec.h` | `35=D`/`F`/`G` out, `35=8`/`9`/`3`/`j` in |
-| `flox/connector/fix/fix_initiator.h` | the session: Logon, liveness, sequencing, recovery |
-| `flox/connector/fix/fix_tcp_client.h` | the framed TCP client and a session driver |
-| `flox/connector/fix/fix_executor.h` | `IRoutableExecutor` over a session |
+| `lrvx/connector/fix/fix_wire.h` | framing, field parsing, checksum, header, SendingTime |
+| `lrvx/connector/fix/fix_client_codec.h` | `35=D`/`F`/`G` out, `35=8`/`9`/`3`/`j` in |
+| `lrvx/connector/fix/fix_initiator.h` | the session: Logon, liveness, sequencing, recovery |
+| `lrvx/connector/fix/fix_tcp_client.h` | the framed TCP client and a session driver |
+| `lrvx/connector/fix/fix_executor.h` | `IRoutableExecutor` over a session |
 
 ## A session
 
 ```cpp
-#include "flox/connector/fix/fix_initiator.h"
-#include "flox/connector/fix/fix_tcp_client.h"
+#include "lrvx/connector/fix/fix_initiator.h"
+#include "lrvx/connector/fix/fix_tcp_client.h"
 
-flox::fix::FixInitiatorConfig cfg;
+lrvx::fix::FixInitiatorConfig cfg;
 cfg.senderCompId = "CLIENT";
 cfg.targetCompId = "VENUE";
 cfg.heartBtIntSec = 30;
 
-flox::fix::FixInitiator initiator{cfg};
-initiator.setReportHandler([](const flox::fix::InboundReport& r) {
-  if (const auto* e = std::get_if<flox::fix::ExecutionReport>(&r)) {
+lrvx::fix::FixInitiator initiator{cfg};
+initiator.setReportHandler([](const lrvx::fix::InboundReport& r) {
+  if (const auto* e = std::get_if<lrvx::fix::ExecutionReport>(&r)) {
     // e->execType, e->lastQty, e->lastPx, e->leavesQty
   }
 });
 
-flox::fix::FixTcpClient tcp;
-flox::fix::FixTcpSession session{initiator, tcp};
+lrvx::fix::FixTcpClient tcp;
+lrvx::fix::FixTcpSession session{initiator, tcp};
 session.connect("10.0.0.7", 9876, nowNs());
 
 while (session.poll(nowNs())) {
@@ -75,19 +75,19 @@ through a transport loss it never got a Logout for.
 Sending is typed:
 
 ```cpp
-flox::fix::NewOrderRequest o;
+lrvx::fix::NewOrderRequest o;
 o.clOrdId = 1001;
 o.symbol = 3;
-o.side = flox::Side::BUY;
-o.type = flox::OrderType::LIMIT;
-o.price = flox::Price::fromRaw(priceRaw);
-o.quantity = flox::Quantity::fromRaw(qtyRaw);
+o.side = lrvx::Side::BUY;
+o.type = lrvx::OrderType::LIMIT;
+o.price = lrvx::Price::fromRaw(priceRaw);
+o.quantity = lrvx::Quantity::fromRaw(qtyRaw);
 initiator.submit(o, nowNs());
 ```
 
 `Price` and `Quantity` are fixed-point on the way in and on the way out. A
 price of `100.25` is printed as `100.25`, not as `100.250000` and not as
-`100.24999999`; the printing runs through `flox::decwire`, the same code the
+`100.24999999`; the printing runs through `lrvx::decwire`, the same code the
 venue uses on its side.
 
 ## Logon and the sequence space
@@ -175,21 +175,21 @@ corrupt file loads as absent, which costs a `141=Y` on the next Logon and never
 a wrong sequence space.
 
 ```cpp
-flox::fix::FixSeqState saved;
-if (flox::fix::FixInitiatorSidecar::load(path, saved)) {
+lrvx::fix::FixSeqState saved;
+if (lrvx::fix::FixInitiatorSidecar::load(path, saved)) {
   initiator.restore(saved);   // also turns 141=Y off: continue, do not restart
 }
 // ... later, at a checkpoint boundary
-flox::fix::FixInitiatorSidecar::write(path, initiator.seqState());
+lrvx::fix::FixInitiatorSidecar::write(path, initiator.seqState());
 ```
 
 The resend log is deliberately not persisted. A ResendRequest reaching into the
 pre-restart range is answered with GapFill, the same honest signal the venue
 gives for history it no longer holds.
 
-## Reading a flox venue's reports
+## Reading a lrvx venue's reports
 
-The decoder reads the fields a flox venue actually writes, including the ones
+The decoder reads the fields a lrvx venue actually writes, including the ones
 FIX 4.4 has no spelling for. A last-look venue reports a fill held pending the
 maker's decision as `ExecType=U` with custom tags 20001 (`heldId`) and 20002
 (`makerId`), and reports a held fill that will not stand as `ExecType=H`. Those
@@ -210,13 +210,13 @@ registers several FIX counterparties and switches between them on its own
 routing strategy:
 
 ```cpp
-flox::fix::FixRoutableExecutor primary{initiatorA};
-flox::fix::FixRoutableExecutor backup{initiatorB};
+lrvx::fix::FixRoutableExecutor primary{initiatorA};
+lrvx::fix::FixRoutableExecutor backup{initiatorB};
 
-flox::OrderRouter<4> router;
+lrvx::OrderRouter<4> router;
 router.registerExecutor(0, &primary);
 router.registerExecutor(1, &backup);
-router.setFailoverPolicy(flox::FailoverPolicy::FailoverToBest);
+router.setFailoverPolicy(lrvx::FailoverPolicy::FailoverToBest);
 ```
 
 The router's `cancel()` carries only an `OrderId`, while FIX wants the symbol
@@ -228,7 +228,7 @@ reports to `onReport()` for that to stay accurate.
 
 `FixTcpClient` speaks the framed TCP wire the venue's `TcpGateway` serves: one
 FIX message per length-prefixed frame. Reads go through
-`flox::net::FrameReader`, so a receive timeout in the middle of a frame is
+`lrvx::net::FrameReader`, so a receive timeout in the middle of a frame is
 resumable and the session timers run without the reader losing its place.
 
 `FixTlsChannel` is the same thing encrypted: the same `connect`/`send`/`read`/
@@ -239,7 +239,7 @@ layer does not know which one it is on.
 
 ### Why it is behind a flag
 
-`-DFLOX_FIX_TLS=ON` finds OpenSSL and builds the channel; the flag is off by
+`-DLRVX_FIX_TLS=ON` finds OpenSSL and builds the channel; the flag is off by
 default and the core links no OpenSSL without it. Nobody who does not ask for
 TLS acquires the dependency, which is why the initiator is in the core in the
 first place: a FIX client should not pay for a matching engine, and it should
@@ -251,7 +251,7 @@ and simdjson -- three system libraries and two fetched projects to get an
 encrypted FIX session. One optional dependency behind one flag is the cheaper
 of the two, and that is the whole reason for the placement.
 
-(The venue module does not come into this. `flox-venue` links neither
+(The venue module does not come into this. `lrvx-venue` links neither
 `connectors` nor OpenSSL: its TLS gateway finds OpenSSL on its own and links
 it to that gateway's test alone.)
 

@@ -5,14 +5,14 @@
 #
 # Build:
 #   codon build -exe -o build/codon/codon_full_backtest \
-#     -L build/src/capi -lflox_capi examples/codon_full_backtest.codon
+#     -L build/src/capi -llrvx_capi examples/codon_full_backtest.codon
 #
 # Run:
 #   DYLD_LIBRARY_PATH=build/src/capi:~/.local/lib/codon \
 #     ./build/codon/codon_full_backtest
 
-from flox.indicators import SMA, EMA, RSI
-from flox.tools import (SimulatedExecutor, PositionTracker, VolumeProfile,
+from lrvx.indicators import SMA, EMA, RSI
+from lrvx.tools import (SimulatedExecutor, PositionTracker, VolumeProfile,
                         OrderTracker, FootprintBar, OrderBook, L3Book,
                         correlation, profit_factor, win_rate,
                         bootstrap_ci, BUY_SIDE, SELL_SIDE)

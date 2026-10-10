@@ -9,9 +9,9 @@ the default with `rate=carry=0`.
 ## First-order greeks
 
 ```python
-import flox_py as flox
+import lrvx
 
-g = flox.greeks(flox.OptionType.CALL, spot=100, strike=100, t=1.0, vol=0.20,
+g = lrvx.greeks(lrvx.OptionType.CALL, spot=100, strike=100, t=1.0, vol=0.20,
                 rate=0.05, carry=0.05)
 g["delta"]  # price change per 1.0 move in spot
 g["gamma"]  # delta change per 1.0 move in spot
@@ -40,7 +40,7 @@ strike means the hedge needs frequent rebalancing.
 ## Second-order greeks
 
 ```python
-s = flox.second_order_greeks(flox.OptionType.CALL, spot=100, strike=100, t=1.0,
+s = lrvx.second_order_greeks(lrvx.OptionType.CALL, spot=100, strike=100, t=1.0,
                              vol=0.20, rate=0.05, carry=0.05)
 s["vanna"]  # d(delta)/d(vol), also d(vega)/d(spot)
 s["volga"]  # d(vega)/d(vol)

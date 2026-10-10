@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -19,7 +19,7 @@
  * The checkpoint here goes through `cloneForSnapshot`, the path production
  * actually takes (SequencedShard::doCheckpoint clones the live engine and
  * serializes the clone on a background thread, see
- * venue/include/flox-venue/sequenced_shard.h), the same way
+ * venue/include/lrvx-venue/sequenced_shard.h), the same way
  * test_venue_checkpoint_delisted.cpp does.
  *
  * The comparison is against the same run with NO checkpoint in it: the
@@ -27,11 +27,11 @@
  * identical digest. A report that comes back under a zero id is a different
  * digest, in both directions of the decision.
  */
-#include "flox-venue/event_hash.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/event_hash.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -41,9 +41,9 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {

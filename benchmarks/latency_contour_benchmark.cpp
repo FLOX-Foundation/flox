@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #include <benchmark/benchmark.h>
 
-#include "flox/util/performance/latency_contour.h"
-#include "flox/util/performance/latency_histogram.h"
+#include "lrvx/util/performance/latency_contour.h"
+#include "lrvx/util/performance/latency_histogram.h"
 
-using flox::performance::LatencyContour;
-using flox::performance::LatencyHistogram;
-using flox::performance::monotonicNs;
+using lrvx::performance::LatencyContour;
+using lrvx::performance::LatencyHistogram;
+using lrvx::performance::monotonicNs;
 
 // The contour stays on in production; the budget for one record() is tens of
 // nanoseconds. This benchmark is the enforcement of that promise.

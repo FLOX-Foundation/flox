@@ -8,7 +8,7 @@ Event-driven live trading and backtesting using `Strategy`, `Runner`, and `Backt
 
 ```bash
 cmake -B build \
-  -DFLOX_BUILD_PYTHON=ON \
+  -DLRVX_BUILD_PYTHON=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
@@ -16,14 +16,14 @@ cmake --build build
 
 Requires: Python 3.10+, pybind11 (`pip install pybind11`).
 
-The module builds at `build/python/flox_py.cpython-*.so`.
+The module builds at `build/python/lrvx.cpython-*.so`.
 
 ### Symbols
 
 ```python
-import flox_py as flox
+import lrvx
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 # btc.id, btc.name, btc.exchange, btc.tick_size
 # int(btc) → 1 — works as int everywhere
@@ -32,11 +32,11 @@ btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 ### Writing a Strategy
 
 ```python
-class SMAcross(flox.Strategy):
+class SMAcross(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
 
     def on_start(self): ...
     def on_stop(self): ...
@@ -56,7 +56,7 @@ class SMAcross(flox.Strategy):
 
 Order methods: `market_buy(qty)`, `market_sell(qty)`, `limit_buy(price, qty)`, `limit_sell(price, qty)`, `stop_market(side, trigger, qty)`, `close_position()`. All accept an optional `symbol` argument; without it the first registered symbol is used.
 
-Where an API takes an order type as a string -- `SimulatedExecutor.submit_order`, `VenueExecutor.submit_order`, the bracket legs -- the accepted names are `flox_py.ORDER_TYPE_NAMES`: `limit`, `market`, `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, `trailing_stop`, `iceberg`. `order_type_name(code)` and `order_type_code(name)` convert between a name and its wire code. Anything outside the set raises `ValueError` naming the accepted names, so a typo cannot become a market order.
+Where an API takes an order type as a string -- `SimulatedExecutor.submit_order`, `VenueExecutor.submit_order`, the bracket legs -- the accepted names are `lrvx.ORDER_TYPE_NAMES`: `limit`, `market`, `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, `trailing_stop`, `iceberg`. `order_type_name(code)` and `order_type_code(name)` convert between a name and its wire code. Anything outside the set raises `ValueError` naming the accepted names, so a typo cannot become a market order.
 
 ### Live Runner
 
@@ -65,8 +65,8 @@ def on_signal(sig):
     # sig.side, sig.order_type, sig.quantity, sig.price, sig.order_id
     send_to_exchange(sig)
 
-runner = flox.Runner(registry, on_signal)                  # synchronous
-runner = flox.Runner(registry, on_signal, threaded=True)   # Disruptor background thread
+runner = lrvx.Runner(registry, on_signal)                  # synchronous
+runner = lrvx.Runner(registry, on_signal, threaded=True)   # Disruptor background thread
 
 runner.add_strategy(SMAcross([btc]))
 runner.start()
@@ -81,7 +81,7 @@ runner.stop()
 ### Backtest
 
 ```python
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMAcross([btc]))
 
 stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
@@ -90,18 +90,18 @@ print(stats["return_pct"], stats["sharpe_ratio"], stats["max_drawdown_pct"])
 
 The constructor takes `(registry, fee_rate=0.0004, initial_capital=100000.0)` — nothing else. Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Useful for an indicator sanity check; not enough for a decision about real capital.
 
-`run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not. Timestamps below `1e12` are treated as seconds and scaled to nanoseconds, because a raw CSV column's unit is genuinely unknown. `run_ohlcv(ts, close, symbol)` and `run_bars(...)` (full OHLC, fires `on_bar`) are both different: `ts` and `start_time_ns` / `end_time_ns` are nanoseconds by contract — the same contract the C ABI, Node, and Codon bindings use for the same calls — so they are used exactly as given, with no unit guessing at all. Other entry points: `run_tape(path)` and `run_tapes(paths)` for `.floxlog` tapes.
+`run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not. Timestamps below `1e12` are treated as seconds and scaled to nanoseconds, because a raw CSV column's unit is genuinely unknown. `run_ohlcv(ts, close, symbol)` and `run_bars(...)` (full OHLC, fires `on_bar`) are both different: `ts` and `start_time_ns` / `end_time_ns` are nanoseconds by contract — the same contract the C ABI, Node, and Codon bindings use for the same calls — so they are used exactly as given, with no unit guessing at all. Other entry points: `run_tape(path)` and `run_tapes(paths)` for `.lrvx` tapes.
 
 Returns a plain dict. Keys: `total_trades`, `winning_trades`, `losing_trades`, `initial_capital`, `final_capital`, `total_pnl`, `total_fees`, `net_pnl`, `gross_profit`, `gross_loss`, `max_drawdown`, `max_drawdown_pct`, `win_rate`, `profit_factor`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `return_pct`.
 
-Hooks attach after construction: `set_executor(executor)` (a subclass of `flox.Executor`), `set_risk_manager`, `set_kill_switch`, `set_order_validator`, `set_pnl_tracker`, `add_execution_listener`.
+Hooks attach after construction: `set_executor(executor)` (a subclass of `lrvx.Executor`), `set_risk_manager`, `set_kill_switch`, `set_order_validator`, `set_pnl_tracker`, `add_execution_listener`.
 
 #### Venue physics
 
 `VenueStack` is a separate, self-contained venue simulation, built from one factory call:
 
 ```python
-stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
 
 acct = stack.account()
 liq = stack.liquidation()
@@ -110,7 +110,7 @@ funding = stack.funding()
 exec_ = stack.executor()
 ```
 
-One call wires the cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account, so realized notional moves the tier), funding settlement on the venue's interval, rate limits, and a venue-availability hook. Other factories: `bybit_linear`, `okx_swap`, `deribit`, plus `VenueStack.from_venue(name, account_id, equity)`. Non-canonical venues go through [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
+One call wires the cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account, so realized notional moves the tier), funding settlement on the venue's interval, rate limits, and a venue-availability hook. Other factories: `bybit_linear`, `okx_swap`, `deribit`, plus `VenueStack.from_venue(name, account_id, equity)`. Non-canonical venues go through [`lrvx.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
 
 Two ways to use a `VenueStack`:
 
@@ -121,10 +121,10 @@ Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-ba
 
 ### Paper trading
 
-Same strategy class, live feed, simulated fills. `PaperBroker` lives in `flox_py.paper`. It constructs its own `SimulatedExecutor` and its own `Runner`; you attach strategies to `broker.runner` and tee market data in through `broker.observe_trade(...)`.
+Same strategy class, live feed, simulated fills. `PaperBroker` lives in `lrvx.paper`. It constructs its own `SimulatedExecutor` and its own `Runner`; you attach strategies to `broker.runner` and tee market data in through `broker.observe_trade(...)`.
 
 ```python
-from flox_py.paper import PaperBroker
+from lrvx.paper import PaperBroker
 
 broker = PaperBroker(registry=registry)
 broker.runner.add_strategy(SMAcross([btc]))
@@ -143,11 +143,11 @@ See [Paper trading](../how-to/paper-trading.md) for the full feed-wiring pattern
 
 ### Live
 
-`CcxtBroker` lives in `flox_py.ccxt` and routes orders through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange. It is async and owns its own registry and runner — construct it from an exchange *id*, not an exchange object. The strategy class is unchanged.
+`CcxtBroker` lives in `lrvx.ccxt` and routes orders through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange. It is async and owns its own registry and runner — construct it from an exchange *id*, not an exchange object. The strategy class is unchanged.
 
 ```python
 import asyncio
-from flox_py.ccxt import CcxtBroker
+from lrvx.ccxt import CcxtBroker
 
 async def main():
     broker = CcxtBroker("binance", api_key=..., secret=..., sandbox=True)
@@ -159,30 +159,30 @@ async def main():
 asyncio.run(main())
 ```
 
-One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) and `docs/examples/python_ccxt_live.py`.
+One strategy class runs backtest, paper, and live. See [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md) and `docs/examples/python_ccxt_live.py`.
 
 ### When a callback raises
 
 Every Python callable the engine calls back into — the nine `Strategy` callbacks, the extension hooks (`PnLTracker`, `StorageSink`, `Executor`, `ExecutionListener`, `MarketDataRecorderHook`), and the three pre-trade gates — runs inside a C call. An exception is never allowed to unwind out of there: out of a frame with C linkage that is undefined behaviour, and on `threaded=True` it kills the bus consumer delivering the event, so the strategy would stop receiving events for the rest of the run. One rule applies to all of them:
 
 1. **The exception stops at the bridge.** The engine carries on with the next event, and the call that drove it — `Runner.on_trade`, `BacktestRunner.run_bars`, `runner.start()` — returns normally.
-2. **A pre-trade gate that did not answer denies.** `RiskManager.allow`, `KillSwitch.check` and `OrderValidator.validate` drop the signal when the callable raises, or returns something that is not a bool. That is the C ABI's own rule — "a call that was stopped this way returns its failure value" (`include/flox/capi/flox_capi.h`) — read against what a gate's return values mean: "Returning 0 (deny) drops the signal entirely" (`include/flox/capi/flox_capi_spec.hpp`). A broken gate is a closed gate, never an open one.
-3. **The description survives.** The exception text, with type and traceback, goes to the engine log at error level. `flox.set_log_callback(fn)` is how it reaches Python; with no callback installed the bundled console logger writes it to stderr.
+2. **A pre-trade gate that did not answer denies.** `RiskManager.allow`, `KillSwitch.check` and `OrderValidator.validate` drop the signal when the callable raises, or returns something that is not a bool. That is the C ABI's own rule — "a call that was stopped this way returns its failure value" (`include/lrvx/capi/lrvx_capi.h`) — read against what a gate's return values mean: "Returning 0 (deny) drops the signal entirely" (`include/lrvx/capi/lrvx_capi_spec.hpp`). A broken gate is a closed gate, never an open one.
+3. **The description survives.** The exception text, with type and traceback, goes to the engine log at error level. `lrvx.set_log_callback(fn)` is how it reaches Python; with no callback installed the bundled console logger writes it to stderr.
 
 ```python
 def sink(level, msg):      # level: 0=info, 1=warn, 2=error
     print(msg)
 
-flox.set_log_callback(sink)
+lrvx.set_log_callback(sink)
 
-class Gate(flox.RiskManager):
+class Gate(lrvx.RiskManager):
     def allow(self, sig):
         raise RuntimeError("limits service is down")
 
 runner.set_risk_manager(Gate())
 runner.on_trade(btc, 100.0, 1.0, True, ts_ns)
 # on_signal never fires, and sink() receives
-# "flox: RiskManager.allow raised: RuntimeError: limits service is down"
+# "lrvx: RiskManager.allow raised: RuntimeError: limits service is down"
 ```
 
 So a callback that raises costs you that event, not the run. If you want anything else to happen — retry, halt, alert — catch it in your own callback and decide there.
@@ -193,17 +193,17 @@ The log sink is detached at interpreter shutdown, so leaving one installed is sa
 
 ## Vectorised Engine
 
-`flox.Engine` runs a backtest against a pre-built signal list instead of an event-driven `Strategy`. Bars are loaded once and can be re-run against many signal sets.
+`lrvx.Engine` runs a backtest against a pre-built signal list instead of an event-driven `Strategy`. Bars are loaded once and can be re-run against many signal sets.
 
 ### Quick Start
 
 ```python
-import flox_py as flox
+import lrvx
 
-engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
+engine = lrvx.Engine(initial_capital=100_000, fee_rate=0.0001)
 engine.load_csv("btcusdt_1m.csv", symbol="BTCUSDT")
 
-signals = flox.SignalBuilder()
+signals = lrvx.SignalBuilder()
 signals.buy(1704067200_000000000, 0.5, symbol="BTCUSDT")
 signals.sell(1704068400_000000000, 0.5, symbol="BTCUSDT")
 
@@ -223,7 +223,7 @@ Call any of them once per symbol. `resample(symbol, target, interval)` derives a
 
 ### Creating Signals
 
-`flox.SignalBuilder` accumulates signals in call order:
+`lrvx.SignalBuilder` accumulates signals in call order:
 
 | Method | Arguments |
 |--------|-----------|
@@ -240,7 +240,7 @@ Call any of them once per symbol. `resample(symbol, target, interval)` derives a
 stats = engine.run(signals, default_symbol=0)
 ```
 
-Returns a `flox.Stats` object. Fields are readable as attributes or via `stats["key"]`; `stats.to_dict()` returns the whole set.
+Returns a `lrvx.Stats` object. Fields are readable as attributes or via `stats["key"]`; `stats.to_dict()` returns the whole set.
 
 | Key | Description |
 |-----|-------------|
@@ -264,7 +264,7 @@ Returns a `flox.Stats` object. Fields are readable as attributes or via `stats["
 - [Realistic backtest in one call](../how-to/realistic-backtest.md) — venue stack
 - [Cross-margin accounts](../how-to/cross-margin.md) — shared equity across positions
 - [Paper trading](../how-to/paper-trading.md) — same strategy class against a live feed
-- [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
+- [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
 - [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md)
 - [Control engine over MCP](../how-to/mcp-control-plane.md) — scoped AI control
 - [Grid Search](../how-to/grid-search.md) — parameter optimization

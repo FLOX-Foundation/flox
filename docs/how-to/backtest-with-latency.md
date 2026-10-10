@@ -1,6 +1,6 @@
 # Add latency to a backtest
 
-Per-trade fills in flox work in instant mode by default: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
+Per-trade fills in lrvx work in instant mode by default: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
 
 Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification).
 
@@ -22,7 +22,7 @@ Every model implements `feed_delay() / order_delay() / fill_delay()` returning n
 === "Python"
 
     ```python
-    from flox_py.latency_models import GaussianLatency
+    from lrvx.latency_models import GaussianLatency
 
     latency = GaussianLatency(
         feed_mean_ns=600_000, feed_stddev_ns=80_000,
@@ -37,9 +37,9 @@ Every model implements `feed_delay() / order_delay() / fill_delay()` returning n
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
-    const latency = new flox.GaussianLatency({
+    const latency = new lrvx.GaussianLatency({
       feedMeanNs: 600_000, feedStddevNs: 80_000,
       orderMeanNs: 1_200_000, orderStddevNs: 200_000,
       fillMeanNs: 600_000, fillStddevNs: 80_000,
@@ -52,7 +52,7 @@ Every model implements `feed_delay() / order_delay() / fill_delay()` returning n
 === "Codon"
 
     ```python
-    from flox.latency import GaussianLatency
+    from lrvx.latency import GaussianLatency
 
     latency = GaussianLatency(
         feed_mean_ns=600_000.0, feed_stddev_ns=80_000.0,
@@ -66,7 +66,7 @@ Every model implements `feed_delay() / order_delay() / fill_delay()` returning n
 === "QuickJS"
 
     ```javascript
-    const latency = new flox.GaussianLatency({
+    const latency = new lrvx.GaussianLatency({
         feedMeanNs: 600000, feedStddevNs: 80000,
         orderMeanNs: 1200000, orderStddevNs: 200000,
         fillMeanNs: 600000, fillStddevNs: 80000,
@@ -117,10 +117,10 @@ The other two components are left to the user app. Around a
 === "Python"
 
     ```python
-    import flox_py as flox
-    from flox_py.latency_models import ExponentialLatency
+    import lrvx
+    from lrvx.latency_models import ExponentialLatency
 
-    sim = flox.SimulatedExecutor()
+    sim = lrvx.SimulatedExecutor()
     latency = ExponentialLatency(
         feed_mean_ns=400_000,
         order_mean_ns=900_000,
@@ -137,10 +137,10 @@ The other two components are left to the user app. Around a
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
-    const sim = new flox.SimulatedExecutor();
-    const latency = new flox.ExponentialLatency({
+    const sim = new lrvx.SimulatedExecutor();
+    const latency = new lrvx.ExponentialLatency({
       feedMeanNs: 400_000, orderMeanNs: 900_000, fillMeanNs: 400_000, seed: 7,
     });
 
@@ -160,7 +160,7 @@ If you have measured latencies from a live run, hand the arrays to `EmpiricalLat
 === "Python"
 
     ```python
-    from flox_py.latency_models import calibrate_from_samples
+    from lrvx.latency_models import calibrate_from_samples
 
     latency = calibrate_from_samples(
         feed_samples=feed_arr,
@@ -173,7 +173,7 @@ If you have measured latencies from a live run, hand the arrays to `EmpiricalLat
 === "Node.js"
 
     ```javascript
-    const latency = new flox.EmpiricalLatency({
+    const latency = new lrvx.EmpiricalLatency({
       feedSamples: feedArr,
       orderSamples: orderArr,
       fillSamples: fillArr,
@@ -219,7 +219,7 @@ Still open:
 | `set_replace_ack_latency_distribution(dist)` | Same |
 | `apply_latency_profile(name)` | Sets all three from a named venue profile |
 
-`LatencyDistribution` (Node: `new flox.LatencyDistribution()` plus `setConstant` / `setUniform` / `setLognormal` / `setEmpirical` / `setBurstCorrelation`) is a separate type from the `*Latency` models above. See [Model cancellation ack latency](cancel-latency-modeling.md).
+`LatencyDistribution` (Node: `new lrvx.LatencyDistribution()` plus `setConstant` / `setUniform` / `setLognormal` / `setEmpirical` / `setBurstCorrelation`) is a separate type from the `*Latency` models above. See [Model cancellation ack latency](cancel-latency-modeling.md).
 
 ## See also
 

@@ -7,7 +7,7 @@ Standalone simulated exchange for step-by-step backtesting and fill analysis.
 A simulated exchange that matches orders against bar closes and trade prices. Supports market, limit, stop, take-profit, and trailing stop orders.
 
 ```python
-executor = flox.SimulatedExecutor()
+executor = lrvx.SimulatedExecutor()
 ```
 
 ### Methods
@@ -37,7 +37,7 @@ executor.submit_order(id=1, side="buy", price=0.0, quantity=1.0,
 | `trailing_offset` | `float` | `0.0` | Fixed-price offset for `"trailing_stop"` |
 | `trailing_bps` | `int` | `0` | Bps offset for `"trailing_stop"` — set exactly one of the two |
 
-**Order types:** `"limit"`, `"market"`, `"stop_market"`, `"stop_limit"`, `"tp_market"`, `"tp_limit"`, `"trailing_stop"`, `"iceberg"` — the canonical set, also readable as `flox_py.ORDER_TYPE_NAMES`. Anything else raises `ValueError` naming the accepted set; it is never quietly turned into a market order.
+**Order types:** `"limit"`, `"market"`, `"stop_market"`, `"stop_limit"`, `"tp_market"`, `"tp_limit"`, `"trailing_stop"`, `"iceberg"` — the canonical set, also readable as `lrvx.ORDER_TYPE_NAMES`. Anything else raises `ValueError` naming the accepted set; it is never quietly turned into a market order.
 
 #### `cancel_order(order_id)`
 
@@ -211,7 +211,7 @@ for fill in executor.fills_list():
 Computes statistics and equity curve from a `SimulatedExecutor`'s fills.
 
 ```python
-result = flox.BacktestResult(initial_capital=10_000.0, fee_rate=0.0004)
+result = lrvx.BacktestResult(initial_capital=10_000.0, fee_rate=0.0004)
 result.ingest_executor(executor)
 stats = result.stats()
 print(stats['net_pnl'], stats['sharpe_ratio'])
@@ -220,7 +220,7 @@ print(stats['net_pnl'], stats['sharpe_ratio'])
 ### Constructor
 
 ```python
-flox.BacktestResult(
+lrvx.BacktestResult(
     initial_capital=100000.0,
     fee_rate=0.0001,
     use_percentage_fee=True,
@@ -319,9 +319,9 @@ The [`Stats`](engine.md#stats) object returned by `Engine.run()` is a different,
 ## Example
 
 ```python
-import flox_py as flox
+import lrvx
 
-executor = flox.SimulatedExecutor()
+executor = lrvx.SimulatedExecutor()
 
 # Simulate a simple trade
 executor.advance_clock(1_000_000_000)  # t=1s

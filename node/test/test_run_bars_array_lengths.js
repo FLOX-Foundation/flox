@@ -5,7 +5,7 @@
  *
  * runBars (node/src/strategy.h) derived its element count from
  * startNs.ElementLength() alone and handed the other seven .Data()
- * pointers straight to flox_backtest_runner_run_bars, which takes one
+ * pointers straight to lrvx_backtest_runner_run_bars, which takes one
  * uint32_t n and indexes all eight arrays over [0, n). A `high` column
  * one element short was an out-of-bounds read of the other seven, and the
  * run completed and reported stats as if nothing had happened. runOhlcv
@@ -28,7 +28,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -40,9 +40,9 @@ function check(cond, msg) {
 const N = 3;
 
 function makeRunner() {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   const seenBars = [];
   const seenTrades = [];
   runner.setStrategy({

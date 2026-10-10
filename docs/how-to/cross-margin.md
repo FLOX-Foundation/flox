@@ -18,9 +18,9 @@ per-position.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    acct = flox.Account(account_id=42, equity=10_000.0)
+    acct = lrvx.Account(account_id=42, equity=10_000.0)
     acct.open_position(symbol=1, quantity=5.0, entry_price=50_000.0)
     acct.open_position(symbol=2, quantity=-30.0, entry_price=3_000.0)
     ```
@@ -28,7 +28,7 @@ per-position.
 === "TypeScript"
 
     ```typescript
-    import { Account } from "@flox-foundation/flox";
+    import { Account } from "@lrvx/lrvx";
 
     const acct = new Account(42, 10_000);
     acct.openPosition(1, 5.0, 50_000);
@@ -57,7 +57,7 @@ it was already valued in every aggregate.
 === "Python"
 
     ```python
-    acct = flox.Account(account_id=42, equity=1_000_000.0)
+    acct = lrvx.Account(account_id=42, equity=1_000_000.0)
     acct.open_position(symbol=1, quantity=2.5, entry_price=30_000.0)
     acct.set_mark(1, 31_234.5678)
     acct.close_position(1)
@@ -67,7 +67,7 @@ it was already valued in every aggregate.
 === "TypeScript"
 
     ```typescript
-    const acct = new flox.Account(42, 1_000_000);
+    const acct = new lrvx.Account(42, 1_000_000);
     acct.openPosition(1, 2.5, 30_000);
     acct.setMark(1, 31_234.5678);
     acct.closePosition(1);
@@ -96,7 +96,7 @@ evaluating against stale data.
 === "Python"
 
     ```python
-    liq = flox.LiquidationEngine.binance_um_futures()
+    liq = lrvx.LiquidationEngine.binance_um_futures()
     liq.attach_account(acct)
 
     # Atomic multi-symbol update; engine walks every attached
@@ -108,7 +108,7 @@ evaluating against stale data.
 === "TypeScript"
 
     ```typescript
-    const liq = new flox.LiquidationEngine();
+    const liq = new lrvx.LiquidationEngine();
     liq.loadProfile("binance_um_futures");
     liq.attachAccount(acct);
 
@@ -153,8 +153,8 @@ more `FeeSchedule`s makes them read the aggregate counter:
 === "Python"
 
     ```python
-    btc_sched = flox.FeeSchedule.binance_um_futures()
-    eth_sched = flox.FeeSchedule.binance_um_futures()
+    btc_sched = lrvx.FeeSchedule.binance_um_futures()
+    eth_sched = lrvx.FeeSchedule.binance_um_futures()
     btc_sched.bind_account(acct)
     eth_sched.bind_account(acct)
 
@@ -168,9 +168,9 @@ more `FeeSchedule`s makes them read the aggregate counter:
 === "TypeScript"
 
     ```typescript
-    const btcSched = new flox.FeeSchedule();
+    const btcSched = new lrvx.FeeSchedule();
     btcSched.loadProfile("binance_um_futures");
-    const ethSched = new flox.FeeSchedule();
+    const ethSched = new lrvx.FeeSchedule();
     ethSched.loadProfile("binance_um_futures");
     btcSched.bindAccount(acct);
     ethSched.bindAccount(acct);
@@ -196,7 +196,7 @@ independently. Switch via the margin mode and pass
 === "Python"
 
     ```python
-    acct = flox.Account(account_id=42, equity=0.0)
+    acct = lrvx.Account(account_id=42, equity=0.0)
     acct.set_margin_mode("isolated")
     acct.open_position(symbol=1, quantity=5.0, entry_price=50_000.0,
                        isolated_equity=2_500.0)
@@ -207,7 +207,7 @@ independently. Switch via the margin mode and pass
 === "TypeScript"
 
     ```typescript
-    const acct = new flox.Account(42, 0);
+    const acct = new lrvx.Account(42, 0);
     acct.setMarginMode("isolated");
     acct.openPosition(1, 5.0, 50_000, 2_500);
     acct.openPosition(2, -10.0, 3_000, 1_500);

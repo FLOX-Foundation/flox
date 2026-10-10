@@ -146,7 +146,7 @@ Pass a type of the same shape as the fourth template argument and its
 production bus carries no branch, no member and no call for it; a bus with a
 seam is a distinct type from the bus the engine builds.
 
-## CPU Affinity (when `FLOX_CPU_AFFINITY_ENABLED`)
+## CPU Affinity (when `LRVX_CPU_AFFINITY_ENABLED`)
 
 ```cpp
 enum class ComponentType
@@ -236,7 +236,7 @@ if (!bus.subscribe(&bookHandler)) {
   // Handle error: null listener, bus running, or at capacity
 }
 
-#if FLOX_CPU_AFFINITY_ENABLED
+#if LRVX_CPU_AFFINITY_ENABLED
 bus.setupOptimalConfiguration(BookBus::ComponentType::MARKET_DATA);
 #endif
 
@@ -288,7 +288,7 @@ bus.subscribe(&loggingHandler, false);   // optional
 * Optional consumers don't block `waitConsumed()` or `flush()`, but still receive all events.
 * `subscribe()` must be called before `start()` - returns false otherwise.
 * `enableDrainOnStop()` should be called before `start()` if drain behavior is needed.
-* CPU affinity features require `FLOX_CPU_AFFINITY_ENABLED` compile flag.
+* CPU affinity features require `LRVX_CPU_AFFINITY_ENABLED` compile flag.
 * `publish()` returns -1 if the bus is not running.
 * `publishBatch()` returns -1 for an empty batch and for one larger than half the ring.
 
@@ -297,7 +297,7 @@ bus.subscribe(&loggingHandler, false);   // optional
 Run `event_bus_benchmark` to measure performance on your hardware:
 
 ```bash
-cmake -DFLOX_BUILD_BENCHMARKS=ON ..
+cmake -DLRVX_BUILD_BENCHMARKS=ON ..
 make event_bus_benchmark
 ./benchmarks/event_bus_benchmark
 ```

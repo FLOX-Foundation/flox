@@ -13,7 +13,7 @@ Two rules, both checked here:
    inherits the free-on-every-path behaviour instead of re-deriving it.
 
 2. Every holder is tested before its pointer is used: an early-out
-   (FLOX_JS_CSTRING_OR_THROW, or an explicit `if (!x)`), an `if (x)`
+   (LRVX_JS_CSTRING_OR_THROW, or an explicit `if (!x)`), an `if (x)`
    that wraps the uses, or a `x ? x : fallback` at every use.
 
 Run with -v to list every site and how it is guarded.
@@ -28,9 +28,9 @@ HOLDER_HEADER = "js_cstring.h"
 
 RAW_CALL = re.compile(r"\bJS_ToCString\s*\(")
 RAW_FREE = re.compile(r"\bJS_FreeCString\s*\(")
-DECL = re.compile(r"^\s*(?:flox::)?JsCString (\w+)\s*[({]")
-MACRO = re.compile(r"^\s*FLOX_JS_CSTRING_OR(?:_THROW)?\(\s*(\w+)\s*,")
-OPTIONAL = re.compile(r"^\s*(?:flox::)?JsCString (\w+)\s*=\s*(?:flox::)?jsOptionalCString\(")
+DECL = re.compile(r"^\s*(?:lrvx::)?JsCString (\w+)\s*[({]")
+MACRO = re.compile(r"^\s*LRVX_JS_CSTRING_OR(?:_THROW)?\(\s*(\w+)\s*,")
+OPTIONAL = re.compile(r"^\s*(?:lrvx::)?JsCString (\w+)\s*=\s*(?:lrvx::)?jsOptionalCString\(")
 SCOPE = 60
 
 
@@ -144,7 +144,7 @@ def main():
         for f in failures:
             print("  " + f)
         print(
-            "\nConvert the site to FLOX_JS_CSTRING_OR_THROW, or test .ok() "
+            "\nConvert the site to LRVX_JS_CSTRING_OR_THROW, or test .ok() "
             "before the pointer reaches a consumer. See src/quickjs/js_cstring.h."
         )
         return 1

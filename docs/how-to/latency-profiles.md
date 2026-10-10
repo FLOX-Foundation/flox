@@ -1,6 +1,6 @@
 # Apply a named latency profile
 
-`flox::LatencyProfiles` is a small library of named ack-latency
+`lrvx::LatencyProfiles` is a small library of named ack-latency
 defaults calibrated for common venues. Each profile mutates a
 `BacktestConfig` (C++) or applies to a `SimulatedExecutor` directly
 (bindings) by name string.
@@ -31,20 +31,20 @@ latency in your own environment.
 === "Node.js"
 
     ```javascript
-    const exec = new flox.SimulatedExecutor();
+    const exec = new lrvx.SimulatedExecutor();
     exec.applyLatencyProfile("binance_um_futures");
     ```
 
 === "QuickJS"
 
     ```javascript
-    __flox_simulated_executor_apply_latency_profile(handle, "binance_um_futures");
+    __lrvx_simulated_executor_apply_latency_profile(handle, "binance_um_futures");
     ```
 
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor
+    from lrvx.backtest import SimulatedExecutor
     exec = SimulatedExecutor()
     exec.apply_latency_profile("binance_um_futures")
     ```
@@ -52,10 +52,10 @@ latency in your own environment.
 === "C++"
 
     ```cpp
-    #include "flox/backtest/latency_profiles.h"
-    flox::BacktestConfig cfg;
-    flox::LatencyProfiles::binance_um_futures(cfg);
-    flox::BacktestRunner runner(cfg);
+    #include "lrvx/backtest/latency_profiles.h"
+    lrvx::BacktestConfig cfg;
+    lrvx::LatencyProfiles::binance_um_futures(cfg);
+    lrvx::BacktestRunner runner(cfg);
     ```
 
 ## Notes

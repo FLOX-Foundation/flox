@@ -1,7 +1,7 @@
 # Runner, LiveEngine, BacktestRunner
 
 ```codon
-from flox.runner import Runner, BacktestRunner
+from lrvx.runner import Runner, BacktestRunner
 ```
 
 ---
@@ -31,7 +31,7 @@ Emitted by a strategy when it places an order.
 Synchronous strategy host. Push market data; strategy callbacks fire before the call returns. Pass `threaded=True` to use a Disruptor ring buffer with strategy callbacks running in a background C++ thread.
 
 ```codon
-from flox.runner import Runner
+from lrvx.runner import Runner
 
 def on_signal(sig: Signal):
     print(sig.side, sig.quantity, sig.price)
@@ -54,7 +54,7 @@ Runner(registry: cobj, on_signal, threaded: bool = False)
 
 | Parameter | Description |
 |-----------|-------------|
-| `registry` | Handle from `flox_registry_create()` |
+| `registry` | Handle from `lrvx_registry_create()` |
 | `on_signal` | Called when a strategy emits an order |
 | `threaded` | If `True`, use Disruptor-based consumer thread |
 
@@ -80,7 +80,7 @@ object with a `symbol_id` property — resolve the id yourself before calling.
 Replays OHLCV data through a strategy. Emitted orders go to `SimulatedExecutor` automatically.
 
 ```codon
-from flox.runner import BacktestRunner
+from lrvx.runner import BacktestRunner
 
 bt = BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000.0)
 bt.set_strategy(my_strategy)
@@ -104,8 +104,8 @@ BacktestRunner(registry: cobj, fee_rate: float = 0.0004, initial_capital: float 
 | `run_csv(path, symbol)` | `BacktestStats` | Replay a CSV file (columns: timestamp, open, high, low, close, volume) |
 | `run_ohlcv(timestamps, closes, symbol)` | `BacktestStats` | Replay raw arrays (`List[int]` timestamps in ns, `List[float]` closes) |
 | `run_bars(start_ns, end_ns, opens, highs, lows, closes, volumes, symbol, bar_type=0, bar_type_param=0)` | `BacktestStats` | Replay full OHLCV bars. `Strategy.on_bar` fires; `on_trade` does **not** |
-| `run_tape(path)` | `BacktestStats` | Replay one `.floxlog` tape directory |
-| `run_tapes(paths)` | `BacktestStats` | Replay N `.floxlog` tapes merged on read |
+| `run_tape(path)` | `BacktestStats` | Replay one `.lrvx` tape directory |
+| `run_tapes(paths)` | `BacktestStats` | Replay N `.lrvx` tapes merged on read |
 | `equity_curve()` | `Tuple[List[int], List[float], List[float]]` | `(timestamps_ns, equity, drawdown_pct)` from the most recent run, all the same length. Raises if no run has completed |
 | `trades()` | 9 parallel lists | `(symbol, side, entry_price, exit_price, quantity, pnl, fee, entry_time_ns, exit_time_ns)` for the closed trades of the most recent run. `side` is 0 for long, 1 for short |
 | `close()` | `None` | Free resources |

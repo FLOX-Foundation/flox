@@ -2,7 +2,7 @@
 """An exception leaving a thread body is std::terminate for the whole process.
 
 The rule is that every thread in the framework is built through
-flox::makeThread, which contains the body and reports the death. The rule was
+lrvx::makeThread, which contains the body and reports the death. The rule was
 written out three separate times in three separate files before it was applied
 everywhere, so this check exists to keep it from drifting apart again.
 
@@ -20,7 +20,7 @@ ROOTS = ["include", "src", "venue", "connectors", "tools", "demo", "benchmarks"]
 SKIP_DIRS = {"external", "_deps"}
 
 # The one place allowed to say std::thread: the helper that wraps it.
-ALLOWED = {Path("include/flox/util/concurrency/thread_body.h")}
+ALLOWED = {Path("include/lrvx/util/concurrency/thread_body.h")}
 
 # Construction, in any of its spellings: std::thread(...), std::thread t(...),
 # std::thread t{...}. A bare declaration (std::thread t;), a container type
@@ -72,7 +72,7 @@ def main() -> int:
                 bad.append((rel, text[: m.start()].count("\n") + 1, line.strip()))
 
     if bad:
-        print("std::thread constructed directly; use flox::makeThread so an")
+        print("std::thread constructed directly; use lrvx::makeThread so an")
         print("exception leaving the body cannot terminate the process:")
         for rel, line, src in bad:
             print(f"  {rel}:{line}: {src}")

@@ -140,7 +140,7 @@ SplitConfig config{
     .time_interval_ns = 3600LL * 1000000000LL
 };
 
-auto result = SegmentOps::split("/data/large.floxlog", config);
+auto result = SegmentOps::split("/data/large.lrvx", config);
 ```
 
 ## Export
@@ -201,7 +201,7 @@ ExportConfig config{
     .trades_only = true
 };
 
-auto result = SegmentOps::exportData("/data/market.floxlog", config);
+auto result = SegmentOps::exportData("/data/market.lrvx", config);
 ```
 
 ## Other Operations
@@ -211,8 +211,8 @@ auto result = SegmentOps::exportData("/data/market.floxlog", config);
 Change compression of an existing segment:
 
 ```cpp
-SegmentOps::recompress("/data/uncompressed.floxlog",
-                       "/data/compressed.floxlog",
+SegmentOps::recompress("/data/uncompressed.lrvx",
+                       "/data/compressed.lrvx",
                        CompressionType::LZ4);
 ```
 
@@ -224,8 +224,8 @@ Apply custom predicate to filter events:
 WriterConfig writer_config{.output_dir = "/data/filtered"};
 
 auto count = SegmentOps::filter(
-    "/data/input.floxlog",
-    "/data/filtered/trades.floxlog",
+    "/data/input.lrvx",
+    "/data/filtered/trades.lrvx",
     [](const ReplayEvent& e) { return e.type == EventType::Trade; },
     writer_config);
 ```
@@ -238,8 +238,8 @@ Extract events for specific symbol IDs:
 WriterConfig writer_config{.output_dir = "/data/extracted"};
 
 auto count = SegmentOps::extractSymbols(
-    "/data/input.floxlog",
-    "/data/extracted/btc_eth.floxlog",
+    "/data/input.lrvx",
+    "/data/extracted/btc_eth.lrvx",
     {1, 2},  // Symbol IDs
     writer_config);
 ```
@@ -252,8 +252,8 @@ Extract events within a time window:
 WriterConfig writer_config{.output_dir = "/data/extracted"};
 
 auto count = SegmentOps::extractTimeRange(
-    "/data/input.floxlog",
-    "/data/extracted/morning.floxlog",
+    "/data/input.lrvx",
+    "/data/extracted/morning.lrvx",
     start_ns, end_ns,
     writer_config);
 ```
@@ -265,10 +265,10 @@ auto count = SegmentOps::extractTimeRange(
 auto result = replay::quickMerge("/data/segments", "/data/merged");
 
 // Quick export to CSV
-auto result = replay::quickExportCSV("/data/market.floxlog", "/data/market.csv");
+auto result = replay::quickExportCSV("/data/market.lrvx", "/data/market.csv");
 
 // Split by hour
-auto result = replay::quickSplitByHour("/data/day.floxlog", "/data/hourly");
+auto result = replay::quickSplitByHour("/data/day.lrvx", "/data/hourly");
 ```
 
 ## Notes

@@ -7,9 +7,9 @@ Volume Profile aggregates traded volume by price level over a session, exposing 
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    vp = flox.VolumeProfile(tick_size=0.50)   # aggregate to $0.50 levels
+    vp = lrvx.VolumeProfile(tick_size=0.50)   # aggregate to $0.50 levels
 
     # On every trade
     vp.add_trade(price, qty, is_buy=trade.is_buy)
@@ -23,14 +23,14 @@ Volume Profile aggregates traded volume by price level over a session, exposing 
 === "Node.js"
 
     ```javascript
-    const vp = new flox.VolumeProfile(0.50);
+    const vp = new lrvx.VolumeProfile(0.50);
     vp.addTrade(price, qty, /*isBuy=*/ true);
     ```
 
 === "C++"
 
     ```cpp
-    #include "flox/aggregator/custom/volume_profile.h"
+    #include "lrvx/aggregator/custom/volume_profile.h"
 
     VolumeProfile<256> profile;
     profile.setTickSize(Price::fromDouble(0.50));

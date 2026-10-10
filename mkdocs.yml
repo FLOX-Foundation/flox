@@ -1,8 +1,8 @@
-site_name: FLOX
+site_name: lrvx
 site_description: AI-native framework for building trading systems.
-site_url: https://flox-foundation.github.io/flox/
-repo_url: https://github.com/FLOX-Foundation/flox
-repo_name: FLOX-Foundation/flox
+site_url: https://docs.lrvx.dev/
+repo_url: https://github.com/lrvx/lrvx
+repo_name: lrvx/lrvx
 
 theme:
   name: material
@@ -78,7 +78,7 @@ nav:
 
   - Tutorials:
       - tutorials/README.md
-      - Your first FLOX backtest: tutorials/first-backtest.md
+      - Your first lrvx backtest: tutorials/first-backtest.md
       - Python quickstart: tutorials/python-quickstart.md
       - Node.js quickstart: tutorials/node-quickstart.md
       - Codon quickstart: tutorials/codon-strategy.md
@@ -110,13 +110,13 @@ nav:
   - How-To Guides:
       - how-to/README.md
       - Strategy & Backtest:
-          - Scaffold a Project (flox new): how-to/flox-new.md
+          - Scaffold a Project (lrvx new): how-to/lrvx-new.md
           - Strategy Classes: how-to/strategy-classes.md
           - TypeScript strategy authoring: how-to/typescript-strategy-authoring.md
           - Strategy hot-reload: how-to/strategy-hot-reload.md
           - Delta book compression: how-to/delta-book-compression.md
-          - Record a strategy run as .floxrun: how-to/floxrun.md
-          - Capture a strategy run automatically: how-to/floxrun-auto-capture.md
+          - Record a strategy run as .lrvxrun: how-to/lrvxrun.md
+          - Capture a strategy run automatically: how-to/lrvxrun-auto-capture.md
           - Inspect a tape and run in the replay viewer: how-to/replay-viewer.md
           - Read multi-timeframe context from a strategy: how-to/multi-tf-context.md
           - Compose multi-symbol multi-TF entry conditions: how-to/composite-conditions.md
@@ -148,7 +148,7 @@ nav:
           - Venue downtime: how-to/venue-downtime.md
           - Calibrate live queue: how-to/calibrate-live-queue.md
           - Record and replay market data: how-to/tape-record.md
-          - Run a paper engine (flox engine sim): how-to/engine-sim.md
+          - Run a paper engine (lrvx engine sim): how-to/engine-sim.md
           - Merge multiple tapes on read: how-to/multi-tape.md
           - Import Binance public archives: how-to/import-binance-archive.md
           - Import Binance book archives: how-to/import-binance-book-archive.md
@@ -210,6 +210,7 @@ nav:
           - Configuration: how-to/configuration.md
           - CI Configuration: how-to/ci.md
           - Contributing: how-to/contributing.md
+          - Migrate from FLOX: how-to/migrate-from-flox.md
 
   - Venue:
       - Overview: venue/index.md
@@ -267,8 +268,8 @@ nav:
 
   - Specifications:
       - spec/README.md
-      - "floxlog tape format v1.0": spec/floxlog.md
-      - "floxrun strategy-trace format v1.0": spec/floxrun.md
+      - "lrvx tape format v1.0": spec/lrvx.md
+      - "lrvxrun strategy-trace format v1.0": spec/lrvxrun.md
 
   - Reference:
       - reference/README.md
@@ -311,7 +312,7 @@ nav:
           - Indicators: reference/quickjs/indicators.md
           - Tools: reference/quickjs/tools.md
           - Backtest & runtime: reference/quickjs/backtest.md
-      - C API: reference/api/capi/flox_capi.md
+      - C API: reference/api/capi/lrvx_capi.md
       - Errors:
           - errors/index.md
           - "E_SYM_001 — Symbol is not registered": errors/E_SYM_001.md

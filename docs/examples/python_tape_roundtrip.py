@@ -10,7 +10,7 @@ through ``runner.on_trade`` so the recorder writes without a network
 dependency.
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_tape_roundtrip.py
 """
 from __future__ import annotations
@@ -19,18 +19,18 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import flox_py as flox
-from flox_py.tape import inspect_tape, make_recorder_hook, replay_tape
+import lrvx
+from lrvx.tape import inspect_tape, make_recorder_hook, replay_tape
 
 
 def main() -> None:
-    out = Path(tempfile.mkdtemp(prefix="flox-tape-example-"))
+    out = Path(tempfile.mkdtemp(prefix="lrvx-tape-example-"))
     try:
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = registry.add_symbol("example", "BTCUSDT", tick_size=0.01)
 
         recorder = make_recorder_hook(out, max_segment_mb=64)
-        runner = flox.Runner(registry, on_signal=lambda _sig: None)
+        runner = lrvx.Runner(registry, on_signal=lambda _sig: None)
         runner.set_market_data_recorder(recorder)
         runner.start()
 

@@ -7,18 +7,18 @@
 #include <pybind11/stl.h>
 
 #include "bindings_common.h"
-#include "flox/aggregator/aggregation_policy.h"
-#include "flox/aggregator/bar.h"
-#include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
-#include "flox/aggregator/policies/range_bar_policy.h"
-#include "flox/aggregator/policies/renko_bar_policy.h"
-#include "flox/aggregator/policies/tick_bar_policy.h"
-#include "flox/aggregator/policies/time_bar_policy.h"
-#include "flox/aggregator/policies/volume_bar_policy.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/book/trade.h"
-#include "flox/common.h"
-#include "flox/util/base/time.h"
+#include "lrvx/aggregator/aggregation_policy.h"
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/aggregator/policies/heikin_ashi_bar_policy.h"
+#include "lrvx/aggregator/policies/range_bar_policy.h"
+#include "lrvx/aggregator/policies/renko_bar_policy.h"
+#include "lrvx/aggregator/policies/tick_bar_policy.h"
+#include "lrvx/aggregator/policies/time_bar_policy.h"
+#include "lrvx/aggregator/policies/volume_bar_policy.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/book/trade.h"
+#include "lrvx/common.h"
+#include "lrvx/util/base/time.h"
 
 #include <chrono>
 #include <cstring>
@@ -43,7 +43,7 @@ struct PyExtBar
   int64_t volume_raw;
   int64_t buy_volume_raw;
   int64_t trade_count;
-  // flox::Bar::reason (BarCloseReason), carried through so a batch-aggregated
+  // lrvx::Bar::reason (BarCloseReason), carried through so a batch-aggregated
   // bar says why it closed the same way the live callback path's BarData does.
   uint8_t close_reason;
 };
@@ -53,11 +53,11 @@ static_assert(sizeof(PyExtBar) == 73);
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 inline int64_t toUnixNs(TimePoint tp)
 {
-  return tp.time_since_epoch().count() - unix_to_flox_offset_ns().load(std::memory_order_relaxed);
+  return tp.time_since_epoch().count() - unix_to_lrvx_offset_ns().load(std::memory_order_relaxed);
 }
 
 inline PyExtBar barToExtBar(const Bar& b)
@@ -85,12 +85,12 @@ inline PyExtBar barToExtBar(const Bar& b)
 //
 // Only fully closed bars are returned -- the trailing bar still open when
 // the input runs out is dropped, exactly like the C ABI's doAggregateC
-// (src/capi/flox_capi.cpp), which every other binding (Node, QuickJS,
+// (src/capi/lrvx_capi.cpp), which every other binding (Node, QuickJS,
 // Codon) goes through. This used to append that trailing bar unconditionally,
 // which made the bar count binding-dependent (Python returned one more bar
 // than everyone else on the same input) and input-order-dependent (appending
 // one more trade could silently turn "the last real bar" into "a different,
-// still-open bar" with no way to tell the two apart -- FloxBar/PyExtBar
+// still-open bar" with no way to tell the two apart -- LrvxBar/PyExtBar
 // carry no closed/partial flag). A batch call's result has to depend only on
 // its input, not on where the caller happened to stop feeding it; a
 // consumer that wants the currently-open bar during live streaming has that
@@ -123,7 +123,7 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
       continue;
     }
 
-    if constexpr (flox::DetectsLateTrades<Policy>)
+    if constexpr (lrvx::DetectsLateTrades<Policy>)
     {
       if (policy.isLate(trade, currentBar))
       {
@@ -133,7 +133,7 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
 
     if (policy.shouldClose(trade, currentBar))
     {
-      if constexpr (flox::ClosesAndReopens<Policy>)
+      if constexpr (lrvx::ClosesAndReopens<Policy>)
       {
         policy.closeAndReopen(trade, currentBar,
                               [&bars](const Bar& bar)
@@ -191,7 +191,7 @@ inline void bindAggregators(py::module_& m)
                        close_raw, volume_raw, buy_volume_raw, trade_count, close_reason);
 
   // Ensure time mapping is initialized
-  flox::init_timebase_mapping();
+  lrvx::init_timebase_mapping();
 
   m.def(
       "aggregate_time_bars",
@@ -200,7 +200,7 @@ inline void bindAggregators(py::module_& m)
          py::array_t<double, py::array::c_style | py::array::forcecast> qty,
          py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double interval_seconds)
       {
-        auto policy = flox::TimeBarPolicy(
+        auto policy = lrvx::TimeBarPolicy(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::duration<double>(interval_seconds)));
         return aggregateBars(std::move(policy), ts, px, qty, is_buy);
@@ -215,7 +215,7 @@ inline void bindAggregators(py::module_& m)
          py::array_t<double, py::array::c_style | py::array::forcecast> px,
          py::array_t<double, py::array::c_style | py::array::forcecast> qty,
          py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, uint32_t tick_count)
-      { return aggregateBars(flox::TickBarPolicy(tick_count), ts, px, qty, is_buy); },
+      { return aggregateBars(lrvx::TickBarPolicy(tick_count), ts, px, qty, is_buy); },
       "Aggregate trades into tick bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
       py::arg("is_buy"), py::arg("tick_count"));
@@ -226,7 +226,7 @@ inline void bindAggregators(py::module_& m)
          py::array_t<double, py::array::c_style | py::array::forcecast> px,
          py::array_t<double, py::array::c_style | py::array::forcecast> qty,
          py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double volume_threshold)
-      { return aggregateBars(flox::VolumeBarPolicy::fromDouble(volume_threshold), ts, px, qty, is_buy); },
+      { return aggregateBars(lrvx::VolumeBarPolicy::fromDouble(volume_threshold), ts, px, qty, is_buy); },
       "Aggregate trades into volume bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
       py::arg("is_buy"), py::arg("volume_threshold"));
@@ -237,7 +237,7 @@ inline void bindAggregators(py::module_& m)
          py::array_t<double, py::array::c_style | py::array::forcecast> px,
          py::array_t<double, py::array::c_style | py::array::forcecast> qty,
          py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double range_size)
-      { return aggregateBars(flox::RangeBarPolicy::fromDouble(range_size), ts, px, qty, is_buy); },
+      { return aggregateBars(lrvx::RangeBarPolicy::fromDouble(range_size), ts, px, qty, is_buy); },
       "Aggregate trades into range bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
       py::arg("is_buy"), py::arg("range_size"));
@@ -248,7 +248,7 @@ inline void bindAggregators(py::module_& m)
          py::array_t<double, py::array::c_style | py::array::forcecast> px,
          py::array_t<double, py::array::c_style | py::array::forcecast> qty,
          py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double brick_size)
-      { return aggregateBars(flox::RenkoBarPolicy::fromDouble(brick_size), ts, px, qty, is_buy); },
+      { return aggregateBars(lrvx::RenkoBarPolicy::fromDouble(brick_size), ts, px, qty, is_buy); },
       "Aggregate trades into renko bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
       py::arg("is_buy"), py::arg("brick_size"));
@@ -260,7 +260,7 @@ inline void bindAggregators(py::module_& m)
          py::array_t<double, py::array::c_style | py::array::forcecast> qty,
          py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double interval_seconds)
       {
-        auto policy = flox::HeikinAshiBarPolicy(
+        auto policy = lrvx::HeikinAshiBarPolicy(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::duration<double>(interval_seconds)));
         return aggregateBars(std::move(policy), ts, px, qty, is_buy);

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -23,15 +23,15 @@
  * the double path still returns one raw more than either. Every expectation
  * here is therefore a statement about the arithmetic, not about a convention.
  */
-#include "flox-venue/engine/fees.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/messages.h"
-#include "flox-venue/symbol_config.h"
+#include "lrvx-venue/engine/fees.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/messages.h"
+#include "lrvx-venue/symbol_config.h"
 
-#include "flox/clearing/fee_schedule.h"
-#include "flox/util/base/scale_check.h"
+#include "lrvx/clearing/fee_schedule.h"
+#include "lrvx/util/base/scale_check.h"
 
 #include <gtest/gtest.h>
 
@@ -39,10 +39,10 @@
 #include <limits>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::engine::Fees;
-using flox::venue::engine::kFeeRateScale;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::engine::Fees;
+using lrvx::venue::engine::kFeeRateScale;
 
 namespace
 {
@@ -81,16 +81,16 @@ double bpsOf(int64_t tenths) { return static_cast<double>(tenths) / 10.0; }
 
 // A schedule written in basis points directly, for the rates whose point is
 // what happens BELOW a tenth of a bp.
-flox::FeeSchedule scheduleBps(double makerBps, double takerBps)
+lrvx::FeeSchedule scheduleBps(double makerBps, double takerBps)
 {
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, makerBps, takerBps);
   return fs;
 }
 
-flox::FeeSchedule schedule(int64_t makerTenths, int64_t takerTenths)
+lrvx::FeeSchedule schedule(int64_t makerTenths, int64_t takerTenths)
 {
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, bpsOf(makerTenths), bpsOf(takerTenths));
   return fs;
 }
@@ -159,7 +159,7 @@ std::vector<const FeeCharged*> feesIn(const std::vector<OutboundEvent>& out)
 }
 
 // The two fees a print produces on `c`, maker first.
-std::pair<int64_t, int64_t> chargedOn(flox::FeeSchedule fs, const Trade& t, const SymbolConfig& c,
+std::pair<int64_t, int64_t> chargedOn(lrvx::FeeSchedule fs, const Trade& t, const SymbolConfig& c,
                                       int64_t nowRaw = 0)
 {
   Fees f;
@@ -177,7 +177,7 @@ std::pair<int64_t, int64_t> chargedOn(flox::FeeSchedule fs, const Trade& t, cons
 }
 
 // The same on the default symbol.
-std::pair<int64_t, int64_t> chargedBy(flox::FeeSchedule fs, const Trade& t, int64_t nowRaw = 0)
+std::pair<int64_t, int64_t> chargedBy(lrvx::FeeSchedule fs, const Trade& t, int64_t nowRaw = 0)
 {
   return chargedOn(std::move(fs), t, cfg(), nowRaw);
 }
@@ -291,7 +291,7 @@ TEST(VenueFeeFixedPoint, AThousandFeesSumToTheExactRaw)
 
 // The venue module needs a native 128-bit integer (root CMakeLists.txt: the
 // module is disabled on a toolchain without one), so it cannot be configured
-// with FLOX_FORCE_PORTABLE_INT128 the way the fixed-point suite is. The two
+// with LRVX_FORCE_PORTABLE_INT128 the way the fixed-point suite is. The two
 // paths are therefore selected per call site instead, in one binary, exactly
 // as mulDivI64As was written for: the fee has to be the same number on both,
 // and the same number the venue charged.
@@ -446,7 +446,7 @@ TEST(VenueFeeFixedPoint, BothSidesOfAPrintArePricedFromOneTier)
 {
   const Trade t = unitPrint(200'000'00000000LL);
 
-  flox::FeeSchedule laddered;
+  lrvx::FeeSchedule laddered;
   laddered.addTier(0.0, 1.0, 2.0);
   laddered.addTier(1'000'000.0, 3.0, 4.0);
   laddered.recordFill(0, 1'000'000.0);  // exactly onto the upper tier
@@ -458,20 +458,20 @@ TEST(VenueFeeFixedPoint, BothSidesOfAPrintArePricedFromOneTier)
   // The same schedule one nanosecond after that fill leaves the 30-day
   // window: the window is trimmed before either side is priced, so both drop
   // to the lower tier together.
-  flox::FeeSchedule aged;
+  lrvx::FeeSchedule aged;
   aged.addTier(0.0, 1.0, 2.0);
   aged.addTier(1'000'000.0, 3.0, 4.0);
   aged.recordFill(0, 1'000'000.0);
 
   const auto [agedMaker, agedTaker] =
-      chargedBy(aged, t, /*nowRaw*/ flox::FeeSchedule::kThirtyDaysNs + 1);
+      chargedBy(aged, t, /*nowRaw*/ lrvx::FeeSchedule::kThirtyDaysNs + 1);
   EXPECT_EQ(agedMaker, 2'000'000'000LL);  // 1 bp, lower tier
   EXPECT_EQ(agedTaker, 4'000'000'000LL);  // 2 bps, the SAME tier
 }
 
 // The one property of the pricing that cannot be observed from outside
 // engine::Fees: that the tier is looked up ONCE per print rather than once per
-// side. Nothing separates the two while flox::FeeSchedule::currentBps is
+// side. Nothing separates the two while lrvx::FeeSchedule::currentBps is
 // idempotent for a fixed timestamp -- evictExpired is the only state it
 // touches and the second call has nothing left to evict, and resolveTierIndex
 // is a pure read -- so that idempotency is the precondition, and it is
@@ -479,17 +479,17 @@ TEST(VenueFeeFixedPoint, BothSidesOfAPrintArePricedFromOneTier)
 // idempotent, one lookup and two stop being the same thing, and this is where
 // the reason is written down.
 //
-// needs: template <class Schedule = flox::FeeSchedule> class Fees -- an
+// needs: template <class Schedule = lrvx::FeeSchedule> class Fees -- an
 // injectable schedule is what would let a test count the lookups directly
 // instead of reasoning about what a lookup does.
 TEST(VenueFeeFixedPoint, TheTierLookupIsIdempotentForOneTimestamp)
 {
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, 1.0, 2.0);
   fs.addTier(1'000'000.0, 3.0, 4.0);
   fs.recordFill(0, 1'000'000.0);
 
-  const int64_t justExpired = flox::FeeSchedule::kThirtyDaysNs + 1;
+  const int64_t justExpired = lrvx::FeeSchedule::kThirtyDaysNs + 1;
   const auto first = fs.currentBps(justExpired);   // this call drops the fill
   const auto second = fs.currentBps(justExpired);  // this one finds nothing to drop
 
@@ -515,7 +515,7 @@ TEST(VenueFeeFixedPoint, ANaNRateChargesNothing)
   ASSERT_NE(kNaN, kNaN);
 
   EXPECT_EQ(roundDoubleToI64(kNaN), 0);
-  EXPECT_EQ(flox::venue::engine::feeRateRawOf(kNaN), 0);
+  EXPECT_EQ(lrvx::venue::engine::feeRateRawOf(kNaN), 0);
 
   // Reported: both sides are told the print cost nothing.
   const Trade t = unitPrint(200'000'00000000LL);

@@ -8,13 +8,13 @@
 
 const assert = require('node:assert');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
-const reg = new flox.SymbolRegistry();
+const reg = new lrvx.SymbolRegistry();
 const sym = reg.addSymbol('test', 'ZERO', 0.01);
 
 const seen = [];
-const runner = new flox.Runner(reg, () => {}, false);
+const runner = new lrvx.Runner(reg, () => {}, false);
 runner.addStrategy({
   symbols: [Number(sym)],
   onBookUpdate(ctx) {

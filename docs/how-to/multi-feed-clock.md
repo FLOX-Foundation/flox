@@ -2,15 +2,15 @@
 
 Cross-symbol decisions read from N feeds. Without a clock, a strategy that recomputes a ratio on every BTC tick uses a stale ETH price every time the ETH feed lags. The `MultiFeedClock` makes the staleness budget explicit and exposes per-feed lag so the strategy can score its own decisions.
 
-The clock lives in `include/flox/feed/multi_feed_clock.h` as a C++ primitive. Every binding (pybind11 / NAPI / QuickJS / Codon) wraps the same C ABI so a strategy in any language gets the same semantics and the same hot-path cost. Policies are exposed as named string constants in JS bindings and as an enum (`flox_py.FeedClockPolicy`) in Python — users never hand-write integer codes.
+The clock lives in `include/lrvx/feed/multi_feed_clock.h` as a C++ primitive. Every binding (pybind11 / NAPI / QuickJS / Codon) wraps the same C ABI so a strategy in any language gets the same semantics and the same hot-path cost. Policies are exposed as named string constants in JS bindings and as an enum (`lrvx.FeedClockPolicy`) in Python — users never hand-write integer codes.
 
 ```python
 # pybind11
-import flox_py
+import lrvx
 
-clock = flox_py.MultiFeedClock(
+clock = lrvx.MultiFeedClock(
     symbols=[btc, eth],
-    policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+    policy=lrvx.FeedClockPolicy.WAIT_FOR_ALL,
     timeout_ms=200,
 )
 
@@ -44,7 +44,7 @@ Calling `tick()` with a symbol that was not in the original `symbols` list retur
 
 ```javascript
 // node
-const { MultiFeedClock, FeedClockPolicy } = require('@flox-foundation/flox');
+const { MultiFeedClock, FeedClockPolicy } = require('@lrvx/lrvx');
 const clock = new MultiFeedClock({
   symbols: [btc, eth],
   policy: FeedClockPolicy.WaitForAll,
@@ -63,9 +63,9 @@ const clock = new MultiFeedClock({
 });
 ```
 
-```python
+```codon
 # codon
-from flox.feed_clock import MultiFeedClock, WAIT_FOR_ALL
+from lrvx.feed_clock import MultiFeedClock, WAIT_FOR_ALL
 clock = MultiFeedClock(symbols=[btc, eth], policy=WAIT_FOR_ALL, timeout_ms=200)
 state = clock.tick(ts_ns, btc)
 ```

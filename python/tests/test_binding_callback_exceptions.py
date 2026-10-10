@@ -6,30 +6,30 @@ exception meeting the C ABI.
 1. A pre-trade gate (RiskManager / KillSwitch / OrderValidator) whose
    Python callable raises must fail *closed*.
 
-   `include/flox/capi/flox_capi_spec.hpp:2306` fixes what the two return
+   `include/lrvx/capi/lrvx_capi_spec.hpp:2306` fixes what the two return
    values mean:
 
        "Returning 0 (deny) drops the signal entirely; returning 1 (allow)
         lets it propagate."
 
-   and `include/flox/capi/flox_capi.h:47` fixes what a call that could
+   and `include/lrvx/capi/lrvx_capi.h:47` fixes what a call that could
    not complete has to do:
 
        "Exceptions. None escape. The engine underneath is C++ and throws;
         unwinding out of a frame with C linkage is undefined behaviour, so
         every function on this page catches. A call that was stopped this
         way returns its failure value and leaves a description behind:
-        flox_last_error_code() and flox_last_error_message() report it for
+        lrvx_last_error_code() and lrvx_last_error_message() report it for
         the calling thread."
 
    A gate that raised did not complete, so the two halves of that
    sentence apply to it: it returns *its failure value*, which for a gate
    is 0 = deny, and it leaves a description behind. The Python binding
-   exposes no `flox_last_error_*` accessor (`grep -n last_error
+   exposes no `lrvx_last_error_*` accessor (`grep -n last_error
    python/*.h python/*.cpp` is empty), so "leaves a description behind"
    can only reach a Python caller two ways: the exception is re-raised
    out of the call that drove the gate, or it is reported through the
-   binding's own error path, `flox_py.set_log_callback` (the C API's
+   binding's own error path, `lrvx.set_log_callback` (the C API's
    "Logger -- process-wide log redirection callback"). This file accepts
    either, and requires one of them.
 
@@ -52,7 +52,7 @@ exception meeting the C ABI.
 3. `Runner.on_trade` / `on_book_snapshot` / `on_bar`
    (`python/strategy_bindings.h:2991-:2995`) publish into an EventBus
    that busy-waits on consumer gating once the ring is full
-   (`include/flox/util/eventing/event_bus.h:747`), and they do it holding
+   (`include/lrvx/util/eventing/event_bus.h:747`), and they do it holding
    the GIL. The consumer thread needs the GIL to finish the Python
    callback that would drain the ring, so the two threads wedge.
 
@@ -70,13 +70,13 @@ import textwrap
 
 import pytest
 
-import flox_py as flox
+import lrvx
 
-# The directory that has to be on sys.path for `import flox_py` to find
+# The directory that has to be on sys.path for `import lrvx` to find
 # this build -- the parent of the package directory, which is what CI
 # passes as PYTHONPATH=build/python. Derived from the loaded module so a
 # subprocess started from any cwd resolves the same build.
-BUILD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(flox.__file__)))
+BUILD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(lrvx.__file__)))
 
 DEFAULT_TIMEOUT = 90
 MARKER_TEXT = "CALLBACK_BLEW_UP"
@@ -133,13 +133,13 @@ def drive(body, timeout=DEFAULT_TIMEOUT, marker=MARKER_TEXT):
     the process or kill a bus consumer, and neither is observable -- nor
     survivable -- from inside the pytest process.
 
-    The body gets `flox`, `MARKER`, `fired`, `alive`, `raised` and
+    The body gets `lrvx`, `MARKER`, `fired`, `alive`, `raised` and
     `LOG` in scope and ends by calling `report()`.
     """
     prelude = textwrap.dedent(f"""
         import json, sys, time
         sys.path.insert(0, {BUILD_DIR!r})
-        import flox_py as flox
+        import lrvx
 
         MARKER = {marker!r}
         LOG = []
@@ -147,7 +147,7 @@ def drive(body, timeout=DEFAULT_TIMEOUT, marker=MARKER_TEXT):
         # error level, and docs/bindings/python.md spells the mapping
         # out -- "level: 0=info, 1=warn, 2=error". A sink that drops the
         # level would make an Error->Info regression invisible.
-        flox.set_log_callback(lambda level, msg: LOG.append([int(level), str(msg)]))
+        lrvx.set_log_callback(lambda level, msg: LOG.append([int(level), str(msg)]))
 
         fired = [0]     # times the callback under test ran
         alive = [0]     # times the engine reached the strategy afterwards
@@ -158,7 +158,7 @@ def drive(body, timeout=DEFAULT_TIMEOUT, marker=MARKER_TEXT):
             # Detach before the report: a Python log callback still
             # installed at interpreter shutdown segfaults this build, and
             # that would masquerade as the crash this file is looking for.
-            flox.set_log_callback(None)
+            lrvx.set_log_callback(None)
             sys.stdout.write("RESULT " + json.dumps({{
                 "fired": fired[0],
                 "alive": alive[0],
@@ -192,12 +192,12 @@ def drive(body, timeout=DEFAULT_TIMEOUT, marker=MARKER_TEXT):
 # Indented to match the inline bodies it is concatenated with: drive()
 # dedents the whole script by its common prefix.
 _SYNC_RUNNER_SETUP = """
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         sym = reg.add_symbol("test", "BTC", 0.01)
         signals = []
-        runner = flox.Runner(reg, lambda s: signals.append(s), threaded=False)
+        runner = lrvx.Runner(reg, lambda s: signals.append(s), threaded=False)
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_trade(self, ctx, trade):
                 self.emit_market_buy(sym, 1.0)
 
@@ -219,15 +219,15 @@ def test_gate_denies_when_the_python_callable_raises(gate, base, method, attach,
                                                      _bt_attach):
     """A gate that raised did not answer, so the signal must be dropped.
 
-    flox_capi.h:47 -- "A call that was stopped this way returns its
-    failure value"; flox_capi_spec.hpp:2306 -- "Returning 0 (deny) drops
+    lrvx_capi.h:47 -- "A call that was stopped this way returns its
+    failure value"; lrvx_capi_spec.hpp:2306 -- "Returning 0 (deny) drops
     the signal entirely". The failure value of a gate is deny.
 
     Red today: hook_bindings.h:364/:420/:475 start from `uint8_t result =
     1` and invokeUnderGil swallows the raise, so the order goes through.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 raise RuntimeError(MARKER)
@@ -260,8 +260,8 @@ def test_gate_denies_when_the_python_callable_raises(gate, base, method, attach,
 def test_gate_exception_is_surfaced(gate, base, method, attach, _bt_attach):
     """Denying silently is half the contract; the description must survive.
 
-    flox_capi.h:47 -- the stopped call "leaves a description behind:
-    flox_last_error_code() and flox_last_error_message() report it for
+    lrvx_capi.h:47 -- the stopped call "leaves a description behind:
+    lrvx_last_error_code() and lrvx_last_error_message() report it for
     the calling thread." The Python binding exposes neither accessor, so
     the description has to reach Python either as a re-raise out of the
     driving call or through set_log_callback, the binding's error path.
@@ -272,7 +272,7 @@ def test_gate_exception_is_surfaced(gate, base, method, attach, _bt_attach):
     exception object -- so nothing is printed, logged or raised.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 raise RuntimeError(MARKER)
@@ -299,19 +299,19 @@ def test_gate_exception_is_surfaced(gate, base, method, attach, _bt_attach):
 _BACKTEST_GATE_SETUP = """
         import numpy as np
 
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         sym = reg.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-        bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+        bt = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
 
         fills = []
 
-        class L(flox.ExecutionListener):
+        class L(lrvx.ExecutionListener):
             def on_filled(self, order):
                 fills.append(order)
 
         bt.add_execution_listener(L())
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_bar(self, ctx, bar):
                 self.market_buy(0.5)
 """
@@ -339,7 +339,7 @@ def test_backtest_gate_denies_when_the_python_callable_raises(gate, base, method
     """The same gate contract on the BacktestRunner attach points.
 
     BacktestRunner does not go through the C ABI: it wraps
-    flox::BacktestRunner directly, so each gate arrives through its own
+    lrvx::BacktestRunner directly, so each gate arrives through its own
     C++ adapter -- PyRiskManagerCxxAdapter, PyKillSwitchCxxAdapter,
     PyOrderValidatorCxxAdapter (hook_bindings.h). Three adapters, three
     `= false` defaults, so all three are pinned here and not just the
@@ -347,7 +347,7 @@ def test_backtest_gate_denies_when_the_python_callable_raises(gate, base, method
     copy of the rule and nothing else in the suite reads them.
     """
     outcome = drive(_BACKTEST_GATE_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 raise RuntimeError(MARKER)
@@ -376,7 +376,7 @@ def test_backtest_gate_that_returns_true_allows(gate, base, method, _attach,
     every deny test in the file and nothing notices.
     """
     outcome = drive(_BACKTEST_GATE_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 return True
@@ -403,7 +403,7 @@ def test_gate_that_returns_false_still_denies(gate, base, method, attach,
     broke, not the exception path.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 return False
@@ -433,7 +433,7 @@ def test_gate_that_returns_true_allows(gate, base, method, attach, _bt_attach):
     of riskAllowBridge, killCheckBridge and orderValidateBridge.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 return True
@@ -491,7 +491,7 @@ def test_gate_denies_when_the_callable_returns_a_non_bool(gate, base, method,
     False" as allow would let None, "" and a bare object through.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 return {value}
@@ -530,7 +530,7 @@ def test_gate_answers_again_after_it_has_raised(gate, base, method, attach,
     breaks intermittently.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 if fired[0] <= 2:
@@ -574,7 +574,7 @@ def test_gate_error_is_logged_at_error_level(gate, base, method, attach,
     filtering on errors never sees.
     """
     outcome = drive(_SYNC_RUNNER_SETUP + f"""
-        class Gate(flox.{base}):
+        class Gate(lrvx.{base}):
             def {method}(self, sig):
                 fired[0] += 1
                 raise RuntimeError(MARKER)
@@ -608,11 +608,11 @@ def test_gate_error_is_logged_at_error_level(gate, base, method, attach,
 # so `alive` can show whether the engine survived.
 
 _RUNNER_DRIVER = """
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("test", "BTC", 0.01)
-    runner = flox.Runner(reg, lambda s: None, threaded=%(threaded)s)
+    runner = lrvx.Runner(reg, lambda s: None, threaded=%(threaded)s)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def %(cb)s(self, %(args)s):
             fired[0] += 1
             if fired[0] == 1:
@@ -646,11 +646,11 @@ def _runner_case(cb, args, drive_call, threaded=False):
 
 
 _ON_BAR_DRIVER = """
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("test", "BTC", 0.01)
-    runner = flox.Runner(reg, lambda s: None, threaded=False)
+    runner = lrvx.Runner(reg, lambda s: None, threaded=False)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_bar(self, ctx, bar):
             fired[0] += 1
             if fired[0] == 1:
@@ -670,11 +670,11 @@ _ON_BAR_DRIVER = """
 """
 
 _ON_START_DRIVER = """
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("test", "BTC", 0.01)
-    runner = flox.Runner(reg, lambda s: None, threaded=False)
+    runner = lrvx.Runner(reg, lambda s: None, threaded=False)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_start(self):
             fired[0] += 1
             raise ValueError(MARKER)
@@ -692,11 +692,11 @@ _ON_START_DRIVER = """
 """
 
 _ON_STOP_DRIVER = """
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("test", "BTC", 0.01)
-    runner = flox.Runner(reg, lambda s: None, threaded=False)
+    runner = lrvx.Runner(reg, lambda s: None, threaded=False)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_stop(self):
             fired[0] += 1
             raise ValueError(MARKER)
@@ -716,11 +716,11 @@ _ON_STOP_DRIVER = """
 _BACKTEST_DRIVER = """
     import numpy as np
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.bars = 0
@@ -768,12 +768,12 @@ _BACKTEST_DRIVER = """
 _ISOLATED_FILL_DRIVER = """
     import numpy as np
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
     depth = [0]
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.bars = 0
@@ -815,13 +815,13 @@ _ISOLATED_FILL_DRIVER = """
 _ISOLATED_ORDER_UPDATE_DRIVER = """
     import numpy as np
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
     sym_id = int(sym)
-    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
     depth = [0]
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.bars = 0
@@ -860,11 +860,11 @@ _VENUE_STACK_DRIVER = """
 
     CSV = pathlib.Path(%(csv)r)
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.n = 0
@@ -882,7 +882,7 @@ _VENUE_STACK_DRIVER = """
                 raise ValueError(MARKER)
 
     bt.set_strategy(S([sym]))
-    bt.set_venue_stack(flox.VenueStack.binance_um_futures(account_id=42,
+    bt.set_venue_stack(lrvx.VenueStack.binance_um_futures(account_id=42,
                                                           equity=10_000.0))
     try:
         bt.run_csv(str(CSV), "BTCUSDT")
@@ -895,7 +895,7 @@ _VENUE_STACK_DRIVER = """
 # SimulatedExecutor::maybeEmitQueuePositionChanges() only fires from
 # onBookUpdate and onTrade, and a bar feed carries neither a book nor a
 # trade quantity. The public Python surface does have a path to both:
-# flox.BinaryLogRecorderHook records a `.floxlog` tape of book snapshots
+# lrvx.BinaryLogRecorderHook records a `.lrvx` tape of book snapshots
 # and sized trades, BacktestRunner.run_tape replays them into the
 # executor, and VenueStack.binance_um_futures arrives with
 # QueueModel::FULL already set (src/backtest/venue_stack.cpp:100) --
@@ -916,13 +916,13 @@ _QUEUE_POSITION_DRIVER = """
     BASE = 1_700_000_000_000_000_000
 
     def write_tape(out_dir):
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         sym = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-        hook = flox.BinaryLogRecorderHook(
+        hook = lrvx.BinaryLogRecorderHook(
             out_dir, max_segment_mb=4, exchange_id=0, compression="none",
             exchange_name="binance", instrument_type="perpetual")
         hook.add_symbol(sym, "BTCUSDT", "", "", 2, 6)
-        rec = flox.Runner(reg, on_signal=lambda _s: None)
+        rec = lrvx.Runner(reg, on_signal=lambda _s: None)
         rec.set_market_data_recorder(hook)
         rec.start()
         ts = [BASE]
@@ -945,11 +945,11 @@ _QUEUE_POSITION_DRIVER = """
     tape = os.path.join(tempfile.mkdtemp(), "tape")
     write_tape(tape)
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.placed = False
@@ -969,7 +969,7 @@ _QUEUE_POSITION_DRIVER = """
                 raise ValueError(MARKER)
 
     bt.set_strategy(S([sym]))
-    bt.set_venue_stack(flox.VenueStack.binance_um_futures(account_id=42,
+    bt.set_venue_stack(lrvx.VenueStack.binance_um_futures(account_id=42,
                                                           equity=100_000.0))
     try:
         bt.run_tape(tape)
@@ -981,7 +981,7 @@ _QUEUE_POSITION_DRIVER = """
 
 _CSV = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "flox_py", "templates", "research", "data", "btcusdt_sample.csv")
+    "lrvx", "templates", "research", "data", "btcusdt_sample.csv")
 
 # One entry per C callback slot registered at strategy_bindings.h:774-:782.
 STRATEGY_CALLBACKS = [
@@ -1064,11 +1064,11 @@ def test_threaded_consumer_survives_a_raising_callback():
     dead" and stops, so the strategy never sees a second event.
     """
     outcome = drive("""
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         sym = reg.add_symbol("test", "BTC", 0.01)
-        runner = flox.Runner(reg, lambda s: None, threaded=True)
+        runner = lrvx.Runner(reg, lambda s: None, threaded=True)
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_trade(self, ctx, trade):
                 fired[0] += 1
                 if fired[0] == 1:
@@ -1118,11 +1118,11 @@ def test_threaded_callback_runs_holding_the_gil():
     outcome = drive("""
         import threading
 
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         sym = reg.add_symbol("test", "BTC", 0.01)
-        runner = flox.Runner(reg, lambda s: None, threaded=True)
+        runner = lrvx.Runner(reg, lambda s: None, threaded=True)
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_trade(self, ctx, trade):
                 d = {}
                 for i in range(8):
@@ -1172,11 +1172,11 @@ def test_threaded_callback_runs_holding_the_gil():
 def test_strategy_callback_that_does_not_raise_is_delivered():
     """Green control for the callback area."""
     outcome = drive("""
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         sym = reg.add_symbol("test", "BTC", 0.01)
-        runner = flox.Runner(reg, lambda s: None, threaded=False)
+        runner = lrvx.Runner(reg, lambda s: None, threaded=False)
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_trade(self, ctx, trade):
                 fired[0] += 1
             def on_bar(self, ctx, bar):
@@ -1202,9 +1202,9 @@ _RING = 4096  # config::DEFAULT_EVENTBUS_CAPACITY, engine_config.h:45
 
 
 _PUBLISH_DRIVER = """
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("test", "BTC", 0.01)
-    runner = flox.Runner(reg, lambda s: None, threaded=True)
+    runner = lrvx.Runner(reg, lambda s: None, threaded=True)
 
     def block_once():
         fired[0] += 1
@@ -1214,7 +1214,7 @@ _PUBLISH_DRIVER = """
             # have the GIL again, so the ring is never drained.
             time.sleep(1.0)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_trade(self, ctx, trade):
             block_once()
         def on_book_update(self, ctx):

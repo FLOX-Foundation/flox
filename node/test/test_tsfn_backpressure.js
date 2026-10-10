@@ -17,7 +17,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -36,11 +36,11 @@ function check(cond, msg) {
 const underSanitizer = /clang_rt\.(asan|ubsan|tsan)/i.test(process.env.DYLD_INSERT_LIBRARIES || '')
   || !!process.env.ASAN_OPTIONS || !!process.env.UBSAN_OPTIONS || !!process.env.TSAN_OPTIONS;
 
-const reg = new flox.SymbolRegistry();
+const reg = new lrvx.SymbolRegistry();
 const sym = Number(reg.addSymbol('bin', 'BTCUSDT', 0.01));
 
 let seen = 0;
-const runner = new flox.Runner(reg, () => {}, true);
+const runner = new lrvx.Runner(reg, () => {}, true);
 runner.addStrategy({ symbols: [sym], onTrade() { seen++; } });
 runner.start();
 

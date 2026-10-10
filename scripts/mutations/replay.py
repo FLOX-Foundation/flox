@@ -40,7 +40,7 @@ Usage:
 The build directory is expected to be configured already:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-          -DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON
+          -DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 BIN_DIR = BUILD / "tests"
-LIB = "flox"
+LIB = "lrvx"
 CMAKE = os.environ.get("CMAKE", shutil.which("cmake") or "/opt/homebrew/bin/cmake")
 BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 1800
@@ -65,17 +65,17 @@ TEST_TIMEOUT = 300
 
 CONNECTOR_CPP = "src/replay/replay_connector.cpp"
 RUNNER_CPP = "src/backtest/backtest_runner.cpp"
-PUMP_H = "include/flox/backtest/strategy_pump.h"
+PUMP_H = "include/lrvx/backtest/strategy_pump.h"
 PREAGG_CPP = "tools/preagg_bars.cpp"
 OHLCV_CPP = "src/replay/ohlcv_replay_source.cpp"
-CAPI_CPP = "src/capi/flox_capi.cpp"
+CAPI_CPP = "src/capi/lrvx_capi.cpp"
 PYBIND_H = "python/strategy_bindings.h"
 WRITER_CPP = "src/replay/binary_log_writer.cpp"
 READER_CPP = "src/replay/binary_log_reader.cpp"
 MERGED_CPP = "src/replay/merged_tape_reader.cpp"
 SEGOPS_CPP = "src/replay/segment_ops.cpp"
 VALIDATOR_CPP = "src/replay/validator.cpp"
-SPEC_MD = "docs/spec/floxlog.md"
+SPEC_MD = "docs/spec/lrvx.md"
 
 SIDE = "test_replay_trade_side"
 ROTATION = "test_replay_writer_rotation"
@@ -274,7 +274,7 @@ OVERLAP_ISSUE = """      const auto& a = result.segments[widest.index];
 
 SPEC_SIDE_BYTE = """#### Side byte
 
-`side` is the aggressor of the trade, never the resting maker, and it is encoded as `flox::Side`: **`0` = buy, `1` = sell**. Every writer of the format has always used that encoding -- the C++ recorder hook, `flox_data_writer_write_trade`, the Node and Python `DataWriter`s and all the exchange-archive importers -- so the bytes on disk are what this table says and no tape needs migrating.
+`side` is the aggressor of the trade, never the resting maker, and it is encoded as `lrvx::Side`: **`0` = buy, `1` = sell**. Every writer of the format has always used that encoding -- the C++ recorder hook, `lrvx_data_writer_write_trade`, the Node and Python `DataWriter`s and all the exchange-archive importers -- so the bytes on disk are what this table says and no tape needs migrating.
 
 What was wrong was the read side. Until this was fixed, `ReplayConnector`, `BacktestRunner::runTape`, `StrategyPump` and `preagg_bars` decoded `side == 1` as the buy and so **inverted** the aggressor of every tape they replayed, while the aggregators (`BinCountAggregator`, `VolumeBinAggregator`) and the Node and QuickJS readers decoded the same byte correctly. Anything derived from the aggressor through one of those four readers -- queue position, maker/taker classification, buy/sell-driven strategy logic, signed volume -- is inverted in results produced before the fix and has to be recomputed. The tapes themselves are unaffected, which is why the format carries no marker for this: a marker would say something about the writer, and the writer was never the side that was wrong.
 
@@ -320,7 +320,7 @@ MUTATIONS: list[Mutation] = [
         old="          trade.trade.isBuy = (ev.trade.side == 0);",
         new="          trade.trade.isBuy = (ev.trade.side == 1);",
         targets=[SIDE],
-        not_built="FLOX_BUILD_TOOLS is OFF in the mandated configuration, and no test "
+        not_built="LRVX_BUILD_TOOLS is OFF in the mandated configuration, and no test "
                   "binary anywhere in the tree links tools/preagg_bars.cpp -- the "
                   "fourth decoder of the side byte has no test at all",
     ),
@@ -345,7 +345,7 @@ MUTATIONS: list[Mutation] = [
         old="    ev.trade.side = 0;  // buy, in the tape's encoding",
         new="    ev.trade.side = 1;",
         targets=[SIDE],
-        not_built="FLOX_BUILD_CAPI is OFF in the mandated configuration, so no "
+        not_built="LRVX_BUILD_CAPI is OFF in the mandated configuration, so no "
                   "compiler reads this file and no C++ test can see the change",
     ),
     Mutation(
@@ -355,7 +355,7 @@ MUTATIONS: list[Mutation] = [
         old="    ev.trade.side = 0;  // buy, in the tape's encoding",
         new="    ev.trade.side = 1;",
         targets=[SIDE],
-        not_built="FLOX_BUILD_PYTHON is OFF in the mandated configuration (no pybind11 "
+        not_built="LRVX_BUILD_PYTHON is OFF in the mandated configuration (no pybind11 "
                   "here), so no compiler reads this header",
     ),
     # ---- 3. the written decision about pre-fix tapes -----------------------
@@ -496,7 +496,7 @@ MUTATIONS: list[Mutation] = [
     std::string ext = first.extension().string();
     if (ext.empty())
     {
-      ext = ".floxlog";
+      ext = ".lrvx";
     }
     char suffix[16];
     std::snprintf(suffix, sizeof(suffix), "_%04u", _segment_number);
@@ -1109,7 +1109,7 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             f"  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            f"-DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON")
+            f"-DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON")
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
     if not selected:

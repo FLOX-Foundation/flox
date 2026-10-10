@@ -4,9 +4,9 @@
 The fix branch touches five things: js_load_csv now emits BigInt
 nanoseconds; the Engine prelude in js_strategy.cpp normalises every bar/
 signal ts to BigInt ns before comparing, sorting or feeding the executor;
-flox.timeBars/heikinBars convert their nanosecond interval to the seconds
+lrvx.timeBars/heikinBars convert their nanosecond interval to the seconds
 the C ABI wants, with a nudge so the round trip never truncates a
-nanosecond short; toBookSnapshot and flox_get_symbol_context fill
+nanosecond short; toBookSnapshot and lrvx_get_symbol_context fill
 bid_qty_raw/ask_qty_raw from bidAtPrice/askAtPrice instead of hardcoding 0;
 Engine.ts() returns int64 instead of float64; and docs/bindings/README.md
 carries a real per-binding capability table. This script breaks each piece
@@ -20,7 +20,7 @@ Three build/test surfaces, chosen per mutation:
   cpp     rebuild a tests/*.cpp gtest binary out of build/, run it with a
           --gtest_filter (or the whole binary when no acceptance test
           names the case).
-  python  rebuild the _flox_py extension out of build-py/, run pytest
+  python  rebuild the _lrvx extension out of build-py/, run pytest
           against python/tests/test_engine_ts_dtype.py node ids.
   text    no C++ compiles at all: the mutated file is prose or a comment
           block, and the check is a pytest run against
@@ -28,7 +28,7 @@ Three build/test surfaces, chosen per mutation:
           file's text directly.
 
 A few mutations (kind pyi / kind js) touch files nothing in the given test
-surfaces reads at all -- python/flox_py/_flox_py/__init__.pyi is never
+surfaces reads at all -- python/lrvx/_lrvx/__init__.pyi is never
 imported, quickjs/examples/backtest_sma.js has no assertions of its own.
 Those are run anyway, with no primary check, straight into the sweep
 below; if the sweep does not catch them either they are reported as
@@ -38,7 +38,7 @@ A mutation that stays green on its primary check is not yet "equivalent"
 or "alive": the SURVIVORS (kind cpp/python/text; kind pyi/js always go
 through it) are re-run against every other surface -- the other two cpp
 gtest binaries, both python test files, and all 14 quickjs/examples
-scripts through flox_js_runner -- in case something elsewhere happens to
+scripts through lrvx_js_runner -- in case something elsewhere happens to
 notice. Only if nothing anywhere notices is a mutation "alive": a real
 hole, unless its `equivalent_reason` says why the change has no observable
 effect at all.
@@ -58,10 +58,10 @@ Usage:
 
 Build directories are expected to be configured already:
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON \\
-          -DFLOX_BUILD_CAPI=ON -DFLOX_BUILD_QUICKJS=ON -DFLOX_NATIVE=OFF
-    cmake -S . -B build-py -DCMAKE_BUILD_TYPE=Release -DFLOX_BUILD_PYTHON=ON \\
-          -DFLOX_ENABLE_BACKTEST=ON -DPYTHON_EXECUTABLE=<venv>/bin/python3.12 \\
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON \\
+          -DLRVX_BUILD_CAPI=ON -DLRVX_BUILD_QUICKJS=ON -DLRVX_NATIVE=OFF
+    cmake -S . -B build-py -DCMAKE_BUILD_TYPE=Release -DLRVX_BUILD_PYTHON=ON \\
+          -DLRVX_ENABLE_BACKTEST=ON -DPYTHON_EXECUTABLE=<venv>/bin/python3.12 \\
           -Dpybind11_DIR=<venv .../pybind11/share/cmake/pybind11>
 """
 
@@ -92,7 +92,7 @@ PYTHONPATH = str(BUILD_PY / "python")
 
 CPP_TARGETS = ["test_quickjs", "test_capi_book_snapshot", "test_capi_infra"]
 CPP_BINARY = {t: BUILD / "tests" / t for t in CPP_TARGETS}
-JS_RUNNER_TARGET = "flox_js_runner"
+JS_RUNNER_TARGET = "lrvx_js_runner"
 JS_RUNNER_BINARY = BUILD / "src" / "quickjs" / JS_RUNNER_TARGET
 EXAMPLES_DIR = REPO / "quickjs" / "examples"
 
@@ -103,14 +103,14 @@ PY_TEST_FILES = [
 
 JS_BINDINGS = "src/quickjs/js_bindings.cpp"
 JS_STRATEGY = "src/quickjs/js_strategy.cpp"
-BRIDGE_STRATEGY = "include/flox/capi/bridge_strategy.h"
-FLOX_CAPI_CPP = "src/capi/flox_capi.cpp"
-FLOX_CAPI_SPEC = "include/flox/capi/flox_capi_spec.hpp"
-FLOX_PY_CPP = "python/flox_py.cpp"
-FLOX_PY_PYI = "python/flox_py/_flox_py/__init__.pyi"
+BRIDGE_STRATEGY = "include/lrvx/capi/bridge_strategy.h"
+LRVX_CAPI_CPP = "src/capi/lrvx_capi.cpp"
+LRVX_CAPI_SPEC = "include/lrvx/capi/lrvx_capi_spec.hpp"
+LRVX_PY_CPP = "python/lrvx.cpp"
+LRVX_PY_PYI = "python/lrvx/_lrvx/__init__.pyi"
 BINDINGS_README = "docs/bindings/README.md"
 QUICKJS_TOOLS_MD = "docs/reference/quickjs/tools.md"
-FLOX_D_TS = "quickjs/types/flox.d.ts"
+LRVX_D_TS = "quickjs/types/lrvx.d.ts"
 BACKTEST_SMA_JS = "quickjs/examples/backtest_sma.js"
 
 
@@ -256,7 +256,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="signalbuilder-not-normalising",
         why="SignalBuilder._add stores the ts argument as-is instead of routing it through "
-            "__floxToNs -- a plain Number handed to signals.buy()/sell() would stay a Number and "
+            "__lrvxToNs -- a plain Number handed to signals.buy()/sell() would stay a Number and "
             "later break the BigInt comparisons downstream. No acceptance test calls buy/sell "
             "with anything but a bar's own .ts, which is already a BigInt by the time it gets "
             "there (loadCsv emits BigInt), so this identity-vs-conversion difference has nothing "
@@ -265,7 +265,7 @@ MUTATIONS: list[Mutation] = [
             "buy/sell/limitBuy plain Numbers and reads the type back off sorted()",
         kind="cpp",
         file=JS_STRATEGY,
-        old='this._entries.push({ tsNs: __floxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });',
+        old='this._entries.push({ tsNs: __lrvxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });',
         new='this._entries.push({ tsNs: ts, side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });',
         cpp_target="test_quickjs",
         gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars:"
@@ -273,7 +273,7 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="comparator-returns-bigint",
-        why="__floxCmpNs goes back to a plain subtraction (a < b ? -1 : ...  replaced by a - b), "
+        why="__lrvxCmpNs goes back to a plain subtraction (a < b ? -1 : ...  replaced by a - b), "
             "which is a BigInt when both operands are BigInt. Array.prototype.sort's stable "
             "ordering means a comparator that effectively answers \"equal\" for every pair still "
             "leaves an already-sorted array looking sorted -- and the only data this suite feeds "
@@ -282,8 +282,8 @@ MUTATIONS: list[Mutation] = [
             "comparator runs a single time",
         kind="cpp",
         file=JS_STRATEGY,
-        old="function __floxCmpNs(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }",
-        new="function __floxCmpNs(a, b) { return a - b; }",
+        old="function __lrvxCmpNs(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }",
+        new="function __lrvxCmpNs(a, b) { return a - b; }",
         cpp_target="test_quickjs",
         gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars",
     ),
@@ -304,8 +304,8 @@ MUTATIONS: list[Mutation] = [
             "the executor clock straight off stats",
         kind="cpp",
         file=JS_STRATEGY,
-        old="merged.push({ tsNs: __floxToNs(bars[j].ts), key: key, bar: bars[j] });",
-        new="merged.push({ tsNs: __floxToNs(bars[j].ts) / 1000000n, key: key, bar: bars[j] });",
+        old="merged.push({ tsNs: __lrvxToNs(bars[j].ts), key: key, bar: bars[j] });",
+        new="merged.push({ tsNs: __lrvxToNs(bars[j].ts) / 1000000n, key: key, bar: bars[j] });",
         cpp_target="test_quickjs",
         gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars:"
                      "JsBarTimestampUnits.EngineRunAppliesASignalOnTheBarItIsTimestampedOn:"
@@ -353,16 +353,16 @@ MUTATIONS: list[Mutation] = [
                      "JsBarTimestampUnits.EngineRunHoldsASignalOneNanosecondPastABarUntilTheNextBar",
     ),
 
-    # ── flox.timeBars / flox.heikinBars: the ns→s boundary conversion ───────
+    # ── lrvx.timeBars / lrvx.heikinBars: the ns→s boundary conversion ───────
     Mutation(
         name="timebars-interval-not-converted",
-        why="js_agg_time hands the raw nanosecond argument straight to flox_aggregate_time_bars "
+        why="js_agg_time hands the raw nanosecond argument straight to lrvx_aggregate_time_bars "
             "as if it were already seconds -- the exact pre-fix bug: a one-minute interval asks "
             "for 60 billion seconds and closes no bars at all",
         kind="cpp",
         file=JS_BINDINGS,
-        old="return doAgg(c, a, flox_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));",
-        new="return doAgg(c, a, flox_aggregate_time_bars, toDouble(c, a[4]));",
+        old="return doAgg(c, a, lrvx_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));",
+        new="return doAgg(c, a, lrvx_aggregate_time_bars, toDouble(c, a[4]));",
         cpp_target="test_quickjs",
         gtest_filter="JsBarAggregatorUnits.TimeBarsIntervalIsNanoseconds",
     ),
@@ -372,8 +372,8 @@ MUTATIONS: list[Mutation] = [
             "that still \"converts\", just to the wrong unit (microseconds, not seconds)",
         kind="cpp",
         file=JS_BINDINGS,
-        old="return doAgg(c, a, flox_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));",
-        new="return doAgg(c, a, flox_aggregate_time_bars, "
+        old="return doAgg(c, a, lrvx_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));",
+        new="return doAgg(c, a, lrvx_aggregate_time_bars, "
             "static_cast<double>(toInt64(c, a[4])) / 1'000'000.0);",
         cpp_target="test_quickjs",
         gtest_filter="JsBarAggregatorUnits.TimeBarsIntervalIsNanoseconds",
@@ -416,8 +416,8 @@ MUTATIONS: list[Mutation] = [
             "while timeBars stays fixed",
         kind="cpp",
         file=JS_BINDINGS,
-        old="return doAgg(c, a, flox_aggregate_heikin_ashi_bars, intervalNsToSeconds(toInt64(c, a[4])));",
-        new="return doAgg(c, a, flox_aggregate_heikin_ashi_bars, toDouble(c, a[4]));",
+        old="return doAgg(c, a, lrvx_aggregate_heikin_ashi_bars, intervalNsToSeconds(toInt64(c, a[4])));",
+        new="return doAgg(c, a, lrvx_aggregate_heikin_ashi_bars, toDouble(c, a[4]));",
         cpp_target="test_quickjs",
         gtest_filter="JsBarAggregatorUnits.TimeBarsIntervalIsNanoseconds",
     ),
@@ -431,9 +431,9 @@ MUTATIONS: list[Mutation] = [
             "count and the trades inside each bar, not only the first bar's timestamp type",
         kind="cpp",
         file=JS_BINDINGS,
-        old="""  uint32_t got = flox_aggregate_tick_bars(ts.data(), px.data(), qty.data(), side.data(),
+        old="""  uint32_t got = lrvx_aggregate_tick_bars(ts.data(), px.data(), qty.data(), side.data(),
                                           n, toUint32(c, a[4]), bars.data(), n);""",
-        new="""  uint32_t got = flox_aggregate_tick_bars(
+        new="""  uint32_t got = lrvx_aggregate_tick_bars(
       ts.data(), px.data(), qty.data(), side.data(), n,
       static_cast<uint32_t>(intervalNsToSeconds(toInt64(c, a[4]))), bars.data(), n);""",
         cpp_target="test_quickjs",
@@ -442,7 +442,7 @@ MUTATIONS: list[Mutation] = [
                      "JsBarAggregatorUnits.TickBarsCloseOnTheTradeCountTheyAreGiven",
     ),
 
-    # ── FloxBookSnapshot sizes: bridge_strategy.h / flox_capi.cpp ───────────
+    # ── LrvxBookSnapshot sizes: bridge_strategy.h / lrvx_capi.cpp ───────────
     Mutation(
         name="bid-qty-from-askatprice",
         why="toBookSnapshot's bid_qty_raw is filled from askAtPrice(*bid) instead of "
@@ -492,14 +492,14 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="symbol-context-qty-reverted-to-zero",
-        why="flox_get_symbol_context's half of the same fix is reverted: bid_qty_raw/ask_qty_raw "
+        why="lrvx_get_symbol_context's half of the same fix is reverted: bid_qty_raw/ask_qty_raw "
             "go back to hardcoded 0. Nothing in tests/, python/tests/ or the QuickJS bindings "
-            "calls flox_get_symbol_context at all (grep confirms it: the function is reachable "
+            "calls lrvx_get_symbol_context at all (grep confirms it: the function is reachable "
             "only through the raw C ABI, which none of the given surfaces exercise) -- this is "
-            "the \"toBookSnapshot versus flox_get_symbol_context\" split the task calls out, and "
+            "the \"toBookSnapshot versus lrvx_get_symbol_context\" split the task calls out, and "
             "only the toBookSnapshot half has a test",
         kind="cpp",
-        file=FLOX_CAPI_CPP,
+        file=LRVX_CAPI_CPP,
         old="""  out->book.bid_qty_raw = bid ? c.book.bidAtPrice(*bid).raw() : 0;
   out->book.ask_price_raw = ask ? ask->raw() : 0;
   out->book.ask_qty_raw = ask ? c.book.askAtPrice(*ask).raw() : 0;""",
@@ -507,7 +507,7 @@ MUTATIONS: list[Mutation] = [
   out->book.ask_price_raw = ask ? ask->raw() : 0;
   out->book.ask_qty_raw = 0;""",
         cpp_target="test_capi_book_snapshot",
-        gtest_filter=None,  # nothing in this binary calls flox_get_symbol_context either
+        gtest_filter=None,  # nothing in this binary calls lrvx_get_symbol_context either
     ),
 
     # ── Engine.ts(): int64 reverted / mistyped ──────────────────────────────
@@ -516,7 +516,7 @@ MUTATIONS: list[Mutation] = [
         why="Engine::timestamps goes back to py::array_t<double>, rounding every nanosecond "
             "value above 2^53 the same way the original bug did",
         kind="python",
-        file=FLOX_PY_CPP,
+        file=LRVX_PY_CPP,
         old="""  py::array_t<int64_t> timestamps(const std::string& symbol = "") const
   {
     auto& bars = resolve(symbol).bars;
@@ -553,7 +553,7 @@ MUTATIONS: list[Mutation] = [
             "--check` (a separate codegen gate, outside tests/, python/tests/ and the examples "
             "runner) would notice the stub went stale",
         kind="pyi",
-        file=FLOX_PY_PYI,
+        file=LRVX_PY_PYI,
         old="def ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.int64]:",
         new="def ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]:",
     ),
@@ -591,7 +591,7 @@ MUTATIONS: list[Mutation] = [
         why="bid_qty_raw's explanatory comment is dropped entirely (ask_qty_raw's stays) -- a "
             "reader is back to a bare field with no idea what a 0 means",
         kind="text",
-        file=FLOX_CAPI_SPEC,
+        file=LRVX_CAPI_SPEC,
         old="    int64_t bid_qty_raw;    // size resting at the best bid, 0 when the book cannot say",
         new="    int64_t bid_qty_raw;",
         pytest_ids=[
@@ -605,10 +605,10 @@ MUTATIONS: list[Mutation] = [
             "(\"0 when the book cannot say\") is replaced by something that does not say it",
         kind="text",
         edits=[
-            Edit(FLOX_CAPI_SPEC,
+            Edit(LRVX_CAPI_SPEC,
                  "    int64_t bid_qty_raw;    // size resting at the best bid, 0 when the book cannot say",
                  "    int64_t bid_qty_raw;    // size resting at the best bid"),
-            Edit(FLOX_CAPI_SPEC,
+            Edit(LRVX_CAPI_SPEC,
                  "    int64_t ask_qty_raw;    // size resting at the best ask, 0 when the book cannot say",
                  "    int64_t ask_qty_raw;    // size resting at the best ask"),
         ],
@@ -620,15 +620,15 @@ MUTATIONS: list[Mutation] = [
 
     # ── own reading: pieces the given test surfaces cannot see at all ───────
     Mutation(
-        name="adv-flox-d-ts-bar-ts-reverted-to-number",
-        why="quickjs/types/flox.d.ts's Bar.ts field goes back to `number` instead of `bigint`, "
+        name="adv-lrvx-d-ts-bar-ts-reverted-to-number",
+        why="quickjs/types/lrvx.d.ts's Bar.ts field goes back to `number` instead of `bigint`, "
             "directly contradicting what js_load_csv/the aggregators actually hand back and what "
             "the fix's own commit updated this file to say. No test in tests/, python/tests/ or "
-            "the examples runner type-checks or even reads flox.d.ts -- TypeScript users of the "
+            "the examples runner type-checks or even reads lrvx.d.ts -- TypeScript users of the "
             "embedded binding are the only audience for this file, and nothing here represents "
             "them",
         kind="text",
-        file=FLOX_D_TS,
+        file=LRVX_D_TS,
         old="    readonly ts: bigint;",
         new="    readonly ts: number;",
     ),
@@ -637,16 +637,16 @@ MUTATIONS: list[Mutation] = [
         why="docs/reference/quickjs/tools.md's timeBars row is edited to claim the interval is "
             "in seconds, not nanoseconds -- the exact misdocumentation the original bug report "
             "was about, reintroduced in prose. test_binding_docs_contract.py only reads "
-            "docs/bindings/README.md and flox_capi_spec.hpp; nothing checks this file",
+            "docs/bindings/README.md and lrvx_capi_spec.hpp; nothing checks this file",
         kind="text",
         file=QUICKJS_TOOLS_MD,
-        old="| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |",
-        new="| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in seconds |",
+        old="| `lrvx.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |",
+        new="| `lrvx.timeBars(ts, px, qty, sides, intervalNs)` | Interval in seconds |",
     ),
     Mutation(
         name="adv-backtest-sma-example-ts-divided-to-ms",
         why="the SMA example divides the bar's nanosecond BigInt down before handing it to "
-            "SignalBuilder -- a script author copying the old pre-fix pattern. flox_js_runner "
+            "SignalBuilder -- a script author copying the old pre-fix pattern. lrvx_js_runner "
             "does not assert anything about the numbers backtest_sma.js prints, only that it "
             "runs to completion without throwing, and a scaled-down but still-monotonic "
             "timestamp does not throw -- it just backtests against the wrong clock silently. "
@@ -687,9 +687,9 @@ def object_files(build_dir: Path, target: str) -> list[Path]:
 def object_files_for_source(build_dir: Path, file_relpath: str) -> list[Path]:
     """The compiled object(s) for the .cpp file itself, wherever the library that
     owns it put them -- js_bindings.cpp/js_strategy.cpp live under
-    flox_quickjs.dir, flox_py.cpp under _flox_py.dir, flox_capi.cpp under
-    flox_capi.dir, none of which is the top-level test/extension target's own
-    .dir. A header (bridge_strategy.h, flox_capi_spec.hpp) has no object of its
+    lrvx_quickjs.dir, lrvx.cpp under _lrvx.dir, lrvx_capi.cpp under
+    lrvx_capi.dir, none of which is the top-level test/extension target's own
+    .dir. A header (bridge_strategy.h, lrvx_capi_spec.hpp) has no object of its
     own; every .cpp that includes it is invalidated by cmake's own dependency
     tracking on the header's mtime instead, which primary_check's rebuild
     output ("Building CXX" for that .cpp) confirms actually ran.
@@ -756,7 +756,7 @@ def run_pytest(node_ids: list[str], timeout: int = PYTEST_TIMEOUT) -> tuple[int,
 
 
 def run_examples() -> tuple[bool, str]:
-    """All 14 quickjs/examples scripts through flox_js_runner. True iff every one exits 0."""
+    """All 14 quickjs/examples scripts through lrvx_js_runner. True iff every one exits 0."""
     if not JS_RUNNER_BINARY.is_file():
         return False, f"{JS_RUNNER_BINARY} missing"
     scripts = sorted(EXAMPLES_DIR.glob("*.js"))
@@ -804,12 +804,12 @@ def control() -> bool:
         print(f"  control {target:<26} {state}   {summary_line(output)}")
         ok = ok and code == 0
 
-    for obj in object_files(BUILD_PY, "_flox_py"):
+    for obj in object_files(BUILD_PY, "_lrvx"):
         obj.unlink()
     try:
-        cmake_build(BUILD_PY, "_flox_py")
+        cmake_build(BUILD_PY, "_lrvx")
     except BuildFailed as e:
-        print(f"  control _flox_py: BUILD FAILED\n{e.output[-3000:]}")
+        print(f"  control _lrvx: BUILD FAILED\n{e.output[-3000:]}")
         ok = False
     code, output = run_pytest(PY_TEST_FILES)
     print(f"  control {'python/tests':<26} {'green' if code == 0 else 'RED'}   "
@@ -857,19 +857,19 @@ def primary_check(m: Mutation) -> tuple[bool, str]:
         return red, ""
 
     if m.kind == "python":
-        removed = object_files(BUILD_PY, "_flox_py")
+        removed = object_files(BUILD_PY, "_lrvx")
         for f in m.files():
             removed += object_files_for_source(BUILD_PY, f)
         for obj in set(removed):
             obj.unlink()
         try:
-            output = cmake_build(BUILD_PY, "_flox_py")
+            output = cmake_build(BUILD_PY, "_lrvx")
         except BuildFailed as e:
             print("  DID NOT COMPILE -- not a mutation")
             print("\n".join(e.output.splitlines()[-25:]))
             raise
-        compiled = require_compiled(output, "_flox_py")
-        print(f"  removed {len(removed)} object file(s), rebuilt _flox_py "
+        compiled = require_compiled(output, "_lrvx")
+        print(f"  removed {len(removed)} object file(s), rebuilt _lrvx "
               f"({compiled} 'Building CXX' line(s))")
         code, test_output = run_pytest(m.pytest_ids)
         red = code != 0
@@ -911,9 +911,9 @@ def sweep(m: Mutation) -> tuple[bool, str]:
 
     if m.kind != "python":
         try:
-            cmake_build(BUILD_PY, "_flox_py")
+            cmake_build(BUILD_PY, "_lrvx")
         except BuildFailed as e:
-            return True, f"_flox_py failed to rebuild during the sweep:\n{e.output[-2000:]}"
+            return True, f"_lrvx failed to rebuild during the sweep:\n{e.output[-2000:]}"
     code, output = run_pytest(PY_TEST_FILES)
     if code != 0:
         return True, f"python/tests (both files) -> RED   {summary_line(output)}"
@@ -988,7 +988,7 @@ def run_mutation(m: Mutation, skip_sweep: bool) -> tuple[str, str]:
         for target in CPP_TARGETS:
             for obj in object_files(BUILD, target):
                 obj.unlink()
-        for obj in object_files(BUILD_PY, "_flox_py"):
+        for obj in object_files(BUILD_PY, "_lrvx"):
             obj.unlink()
 
     return verdict, detail

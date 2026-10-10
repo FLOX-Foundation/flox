@@ -9,7 +9,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -20,7 +20,7 @@ function check(cond, msg) {
 
 console.log('=== Snapshot populates both sides ===');
 {
-  const book = new flox.CompositeBookMatrix();
+  const book = new lrvx.CompositeBookMatrix();
   check(book.bestBid(1) === null, 'empty book has no bid');
 
   book.applySnapshot(
@@ -39,7 +39,7 @@ console.log('=== Snapshot populates both sides ===');
 
 console.log('=== Bid-only delta does not wipe the ask side ===');
 {
-  const book = new flox.CompositeBookMatrix();
+  const book = new lrvx.CompositeBookMatrix();
   book.applySnapshot(
     1, 7,
     new Float64Array([100.0]), new Float64Array([1.0]),
@@ -61,7 +61,7 @@ console.log('=== Bid-only delta does not wipe the ask side ===');
 
 console.log('=== Arbitrage across two exchanges ===');
 {
-  const book = new flox.CompositeBookMatrix();
+  const book = new lrvx.CompositeBookMatrix();
   book.applySnapshot(1, 3, new Float64Array([101.0]), new Float64Array([1.0]),
                      new Float64Array([101.5]), new Float64Array([1.0]), 0n);
   book.applySnapshot(2, 3, new Float64Array([102.0]), new Float64Array([1.0]),
@@ -71,7 +71,7 @@ console.log('=== Arbitrage across two exchanges ===');
 
 console.log('=== Mismatched price/qty array lengths are rejected ===');
 {
-  const book = new flox.CompositeBookMatrix();
+  const book = new lrvx.CompositeBookMatrix();
   let threw = false;
   try {
     book.applySnapshot(1, 1, new Float64Array([100.0, 99.0]), new Float64Array([1.0]),

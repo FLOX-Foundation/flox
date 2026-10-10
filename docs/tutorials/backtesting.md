@@ -4,7 +4,7 @@ Run your strategy against recorded market data.
 
 ## Prerequisites
 
-- Completed [Recording Data](recording-data.md) (or have a CSV / `.floxlog` file)
+- Completed [Recording Data](recording-data.md) (or have a CSV / `.lrvx` file)
 - Build / install with backtest support — see [Bindings](../bindings/README.md) for per-language details
 
 ## The pipeline
@@ -54,10 +54,10 @@ numbers.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
     from collections import deque
 
-    class CrossAboveSMA(flox.Strategy):
+    class CrossAboveSMA(lrvx.Strategy):
         def __init__(self, symbols, period=20):
             super().__init__(symbols)
             self.window = deque(maxlen=period)
@@ -72,11 +72,11 @@ numbers.
             elif trade.price < sma and ctx.is_long():
                 self.close_position()
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
     strat = CrossAboveSMA([btc])
-    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
     bt.set_strategy(strat)
 
     stats = bt.run_csv("/data/btcusdt_1m.csv", "BTCUSDT")
@@ -87,7 +87,7 @@ numbers.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
     class CrossAboveSMA {
       constructor(symbols, period = 20) {
@@ -105,9 +105,9 @@ numbers.
       }
     }
 
-    const reg = new flox.SymbolRegistry();
+    const reg = new lrvx.SymbolRegistry();
     const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
-    const bt  = new flox.BacktestRunner(reg, 0.0004, 10_000);
+    const bt  = new lrvx.BacktestRunner(reg, 0.0004, 10_000);
     bt.setStrategy(new CrossAboveSMA([btc]));
 
     const stats = bt.runCsv("/data/btcusdt_1m.csv", "BTCUSDT");
@@ -117,11 +117,11 @@ numbers.
 === "Codon"
 
     ```python
-    from flox.runner import BacktestRunner
-    from flox.strategy import Strategy
-    from flox.context import SymbolContext
-    from flox.types import TradeData
-    from flox.indicators import SMA
+    from lrvx.runner import BacktestRunner
+    from lrvx.strategy import Strategy
+    from lrvx.context import SymbolContext
+    from lrvx.types import TradeData
+    from lrvx.indicators import SMA
 
     class CrossAboveSMA(Strategy):
         sma: SMA
@@ -146,8 +146,8 @@ numbers.
 === "C++"
 
     ```cpp
-    #include "flox/backtest/backtest_runner.h"
-    #include "flox/replay/abstract_event_reader.h"
+    #include "lrvx/backtest/backtest_runner.h"
+    #include "lrvx/replay/abstract_event_reader.h"
 
     int main() {
       replay::ReaderFilter filter;
@@ -212,7 +212,7 @@ exceptions, and every producer emits all three risk ratios -- the C++
 
 ## Performance tips
 
-1. **Release build** — `cmake -DCMAKE_BUILD_TYPE=Release` (`pip install flox-py` already gives you Release)
+1. **Release build** — `cmake -DCMAKE_BUILD_TYPE=Release` (`pip install lrvx` already gives you Release)
 2. **Filter symbols** — only load what you need
 3. **Pre-aggregate** for repeated parameter sweeps; see [Bar aggregation](../how-to/bar-aggregation.md)
 4. **Avoid logging in callbacks** — measure first; logging in the inner loop dominates
@@ -221,7 +221,7 @@ exceptions, and every producer emits all three risk ratios -- the C++
 
 `BacktestRunner` is a flat fee rate, no funding, no liquidation, no
 rate limits. Good enough for a sanity check; not enough before live.
-`flox.VenueStack.binance_um_futures(account_id=42, equity=10_000)`
+`lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000)`
 gives you an executor, account, liquidation engine, fee schedule and
 funding schedule with venue defaults, driven directly. See the links
 below.
@@ -230,7 +230,7 @@ below.
 - [Cross-margin accounts](../how-to/cross-margin.md) — share equity across positions
 - [Liquidation and ADL](../how-to/liquidation-and-adl.md) — cascade behaviour
 - [Paper trading](../how-to/paper-trading.md) — same strategy class, live feed
-- [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
+- [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
 - [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md)
 - [Running a Backtest](../how-to/backtest.md) — fuller SMA crossover walkthrough
 - [Grid search](../how-to/grid-search.md) — sweep parameters

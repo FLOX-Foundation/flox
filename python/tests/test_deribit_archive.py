@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.archives.deribit`` — Deribit public archive
+"""Tests for ``lrvx.archives.deribit`` — Deribit public archive
 converter (perpetual / dated future / option instruments).
 
 Run from repo root:
@@ -21,9 +21,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py.archives import ArchiveReader, deribit  # noqa: E402
+from lrvx.archives import ArchiveReader, deribit  # noqa: E402
 
 
 # Deribit columns: trade_id, timestamp_ms, instrument, side, price,
@@ -63,7 +63,7 @@ class DeribitPerpetualTests(unittest.TestCase):
     def _convert(self) -> deribit.ConvertStats:
         g = self.tmp / "BTC-PERPETUAL-2024-01-15.csv.gz"
         _build_gz(g, _ROWS_PERP)
-        return deribit.trades_to_floxlog(
+        return deribit.trades_to_lrvx(
             g, self.tape,
             symbol_id=7, symbol_name="BTC-PERPETUAL", market="perpetual",
         )
@@ -71,7 +71,7 @@ class DeribitPerpetualTests(unittest.TestCase):
     def test_round_trip(self) -> None:
         stats = self._convert()
         self.assertEqual(stats.trades_written, 3)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 3)
         sides = [int(t["side"]) for t in trades]
         self.assertEqual(sides, [0, 1, 0])
@@ -79,7 +79,7 @@ class DeribitPerpetualTests(unittest.TestCase):
     def test_dedup_on_rerun(self) -> None:
         first = self._convert()
         self.assertEqual(first.trades_written, 3)
-        second = deribit.trades_to_floxlog(
+        second = deribit.trades_to_lrvx(
             self.tmp / "BTC-PERPETUAL-2024-01-15.csv.gz", self.tape,
             symbol_id=7, symbol_name="BTC-PERPETUAL", market="perpetual",
         )
@@ -106,7 +106,7 @@ class DeribitOptionTests(unittest.TestCase):
     def test_option_metadata(self) -> None:
         g = self.tmp / "BTC-29MAR24-50000-C-2024-01-15.csv.gz"
         _build_gz(g, _ROWS_OPTION)
-        stats = deribit.trades_to_floxlog(
+        stats = deribit.trades_to_lrvx(
             g, self.tape, symbol_id=7,
             symbol_name="BTC-29MAR24-50000-C", market="option",
         )
@@ -122,11 +122,11 @@ class DeribitOptionTests(unittest.TestCase):
         # instead of dropped, and read back via read_option_quotes_from.
         g = self.tmp / "BTC-29MAR24-50000-C-2024-01-15.csv.gz"
         _build_gz(g, _ROWS_OPTION)
-        deribit.trades_to_floxlog(
+        deribit.trades_to_lrvx(
             g, self.tape, symbol_id=7,
             symbol_name="BTC-29MAR24-50000-C", market="option",
         )
-        reader = flox_py.DataReader(str(self.tape))
+        reader = lrvx.DataReader(str(self.tape))
         quotes = reader.read_option_quotes_from(0)
         self.assertEqual(quotes.size, 2)
         # Source row 200: mark=0.0498, iv=0.55, index=42000.0
@@ -140,10 +140,10 @@ class DeribitOptionTests(unittest.TestCase):
     def test_perpetual_emits_no_option_quotes(self) -> None:
         g = self.tmp / "BTC-PERPETUAL-2024-01-15.csv.gz"
         _build_gz(g, _ROWS_PERP)
-        deribit.trades_to_floxlog(
+        deribit.trades_to_lrvx(
             g, self.tape, symbol_id=7, symbol_name="BTC-PERPETUAL", market="perpetual",
         )
-        reader = flox_py.DataReader(str(self.tape))
+        reader = lrvx.DataReader(str(self.tape))
         self.assertEqual(reader.read_option_quotes_from(0).size, 0)
 
     def test_protocol_compliance(self) -> None:

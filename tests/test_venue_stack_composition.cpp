@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,19 +12,19 @@
 // more subsystems exhibit when they run on the same SimulatedExecutor
 // tick loop. The bugs caught here don't show up in isolated tests.
 
-#include "flox/backtest/bracket_order.h"
-#include "flox/backtest/funding_schedule.h"
-#include "flox/backtest/liquidation_engine.h"
-#include "flox/backtest/rate_limit_policy.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/backtest/venue_availability.h"
+#include "lrvx/backtest/bracket_order.h"
+#include "lrvx/backtest/funding_schedule.h"
+#include "lrvx/backtest/liquidation_engine.h"
+#include "lrvx/backtest/rate_limit_policy.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/backtest/venue_availability.h"
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

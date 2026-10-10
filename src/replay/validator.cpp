@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/ops/validator.h"
+#include "lrvx/replay/ops/validator.h"
 
-#include "flox/replay/ops/index_builder.h"
+#include "lrvx/replay/ops/index_builder.h"
 
 #include <algorithm>
 #include <cstring>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -723,7 +723,7 @@ DatasetValidationResult DatasetValidator::validate(const std::filesystem::path& 
   std::vector<std::filesystem::path> segment_paths;
   for (const auto& entry : std::filesystem::directory_iterator(data_dir))
   {
-    if (entry.is_regular_file() && entry.path().extension() == ".floxlog")
+    if (entry.is_regular_file() && isSegmentExtension(entry.path().extension().string()))
     {
       segment_paths.push_back(entry.path());
     }
@@ -980,4 +980,4 @@ bool SegmentRepairer::rebuildIndex(const std::filesystem::path& path, RepairResu
   return true;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

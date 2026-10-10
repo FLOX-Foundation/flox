@@ -2,7 +2,7 @@
 
 Every strategy carries a `SymbolContext` per symbol: the order book, the last trade price, the position and cost basis the attached position manager last reported, and the timestamp of the last update. Your hooks read it; the engine writes it. This page says which thread is allowed to do what, and where that state actually lives.
 
-The rules belong to `flox::Strategy`, so every binding gets them. Python, Node, Codon and the embedded JavaScript runtime all reach user code through the same hooks.
+The rules belong to `lrvx::Strategy`, so every binding gets them. Python, Node, Codon and the embedded JavaScript runtime all reach user code through the same hooks.
 
 ## One lock per symbol, held across the hook
 
@@ -53,7 +53,7 @@ The per-(symbol, timeframe) bar rings behind `lastClosedBar` and `lastNClosedBar
 
 ## Where the state lives
 
-The context table is 256 slots, each holding a full 512-level order book. That is 8,384 bytes per slot in a release build and 16,640 with `FLOX_SCALE_CHECKS` on, since the scale checks widen `Price` and `Quantity` from 8 bytes to 16.
+The context table is 256 slots, each holding a full 512-level order book. That is 8,384 bytes per slot in a release build and 16,640 with `LRVX_SCALE_CHECKS` on, since the scale checks widen `Price` and `Quantity` from 8 bytes to 16.
 
 Those slots used to sit inside the strategy object by value, which put a strategy at roughly 2 MB release and 4 MB checked. Two of them in one stack frame overran a default 8 MB stack, and the overrun landed in the constructor prologue, before a single line of the strategy had run. It only showed up in checked builds, so the release run passed and the sanitiser lane crashed.
 
@@ -75,5 +75,5 @@ The hot path pays one extra dependent load for the indirection, and it measures 
 ## Related
 
 - [Disruptor pattern](disruptor.md), for how the buses deliver and why each subscriber gets its own consumer thread.
-- [Per-symbol scale](per-symbol-scale.md), for what `FLOX_SCALE_CHECKS` changes about `Price` and `Quantity`.
+- [Per-symbol scale](per-symbol-scale.md), for what `LRVX_SCALE_CHECKS` changes about `Price` and `Quantity`.
 - [Memory model](memory-model.md), for the wider allocation story on the hot path.

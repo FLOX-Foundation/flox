@@ -1,0 +1,67 @@
+/*
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
+ *
+ * Copyright (c) 2025 lrvx contributors
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
+#pragma once
+
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/aggregator/timeframe.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <span>
+#include <string>
+#include <vector>
+
+namespace lrvx
+{
+
+class MmapBarWriter : public IMarketDataSubscriber
+{
+ public:
+  explicit MmapBarWriter(const std::filesystem::path& symbolDir);
+  ~MmapBarWriter();
+
+  MmapBarWriter(const MmapBarWriter&) = delete;
+  MmapBarWriter& operator=(const MmapBarWriter&) = delete;
+
+  SubscriberId id() const override { return _subscriberId; }
+  // The base declares onBar without noexcept, so this one added the promise
+  // voluntarily -- and cannot keep it: the body inserts into a map and grows
+  // a vector under a lock, any of which can throw.
+  void onBar(const BarEvent& event) override;
+
+  void flush();
+
+  size_t bufferedBars(TimeframeId tf) const;
+  size_t totalBufferedBars() const;
+
+  void clear();
+
+  void writeBars(TimeframeId tf, std::span<const Bar> bars);
+
+  void setMetadata(const std::string& key, const std::string& value);
+  void setMetadata(const std::map<std::string, std::string>& metadata);
+  void writeMetadata();
+
+ private:
+  std::filesystem::path makeFilename(TimeframeId tf) const;
+
+  std::filesystem::path _symbolDir;
+  SubscriberId _subscriberId;
+  mutable std::mutex _mutex;
+  std::map<TimeframeId, std::vector<Bar>> _buffers;
+  std::map<std::string, std::string> _metadata;
+};
+
+}  // namespace lrvx

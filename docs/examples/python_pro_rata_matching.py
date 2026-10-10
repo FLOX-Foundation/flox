@@ -1,7 +1,7 @@
 """Switch a SimulatedExecutor between FIFO, pure pro-rata, and hybrid matching."""
-import flox_py as flox
+import lrvx
 
-exec = flox.SimulatedExecutor()
+exec = lrvx.SimulatedExecutor()
 
 # Pure pro-rata: every order at the level shares the trade by size.
 exec.set_queue_model("pro_rata", depth=4)

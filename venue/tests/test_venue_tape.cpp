@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/tape_recorder.h"
-#include "flox-venue/workload.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/tape_recorder.h"
+#include "lrvx-venue/workload.h"
 
-#include "flox/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -21,9 +21,9 @@
 #include <cstdlib>
 #include <filesystem>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
@@ -65,7 +65,7 @@ TEST(Tape, EngineSuite)
   __int128 liveNotional = 0;
 
   {
-    TapeRecorder tape(dir, "tape.floxlog");
+    TapeRecorder tape(dir, "tape.lrvx");
     MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                      {
                                        tape.onEvent(e);
@@ -87,17 +87,17 @@ TEST(Tape, EngineSuite)
     tape.close();
   }
 
-  // Read the floxlog tape back through flox's own reader.
-  flox::replay::ReaderConfig rc;
+  // Read the lrvx tape back through lrvx's own reader.
+  lrvx::replay::ReaderConfig rc;
   rc.data_dir = dir;
   rc.verify_crc = true;
-  flox::replay::BinaryLogReader reader(rc);
+  lrvx::replay::BinaryLogReader reader(rc);
 
   uint64_t tapeTrades = 0;
   __int128 tapeNotional = 0;
-  reader.forEach([&](const flox::replay::ReplayEvent& e)
+  reader.forEach([&](const lrvx::replay::ReplayEvent& e)
                  {
-                   if (e.type == flox::replay::EventType::Trade)
+                   if (e.type == lrvx::replay::EventType::Trade)
                    {
                      ++tapeTrades;
                      tapeNotional += static_cast<__int128>(e.trade.price_raw) * e.trade.qty_raw;

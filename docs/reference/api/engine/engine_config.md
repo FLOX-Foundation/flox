@@ -38,7 +38,7 @@ kill switch and the logger through their own objects.
 
 ## Global Constants
 
-The header also defines compile-time defaults via `flox::config` namespace:
+The header also defines compile-time defaults via `lrvx::config` namespace:
 
 ```cpp
 namespace config
@@ -69,14 +69,14 @@ namespace config
 
 These can be overridden via preprocessor defines:
 
-- `FLOX_DEFAULT_EVENTBUS_CAPACITY`
-- `FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS`
-- `FLOX_DEFAULT_ORDER_TRACKER_CAPACITY`
-- `FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY`
+- `LRVX_DEFAULT_EVENTBUS_CAPACITY`
+- `LRVX_DEFAULT_EVENTBUS_MAX_CONSUMERS`
+- `LRVX_DEFAULT_ORDER_TRACKER_CAPACITY`
+- `LRVX_DEFAULT_CONNECTOR_POOL_CAPACITY`
 
 **Important:** `DEFAULT_CONNECTOR_POOL_CAPACITY` must be greater than `DEFAULT_EVENTBUS_CAPACITY`. EventBus only reclaims events on wrap-around, so if pool capacity ≤ bus capacity, the pool will exhaust before any events are returned.
 
 ## Notes
 
 * Read by `Engine::start()` (memory profile) and `Engine::stop()` (drain timeout); nothing else in the tree reads it.
-* Priority constants are used for CPU affinity and thread scheduling when `FLOX_ENABLE_CPU_AFFINITY` is enabled.
+* Priority constants are used for CPU affinity and thread scheduling when `LRVX_ENABLE_CPU_AFFINITY` is enabled.

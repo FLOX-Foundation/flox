@@ -9,7 +9,7 @@ Statistical utilities for analyzing optimization results.
 ## Header
 
 ```cpp
-#include "flox/backtest/optimization_stats.h"
+#include "lrvx/backtest/optimization_stats.h"
 ```
 
 ## Helper Functions (detail namespace)

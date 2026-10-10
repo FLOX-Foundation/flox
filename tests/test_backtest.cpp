@@ -1,31 +1,31 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/replay/abstract_event_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/replay/abstract_event_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 #include <cmath>
 #include <filesystem>
 
-using namespace flox;
+using namespace lrvx;
 
 class BacktestTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_backtest_test";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_backtest_test";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }

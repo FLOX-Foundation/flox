@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -15,15 +15,15 @@
  * as an epoch change; the FIX encoding runs the request/snapshot/incremental/
  * reject round trip; and both encodings run on one server at the same time.
  */
-#include "flox-venue/fix_md_codec.h"
-#include "flox-venue/market_data.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/md_distribution.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/sbe_md_codec.h"
+#include "lrvx-venue/fix_md_codec.h"
+#include "lrvx-venue/market_data.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/md_distribution.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/sbe_md_codec.h"
 
-#include "flox/util/transport.h"
+#include "lrvx/util/transport.h"
 
 #include <gtest/gtest.h>
 
@@ -45,8 +45,8 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

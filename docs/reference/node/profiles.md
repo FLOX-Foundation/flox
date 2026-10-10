@@ -5,7 +5,7 @@
 ## VolumeProfile
 
 ```javascript
-const vp = new flox.VolumeProfile(tickSize);
+const vp = new lrvx.VolumeProfile(tickSize);
 vp.addTrade(price, qty, isBuy);
 ```
 
@@ -23,7 +23,7 @@ vp.addTrade(price, qty, isBuy);
 ## MarketProfile
 
 ```javascript
-const mp = new flox.MarketProfile(tickSize, periodMinutes, sessionStartNs);
+const mp = new lrvx.MarketProfile(tickSize, periodMinutes, sessionStartNs);
 mp.addTrade(timestampNs, price, qty, isBuy);
 ```
 
@@ -46,7 +46,7 @@ mp.addTrade(timestampNs, price, qty, isBuy);
 Buy/sell delta per price level.
 
 ```javascript
-const fp = new flox.FootprintBar(tickSize);
+const fp = new lrvx.FootprintBar(tickSize);
 fp.addTrade(price, qty, isBuy);
 ```
 

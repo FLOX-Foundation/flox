@@ -2,11 +2,11 @@
 
 #include <cmath>
 
-#include "flox/pricing/black_scholes.h"
-#include "flox/pricing/greeks.h"
+#include "lrvx/pricing/black_scholes.h"
+#include "lrvx/pricing/greeks.h"
 
-using namespace flox;
-using namespace flox::pricing;
+using namespace lrvx;
+using namespace lrvx::pricing;
 
 namespace
 {

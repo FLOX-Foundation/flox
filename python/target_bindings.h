@@ -6,9 +6,9 @@
 
 #include <cstring>
 
-#include "flox/target/future_ctc_volatility.h"
-#include "flox/target/future_linear_slope.h"
-#include "flox/target/future_return.h"
+#include "lrvx/target/future_ctc_volatility.h"
+#include "lrvx/target/future_linear_slope.h"
+#include "lrvx/target/future_return.h"
 
 namespace py = pybind11;
 
@@ -45,18 +45,18 @@ inline void bindTargets(py::module_& parent)
   m.def(
       "future_return",
       [](contiguous_double_target close, size_t horizon)
-      { return computeTarget(flox::target::FutureReturn(horizon), close); },
+      { return computeTarget(lrvx::target::FutureReturn(horizon), close); },
       py::arg("close"), py::arg("horizon"));
 
   m.def(
       "future_ctc_volatility",
       [](contiguous_double_target close, size_t horizon)
-      { return computeTarget(flox::target::FutureCTCVolatility(horizon), close); },
+      { return computeTarget(lrvx::target::FutureCTCVolatility(horizon), close); },
       py::arg("close"), py::arg("horizon"));
 
   m.def(
       "future_linear_slope",
       [](contiguous_double_target close, size_t horizon)
-      { return computeTarget(flox::target::FutureLinearSlope(horizon), close); },
+      { return computeTarget(lrvx::target::FutureLinearSlope(horizon), close); },
       py::arg("close"), py::arg("horizon"));
 }

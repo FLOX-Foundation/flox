@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Historical-data backfill into a `.floxlog` tape.
+"""Historical-data backfill into a `.lrvx` tape.
 
-The canonical `flox tape record` CLI captures live data. For
+The canonical `lrvx tape record` CLI captures live data. For
 historical backfill (anything before the recorder was running)
 ccxt's `fetch_ohlcv` / `fetch_trades` paginates depending on the
 exchange. This script wraps that loop and feeds the rows through
-`flox_py.Runner` + `MarketDataRecorderHook` so the result is a
-plain `.floxlog` directory — same format as a live recording.
+`lrvx.Runner` + `MarketDataRecorderHook` so the result is a
+plain `.lrvx` directory — same format as a live recording.
 
 Usage:
   python3 scripts/backfill_to_tape.py \\
@@ -61,7 +61,7 @@ def main() -> int:
     p.add_argument("--to", required=True,
                    help="end date / time (ISO or unix-ms)")
     p.add_argument("--out", required=True,
-                   help="output `.floxlog` directory")
+                   help="output `.lrvx` directory")
     p.add_argument("--max-records", type=int, default=1_000_000,
                    help="refuse to start if estimated records exceed cap")
     p.add_argument("--timeframe", default="1m",
@@ -77,12 +77,12 @@ def main() -> int:
         return 2
 
     try:
-        import flox_py as flox  # type: ignore
-        from flox_py.tape import make_recorder_hook  # type: ignore
+        import lrvx  # type: ignore
+        from lrvx.tape import make_recorder_hook  # type: ignore
     except ImportError as exc:
         print(json.dumps({
-            "error": f"flox_py import failed: {exc}. "
-                     f"Install with `pip install flox-py`."
+            "error": f"lrvx import failed: {exc}. "
+                     f"Install with `pip install lrvx`."
         }))
         return 2
 
@@ -118,11 +118,11 @@ def main() -> int:
         return 1
     ex = ex_class({"enableRateLimit": True})
 
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol(args.exchange,
                                args.symbol.replace("/", ""), tick_size=0.01)
     rec = make_recorder_hook(args.out, max_segment_mb=64)
-    runner = flox.Runner(registry, on_signal=lambda s: None)
+    runner = lrvx.Runner(registry, on_signal=lambda s: None)
     runner.set_market_data_recorder(rec)
 
     written = 0

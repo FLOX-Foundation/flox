@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -25,15 +25,15 @@
 // a double stops being able to hold eight decimals of an already large price,
 // which is precisely the condition the fixed-point types exist for.
 
-#include "flox/execution/order.h"
-#include "flox/position/position_tracker.h"
+#include "lrvx/execution/order.h"
+#include "lrvx/position/position_tracker.h"
 
 #include <gtest/gtest.h>
 
 #include <limits>
 #include <type_traits>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -261,9 +261,9 @@ TEST(PositionTrackerFixedPoint, AverageModeShortRealisesWithTheRightSign)
 // the one outcome a risk check must never be handed.
 //
 // Only meaningful where the checks compile out into saturation. With
-// FLOX_SCALE_CHECKS on, the same input asserts instead, which is the other
+// LRVX_SCALE_CHECKS on, the same input asserts instead, which is the other
 // correct answer and not something a test can assert about.
-#if !FLOX_SCALE_CHECKS
+#if !LRVX_SCALE_CHECKS
 TEST(PositionTrackerFixedPoint, RealisationSaturatesAtTheInt64Boundary)
 {
   PositionTracker tracker(1, CostBasisMethod::FIFO);

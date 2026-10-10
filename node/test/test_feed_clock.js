@@ -1,7 +1,7 @@
 // Multi-feed clock NAPI parity test.
 
-const flox = require('..');
-const { FeedClockPolicy, MultiFeedClock } = flox;
+const lrvx = require('..');
+const { FeedClockPolicy, MultiFeedClock } = lrvx;
 
 function check(label, ok) {
   if (!ok) { console.error('FAIL: ' + label); process.exit(1); }

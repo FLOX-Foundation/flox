@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,12 +16,12 @@
 #include <thread>
 #include <vector>
 
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bus/bar_bus.h"
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
 
-using namespace flox;
+using namespace lrvx;
 using namespace std::chrono_literals;
 
 namespace

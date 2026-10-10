@@ -1,2 +1,0 @@
-flox-py>=0.5.6
-numpy

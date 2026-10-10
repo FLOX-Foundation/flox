@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.control_server.ControlServer``."""
+"""Tests for ``lrvx.control_server.ControlServer``."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import control_server  # noqa: E402
+from lrvx import control_server  # noqa: E402
 
 
 class _FakeExecutor:
@@ -372,7 +372,7 @@ class KillSwitchTests(_BaseServerTest):
     def test_paper_token_cannot_set_kill_switch(self) -> None:
         # Regression: the kill switch halts trading engine-wide, not
         # per account, so it used to be reachable by a paper token --
-        # the same low-trust token `flox engine sim` prints to stdout
+        # the same low-trust token `lrvx engine sim` prints to stdout
         # could pull the emergency stop on live trading.
         status, body = _post(
             self.server.url, "/set_kill_switch",
@@ -452,7 +452,7 @@ class AnalyticsTests(_BaseServerTest):
     def setUp(self) -> None:
         # Wire analytics-side accessors before starting; _BaseServerTest
         # constructs the server in its own setUp, so override here.
-        from flox_py.event_log import EventLog
+        from lrvx.event_log import EventLog
 
         self.event_log = EventLog(capacity=100)
         self.executor = _FakeExecutor()

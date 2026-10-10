@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -17,15 +17,15 @@
  * through UdpMdSubscriberT<SbeMdCodec>; the other is what the code did before
  * the seam existed -- receive into a buffer, call the codec directly.
  */
-#include "flox-venue/udp_multicast.h"
+#include "lrvx-venue/udp_multicast.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 using clk = std::chrono::steady_clock;
 
 namespace

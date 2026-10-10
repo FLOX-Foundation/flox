@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/mmap_bar_writer.h"
+#include "lrvx/backtest/mmap_bar_writer.h"
 
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include <stdexcept>
 
-namespace flox
+namespace lrvx
 {
 
 static SubscriberId generateWriterId()
@@ -82,7 +82,7 @@ void MmapBarWriter::flush()
     std::ofstream outFile(filename, std::ios::binary | std::ios::trunc);
     if (!outFile)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_IO_002",
           "Cannot open file for writing: '" + filename.string() +
               "'. Check the directory exists and is writable.");
@@ -132,7 +132,7 @@ void MmapBarWriter::writeBars(TimeframeId tf, std::span<const Bar> bars)
   std::ofstream outFile(filename, std::ios::binary | std::ios::trunc);
   if (!outFile)
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_IO_002",
         "Cannot open file for writing: '" + filename.string() +
             "'. Check the directory exists and is writable.");
@@ -147,7 +147,7 @@ std::filesystem::path MmapBarWriter::makeFilename(TimeframeId tf) const
 {
   if (tf.type != BarType::Time)
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_BACKTEST_001",
         "MmapBarWriter currently only supports time-based bars. "
         "Aggregate to a fixed time interval before writing.");
@@ -186,7 +186,7 @@ void MmapBarWriter::writeMetadata()
 
   if (!file)
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_IO_002",
         "Cannot open metadata file for writing: '" + metadataPath.string() + "'.");
   }
@@ -197,4 +197,4 @@ void MmapBarWriter::writeMetadata()
   }
 }
 
-}  // namespace flox
+}  // namespace lrvx

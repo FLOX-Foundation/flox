@@ -13,26 +13,26 @@
 // (both sides agree the window has not filled yet); any other non-finite
 // value fails the assertion instead of being silently folded into "NaN".
 
-#include "flox/indicator/atr.h"
-#include "flox/indicator/autocorrelation.h"
-#include "flox/indicator/bollinger.h"
-#include "flox/indicator/cci.h"
-#include "flox/indicator/correlation.h"
-#include "flox/indicator/dema.h"
-#include "flox/indicator/ema.h"
-#include "flox/indicator/kama.h"
-#include "flox/indicator/kurtosis.h"
-#include "flox/indicator/macd.h"
-#include "flox/indicator/parkinson_vol.h"
-#include "flox/indicator/rma.h"
-#include "flox/indicator/rogers_satchell_vol.h"
-#include "flox/indicator/rolling_zscore.h"
-#include "flox/indicator/rsi.h"
-#include "flox/indicator/shannon_entropy.h"
-#include "flox/indicator/skewness.h"
-#include "flox/indicator/slope.h"
-#include "flox/indicator/sma.h"
-#include "flox/indicator/stochastic.h"
+#include "lrvx/indicator/atr.h"
+#include "lrvx/indicator/autocorrelation.h"
+#include "lrvx/indicator/bollinger.h"
+#include "lrvx/indicator/cci.h"
+#include "lrvx/indicator/correlation.h"
+#include "lrvx/indicator/dema.h"
+#include "lrvx/indicator/ema.h"
+#include "lrvx/indicator/kama.h"
+#include "lrvx/indicator/kurtosis.h"
+#include "lrvx/indicator/macd.h"
+#include "lrvx/indicator/parkinson_vol.h"
+#include "lrvx/indicator/rma.h"
+#include "lrvx/indicator/rogers_satchell_vol.h"
+#include "lrvx/indicator/rolling_zscore.h"
+#include "lrvx/indicator/rsi.h"
+#include "lrvx/indicator/shannon_entropy.h"
+#include "lrvx/indicator/skewness.h"
+#include "lrvx/indicator/slope.h"
+#include "lrvx/indicator/sma.h"
+#include "lrvx/indicator/stochastic.h"
 
 #include <gtest/gtest.h>
 
@@ -101,7 +101,7 @@ void expectClose(double a, double b, const char* msg)
 
 }  // namespace
 
-using namespace flox::indicator;
+using namespace lrvx::indicator;
 
 // ---- Single input ---------------------------------------------------------
 

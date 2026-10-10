@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -25,11 +25,11 @@
 //  - Per-tick on_marks is idempotent on a healthy account (no
 //    spurious liquidations)
 
-#include "flox/backtest/account.h"
-#include "flox/backtest/fee_schedule.h"
-#include "flox/backtest/funding_schedule.h"
-#include "flox/backtest/liquidation_engine.h"
-#include "flox/backtest/venue_stack.h"
+#include "lrvx/backtest/account.h"
+#include "lrvx/backtest/fee_schedule.h"
+#include "lrvx/backtest/funding_schedule.h"
+#include "lrvx/backtest/liquidation_engine.h"
+#include "lrvx/backtest/venue_stack.h"
 
 #include <gtest/gtest.h>
 
@@ -37,7 +37,7 @@
 #include <cstdint>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

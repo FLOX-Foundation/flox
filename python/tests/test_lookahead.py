@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.lookahead``."""
+"""Tests for ``lrvx.lookahead``."""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import lookahead  # noqa: E402
+from lrvx import lookahead  # noqa: E402
 
 
 class ShiftNegativeTests(unittest.TestCase):
@@ -129,9 +129,9 @@ class FutureAttrTests(unittest.TestCase):
 class CombinedTests(unittest.TestCase):
     def test_realistic_strategy_with_one_bug(self) -> None:
         src = (
-            "import flox_py as flox\n"
+            "import lrvx\n"
             "\n"
-            "class MyStrategy(flox.Strategy):\n"
+            "class MyStrategy(lrvx.Strategy):\n"
             "    def on_bar(self, ctx, bar):\n"
             "        # bug: peeking at next bar\n"
             "        if bar.history.iloc[i + 1] > bar.close:\n"
@@ -144,12 +144,12 @@ class CombinedTests(unittest.TestCase):
 
     def test_clean_strategy(self) -> None:
         src = (
-            "import flox_py as flox\n"
+            "import lrvx\n"
             "\n"
-            "class MyStrategy(flox.Strategy):\n"
+            "class MyStrategy(lrvx.Strategy):\n"
             "    def __init__(self, symbols):\n"
             "        super().__init__(symbols)\n"
-            "        self.fast = flox.SMA(10)\n"
+            "        self.fast = lrvx.SMA(10)\n"
             "    def on_bar(self, ctx, bar):\n"
             "        v = self.fast.update(bar.close)\n"
             "        if v is not None and bar.close > v:\n"

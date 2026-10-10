@@ -12,7 +12,7 @@ green before and after.
 
 Every run is honest about the build. Per mutation: the file's sha256 is printed
 before and after, the anchor has to occur exactly the expected number of times,
-the mutated .cpp's object inside the flox-connectors library and the test
+the mutated .cpp's object inside the lrvx-connectors library and the test
 target's own objects are deleted so nothing can be served from cache, the
 rebuild output has to contain "Building CXX" or the run is refused, and each
 test binary runs under a timeout. A mutation that does not compile is not a
@@ -32,8 +32,8 @@ The build directory is expected to be configured the way CI configures the
 connectors job:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-          -DFLOX_BUILD_CONNECTORS=ON -DFLOX_BUILD_TESTS=ON \
-          -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DFLOX_NATIVE=OFF
+          -DLRVX_BUILD_CONNECTORS=ON -DLRVX_BUILD_TESTS=ON \
+          -DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DLRVX_NATIVE=OFF
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 1800
 TEST_TIMEOUT = 120
 
-LIB = "flox-connectors"
+LIB = "lrvx-connectors"
 
 BYBIT_CONN = "connectors/src/bybit/bybit_exchange_connector.cpp"
 BYBIT_EXEC = "connectors/src/bybit/bybit_order_executor.cpp"
@@ -63,7 +63,7 @@ BITGET_CONN = "connectors/src/bitget/bitget_exchange_connector.cpp"
 HL_CONN = "connectors/src/hyperliquid/hyperliquid_exchange_connector.cpp"
 HL_EXEC = "connectors/src/hyperliquid/hyperliquid_order_executor.cpp"
 POLY_CONN = "connectors/src/polymarket/polymarket_exchange_connector.cpp"
-WATERMARK = "connectors/include/flox-connectors/execution/fill_watermark.h"
+WATERMARK = "connectors/include/lrvx-connectors/execution/fill_watermark.h"
 
 BY = "unit_test_bybit_fill_contract"
 BG = "unit_test_bitget_fill_contract"
@@ -451,7 +451,7 @@ MUTATIONS: list[Mutation] = [
              "told the order does not exist"),
         file=HL_EXEC,
         old="""        publishRejection(order, std::string("Transport error: ") + std::string(err));""",
-        new="""        FLOX_LOG_ERROR("[HL] submit error: " << err);""",
+        new="""        LRVX_LOG_ERROR("[HL] submit error: " << err);""",
         target=HL,
         test=None,
     ),
@@ -768,10 +768,10 @@ def target_objects(target: str) -> list[Path]:
 
 
 def library_objects(source_file: str) -> list[Path]:
-    """The mutated .cpp's object inside the flox-connectors library.
+    """The mutated .cpp's object inside the lrvx-connectors library.
 
     Connector sources do not compile into the test binary: they compile into
-    libflox-connectors.a, so the library object is what has to go.
+    liblrvx-connectors.a, so the library object is what has to go.
     """
     objects: list[Path] = []
     for src in SOURCES_OF[source_file]:
@@ -945,8 +945,8 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            "-DFLOX_BUILD_CONNECTORS=ON -DFLOX_BUILD_TESTS=ON "
-            "-DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DFLOX_NATIVE=OFF"
+            "-DLRVX_BUILD_CONNECTORS=ON -DLRVX_BUILD_TESTS=ON "
+            "-DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DLRVX_NATIVE=OFF"
         )
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]

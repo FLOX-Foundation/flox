@@ -1,6 +1,6 @@
 # Per-symbol fixed-point scale
 
-FLOX represents prices and quantities as fixed-point integers, not floating
+lrvx represents prices and quantities as fixed-point integers, not floating
 point. `Price`, `Quantity`, and `Volume` each store a raw `int64` scaled by a
 fixed factor. The default factor is `1e8`, eight decimal places. That is
 plenty for centralized-exchange instruments.
@@ -38,12 +38,12 @@ A symbol or a tape without an explicit scale reads as `1e8`.
 
 Because the scale is a runtime value on the symbol, not part of the type, the
 compiler cannot prove that two values share a scale. Mixing a value of one
-scale with another would compute a wrong number. FLOX checks scale agreement at
+scale with another would compute a wrong number. lrvx checks scale agreement at
 runtime instead of in the type system:
 
 - conversions require an explicit scale, so a value is never interpreted under
   the wrong factor by accident;
-- a single check, `FLOX_SCALE_CHECK`, asserts scale agreement on arithmetic in
+- a single check, `LRVX_SCALE_CHECK`, asserts scale agreement on arithmetic in
   debug and CI builds and compiles to nothing in release;
 - cross-symbol position aggregation normalizes scales through one chokepoint
   before combining values;
@@ -55,7 +55,7 @@ Fixed-point multiply and divide narrow their 128-bit intermediate back to
 debug build and clamps to the boundary otherwise, rather than wrapping into a
 wrong value. A toolchain with no 128-bit integer at all -- MSVC -- gets the
 same arithmetic from a software multiply-and-divide rather than a narrower
-approximation of it; `FLOX_FORCE_PORTABLE_INT128=1` builds that path
+approximation of it; `LRVX_FORCE_PORTABLE_INT128=1` builds that path
 everywhere so it is tested and not merely present.
 
 ## Crossing into default-scale components
@@ -90,7 +90,7 @@ change.
 ## Forward compatibility with C++26
 
 The guardrail check is a single macro so it can adopt C++26 contracts when a
-toolchain ships them: `FLOX_SCALE_CHECK` expands to `contract_assert` where
+toolchain ships them: `LRVX_SCALE_CHECK` expands to `contract_assert` where
 contracts are detected and to a plain assertion otherwise. The core stays on
 C++23, and an experimental, non-blocking CI lane exercises the contracts path
 without gating merges.

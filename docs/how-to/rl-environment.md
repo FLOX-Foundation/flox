@@ -1,15 +1,15 @@
-# Train a reinforcement-learning agent on a flox tape
+# Train a reinforcement-learning agent on a lrvx tape
 
-`flox_py.rl_env.FloxTradingEnv` is a Gymnasium-compatible environment that drives an agent through the trades in a captured `.floxlog` tape. It speaks the standard `Env` protocol (`reset`, `step`, `render`, `close`, `action_space`, `observation_space`, `metadata`) without importing `gymnasium` itself, so plugging it into `stable_baselines3`, `RLlib`, or `CleanRL` does not pull gymnasium into flox's dependency surface. The user installs gymnasium and the learner of choice; the env works out of the box.
+`lrvx.rl_env.LrvxTradingEnv` is a Gymnasium-compatible environment that drives an agent through the trades in a captured `.lrvx` tape. It speaks the standard `Env` protocol (`reset`, `step`, `render`, `close`, `action_space`, `observation_space`, `metadata`) without importing `gymnasium` itself, so plugging it into `stable_baselines3`, `RLlib`, or `CleanRL` does not pull gymnasium into lrvx's dependency surface. The user installs gymnasium and the learner of choice; the env works out of the box.
 
-Two construction paths are available. `FloxTradingEnv.from_tape(...)` is the lightweight path — trade-by-trade replay with ideal fills, no fees, no funding, no liquidation. `FloxTradingEnv.from_venue_stack(stack, tape=...)` plugs the env on top of a `VenueStack` so every action routes through the same simulated executor used in backtest and paper trading; fees and funding feed back into the reward via the cross-margin Account, and liquidation terminates the episode. The venue-stack path also carries the continuous action space, limit-order semantics, and multi-symbol portfolios documented below.
+Two construction paths are available. `LrvxTradingEnv.from_tape(...)` is the lightweight path — trade-by-trade replay with ideal fills, no fees, no funding, no liquidation. `LrvxTradingEnv.from_venue_stack(stack, tape=...)` plugs the env on top of a `VenueStack` so every action routes through the same simulated executor used in backtest and paper trading; fees and funding feed back into the reward via the cross-margin Account, and liquidation terminates the episode. The venue-stack path also carries the continuous action space, limit-order semantics, and multi-symbol portfolios documented below.
 
 ## Quick start
 
 ```python
-from flox_py.rl_env import FloxTradingEnv
+from lrvx.rl_env import LrvxTradingEnv
 
-env = FloxTradingEnv.from_tape(
+env = LrvxTradingEnv.from_tape(
     "./tapes/bybit-btc-2026-05-07",
     qty=0.01,
     window_size=16,
@@ -47,7 +47,7 @@ The default observation is a `Box` of shape `(window_size + 2,)`:
 - One entry for current position quantity (signed).
 - One entry for unrealized PnL since the last position change.
 
-Override `window_size` at construction. If you want a different observation, subclass `FloxTradingEnv` and override `_observation`.
+Override `window_size` at construction. If you want a different observation, subclass `LrvxTradingEnv` and override `_observation`.
 
 ## Reward
 
@@ -59,7 +59,7 @@ def risk_adjusted_reward(env, ctx):
     drawdown_penalty = max(0.0, -ctx["unrealized_pnl"]) * 0.1
     return float(pnl_delta - drawdown_penalty)
 
-env = FloxTradingEnv.from_tape(path, reward_fn=risk_adjusted_reward)
+env = LrvxTradingEnv.from_tape(path, reward_fn=risk_adjusted_reward)
 ```
 
 The default in the `from_tape` path ignores transaction costs entirely. For honest training, switch to `from_venue_stack` — the venue-stack path computes reward as the change in account equity at mark, with taker (or maker, if `is_maker=True`) fees deducted on each fill via the stack's fee schedule. Funding accrued by the schedule and realized PnL on close are folded into equity automatically.
@@ -67,12 +67,12 @@ The default in the `from_tape` path ignores transaction costs entirely. For hone
 ## Venue-stack backed env
 
 ```python
-import flox_py
-from flox_py.rl_env import FloxTradingEnv
+import lrvx
+from lrvx.rl_env import LrvxTradingEnv
 
-stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
 
-env = FloxTradingEnv.from_venue_stack(
+env = LrvxTradingEnv.from_venue_stack(
     stack,
     tape="./tapes/btc-2026-05-07",
     qty=0.01,
@@ -103,7 +103,7 @@ Same strategy class, same data, the only thing that differs from `from_tape` is 
 | 2 | `[0.0, 2.0]` | TIF, rounded to int: `0=GTC`, `1=IOC`, `2=Post-only` |
 
 ```python
-env = FloxTradingEnv.from_venue_stack(
+env = LrvxTradingEnv.from_venue_stack(
     stack, tape=tape,
     qty=0.01, max_position=0.05,
     tick_size=0.01,
@@ -131,7 +131,7 @@ In venue-stack mode the observation gains a configurable bank of open-order slot
 `n_open_slots` defaults to 4 in single-symbol venue-stack mode, 2 *per symbol* in multi-symbol mode, and 0 in the bare `from_tape` path (no executor → no resting orders to track). Set it explicitly to override:
 
 ```python
-env = FloxTradingEnv.from_venue_stack(
+env = LrvxTradingEnv.from_venue_stack(
     stack, tape=tape, qty=0.01,
     n_open_slots=8,   # carry up to 8 resting orders in the obs
 )
@@ -147,7 +147,7 @@ When the agent submits a non-market order through the venue executor it is recor
 The simulated executor silently drops orders that fail rate-limit, venue-availability, or post-only-cross checks. The env detects these as a submit that produced neither a fill nor a resting order entry and surfaces them as `info["rejected"] = True`. Set `reject_penalty=...` at construction to subtract that amount from the reward whenever a reject is detected:
 
 ```python
-env = FloxTradingEnv.from_venue_stack(
+env = LrvxTradingEnv.from_venue_stack(
     stack, tape=tape, qty=0.01,
     reject_penalty=10.0,   # subtract 10 from reward on each rejected submit
 )
@@ -157,22 +157,22 @@ Default `0.0` leaves the behaviour untouched. The penalty is on top of the usual
 
 ## One policy, three deployment modes
 
-The venue-stack-backed env exists to produce a policy you can then run unchanged through `PaperBroker` and `CcxtBroker`. `flox_py.rl_env` ships three small pieces to close that loop:
+The venue-stack-backed env exists to produce a policy you can then run unchanged through `PaperBroker` and `CcxtBroker`. `lrvx.rl_env` ships three small pieces to close that loop:
 
 - `ObservationBuilder` — stateful builder that turns a stream of trades plus a current position into the same observation vector the env uses. Plug live ticks via `on_trade(price)`, update position via `set_position`, and call `build()` whenever the model needs an input.
 - `ActionDecoder` — pure function that maps a continuous `Box((3,))` action to a structured intent (market or limit, side, quantity, price, TIF). Same decode logic the env uses internally.
-- `make_rl_policy` — produces a `flox.Strategy` subclass that on every `on_trade` updates the builder, runs `model.predict(obs)`, decodes, and emits the corresponding order through the runner's signal callback.
+- `make_rl_policy` — produces a `lrvx.Strategy` subclass that on every `on_trade` updates the builder, runs `model.predict(obs)`, decodes, and emits the corresponding order through the runner's signal callback.
 
 ```python
-import flox_py
-from flox_py.rl_env import (
-    FloxTradingEnv, ObservationBuilder, ActionDecoder, make_rl_policy,
+import lrvx
+from lrvx.rl_env import (
+    LrvxTradingEnv, ObservationBuilder, ActionDecoder, make_rl_policy,
 )
 from stable_baselines3 import PPO
 
 # 1. Train on a tape via the venue-stack-backed env
-stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
-env = FloxTradingEnv.from_venue_stack(
+stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+env = LrvxTradingEnv.from_venue_stack(
     stack, tape="./tapes/btc-2026-05-07",
     qty=0.01, max_position=0.05,
     tick_size=0.01, max_price_offset_ticks=50,
@@ -180,7 +180,7 @@ env = FloxTradingEnv.from_venue_stack(
 )
 model = PPO("MlpPolicy", env, verbose=1).learn(total_timesteps=100_000)
 
-# 2. Wrap it as a flox.Strategy via the shared builder + decoder
+# 2. Wrap it as a lrvx.Strategy via the shared builder + decoder
 builder = ObservationBuilder(
     window_size=env.window_size, n_open_slots=env.n_open_slots,
     tick_size=env.tick_size,
@@ -198,7 +198,7 @@ policy = make_rl_policy(
 )
 
 # 3a. Paper trading — same policy, live feed, simulated fills
-from flox_py.paper import PaperBroker
+from lrvx.paper import PaperBroker
 
 broker = PaperBroker(registry=registry)
 broker.runner.add_strategy(policy)   # the broker owns its Runner
@@ -207,7 +207,7 @@ broker.start()
 #   broker.observe_trade(symbol_id, price, qty, is_buy, ts_ns)
 
 # 3b. Live — swap PaperBroker for CcxtBroker, the policy is unchanged
-from flox_py.ccxt import CcxtBroker
+from lrvx.ccxt import CcxtBroker
 
 broker = CcxtBroker("binanceusdm", api_key="...", secret="...")
 sym = await broker.add_symbol("BTC/USDT:USDT")   # async; tick size from the market
@@ -215,8 +215,8 @@ broker.add_strategy(policy)
 await broker.run()
 ```
 
-`PaperBroker` and `CcxtBroker` are in `flox_py.paper` and
-`flox_py.ccxt`; neither is re-exported at the top level. Each owns
+`PaperBroker` and `CcxtBroker` are in `lrvx.paper` and
+`lrvx.ccxt`; neither is re-exported at the top level. Each owns
 its own `Runner` (and `CcxtBroker` its own `SymbolRegistry`), so
 there is no separate `Runner` to construct. `CcxtBroker`'s first
 argument is a ccxt.pro exchange *id* string, not an exchange object;
@@ -229,12 +229,12 @@ The model, builder, and decoder are byte-for-byte identical across all three mod
 Training on the whole tape and reporting that number is the most common way RL trading projects fool themselves. `WalkForwardRL` ships the same anchored / sliding window discipline `WalkForwardRunner` uses for supervised backtests, with a fresh `VenueStack` per fold so no fee tier, rolling notional, or insurance fund state leaks across folds.
 
 ```python
-import flox_py
-from flox_py.rl_env import WalkForwardRL
+import lrvx
+from lrvx.rl_env import WalkForwardRL
 from stable_baselines3 import PPO
 
 wf = WalkForwardRL(
-    venue_stack_factory=lambda: flox_py.VenueStack.binance_um_futures(42, 10_000.0),
+    venue_stack_factory=lambda: lrvx.VenueStack.binance_um_futures(42, 10_000.0),
     tape="./tapes/btc-2026-05",
     train_window_days=14,
     test_window_days=3,
@@ -275,12 +275,12 @@ The aggregate schema (`mean_return_pct`, `std_return_pct`, `sign_match`, `worst_
 Pass `tapes={symbol_id: tape, ...}` instead of `tape=...` to switch the env into multi-symbol mode. Observation and action spaces become Dict-shaped, the cross-margin Account walks every event's mark, and the agent sees an account-level slot alongside the per-symbol slots.
 
 ```python
-import flox_py
-from flox_py.rl_env import FloxTradingEnv
+import lrvx
+from lrvx.rl_env import LrvxTradingEnv
 
-stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
 
-env = FloxTradingEnv.from_venue_stack(
+env = LrvxTradingEnv.from_venue_stack(
     stack,
     tapes={
         1: "./tapes/btcusdt-2026-05-07",   # symbol id 1
@@ -314,7 +314,7 @@ Plugging this into Stable-Baselines3 needs `MultiInputPolicy` (Dict obs / Dict a
 
 ## Alpha-decay gate
 
-`scripts/rl_alpha_decay_gate.py` is the CI-enforceable counterpart to the "one policy, three deployment modes" claim. It generates a deterministic synthetic tape from a seed, runs a fixed stub policy through `FloxTradingEnv` and through `PaperBroker` (mirroring what `make_rl_policy` would do behind a runner), and asserts that the absolute equity change between the two paths stays within a configurable cap.
+`scripts/rl_alpha_decay_gate.py` is the CI-enforceable counterpart to the "one policy, three deployment modes" claim. It generates a deterministic synthetic tape from a seed, runs a fixed stub policy through `LrvxTradingEnv` and through `PaperBroker` (mirroring what `make_rl_policy` would do behind a runner), and asserts that the absolute equity change between the two paths stays within a configurable cap.
 
 ```bash
 python scripts/rl_alpha_decay_gate.py --max-decay 0.30
@@ -336,7 +336,7 @@ PASS: decay within cap
 
 The gate is wired into the Linux CI job alongside the Python example runs. A failure means some change inside the venue-stack or the RL adapter pipeline shifted the env's physics away from PaperBroker's, even though both nominally share the same simulated executor configuration.
 
-All inputs are synthetic to keep the repo free of redistributable market data. The optional `--tape /path/to/real.floxlog` flag exists for local sanity checks against private data; when set, the gate refuses to write CI artifacts so private market data can not leak into public logs.
+All inputs are synthetic to keep the repo free of redistributable market data. The optional `--tape /path/to/real.lrvx` flag exists for local sanity checks against private data; when set, the gate refuses to write CI artifacts so private market data can not leak into public logs.
 
 The gate measures the gap between training-time physics and broker-time physics, not absolute profitability. A deliberately mediocre stub policy is used as the fixture so the decay number stays stable across seeds and the gate catches drift rather than alpha.
 
@@ -345,7 +345,7 @@ The gate measures the gap between training-time physics and broker-time physics,
 ```python
 from stable_baselines3 import PPO
 
-env = FloxTradingEnv.from_venue_stack(stack, tape=tape, qty=0.01)
+env = LrvxTradingEnv.from_venue_stack(stack, tape=tape, qty=0.01)
 model = PPO("MlpPolicy", env, verbose=1)
 model.learn(total_timesteps=100_000)
 ```
@@ -357,10 +357,10 @@ model.learn(total_timesteps=100_000)
 ```python
 import gymnasium as gym
 from stable_baselines3 import PPO
-from flox_py.rl_env import FloxTradingEnv
+from lrvx.rl_env import LrvxTradingEnv
 
-env = FloxTradingEnv.from_tape("./tapes/btc-2026-05-07", qty=0.01)
-# stable_baselines3 wraps any Gymnasium env; FloxTradingEnv passes
+env = LrvxTradingEnv.from_tape("./tapes/btc-2026-05-07", qty=0.01)
+# stable_baselines3 wraps any Gymnasium env; LrvxTradingEnv passes
 # the duck-typed Env protocol it expects.
 model = PPO("MlpPolicy", env, verbose=1)
 model.learn(total_timesteps=100_000)

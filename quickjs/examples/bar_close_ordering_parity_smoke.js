@@ -19,7 +19,7 @@ const H1_NS = H1 * NS;
 const M5_NS = M5 * NS;
 
 function drive(secondsInOrder) {
-    const r = new flox.BarDispatchRecorder();
+    const r = new lrvx.BarDispatchRecorder();
     for (const s of secondsInOrder) r.addTimeIntervalSeconds(s);
     r.onTrade(1, 100.0, 0.1, 0);
     r.onTrade(1, 101.0, 0.1, H4_NS);

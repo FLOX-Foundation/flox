@@ -1,8 +1,8 @@
 {
-  "name": "@flox-foundation/replay-viewer",
+  "name": "@lrvx/replay-viewer",
   "private": true,
   "version": "0.1.0",
-  "description": "Single-page UI for inspecting .floxlog and .floxrun artifacts",
+  "description": "Single-page UI for inspecting .lrvx and .lrvxrun artifacts",
   "type": "module",
   "scripts": {
     "dev": "vite",

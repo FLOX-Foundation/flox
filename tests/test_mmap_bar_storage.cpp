@@ -1,27 +1,27 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/mmap_bar_storage.h"
+#include "lrvx/backtest/mmap_bar_storage.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 
-using namespace flox;
+using namespace lrvx;
 
 class MmapBarStorageTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_mmap_test";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_mmap_test";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }
@@ -276,7 +276,7 @@ TEST_F(MmapBarStorageTest, MoveAssignment)
   MmapBarStorage storage1(_test_dir);
 
   // Create another directory with different data
-  auto test_dir2 = std::filesystem::temp_directory_path() / "flox_mmap_test2";
+  auto test_dir2 = std::filesystem::temp_directory_path() / "lrvx_mmap_test2";
   std::filesystem::create_directories(test_dir2);
 
   std::vector<Bar> bars2 = {makeBar(200.0, 1000), makeBar(201.0, 2000)};

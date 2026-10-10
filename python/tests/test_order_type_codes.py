@@ -10,11 +10,11 @@ reaches it.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 
 
 def test_market_fills_on_first_print_limit_waits_for_price():
-    exe = flox.SimulatedExecutor()
+    exe = lrvx.SimulatedExecutor()
     sym = 1
 
     exe.submit_order(1, "buy", 1.0, 1.0, "market", sym)

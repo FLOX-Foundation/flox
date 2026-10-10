@@ -1,7 +1,7 @@
 // python/tape_aggregator_bindings.h
 //
 // Pybind11 surface for the streaming tape aggregator framework
-// (flox::replay::IAggregator + 5 native aggregators).
+// (lrvx::replay::IAggregator + 5 native aggregators).
 //
 // Wiring: each concrete aggregator is wrapped in a `PyXxxAggregator`
 // holder that owns the C++ value and exposes a `native()` accessor
@@ -16,14 +16,14 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/replay/aggregator.h"
-#include "flox/replay/aggregators/bin_count.h"
-#include "flox/replay/aggregators/book_snapshot_bin.h"
-#include "flox/replay/aggregators/event_type_stats.h"
-#include "flox/replay/aggregators/ohlc_bin.h"
-#include "flox/replay/aggregators/peak.h"
-#include "flox/replay/aggregators/quantile.h"
-#include "flox/replay/aggregators/volume_bin.h"
+#include "lrvx/replay/aggregator.h"
+#include "lrvx/replay/aggregators/bin_count.h"
+#include "lrvx/replay/aggregators/book_snapshot_bin.h"
+#include "lrvx/replay/aggregators/event_type_stats.h"
+#include "lrvx/replay/aggregators/ohlc_bin.h"
+#include "lrvx/replay/aggregators/peak.h"
+#include "lrvx/replay/aggregators/quantile.h"
+#include "lrvx/replay/aggregators/volume_bin.h"
 
 #include <cstdint>
 #include <cstring>
@@ -32,7 +32,7 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 // Common base over every Python-bound aggregator. Lets DataReader.run
@@ -42,146 +42,146 @@ class IPyAggregator
 {
  public:
   virtual ~IPyAggregator() = default;
-  virtual flox::replay::IAggregator* native() = 0;
+  virtual lrvx::replay::IAggregator* native() = 0;
 };
 
 class PyEventTypeStatsAggregator : public IPyAggregator
 {
  public:
-  PyEventTypeStatsAggregator(flox::replay::AggregatorEventFilter event_filter,
+  PyEventTypeStatsAggregator(lrvx::replay::AggregatorEventFilter event_filter,
                              std::vector<uint32_t> symbol_filter)
       : _impl(event_filter, std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
-  py::array_t<flox::replay::EventTypeStatsAggregator::PerSymbolRow> result()
+  py::array_t<lrvx::replay::EventTypeStatsAggregator::PerSymbolRow> result()
   {
     const auto& rows = _impl.result();
-    py::array_t<flox::replay::EventTypeStatsAggregator::PerSymbolRow> out(rows.size());
+    py::array_t<lrvx::replay::EventTypeStatsAggregator::PerSymbolRow> out(rows.size());
     if (!rows.empty())
     {
       std::memcpy(out.mutable_data(), rows.data(),
-                  rows.size() * sizeof(flox::replay::EventTypeStatsAggregator::PerSymbolRow));
+                  rows.size() * sizeof(lrvx::replay::EventTypeStatsAggregator::PerSymbolRow));
     }
     return out;
   }
 
  private:
-  flox::replay::EventTypeStatsAggregator _impl;
+  lrvx::replay::EventTypeStatsAggregator _impl;
 };
 
 class PyBinCountAggregator : public IPyAggregator
 {
  public:
   PyBinCountAggregator(int64_t bucket_ns, bool by_side, bool by_symbol,
-                       flox::replay::AggregatorEventFilter event_filter,
+                       lrvx::replay::AggregatorEventFilter event_filter,
                        std::vector<uint32_t> symbol_filter)
       : _impl(bucket_ns, by_side, by_symbol, event_filter, std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
-  py::array_t<flox::replay::BinCountAggregator::Row> result()
+  py::array_t<lrvx::replay::BinCountAggregator::Row> result()
   {
     const auto& rows = _impl.result();
-    py::array_t<flox::replay::BinCountAggregator::Row> out(rows.size());
+    py::array_t<lrvx::replay::BinCountAggregator::Row> out(rows.size());
     if (!rows.empty())
     {
       std::memcpy(out.mutable_data(), rows.data(),
-                  rows.size() * sizeof(flox::replay::BinCountAggregator::Row));
+                  rows.size() * sizeof(lrvx::replay::BinCountAggregator::Row));
     }
     return out;
   }
 
  private:
-  flox::replay::BinCountAggregator _impl;
+  lrvx::replay::BinCountAggregator _impl;
 };
 
 class PyVolumeBinAggregator : public IPyAggregator
 {
  public:
   PyVolumeBinAggregator(int64_t bucket_ns, bool by_side, bool by_symbol,
-                        flox::replay::AggregatorEventFilter event_filter,
+                        lrvx::replay::AggregatorEventFilter event_filter,
                         std::vector<uint32_t> symbol_filter)
       : _impl(bucket_ns, by_side, by_symbol, event_filter, std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
-  py::array_t<flox::replay::VolumeBinAggregator::Row> result()
+  py::array_t<lrvx::replay::VolumeBinAggregator::Row> result()
   {
     const auto& rows = _impl.result();
-    py::array_t<flox::replay::VolumeBinAggregator::Row> out(rows.size());
+    py::array_t<lrvx::replay::VolumeBinAggregator::Row> out(rows.size());
     if (!rows.empty())
     {
       std::memcpy(out.mutable_data(), rows.data(),
-                  rows.size() * sizeof(flox::replay::VolumeBinAggregator::Row));
+                  rows.size() * sizeof(lrvx::replay::VolumeBinAggregator::Row));
     }
     return out;
   }
 
  private:
-  flox::replay::VolumeBinAggregator _impl;
+  lrvx::replay::VolumeBinAggregator _impl;
 };
 
 class PyOHLCBinAggregator : public IPyAggregator
 {
  public:
   PyOHLCBinAggregator(int64_t bucket_ns, bool by_symbol,
-                      flox::replay::AggregatorEventFilter event_filter,
+                      lrvx::replay::AggregatorEventFilter event_filter,
                       std::vector<uint32_t> symbol_filter)
       : _impl(bucket_ns, by_symbol, event_filter, std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
-  py::array_t<flox::replay::OHLCBinAggregator::Row> result()
+  py::array_t<lrvx::replay::OHLCBinAggregator::Row> result()
   {
     const auto& rows = _impl.result();
-    py::array_t<flox::replay::OHLCBinAggregator::Row> out(rows.size());
+    py::array_t<lrvx::replay::OHLCBinAggregator::Row> out(rows.size());
     if (!rows.empty())
     {
       std::memcpy(out.mutable_data(), rows.data(),
-                  rows.size() * sizeof(flox::replay::OHLCBinAggregator::Row));
+                  rows.size() * sizeof(lrvx::replay::OHLCBinAggregator::Row));
     }
     return out;
   }
 
  private:
-  flox::replay::OHLCBinAggregator _impl;
+  lrvx::replay::OHLCBinAggregator _impl;
 };
 
 class PyBookSnapshotBinAggregator : public IPyAggregator
 {
  public:
   PyBookSnapshotBinAggregator(int64_t bucket_ns, uint16_t levels,
-                              flox::replay::AggregatorEventFilter event_filter,
+                              lrvx::replay::AggregatorEventFilter event_filter,
                               std::vector<uint32_t> symbol_filter)
       : _impl(bucket_ns, levels, event_filter, std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
-  py::array_t<flox::replay::BookSnapshotBinAggregator::Row> result()
+  py::array_t<lrvx::replay::BookSnapshotBinAggregator::Row> result()
   {
     const auto& rows = _impl.result();
-    py::array_t<flox::replay::BookSnapshotBinAggregator::Row> out(rows.size());
+    py::array_t<lrvx::replay::BookSnapshotBinAggregator::Row> out(rows.size());
     if (!rows.empty())
     {
       std::memcpy(out.mutable_data(), rows.data(),
-                  rows.size() * sizeof(flox::replay::BookSnapshotBinAggregator::Row));
+                  rows.size() * sizeof(lrvx::replay::BookSnapshotBinAggregator::Row));
     }
     return out;
   }
 
  private:
-  flox::replay::BookSnapshotBinAggregator _impl;
+  lrvx::replay::BookSnapshotBinAggregator _impl;
 };
 
 class PyPeakAggregator : public IPyAggregator
@@ -189,14 +189,14 @@ class PyPeakAggregator : public IPyAggregator
  public:
   PyPeakAggregator(std::vector<int64_t> window_ns_list, std::size_t top_n,
                    std::size_t oversample_factor,
-                   flox::replay::AggregatorEventFilter event_filter,
+                   lrvx::replay::AggregatorEventFilter event_filter,
                    std::vector<uint32_t> symbol_filter)
       : _impl(std::move(window_ns_list), top_n, oversample_factor, event_filter,
               std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
   // Result shape: dict[window_ns -> list[tuple(count, start_ns)]].
   // Matches the tracker spec — bindings convert away from the flat
@@ -218,7 +218,7 @@ class PyPeakAggregator : public IPyAggregator
   }
 
  private:
-  flox::replay::PeakAggregator _impl;
+  lrvx::replay::PeakAggregator _impl;
 };
 
 class PyQuantileAggregator : public IPyAggregator
@@ -226,14 +226,14 @@ class PyQuantileAggregator : public IPyAggregator
  public:
   PyQuantileAggregator(std::vector<int64_t> window_ns_list,
                        std::vector<double> quantiles,
-                       flox::replay::AggregatorEventFilter event_filter,
+                       lrvx::replay::AggregatorEventFilter event_filter,
                        std::vector<uint32_t> symbol_filter)
       : _impl(std::move(window_ns_list), std::move(quantiles), event_filter,
               std::move(symbol_filter))
   {
   }
 
-  flox::replay::IAggregator* native() override { return &_impl; }
+  lrvx::replay::IAggregator* native() override { return &_impl; }
 
   // Result shape: dict[window_ns -> dict[quantile -> count]] —
   // matches tracker spec.
@@ -253,16 +253,16 @@ class PyQuantileAggregator : public IPyAggregator
   }
 
  private:
-  flox::replay::QuantileAggregator _impl;
+  lrvx::replay::QuantileAggregator _impl;
 };
 
 // Helper used by PyDataReader::run / PyMergedTapeReader::run to
 // convert a Python list of aggregator wrappers into a flat
 // std::vector<IAggregator*>. Returns empty vector when the list is
 // empty so callers can short-circuit on the no-op path.
-inline std::vector<flox::replay::IAggregator*> collectAggregators(py::list py_aggregators)
+inline std::vector<lrvx::replay::IAggregator*> collectAggregators(py::list py_aggregators)
 {
-  std::vector<flox::replay::IAggregator*> out;
+  std::vector<lrvx::replay::IAggregator*> out;
   out.reserve(py::len(py_aggregators));
   for (auto item : py_aggregators)
   {
@@ -278,24 +278,24 @@ inline void bindTapeAggregators(py::module_& m)
   // aggregators. Registered once per module init; the structured arrays
   // returned by .result() use these dtypes so consumers can do
   // `arr["count"]` / `arr["symbol_id"]` directly.
-  PYBIND11_NUMPY_DTYPE(flox::replay::EventTypeStatsAggregator::PerSymbolRow,
+  PYBIND11_NUMPY_DTYPE(lrvx::replay::EventTypeStatsAggregator::PerSymbolRow,
                        symbol_id, trades, book_snapshots, book_deltas);
-  PYBIND11_NUMPY_DTYPE(flox::replay::BinCountAggregator::Row, bucket_ts_ns,
+  PYBIND11_NUMPY_DTYPE(lrvx::replay::BinCountAggregator::Row, bucket_ts_ns,
                        symbol_id, side, count);
-  PYBIND11_NUMPY_DTYPE(flox::replay::VolumeBinAggregator::Row, bucket_ts_ns,
+  PYBIND11_NUMPY_DTYPE(lrvx::replay::VolumeBinAggregator::Row, bucket_ts_ns,
                        symbol_id, side, qty_raw);
-  PYBIND11_NUMPY_DTYPE(flox::replay::OHLCBinAggregator::Row, bucket_ts_ns,
+  PYBIND11_NUMPY_DTYPE(lrvx::replay::OHLCBinAggregator::Row, bucket_ts_ns,
                        symbol_id, open_raw, high_raw, low_raw, close_raw);
-  PYBIND11_NUMPY_DTYPE(flox::replay::BookSnapshotBinAggregator::Row, bucket_ts_ns,
+  PYBIND11_NUMPY_DTYPE(lrvx::replay::BookSnapshotBinAggregator::Row, bucket_ts_ns,
                        symbol_id, level, flags, bid_price_raw, bid_qty_raw,
                        ask_price_raw, ask_qty_raw);
 
-  py::enum_<flox::replay::AggregatorEventFilter>(m, "AggregatorEventFilter",
+  py::enum_<lrvx::replay::AggregatorEventFilter>(m, "AggregatorEventFilter",
                                                  "Which event kinds an aggregator counts. Trades = TradeRecord only, "
                                                  "BooksOnly = BookSnapshot + BookDelta only, Both = every event.")
-      .value("Trades", flox::replay::AggregatorEventFilter::Trades)
-      .value("BooksOnly", flox::replay::AggregatorEventFilter::BooksOnly)
-      .value("Both", flox::replay::AggregatorEventFilter::Both);
+      .value("Trades", lrvx::replay::AggregatorEventFilter::Trades)
+      .value("BooksOnly", lrvx::replay::AggregatorEventFilter::BooksOnly)
+      .value("Both", lrvx::replay::AggregatorEventFilter::Both);
 
   // Internal base. Not directly constructible from Python — only
   // surfaced so isinstance() checks work and so the bound concrete
@@ -306,8 +306,8 @@ inline void bindTapeAggregators(py::module_& m)
                                                         "Per-symbol counters split by event kind (trade / book_snapshot / "
                                                         "book_delta). Cheapest of the native aggregators; useful as the "
                                                         "'what's in this tape' overview.")
-      .def(py::init<flox::replay::AggregatorEventFilter, std::vector<uint32_t>>(),
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Both,
+      .def(py::init<lrvx::replay::AggregatorEventFilter, std::vector<uint32_t>>(),
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::Both,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyEventTypeStatsAggregator::result,
            "Structured numpy array with fields "
@@ -320,12 +320,12 @@ inline void bindTapeAggregators(py::module_& m)
                                                   "(floor(exchange_ts_ns / bucket_ns) * bucket_ns) and increments the "
                                                   "(bucket, optional symbol, optional side) cell. Result is a flat "
                                                   "structured numpy array of (bucket, symbol_id, side, count) rows.")
-      .def(py::init<int64_t, bool, bool, flox::replay::AggregatorEventFilter,
+      .def(py::init<int64_t, bool, bool, lrvx::replay::AggregatorEventFilter,
                     std::vector<uint32_t>>(),
            py::arg("bucket_ns"),
            py::arg("by_side") = false,
            py::arg("by_symbol") = false,
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Both,
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::Both,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyBinCountAggregator::result,
            "Structured numpy: (bucket_ts_ns i8, symbol_id u4, side u1, "
@@ -336,12 +336,12 @@ inline void bindTapeAggregators(py::module_& m)
                                                    "Time-bucketed trade quantity sum. Same bucketing structure as "
                                                    "BinCountAggregator but sums trade.qty_raw per cell instead of "
                                                    "counting. Books are ignored (no scalar qty per book event).")
-      .def(py::init<int64_t, bool, bool, flox::replay::AggregatorEventFilter,
+      .def(py::init<int64_t, bool, bool, lrvx::replay::AggregatorEventFilter,
                     std::vector<uint32_t>>(),
            py::arg("bucket_ns"),
            py::arg("by_side") = false,
            py::arg("by_symbol") = false,
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Trades,
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::Trades,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyVolumeBinAggregator::result,
            "Structured numpy: (bucket_ts_ns i8, symbol_id u4, side u1, "
@@ -354,11 +354,11 @@ inline void bindTapeAggregators(py::module_& m)
                                                  "low (min) of trade.price_raw. Empty buckets produce no row; "
                                                  "forward-fill on the caller side if a dense series is needed. "
                                                  "Books are ignored.")
-      .def(py::init<int64_t, bool, flox::replay::AggregatorEventFilter,
+      .def(py::init<int64_t, bool, lrvx::replay::AggregatorEventFilter,
                     std::vector<uint32_t>>(),
            py::arg("bucket_ns"),
            py::arg("by_symbol") = false,
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Trades,
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::Trades,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyOHLCBinAggregator::result,
            "Structured numpy: (bucket_ts_ns i8, symbol_id u4, "
@@ -376,11 +376,11 @@ inline void bindTapeAggregators(py::module_& m)
                                                          "Book reconstruction is order-dependent across the whole tape, so "
                                                          "this aggregator REQUIRES DataReader.run(..., n_threads=1) — "
                                                          "parallel runs raise.")
-      .def(py::init<int64_t, uint16_t, flox::replay::AggregatorEventFilter,
+      .def(py::init<int64_t, uint16_t, lrvx::replay::AggregatorEventFilter,
                     std::vector<uint32_t>>(),
            py::arg("bucket_ns"),
            py::arg("levels") = uint16_t{20},
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::BooksOnly,
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::BooksOnly,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyBookSnapshotBinAggregator::result,
            "Structured numpy: (bucket_ts_ns i8, symbol_id u4, level u2, "
@@ -397,12 +397,12 @@ inline void bindTapeAggregators(py::module_& m)
                                               "that pack the most events into a window of that width. Peaks within "
                                               "3*window_ns of a stronger one are deduped at finalize().")
       .def(py::init<std::vector<int64_t>, std::size_t, std::size_t,
-                    flox::replay::AggregatorEventFilter,
+                    lrvx::replay::AggregatorEventFilter,
                     std::vector<uint32_t>>(),
            py::arg("window_ns_list"),
            py::arg("top_n") = std::size_t{10},
            py::arg("oversample_factor") = std::size_t{100},
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Trades,
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::Trades,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyPeakAggregator::result,
            "dict[window_ns -> list[(count, start_ns)]] — peaks per scale, "
@@ -415,14 +415,14 @@ inline void bindTapeAggregators(py::module_& m)
                                                   "resolves each requested quantile to the count threshold below which "
                                                   "that fraction of observations lies.")
       .def(py::init<std::vector<int64_t>, std::vector<double>,
-                    flox::replay::AggregatorEventFilter,
+                    lrvx::replay::AggregatorEventFilter,
                     std::vector<uint32_t>>(),
            py::arg("window_ns_list"),
            py::arg("quantiles"),
-           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Trades,
+           py::arg("event_filter") = lrvx::replay::AggregatorEventFilter::Trades,
            py::arg("symbol_filter") = std::vector<uint32_t>{})
       .def("result", &PyQuantileAggregator::result,
            "dict[window_ns -> dict[quantile -> count]].");
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

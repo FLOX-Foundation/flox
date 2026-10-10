@@ -36,7 +36,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -77,7 +77,7 @@ const SYMBOL = 1;
 const BUY = 0;
 
 function placedEstimator(tsNs) {
-  const est = new flox.LiveQueuePositionEstimator();
+  const est = new lrvx.LiveQueuePositionEstimator();
   est.onOrderPlaced(SYMBOL, BUY, 100.0, ORDER_ID, 5.0, 50.0, tsNs);
   return est;
 }
@@ -189,13 +189,13 @@ const ETH = 2;
 
 console.log('\n=== MultiFeedClock.tick takes a BigInt ts ===');
 {
-  const clock = new flox.MultiFeedClock({ symbols: [BTC, ETH], policy: 'FireOnAny' });
+  const clock = new lrvx.MultiFeedClock({ symbols: [BTC, ETH], policy: 'FireOnAny' });
   accepts('MultiFeedClock.tick', () => clock.tick(NS, BTC));
 }
 
 console.log('\n=== The clock gives a reading past 2^53 back unchanged ===');
 {
-  const clock = new flox.MultiFeedClock({ symbols: [BTC, ETH], policy: 'FireOnAny' });
+  const clock = new lrvx.MultiFeedClock({ symbols: [BTC, ETH], policy: 'FireOnAny' });
   let snap;
   try {
     snap = clock.tick(NS, BTC);
@@ -213,7 +213,7 @@ console.log('\n=== The clock gives a reading past 2^53 back unchanged ===');
 
 console.log('\n=== Staleness stays an exact difference of two exact readings ===');
 {
-  const clock = new flox.MultiFeedClock({ symbols: [BTC, ETH], policy: 'WaitForAll' });
+  const clock = new lrvx.MultiFeedClock({ symbols: [BTC, ETH], policy: 'WaitForAll' });
   let snap;
   try {
     clock.tick(NS, BTC);
@@ -234,7 +234,7 @@ console.log('\n=== Staleness stays an exact difference of two exact readings ===
 
 console.log('\n=== A Number ts still ticks the clock ===');
 {
-  const clock = new flox.MultiFeedClock({ symbols: [BTC, ETH], policy: 'FireOnAny' });
+  const clock = new lrvx.MultiFeedClock({ symbols: [BTC, ETH], policy: 'FireOnAny' });
   const snap = clock.tick(Number(SECOND_NS), BTC);
   check(snap.fired === true, 'a Number ts still fires FireOnAny');
   check(exact(snap.lastTsNs[BTC]) === SECOND_NS,
@@ -269,9 +269,9 @@ function isOneOfTheBarEnds(v) {
 
 console.log('\n=== An order reaching an execution listener carries BigInt readings ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   const orders = [];
   runner.addExecutionListener({
     onSubmitted(o) { orders.push(['onSubmitted', o]); },
@@ -309,9 +309,9 @@ console.log('\n=== An order reaching a binding-supplied executor carries the sam
   // Executor.submit goes through the same orderToJs. The live runner
   // does not stamp created_at_ns, so only the type is pinned here; the
   // value is pinned on the listener path above.
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   const submitted = [];
   runner.setExecutor({
     submit(order) { submitted.push(order); },
@@ -350,9 +350,9 @@ const BUY_NS = NS;
 const SELL_NS = NS + 1n;
 
 function recordedTrades() {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   const trades = [];
   runner.setMarketDataRecorder({
     onStart() {}, onStop() {},

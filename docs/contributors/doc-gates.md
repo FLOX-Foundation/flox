@@ -33,9 +33,9 @@ against the real binding surface:
 
 | Language | Reference forms | Surface of truth |
 |---|---|---|
-| Python | package attribute access, `from` imports, bare `Name(...)` calls nothing binds, attribute access on a variable whose class the snippet reveals | `python/flox_py/_flox_py/__init__.pyi`, `python/flox_py/__init__.pyi`, `python/flox_py/*.py` |
+| Python | package attribute access, `from` imports, bare `Name(...)` calls nothing binds, attribute access on a variable whose class the snippet reveals | `python/lrvx/_lrvx/__init__.pyi`, `python/lrvx/__init__.pyi`, `python/lrvx/*.py` |
 | Node | package attribute access, `new` expressions, destructured package imports, in `js` / `javascript` / `ts` blocks | `node/index.d.ts` |
-| Codon | `from flox.<module> import X` in Codon blocks | `codon/flox/<module>.codon` |
+| Codon | `from lrvx.<module> import X` in Codon blocks | `codon/lrvx/<module>.codon` |
 
 Blocks are classified by fence language, by the enclosing `=== "..."` tab
 label, and by page path — a Codon snippet tagged `python` inside a Codon tab
@@ -119,10 +119,10 @@ like a path: it contains `.md`, contains `/`, or starts with `#`.
 
 | Rule | Fails on | Why |
 |---|---|---|
-| `PY_IMPORT` | a bare import of `flox` as a Python module | the installed distribution is `flox_py`; the bare name is an ImportError |
-| `NODE_PKG` | importing the npm package as `flox` or `flox-node` | the published package is `@flox-foundation/flox` |
+| `PY_IMPORT` | the FLOX-era Python names: `flox-py`, `flox_py`, `import lrvx as lrvx`, `import lrvx as flox` | the distribution and the module are both `lrvx`, imported as plain `import lrvx` |
+| `NODE_PKG` | the FLOX-era npm package `@flox-foundation/flox` | the published package is `lrvx`: `require('@lrvx/lrvx')` |
 | `QUICKJS_REQ` | a module-loader call on a `docs/reference/quickjs/**` page | the embedded runtime injects classes as globals; prose stating that absence is allowed |
-| `CMAKE_FLAG` | `FLOX_ENABLE_*` inside a runnable shell block | renamed to `FLOX_BUILD_*`; the alias warns and will be removed. The alias table in `build/feature-flags.md` is prose, so it is not flagged |
+| `CMAKE_FLAG` | a FLOX-era option name (`FLOX_BUILD_*`, `FLOX_ENABLE_*`, `FLOX_NATIVE`, ...) inside a runnable shell block | the options are `LRVX_*`; CMake does not recognise the old names and builds without them. The mapping table in `how-to/migrate-from-flox.md` is prose, so it is not flagged |
 | `EMOJI` | any emoji | the project forbids them. `✓` and `✗` are table markers, not emoji |
 
 Exemptions live in `_EXEMPTIONS` in the script, keyed by `(page, rule)`,

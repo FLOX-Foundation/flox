@@ -1,15 +1,15 @@
 # Signals
 
 ```cpp
-#include "flox/strategy/signal.h"
-#include "flox/strategy/abstract_signal_handler.h"
+#include "lrvx/strategy/signal.h"
+#include "lrvx/strategy/abstract_signal_handler.h"
 ```
 
 A `Signal` is the intent to act on an order — submit, cancel, modify, or provide liquidity — without
 naming an executor. Strategies emit signals; a handler turns them into orders.
 
 !!! note "There is no `SignalStrategy` class"
-    Signal emission is built into [`flox::Strategy`](strategy.md), which owns the `emit*` helpers and
+    Signal emission is built into [`lrvx::Strategy`](strategy.md), which owns the `emit*` helpers and
     implements `IStrategy::setSignalHandler`. Derive from `Strategy`, not from a separate signal base
     class.
 
@@ -147,10 +147,10 @@ executor (or a caller-supplied one set via `setExecutor`).
 it for you:
 
 ```cpp
-#include "flox/backtest/backtest_runner.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/strategy/strategy.h"
 
-using namespace flox;
+using namespace lrvx;
 
 class MyStrategy : public Strategy
 {

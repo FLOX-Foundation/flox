@@ -1,17 +1,17 @@
 #include "js_executor.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
-namespace flox
+namespace lrvx
 {
 
-const std::vector<uint32_t> FloxJsExecutor::kEmptySymbolIds;
+const std::vector<uint32_t> LrvxJsExecutor::kEmptySymbolIds;
 
-FloxJsExecutor::FloxJsExecutor(const std::string& scriptPath, SymbolRegistry& registry,
+LrvxJsExecutor::LrvxJsExecutor(const std::string& scriptPath, SymbolRegistry& registry,
                                size_t queueCapacity)
     : _scriptPath(scriptPath), _registry(registry), _capacity(queueCapacity)
 {
   _thread = makeThread(
-      "flox.quickjs", [this]
+      "lrvx.quickjs", [this]
       { run(); }, [this]
       { releaseWaiters(); });
 
@@ -29,7 +29,7 @@ FloxJsExecutor::FloxJsExecutor(const std::string& scriptPath, SymbolRegistry& re
   }
 }
 
-FloxJsExecutor::~FloxJsExecutor()
+LrvxJsExecutor::~LrvxJsExecutor()
 {
   {
     std::lock_guard<std::mutex> lock(_queueMu);
@@ -43,7 +43,7 @@ FloxJsExecutor::~FloxJsExecutor()
   }
 }
 
-void FloxJsExecutor::releaseWaiters() noexcept
+void LrvxJsExecutor::releaseWaiters() noexcept
 {
   std::deque<Event> pending;
   {
@@ -61,7 +61,7 @@ void FloxJsExecutor::releaseWaiters() noexcept
   // hold the promise themselves, so it stays alive and unsatisfied. Break it
   // explicitly, and they wake with an error instead of never waking.
   const auto err = std::make_exception_ptr(
-      std::runtime_error("flox: the QuickJS executor thread died; request abandoned"));
+      std::runtime_error("lrvx: the QuickJS executor thread died; request abandoned"));
   for (auto& ev : pending)
   {
     if (ev.barrier)
@@ -75,7 +75,7 @@ void FloxJsExecutor::releaseWaiters() noexcept
   }
 }
 
-void FloxJsExecutor::push(Event&& ev)
+void LrvxJsExecutor::push(Event&& ev)
 {
   std::unique_lock<std::mutex> lock(_queueMu);
   // Bounded queue, backpressure on overflow. This fix must never trade
@@ -93,13 +93,13 @@ void FloxJsExecutor::push(Event&& ev)
   _notEmpty.notify_one();
 }
 
-void FloxJsExecutor::run()
+void LrvxJsExecutor::run()
 {
   try
   {
-    _strategy = std::make_unique<FloxJsStrategy>(_scriptPath, _registry);
-    // The strategy (and its FloxJsEngine) were constructed on this thread,
-    // so FloxJsEngine's default owner-thread binding is already correct.
+    _strategy = std::make_unique<LrvxJsStrategy>(_scriptPath, _registry);
+    // The strategy (and its LrvxJsEngine) were constructed on this thread,
+    // so LrvxJsEngine's default owner-thread binding is already correct.
     // rebindOwnerThread() is only needed for embeddings that move
     // construction across threads; call it anyway to make the invariant
     // explicit rather than relying on constructor-thread coincidence.
@@ -142,15 +142,15 @@ void FloxJsExecutor::run()
     dispatchOne(ev, cb);
   }
 
-  // FloxJsStrategy's destructor touches the runtime (it evaluates a
+  // LrvxJsStrategy's destructor touches the runtime (it evaluates a
   // cleanup script to drop JS-held references before teardown). It must
   // run here, on the thread that owns the engine -- not later, whenever
-  // FloxJsExecutor's own destructor happens to run on the caller's
+  // LrvxJsExecutor's own destructor happens to run on the caller's
   // thread. std::unique_ptr's implicit destruction would get that wrong.
   _strategy.reset();
 }
 
-void FloxJsExecutor::dispatchOne(Event& ev, const FloxStrategyCallbacks& cb)
+void LrvxJsExecutor::dispatchOne(Event& ev, const LrvxStrategyCallbacks& cb)
 {
   switch (ev.kind)
   {
@@ -232,28 +232,28 @@ void FloxJsExecutor::dispatchOne(Event& ev, const FloxStrategyCallbacks& cb)
   }
 }
 
-FloxStrategyCallbacks FloxJsExecutor::getCallbacks()
+LrvxStrategyCallbacks LrvxJsExecutor::getCallbacks()
 {
-  FloxStrategyCallbacks cb{};
-  cb.on_trade = &FloxJsExecutor::onTrade;
-  cb.on_book = &FloxJsExecutor::onBook;
-  cb.on_bar = &FloxJsExecutor::onBar;
-  cb.on_start = &FloxJsExecutor::onStart;
-  cb.on_stop = &FloxJsExecutor::onStop;
-  cb.on_fill = &FloxJsExecutor::onFill;
-  cb.on_order_update = &FloxJsExecutor::onOrderUpdate;
-  cb.on_queue_position_change = &FloxJsExecutor::onQueuePositionChange;
-  cb.on_market_position_change = &FloxJsExecutor::onMarketPositionChange;
+  LrvxStrategyCallbacks cb{};
+  cb.on_trade = &LrvxJsExecutor::onTrade;
+  cb.on_book = &LrvxJsExecutor::onBook;
+  cb.on_bar = &LrvxJsExecutor::onBar;
+  cb.on_start = &LrvxJsExecutor::onStart;
+  cb.on_stop = &LrvxJsExecutor::onStop;
+  cb.on_fill = &LrvxJsExecutor::onFill;
+  cb.on_order_update = &LrvxJsExecutor::onOrderUpdate;
+  cb.on_queue_position_change = &LrvxJsExecutor::onQueuePositionChange;
+  cb.on_market_position_change = &LrvxJsExecutor::onMarketPositionChange;
   cb.user_data = this;
   return cb;
 }
 
-const std::vector<uint32_t>& FloxJsExecutor::symbolIds() const
+const std::vector<uint32_t>& LrvxJsExecutor::symbolIds() const
 {
   return _strategy ? _strategy->symbolIds() : kEmptySymbolIds;
 }
 
-void FloxJsExecutor::injectHandle(FloxStrategyHandle handle)
+void LrvxJsExecutor::injectHandle(LrvxStrategyHandle handle)
 {
   Event ev;
   ev.kind = Kind::InjectHandle;
@@ -262,7 +262,7 @@ void FloxJsExecutor::injectHandle(FloxStrategyHandle handle)
   waitIdle();
 }
 
-void FloxJsExecutor::waitIdle()
+void LrvxJsExecutor::waitIdle()
 {
   auto prom = std::make_shared<std::promise<void>>();
   auto fut = prom->get_future();
@@ -273,13 +273,13 @@ void FloxJsExecutor::waitIdle()
   fut.wait();
 }
 
-size_t FloxJsExecutor::queueDepthApprox() const
+size_t LrvxJsExecutor::queueDepthApprox() const
 {
   std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(_queueMu));
   return _queue.size();
 }
 
-int32_t FloxJsExecutor::getGlobalInt32(const std::string& name)
+int32_t LrvxJsExecutor::getGlobalInt32(const std::string& name)
 {
   auto prom = std::make_shared<std::promise<int32_t>>();
   auto fut = prom->get_future();
@@ -291,9 +291,9 @@ int32_t FloxJsExecutor::getGlobalInt32(const std::string& name)
   return fut.get();
 }
 
-void FloxJsExecutor::onTrade(void* ud, const FloxSymbolContext* ctx, const FloxTradeData* trade)
+void LrvxJsExecutor::onTrade(void* ud, const LrvxSymbolContext* ctx, const LrvxTradeData* trade)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   Event ev;
   ev.kind = Kind::Trade;
   ev.ctx = *ctx;
@@ -301,9 +301,9 @@ void FloxJsExecutor::onTrade(void* ud, const FloxSymbolContext* ctx, const FloxT
   self->push(std::move(ev));
 }
 
-void FloxJsExecutor::onBook(void* ud, const FloxSymbolContext* ctx, const FloxBookData* book)
+void LrvxJsExecutor::onBook(void* ud, const LrvxSymbolContext* ctx, const LrvxBookData* book)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   Event ev;
   ev.kind = Kind::Book;
   ev.ctx = *ctx;
@@ -311,9 +311,9 @@ void FloxJsExecutor::onBook(void* ud, const FloxSymbolContext* ctx, const FloxBo
   self->push(std::move(ev));
 }
 
-void FloxJsExecutor::onBar(void* ud, const FloxSymbolContext* ctx, const FloxBarData* bar)
+void LrvxJsExecutor::onBar(void* ud, const LrvxSymbolContext* ctx, const LrvxBarData* bar)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   Event ev;
   ev.kind = Kind::Bar;
   ev.ctx = *ctx;
@@ -321,8 +321,8 @@ void FloxJsExecutor::onBar(void* ud, const FloxSymbolContext* ctx, const FloxBar
   self->push(std::move(ev));
 }
 
-FloxJsExecutor::Event FloxJsExecutor::makeOrderEvent(const FloxSymbolContext* ctx,
-                                                     const FloxOrderEventData* data)
+LrvxJsExecutor::Event LrvxJsExecutor::makeOrderEvent(const LrvxSymbolContext* ctx,
+                                                     const LrvxOrderEventData* data)
 {
   Event ev;
   ev.ctx = *ctx;
@@ -334,65 +334,65 @@ FloxJsExecutor::Event FloxJsExecutor::makeOrderEvent(const FloxSymbolContext* ct
   return ev;
 }
 
-void FloxJsExecutor::onFill(void* ud, const FloxSymbolContext* ctx, const FloxOrderEventData* ev)
+void LrvxJsExecutor::onFill(void* ud, const LrvxSymbolContext* ctx, const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   auto e = makeOrderEvent(ctx, ev);
   e.kind = Kind::Fill;
   self->push(std::move(e));
 }
 
-void FloxJsExecutor::onOrderUpdate(void* ud, const FloxSymbolContext* ctx,
-                                   const FloxOrderEventData* ev)
+void LrvxJsExecutor::onOrderUpdate(void* ud, const LrvxSymbolContext* ctx,
+                                   const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   auto e = makeOrderEvent(ctx, ev);
   e.kind = Kind::OrderUpdate;
   self->push(std::move(e));
 }
 
-void FloxJsExecutor::onQueuePositionChange(void* ud, const FloxSymbolContext* ctx,
-                                           const FloxOrderEventData* ev)
+void LrvxJsExecutor::onQueuePositionChange(void* ud, const LrvxSymbolContext* ctx,
+                                           const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   auto e = makeOrderEvent(ctx, ev);
   e.kind = Kind::QueuePositionChange;
   self->push(std::move(e));
 }
 
-void FloxJsExecutor::onMarketPositionChange(void* ud, const FloxSymbolContext* ctx,
-                                            const FloxOrderEventData* ev)
+void LrvxJsExecutor::onMarketPositionChange(void* ud, const LrvxSymbolContext* ctx,
+                                            const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   auto e = makeOrderEvent(ctx, ev);
   e.kind = Kind::MarketPositionChange;
   self->push(std::move(e));
 }
 
-void FloxJsExecutor::onStart(void* ud)
+void LrvxJsExecutor::onStart(void* ud)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   Event ev;
   ev.kind = Kind::Start;
   self->push(std::move(ev));
   // start() is setup-time, not a hot-path market-data callback; wait so
   // callers that assume "started" means "onStart already ran" (the
-  // contract a bare FloxJsStrategy has always had) keep seeing that.
+  // contract a bare LrvxJsStrategy has always had) keep seeing that.
   self->waitIdle();
 }
 
-void FloxJsExecutor::onStop(void* ud)
+void LrvxJsExecutor::onStop(void* ud)
 {
-  auto* self = static_cast<FloxJsExecutor*>(ud);
+  auto* self = static_cast<LrvxJsExecutor*>(ud);
   Event ev;
   ev.kind = Kind::Stop;
   self->push(std::move(ev));
   // BridgeStrategy::stop() (and process exit right after it, in
-  // flox_js_runner) does not wait for the callback to actually run. Drain
+  // lrvx_js_runner) does not wait for the callback to actually run. Drain
   // here so onStop -- and anything still ahead of it in the queue -- has
   // completed by the time stop() returns, matching the single-threaded
-  // FloxJsStrategy contract callers already depend on.
+  // LrvxJsStrategy contract callers already depend on.
   self->waitIdle();
 }
 
-}  // namespace flox
+}  // namespace lrvx

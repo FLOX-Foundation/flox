@@ -1,7 +1,7 @@
 """Binance public aggTrades archive round-trip — build a tiny
 synthetic zip in the exact layout published on data.binance.vision,
-push it through ``flox_py.archives.binance.aggtrades_to_floxlog``,
-then read the resulting ``.floxlog`` tape back via ``DataReader`` and
+push it through ``lrvx.archives.binance.aggtrades_to_lrvx``,
+then read the resulting ``.lrvx`` tape back via ``DataReader`` and
 print a summary.
 
 This example is the CI-runnable companion to
@@ -10,7 +10,7 @@ It does not need network — the synthetic zip is built in-memory so
 the test runs anywhere.
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_binance_archive.py
 """
 from __future__ import annotations
@@ -21,8 +21,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-import flox_py
-from flox_py.archives import binance
+import lrvx
+from lrvx.archives import binance
 
 
 _ROWS = [
@@ -43,13 +43,13 @@ def _build_synthetic_zip(dest: Path) -> Path:
 
 
 def main() -> None:
-    workdir = Path(tempfile.mkdtemp(prefix="flox-binance-example-"))
+    workdir = Path(tempfile.mkdtemp(prefix="lrvx-binance-example-"))
     try:
         zip_path = workdir / "BTCUSDT-aggTrades-2024-01-15.zip"
         _build_synthetic_zip(zip_path)
 
         tape_dir = workdir / "tape"
-        stats = binance.aggtrades_to_floxlog(
+        stats = binance.aggtrades_to_lrvx(
             zip_path,
             tape_dir,
             symbol_id=1,
@@ -57,7 +57,7 @@ def main() -> None:
             market="um-futures",
         )
 
-        trades = flox_py.DataReader(str(tape_dir)).read_trades()
+        trades = lrvx.DataReader(str(tape_dir)).read_trades()
         print(
             f"converted: rows_read={stats.rows_read} "
             f"trades_written={stats.trades_written} "

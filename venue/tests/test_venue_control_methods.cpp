@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,9 +16,9 @@
 // read does not. Anything less and the deployment copies TcpControlServer to
 // put two verbs of its own next to the built-in ones.
 
-#include "flox-venue/control_api.h"
-#include "flox-venue/control_plane.h"
-#include "flox-venue/control_server.h"
+#include "lrvx-venue/control_api.h"
+#include "lrvx-venue/control_plane.h"
+#include "lrvx-venue/control_server.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -33,8 +33,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

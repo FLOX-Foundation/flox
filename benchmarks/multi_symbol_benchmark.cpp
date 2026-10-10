@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/engine/symbol_registry.h"
-#include "flox/strategy/strategy.h"
-#include "flox/strategy/symbol_state_map.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/strategy/strategy.h"
+#include "lrvx/strategy/symbol_state_map.h"
 
 #include <benchmark/benchmark.h>
 #include <random>
 #include <unordered_map>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

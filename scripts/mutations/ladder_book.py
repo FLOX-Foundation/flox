@@ -48,13 +48,13 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-BOOK = "include/flox/book/ladder_book.h"
-VALIDATE = "venue/include/flox-venue/engine/validate.inl"
-ORDERS = "venue/include/flox-venue/engine/orders.inl"
-PEGS = "venue/include/flox-venue/engine/expiry_pegs.inl"
-LASTLOOK = "venue/include/flox-venue/engine/last_look.h"
-RESTORE = "venue/include/flox-venue/engine/checkpoint_restore.inl"
-METRICS = "venue/include/flox-venue/metrics.h"
+BOOK = "include/lrvx/book/ladder_book.h"
+VALIDATE = "venue/include/lrvx-venue/engine/validate.inl"
+ORDERS = "venue/include/lrvx-venue/engine/orders.inl"
+PEGS = "venue/include/lrvx-venue/engine/expiry_pegs.inl"
+LASTLOOK = "venue/include/lrvx-venue/engine/last_look.h"
+RESTORE = "venue/include/lrvx-venue/engine/checkpoint_restore.inl"
+METRICS = "venue/include/lrvx-venue/metrics.h"
 
 CONTRACT = "test_venue_ladder_book_contract"
 INDEX = "test_venue_ladder_book_index"

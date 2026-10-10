@@ -35,8 +35,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import flox_py as flox
-from flox_py import tape
+import lrvx
+from lrvx import tape
 
 NS = 1_000_000_000
 
@@ -54,11 +54,11 @@ TRIGGER = 100.5
 def _record_tape(work: Path) -> Path:
     out = work / "tape"
     out.mkdir()
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = int(registry.add_symbol("sim", "BTCUSDT", tick_size=0.01))
 
     recorder = tape.make_recorder_hook(out)
-    runner = flox.Runner(registry, on_signal=lambda _: None)
+    runner = lrvx.Runner(registry, on_signal=lambda _: None)
     runner.set_market_data_recorder(recorder)
     runner.start()
     ts = 0
@@ -72,7 +72,7 @@ def _record_tape(work: Path) -> Path:
     return out
 
 
-class _Watcher(flox.Strategy):
+class _Watcher(lrvx.Strategy):
     """Rests one sell at REST_PRICE and records what it is told about it."""
 
     def __init__(self, symbols, kind: str):
@@ -97,9 +97,9 @@ class _Watcher(flox.Strategy):
 
 
 def _run(kind: str, tape_dir: Path) -> list[tuple[str, str, int]]:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("sim", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
     strat = _Watcher([sym], kind)
     runner.set_strategy(strat)
     runner.run_tape(str(tape_dir))
@@ -107,7 +107,7 @@ def _run(kind: str, tape_dir: Path) -> list[tuple[str, str, int]]:
 
 
 def _both() -> tuple[list, list]:
-    work = Path(tempfile.mkdtemp(prefix="flox-mp-tp-test-"))
+    work = Path(tempfile.mkdtemp(prefix="lrvx-mp-tp-test-"))
     try:
         tape_dir = _record_tape(work)
         return _run("limit", tape_dir), _run("take_profit_limit", tape_dir)

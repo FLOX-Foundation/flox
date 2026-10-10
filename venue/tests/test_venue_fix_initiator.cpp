@@ -1,12 +1,12 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * The FIX initiator (flox/connector/fix) against the venue's own acceptor
+ * The FIX initiator (lrvx/connector/fix) against the venue's own acceptor
  * (FixSessionHost + FixConnection behind a TcpGateway), both ends live in one
  * process. This is the test that matters for the pair: a client and a server
  * that each pass their own unit tests can still disagree about recovery, and a
@@ -31,15 +31,15 @@
  *    Refused, LogonRejected, Lost, HeartbeatMissed) each reproduced by its
  *    own scenario, distinct from loggedOn() and from each other.
  */
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/fix_session.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/session_registry.h"
-#include "flox-venue/tcp_gateway.h"
-#include "flox/connector/fix/fix_client_codec.h"
-#include "flox/connector/fix/fix_initiator.h"
-#include "flox/connector/fix/fix_tcp_client.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/fix_session.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/session_registry.h"
+#include "lrvx-venue/tcp_gateway.h"
+#include "lrvx/connector/fix/fix_client_codec.h"
+#include "lrvx/connector/fix/fix_initiator.h"
+#include "lrvx/connector/fix/fix_tcp_client.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -57,9 +57,9 @@
 #include <variant>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
@@ -183,7 +183,7 @@ struct Client
         [this](const std::string& m)
         {
           sent.push_back(m);
-          if (dropOutbound > 0 && flox::fix::parseFields(m)[35] == "D")
+          if (dropOutbound > 0 && lrvx::fix::parseFields(m)[35] == "D")
           {
             --dropOutbound;
             return true;  // the venue never sees it: exactly what a lost frame is
@@ -303,9 +303,9 @@ fix::NewOrderRequest order(uint64_t id, Side side, const char* price, const char
   o.side = side;
   o.type = OrderType::LIMIT;
   int64_t raw = 0;
-  CHECK(flox::decwire::parse(price, raw));
+  CHECK(lrvx::decwire::parse(price, raw));
   o.price = Price::fromRaw(raw);
-  CHECK(flox::decwire::parse(quantity, raw));
+  CHECK(lrvx::decwire::parse(quantity, raw));
   o.quantity = Quantity::fromRaw(raw);
   return o;
 }
@@ -342,11 +342,11 @@ void test_logon_order_report_logout()
     // The number that went out as 100.25 comes back as 100.25, not 100.250000
     // and not 100.24999999.
     std::string back;
-    flox::decwire::append(back, e->price.raw());
+    lrvx::decwire::append(back, e->price.raw());
     CHECK(back == "100.25");
     CHECK(e->price.raw() == px(100.25).raw());
     std::string leaves;
-    flox::decwire::append(leaves, e->leavesQty.raw());
+    lrvx::decwire::append(leaves, e->leavesQty.raw());
     CHECK(leaves == "5");
   }
 
@@ -518,7 +518,7 @@ void test_inbound_round_trip_from_venue_encoder()
       CHECK(e->price.raw() == px(100.25).raw());
       CHECK(e->leavesQty.raw() == qty(3).raw());
       std::string s;
-      flox::decwire::append(s, e->price.raw());
+      lrvx::decwire::append(s, e->price.raw());
       CHECK(s == "100.25");
     }
   }
@@ -688,7 +688,7 @@ void test_outbound_gap_served_with_possdup_replay()
       {
         for (const std::string& m : c.sent)
         {
-          if (flox::fix::parseFields(m)[35] == "0")
+          if (lrvx::fix::parseFields(m)[35] == "0")
           {
             return true;
           }
@@ -713,7 +713,7 @@ void test_outbound_gap_served_with_possdup_replay()
   bool sawGapFill = false;
   for (const std::string& m : c.sent)
   {
-    auto f = flox::fix::parseFields(m);
+    auto f = lrvx::fix::parseFields(m);
     if (f[35] == "D" && f[43] == "Y")
     {
       sawPossDupOrder = true;
@@ -776,7 +776,7 @@ void test_inbound_gap_requests_resend_and_applies_once()
   bool sawResendRequest = false;
   for (const std::string& m : c.sent)
   {
-    auto f = flox::fix::parseFields(m);
+    auto f = lrvx::fix::parseFields(m);
     if (f[35] == "2")
     {
       sawResendRequest = true;
@@ -840,7 +840,7 @@ void test_reconnect_continues_sequence_through_sidecar()
   bool sawReset = false;
   for (const std::string& m : c2.sent)
   {
-    auto f = flox::fix::parseFields(m);
+    auto f = lrvx::fix::parseFields(m);
     if (f[35] == "A" && f[141] == "Y")
     {
       sawReset = true;

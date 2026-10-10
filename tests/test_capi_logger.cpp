@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 // Tests for the C-API logger callback.
 //
-// `flox_set_log_callback(cb, ud)` redirects FLOX_LOG_INFO/WARN/ERROR to
+// `lrvx_set_log_callback(cb, ud)` redirects LRVX_LOG_INFO/WARN/ERROR to
 // the user-supplied function. NULL restores the default ConsoleLogger.
 
-#include "flox/capi/flox_capi.h"
-#include "flox/log/log.h"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/log/log.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -50,9 +50,9 @@ void capture_cb(void* ud, int32_t level, const char* msg)
 TEST(CapiLogger, CallbackReceivesInfoMessage)
 {
   State state;
-  flox_set_log_callback(capture_cb, &state);
+  lrvx_set_log_callback(capture_cb, &state);
 
-  FLOX_LOG_INFO("hello info");
+  LRVX_LOG_INFO("hello info");
 
   ASSERT_EQ(state.calls.load(), 1);
   std::lock_guard<std::mutex> lk(state.mu);
@@ -60,17 +60,17 @@ TEST(CapiLogger, CallbackReceivesInfoMessage)
   EXPECT_EQ(state.entries[0].level, 0);
   EXPECT_EQ(state.entries[0].msg, "hello info");
 
-  flox_set_log_callback(nullptr, nullptr);  // cleanup
+  lrvx_set_log_callback(nullptr, nullptr);  // cleanup
 }
 
 TEST(CapiLogger, LevelMapping)
 {
   State state;
-  flox_set_log_callback(capture_cb, &state);
+  lrvx_set_log_callback(capture_cb, &state);
 
-  FLOX_LOG_INFO("i");
-  FLOX_LOG_WARN("w");
-  FLOX_LOG_ERROR("e");
+  LRVX_LOG_INFO("i");
+  LRVX_LOG_WARN("w");
+  LRVX_LOG_ERROR("e");
 
   std::lock_guard<std::mutex> lk(state.mu);
   ASSERT_EQ(state.entries.size(), 3u);
@@ -81,20 +81,20 @@ TEST(CapiLogger, LevelMapping)
   EXPECT_EQ(state.entries[2].level, 2);
   EXPECT_EQ(state.entries[2].msg, "e");
 
-  flox_set_log_callback(nullptr, nullptr);
+  lrvx_set_log_callback(nullptr, nullptr);
 }
 
 TEST(CapiLogger, NullCallbackRestoresDefault)
 {
   State state;
-  flox_set_log_callback(capture_cb, &state);
-  FLOX_LOG_INFO("captured");
+  lrvx_set_log_callback(capture_cb, &state);
+  LRVX_LOG_INFO("captured");
   ASSERT_EQ(state.calls.load(), 1);
 
   // Detach. Subsequent logs go to the default ConsoleLogger and don't
   // touch the state.
-  flox_set_log_callback(nullptr, nullptr);
-  FLOX_LOG_INFO("not captured");
+  lrvx_set_log_callback(nullptr, nullptr);
+  LRVX_LOG_INFO("not captured");
 
   EXPECT_EQ(state.calls.load(), 1) << "callback was detached; should not fire";
 }
@@ -103,16 +103,16 @@ TEST(CapiLogger, ReplacingCallbackRoutesToNewTarget)
 {
   State a, b;
 
-  flox_set_log_callback(capture_cb, &a);
-  FLOX_LOG_INFO("to a");
+  lrvx_set_log_callback(capture_cb, &a);
+  LRVX_LOG_INFO("to a");
 
-  flox_set_log_callback(capture_cb, &b);
-  FLOX_LOG_INFO("to b");
+  lrvx_set_log_callback(capture_cb, &b);
+  LRVX_LOG_INFO("to b");
 
   EXPECT_EQ(a.calls.load(), 1);
   EXPECT_EQ(b.calls.load(), 1);
 
-  flox_set_log_callback(nullptr, nullptr);
+  lrvx_set_log_callback(nullptr, nullptr);
 }
 
 TEST(CapiLogger, MessageContentSurvivesStreamFormatting)
@@ -120,34 +120,34 @@ TEST(CapiLogger, MessageContentSurvivesStreamFormatting)
   // The macros build the message via std::ostringstream <<; verify the
   // composed text reaches the callback intact.
   State state;
-  flox_set_log_callback(capture_cb, &state);
+  lrvx_set_log_callback(capture_cb, &state);
 
   int n = 42;
   double pi = 3.14;
-  FLOX_LOG_WARN("n=" << n << " pi=" << pi);
+  LRVX_LOG_WARN("n=" << n << " pi=" << pi);
 
   std::lock_guard<std::mutex> lk(state.mu);
   ASSERT_EQ(state.entries.size(), 1u);
   EXPECT_NE(state.entries[0].msg.find("n=42"), std::string::npos);
   EXPECT_NE(state.entries[0].msg.find("pi=3.14"), std::string::npos);
 
-  flox_set_log_callback(nullptr, nullptr);
+  lrvx_set_log_callback(nullptr, nullptr);
 }
 
 TEST(CapiLogger, LoggingDisabledMacroSuppressesCallback)
 {
-  // FLOX_LOG_OFF / ON are part of the public log.h API; verify the
+  // LRVX_LOG_OFF / ON are part of the public log.h API; verify the
   // callback path respects them.
   State state;
-  flox_set_log_callback(capture_cb, &state);
+  lrvx_set_log_callback(capture_cb, &state);
 
-  FLOX_LOG_OFF();
-  FLOX_LOG_INFO("suppressed");
+  LRVX_LOG_OFF();
+  LRVX_LOG_INFO("suppressed");
   EXPECT_EQ(state.calls.load(), 0);
 
-  FLOX_LOG_ON();
-  FLOX_LOG_INFO("delivered");
+  LRVX_LOG_ON();
+  LRVX_LOG_INFO("delivered");
   EXPECT_EQ(state.calls.load(), 1);
 
-  flox_set_log_callback(nullptr, nullptr);
+  lrvx_set_log_callback(nullptr, nullptr);
 }

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -35,11 +35,11 @@
 #include <thread>
 #include <utility>
 
-#include "flox/util/eventing/event_bus.h"
-#include "flox/util/eventing/wake_set.h"
-#include "flox/util/performance/busy_backoff.h"
+#include "lrvx/util/eventing/event_bus.h"
+#include "lrvx/util/eventing/wake_set.h"
+#include "lrvx/util/performance/busy_backoff.h"
 
-namespace flox
+namespace lrvx
 {
 
 struct WakeTestEvent
@@ -64,12 +64,12 @@ struct EventDispatcher<WakeTestEvent>
   }
 };
 
-}  // namespace flox
+}  // namespace lrvx
 
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 using namespace std::chrono;
 
 using WakeBus = EventBus<WakeTestEvent, 1024, 4>;

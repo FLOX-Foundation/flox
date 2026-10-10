@@ -3,10 +3,10 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flox-mcp"
+name = "lrvx-mcp"
 version = "0.10.1"
-authors = [{name = "FLOX Foundation"}]
-description = "Model Context Protocol server for FLOX — gives AI agents grounded access to indicators, error codes, and the C API."
+authors = [{name = "lrvx contributors"}]
+description = "Model Context Protocol server for lrvx — gives AI agents grounded access to indicators, error codes, and the C API."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -22,26 +22,26 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.0,<3",
-    "flox-py>=0.5",
+    "lrvx>=0.5",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
 [project.scripts]
-flox-mcp = "flox_mcp.cli:main"
+lrvx-mcp = "lrvx_mcp.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/FLOX-Foundation/flox"
-Repository = "https://github.com/FLOX-Foundation/flox"
-Docs = "https://flox-foundation.github.io/flox/"
+Homepage = "https://github.com/lrvx/lrvx"
+Repository = "https://github.com/lrvx/lrvx"
+Docs = "https://docs.lrvx.dev/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["flox_mcp*"]
+include = ["lrvx_mcp*"]
 
 [tool.setuptools.package-data]
-flox_mcp = [
+lrvx_mcp = [
     "data/*.snapshot",
     "data/*.json",
     "data/*.sqlite",

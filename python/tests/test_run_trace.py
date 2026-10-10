@@ -1,4 +1,4 @@
-"""Round-trip and metadata tests for the .floxrun TraceRecorder/Reader bindings."""
+"""Round-trip and metadata tests for the .lrvxrun TraceRecorder/Reader bindings."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-import flox_py
-from flox_py._flox_py import (
+import lrvx
+from lrvx._lrvx import (
     FillLiquidity,
     OrderEventKind,
     TapeRef,
@@ -19,7 +19,7 @@ from flox_py._flox_py import (
 
 
 def _scratch(tag: str) -> Path:
-    p = Path(tempfile.gettempdir()) / f"flox_run_pytest_{tag}"
+    p = Path(tempfile.gettempdir()) / f"lrvx_run_pytest_{tag}"
     if p.exists():
         shutil.rmtree(p)
     return p
@@ -29,7 +29,7 @@ def test_round_trip_signal_order_fill() -> None:
     out = _scratch("roundtrip")
     refs = [
         TapeRef(
-            "BTCUSDT.floxlog",
+            "BTCUSDT.lrvx",
             "sha256:abc",
             1_700_000_000_000_000_000,
             1_700_000_000_500_000_000,
@@ -46,7 +46,7 @@ def test_round_trip_signal_order_fill() -> None:
         run_ts_ns=1_700_000_000_100_000_000,
         feed_ts_ns=1_700_000_000_099_000_000,
         signal_id=42,
-        flags=flox_py._flox_py.SIGNAL_FLAG_ENTER,
+        flags=lrvx._lrvx.SIGNAL_FLAG_ENTER,
         strength_raw=75_000_000,
         name="ratio-cross",
         symbol_ids=[1, 2],
@@ -63,7 +63,7 @@ def test_round_trip_signal_order_fill() -> None:
         event_kind=OrderEventKind.SUBMIT,
         side=0,
         order_type=1,
-        flags=flox_py._flox_py.ORDER_FLAG_POST_ONLY,
+        flags=lrvx._lrvx.ORDER_FLAG_POST_ONLY,
         reason="",
     )
     rec.write_fill(
@@ -84,7 +84,7 @@ def test_round_trip_signal_order_fill() -> None:
     reader = TraceReader(str(out))
     assert reader.strategy_id == "ratio-cross"
     assert reader.run_ended_ns == 1_700_000_000_400_000_000
-    assert reader.tape_refs[0]["path"] == "BTCUSDT.floxlog"
+    assert reader.tape_refs[0]["path"] == "BTCUSDT.lrvx"
 
     sigs = reader.read_all_signals()
     assert len(sigs) == 1
@@ -158,4 +158,4 @@ def test_order_count_in_chronological_order() -> None:
 
 def test_unknown_path_raises() -> None:
     with pytest.raises(Exception):
-        TraceReader("/tmp/does-not-exist-floxrun-aoeuhtns")
+        TraceReader("/tmp/does-not-exist-lrvxrun-aoeuhtns")

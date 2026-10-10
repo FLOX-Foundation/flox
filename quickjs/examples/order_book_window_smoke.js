@@ -1,4 +1,4 @@
-// Smoke test for flox.OrderBook: tick validation, sub-cent ticks, and the
+// Smoke test for lrvx.OrderBook: tick validation, sub-cent ticks, and the
 // tick window following a delta-only feed.
 
 let passed = 0;

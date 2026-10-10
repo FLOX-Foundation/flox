@@ -12,7 +12,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const flox = require('..');
+const lrvx = require('..');
 
 let _failed = 0;
 let _passed = 0;
@@ -32,7 +32,7 @@ function check(cond, msg)
 
 function mkTmp()
 {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'flox-order-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'lrvx-order-'));
 }
 
 const SEC = 1_000_000_000n;
@@ -41,7 +41,7 @@ const BASE = 1_700_000_000n * SEC;
 // 50 trades on symbol 1, one on symbol 2 stamped 40s back, then 50 more.
 function writeLaggingTape(outDir)
 {
-  const w = new flox.DataWriter(outDir, 4, 0);
+  const w = new lrvx.DataWriter(outDir, 4, 0);
   for (let i = 0; i < 50; ++i) {
     const ts = BASE + BigInt(i) * SEC;
     w.writeTrade(ts, ts, 100.0, 1.0, i, 1, 0);
@@ -62,9 +62,9 @@ function main()
     writeLaggingTape(dir);
 
     {
-      const r = new flox.DataReader(dir, undefined, undefined,
+      const r = new lrvx.DataReader(dir, undefined, undefined,
                                     {reorderWindowNs: 10n * SEC});
-      const agg = new flox.OHLCBinAggregator(60_000_000_000n, false);
+      const agg = new lrvx.OHLCBinAggregator(60_000_000_000n, false);
       let threw = false;
       try {
         r.run([agg], 1);
@@ -82,9 +82,9 @@ function main()
       // The C ABI has no error channel yet, so a C++ throw becomes a false
       // return here rather than a JS exception. The engine and the Python
       // binding carry the full message; see index.d.ts on strictOrdering.
-      const r = new flox.DataReader(dir, undefined, undefined,
+      const r = new lrvx.DataReader(dir, undefined, undefined,
                                     {reorderWindowNs: 10n * SEC, strictOrdering: true});
-      const agg = new flox.OHLCBinAggregator(60_000_000_000n, false);
+      const agg = new lrvx.OHLCBinAggregator(60_000_000_000n, false);
       const ok = r.run([agg], 1);
       check(ok === false, 'strictOrdering stops the run on the late event');
       check(r.stats().lateDropped === 0,
@@ -92,9 +92,9 @@ function main()
     }
 
     {
-      const r = new flox.DataReader(dir, undefined, undefined,
+      const r = new lrvx.DataReader(dir, undefined, undefined,
                                     {reorderWindowNs: 60n * SEC});
-      const agg = new flox.OHLCBinAggregator(60_000_000_000n, false);
+      const agg = new lrvx.OHLCBinAggregator(60_000_000_000n, false);
       r.run([agg], 1);
       const s = r.stats();
       check(s.lateDropped === 0, 'a wide window drops nothing');

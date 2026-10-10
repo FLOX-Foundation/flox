@@ -3,7 +3,7 @@
 ## Single-writer core
 
 `SequencedShard` runs a symbol's engine as a single-writer state machine behind
-the FLOX `EventBus` (Disruptor). Commands are published to the ingress ring;
+the lrvx `EventBus` (Disruptor). Commands are published to the ingress ring;
 one consumer journals each command write-ahead and then applies it. All engine
 state is owned by that one consumer thread.
 
@@ -274,7 +274,7 @@ build that wrote the journal, or replay the old files with that build. Bit 7 of
 the stamp is always set, which is what lets a file written before versioning
 existed be named as version 0 rather than misread.
 
-A scale-checked build (`FLOX_SCALE_CHECKS`, the default without `NDEBUG`) is a
+A scale-checked build (`LRVX_SCALE_CHECKS`, the default without `NDEBUG`) is a
 different format under this rule, not a debugging variant of the same one. It
 widens `Decimal`, so `sizeof(Price)` goes 8 to 16 and every body holding a price
 or a quantity moves its fields. Those layouts carry version 18 and version 17
@@ -576,7 +576,7 @@ usable as the park predicate: that predicate runs under the set's mutex, where
 delivering anything would hold up every publisher trying to wake the set.
 
 ```cpp
-flox::WakeSet set;
+lrvx::WakeSet set;
 for (auto& s : myShards)
 {
   s->setOwnThreads(false);
@@ -701,7 +701,7 @@ runs on the background thread while matching is going again.
 Nothing the checkpoint costs is left for the first order after it, either. A
 fresh file's first write is markedly dearer than the ones after it, so the
 rotation gives the new segment its first block while the consumer is still
-stopped (`flox::fileio::reserveFirstBlock`) rather than letting the next
+stopped (`lrvx::fileio::reserveFirstBlock`) rather than letting the next
 command pay ~14 us of filesystem work on the matching path, where no gauge
 would have seen it.
 
@@ -716,7 +716,7 @@ an order or a balance.
 
 Recovery replays a journal to rebuild an engine. A dispute asks something
 narrower and with a deadline: *what happened to account N between t1 and t2*.
-`flox-venue/journal_window.h` answers it, and `tools/venue_replay_window.cpp`
+`lrvx-venue/journal_window.h` answers it, and `tools/venue_replay_window.cpp`
 is the command line around it.
 
 It applies a snapshot (optional) and then the segments, in order, into a fresh
@@ -767,7 +767,7 @@ Time enters through `IClock`, so the same code runs on simulated and real time:
 | Implementation | Use |
 |---|---|
 | `SimulatedClock` | backtests, deterministic replay |
-| `SystemClock` (`flox/util/system_clock.h`) | live |
+| `SystemClock` (`lrvx/util/system_clock.h`) | live |
 
 ## Client recovery
 

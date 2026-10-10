@@ -1,6 +1,6 @@
 # Generated artefacts that are committed on purpose.
 #
-# mcp/flox_mcp/data/docs.fts.sqlite is a 3.3 MiB SQLite FTS index over docs/,
+# mcp/lrvx_mcp/data/docs.fts.sqlite is a 3.3 MiB SQLite FTS index over docs/,
 # rebuilt by scripts/pre-commit whenever the docs change. It is committed
 # because the wheel packages those exact bytes: what a user installs is what
 # was reviewed (see .github/workflows/python-wheels.yml).
@@ -19,4 +19,4 @@
 #
 #     git config merge.ours.driver true
 #
-mcp/flox_mcp/data/docs.fts.sqlite merge=ours
+mcp/lrvx_mcp/data/docs.fts.sqlite merge=ours

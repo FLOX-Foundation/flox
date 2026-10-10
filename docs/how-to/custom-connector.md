@@ -1,9 +1,9 @@
 # Write a Custom Connector
 
 !!! info "C++ extension point"
-    Connectors are written against the C++ engine. Once a connector is built into FLOX, every binding (Python, Node.js, Codon, embedded JS) gets access to it automatically — no further work per language. If you just want to *use* an existing connector from Python or Node.js, see the [Python](../bindings/python.md) / [Node.js](../bindings/node.md) bindings docs instead.
+    Connectors are written against the C++ engine. Once a connector is built into lrvx, every binding (Python, Node.js, Codon, embedded JS) gets access to it automatically — no further work per language. If you just want to *use* an existing connector from Python or Node.js, see the [Python](../bindings/python.md) / [Node.js](../bindings/node.md) bindings docs instead.
 
-Connect FLOX to a new exchange or data source.
+Connect lrvx to a new exchange or data source.
 
 ## Overview
 
@@ -11,22 +11,22 @@ A connector:
 
 1. Connects to an exchange API (WebSocket, REST, FIX, etc.)
 2. Parses incoming messages
-3. Converts to FLOX event types
+3. Converts to lrvx event types
 4. Emits events to the engine
 
 ## 1. Implement IExchangeConnector
 
-**Header:** `flox/connector/abstract_exchange_connector.h`
+**Header:** `lrvx/connector/abstract_exchange_connector.h`
 
 ```cpp
-#include "flox/connector/abstract_exchange_connector.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/book/events/book_update_event.h"
+#include "lrvx/connector/abstract_exchange_connector.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/book/events/book_update_event.h"
 
-class MyExchangeConnector : public flox::IExchangeConnector
+class MyExchangeConnector : public lrvx::IExchangeConnector
 {
 public:
-  MyExchangeConnector(const std::string& symbol, flox::SymbolId symbolId)
+  MyExchangeConnector(const std::string& symbol, lrvx::SymbolId symbolId)
     : _symbol(symbol), _symbolId(symbolId) {}
 
   std::string exchangeId() const override {
@@ -68,13 +68,13 @@ private:
   }
 
   void handleTrade(const Message& msg) {
-    flox::TradeEvent ev;
+    lrvx::TradeEvent ev;
     ev.trade.symbol = _symbolId;
-    ev.trade.price = flox::Price::fromDouble(msg.price);
-    ev.trade.quantity = flox::Quantity::fromDouble(msg.qty);
+    ev.trade.price = lrvx::Price::fromDouble(msg.price);
+    ev.trade.quantity = lrvx::Quantity::fromDouble(msg.qty);
     ev.trade.isBuy = msg.side == "buy";
     ev.trade.exchangeTsNs = msg.timestamp;
-    ev.recvNs = flox::nowNsMonotonic();
+    ev.recvNs = lrvx::nowNsMonotonic();
 
     // Emit via base class method
     emitTrade(ev);
@@ -84,31 +84,31 @@ private:
     // For book updates, create event directly (simplified)
     // In practice, you might use a pool for large events
 
-    flox::BookUpdateEvent ev(/* pmr allocator */);
+    lrvx::BookUpdateEvent ev(/* pmr allocator */);
     ev.update.symbol = _symbolId;
-    ev.update.type = flox::BookUpdateType::SNAPSHOT;
+    ev.update.type = lrvx::BookUpdateType::SNAPSHOT;
 
     for (const auto& bid : msg.bids) {
       ev.update.bids.push_back({
-        flox::Price::fromDouble(bid.price),
-        flox::Quantity::fromDouble(bid.qty)
+        lrvx::Price::fromDouble(bid.price),
+        lrvx::Quantity::fromDouble(bid.qty)
       });
     }
     for (const auto& ask : msg.asks) {
       ev.update.asks.push_back({
-        flox::Price::fromDouble(ask.price),
-        flox::Quantity::fromDouble(ask.qty)
+        lrvx::Price::fromDouble(ask.price),
+        lrvx::Quantity::fromDouble(ask.qty)
       });
     }
 
-    ev.recvNs = flox::nowNsMonotonic();
+    ev.recvNs = lrvx::nowNsMonotonic();
     ev.sourceExchange = _exchangeId;  // from registry->registerExchange(...)
 
     emitBookUpdate(ev);
   }
 
   std::string _symbol;
-  flox::SymbolId _symbolId;
+  lrvx::SymbolId _symbolId;
   std::atomic<bool> _running{false};
   std::thread _thread;
 };
@@ -119,9 +119,9 @@ private:
 Connect the connector to your buses:
 
 ```cpp
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/util/memory/pool.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/util/memory/pool.h"
 
 // Create buses
 auto tradeBus = std::make_unique<TradeBus>();
@@ -172,7 +172,7 @@ engine.start();
 For dynamic connector creation:
 
 ```cpp
-#include "flox/connector/connector_factory.h"
+#include "lrvx/connector/connector_factory.h"
 
 // Register factory
 ConnectorFactory::instance().registerConnector("myexchange",
@@ -250,7 +250,7 @@ void run() {
       auto msg = receiveMessage();
       handleMessage(msg);
     } catch (const ConnectionError& e) {
-      FLOX_LOG("Connection lost: " << e.what());
+      LRVX_LOG("Connection lost: " << e.what());
       _connected = false;
       emitDisconnect(e.what());  // tell the supervisor, then recover
       reconnect();
@@ -269,7 +269,7 @@ keeps trading off a book that has quietly stopped updating.
 ```cpp
 void handleBookUpdate(const Message& msg) {
   if (_lastSeq > 0 && msg.seq != _lastSeq + 1) {
-    FLOX_LOG("Gap detected: " << _lastSeq << " -> " << msg.seq);
+    LRVX_LOG("Gap detected: " << _lastSeq << " -> " << msg.seq);
     emitSequenceGap(_lastSeq + 1, msg.seq);
     _lastSeq = 0;
     requestSnapshot();  // Request full book snapshot
@@ -310,7 +310,7 @@ class MyExchangeConnector : public IExchangeConnector
   void handleBookUpdate(const Message& msg) {
     auto evOpt = _bookPool.acquire();
     if (!evOpt) {
-      FLOX_LOG("Pool exhausted, dropping book update");
+      LRVX_LOG("Pool exhausted, dropping book update");
       return;
     }
 
@@ -326,12 +326,12 @@ class MyExchangeConnector : public IExchangeConnector
 ## 6. Complete Example
 
 ```cpp
-#include "flox/connector/abstract_exchange_connector.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/util/memory/pool.h"
-#include "flox/util/base/time.h"
-#include "flox/log/log.h"
+#include "lrvx/connector/abstract_exchange_connector.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/util/memory/pool.h"
+#include "lrvx/util/base/time.h"
+#include "lrvx/log/log.h"
 
 #include <thread>
 #include <atomic>
@@ -339,7 +339,7 @@ class MyExchangeConnector : public IExchangeConnector
 namespace myexchange
 {
 
-using namespace flox;
+using namespace lrvx;
 
 class MyConnector : public IExchangeConnector
 {
@@ -364,14 +364,14 @@ public:
 
 private:
   void run() {
-    FLOX_LOG("[myexchange] Connecting...");
+    LRVX_LOG("[myexchange] Connecting...");
     // ... connect to exchange
 
     while (_running) {
       // ... receive and process messages
     }
 
-    FLOX_LOG("[myexchange] Disconnected");
+    LRVX_LOG("[myexchange] Disconnected");
   }
 
   void onTradeMessage(/* ... */) {

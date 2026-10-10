@@ -1,20 +1,20 @@
 # The venue module
 
-The rest of FLOX trades on a market. This module is the market: it matches
+The rest of lrvx trades on a market. This module is the market: it matches
 participants' orders against each other, clears the money that changes hands,
 and manages the risk of standing in the middle.
 
-It is an optional module. With `FLOX_BUILD_VENUE=OFF` nothing venue-related is
+It is an optional module. With `LRVX_BUILD_VENUE=OFF` nothing venue-related is
 configured, compiled, or tested. See
 [Building with and without the venue](build.md).
 
 ```cpp
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
 
-namespace venue = flox::venue;   // qualify venue types; see the namespace note below
-using namespace flox;
+namespace venue = lrvx::venue;   // qualify venue types; see the namespace note below
+using namespace lrvx;
 
 venue::Ledger ledger;
 ledger.deposit(/*account*/ 1, /*asset*/ 0, venue::amountOf(Quantity::fromDouble(10)));
@@ -58,20 +58,20 @@ someone's hands. This is useful for:
 
 ## Design notes
 
-**Namespace `flox::venue`.** Nested, so venue vocabulary can reuse names the
+**Namespace `lrvx::venue`.** Nested, so venue vocabulary can reuse names the
 strategy side already owns; `Trade` and `SymbolConfig` exist in both. Scalars
-(`Price`, `Quantity`, `Side`, `OrderId`) come from `flox/common.h` as
+(`Price`, `Quantity`, `Side`, `OrderId`) come from `lrvx/common.h` as
 everywhere else.
 
 Because the two sets overlap, avoid pulling both in unqualified. A translation
-unit with `using namespace flox;` and `using namespace flox::venue;` makes
+unit with `using namespace lrvx;` and `using namespace lrvx::venue;` makes
 `Trade` and `SymbolConfig` ambiguous as soon as it includes
-`flox/book/trade.h` or `flox/engine/engine_config.h`. Write
-`namespace venue = flox::venue;` and qualify, or import only what you need.
+`lrvx/book/trade.h` or `lrvx/engine/engine_config.h`. Write
+`namespace venue = lrvx::venue;` and qualify, or import only what you need.
 
-**Include prefix `<flox-venue/...>`**, target `flox::venue`.
+**Include prefix `<lrvx-venue/...>`**, target `lrvx::venue`.
 
-**Order-level books live in core** (`flox/book/`), next to the aggregate
+**Order-level books live in core** (`lrvx/book/`), next to the aggregate
 `NLevelOrderBook`, because they are useful on their own. Everything that only
 makes sense for a venue lives in the module.
 
@@ -85,7 +85,7 @@ default 1e8 scale in int64 (a meme coin with a 1e14 supply) sets its own
 
 ## Verification
 
-The venue core is fuzzed in FLOX CI:
+The venue core is fuzzed in lrvx CI:
 
 - **Differential fuzz.** The reference book and the O(1) ladder are driven in
   lockstep over a random command stream. They must emit a byte-identical event

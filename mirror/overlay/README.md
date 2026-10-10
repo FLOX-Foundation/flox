@@ -3,7 +3,7 @@
 Deterministic execution venue core: sequenced journal, checkpoints, matching
 with last look, FIX perimeter.
 
-This is a read-only mirror. Contributions go to [FLOX-Foundation/flox](https://github.com/FLOX-Foundation/flox).
+This is a read-only mirror. Contributions go to [lrvx/lrvx](https://github.com/lrvx/lrvx).
 
 ## Building
 

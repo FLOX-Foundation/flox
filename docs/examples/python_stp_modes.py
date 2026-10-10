@@ -1,7 +1,7 @@
 """Enable self-trade prevention on the simulated executor."""
-import flox_py as flox
+import lrvx
 
-exec = flox.SimulatedExecutor()
+exec = lrvx.SimulatedExecutor()
 exec.set_queue_model("tob", 1)
 
 # Modes: 'none' (default) | 'cancel_newest' | 'cancel_oldest' |

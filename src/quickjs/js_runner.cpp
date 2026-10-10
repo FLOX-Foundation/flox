@@ -1,6 +1,6 @@
 #include "js_strategy.h"
 
-#include "flox/capi/bridge_strategy.h"
+#include "lrvx/capi/bridge_strategy.h"
 
 #include <iostream>
 #include <memory>
@@ -9,14 +9,14 @@ int main(int argc, char* argv[])
 {
   if (argc < 2)
   {
-    std::cerr << "Usage: flox_js_runner <script.js>\n";
+    std::cerr << "Usage: lrvx_js_runner <script.js>\n";
     return 1;
   }
 
   try
   {
-    flox::SymbolRegistry registry;
-    flox::FloxJsStrategy jsStrategy(argv[1], registry);
+    lrvx::SymbolRegistry registry;
+    lrvx::LrvxJsStrategy jsStrategy(argv[1], registry);
 
     auto symbolIds = jsStrategy.symbolIds();
 
@@ -28,10 +28,10 @@ int main(int argc, char* argv[])
 
     // Strategy mode
     auto callbacks = jsStrategy.getCallbacks();
-    auto bridge = std::make_unique<flox::BridgeStrategy>(
-        1, std::vector<flox::SymbolId>(symbolIds.begin(), symbolIds.end()), registry, callbacks);
+    auto bridge = std::make_unique<lrvx::BridgeStrategy>(
+        1, std::vector<lrvx::SymbolId>(symbolIds.begin(), symbolIds.end()), registry, callbacks);
 
-    jsStrategy.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+    jsStrategy.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
     std::cout << "Loaded JS strategy with " << symbolIds.size() << " symbol(s)" << std::endl;
 

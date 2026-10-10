@@ -9,13 +9,13 @@ for them go red -- and that an unmutated tree goes green before and after.
 The six fixes, and what is attacked here:
 
     isolated liquidation remainder  src/backtest/liquidation_engine.cpp
-    funding first-tick cursor       include/flox/backtest/funding_schedule.h
+    funding first-tick cursor       include/lrvx/backtest/funding_schedule.h
     venue fee ladder on the fills   src/backtest/backtest_result.cpp,
                                     src/backtest/backtest_runner.cpp,
                                     src/backtest/venue_stack.cpp
     order latency on submit         src/backtest/simulated_executor.cpp
     walk-forward optimisation       src/backtest/walk_forward.cpp
-    drawdown units in the report    include/flox/backtest/optimization_stats.h
+    drawdown units in the report    include/lrvx/backtest/optimization_stats.h
 
 Each mutation names the tests that are supposed to notice it. That filter runs
 first; a mutation the filter does not kill is re-run against the whole of
@@ -45,7 +45,7 @@ Usage:
 The build directory is expected to be configured already:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-          -DFLOX_BUILD_TESTS=ON -DFLOX_NATIVE=OFF
+          -DLRVX_BUILD_TESTS=ON -DLRVX_NATIVE=OFF
 """
 
 from __future__ import annotations
@@ -62,15 +62,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 BIN_DIR = BUILD / "tests"
-LIB = "flox"
+LIB = "lrvx"
 CMAKE = os.environ.get("CMAKE", shutil.which("cmake") or "/opt/homebrew/bin/cmake")
 BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 1800
 TEST_TIMEOUT = 300
 
 LIQ = "src/backtest/liquidation_engine.cpp"
-FUNDING = "include/flox/backtest/funding_schedule.h"
-OPT_STATS = "include/flox/backtest/optimization_stats.h"
+FUNDING = "include/lrvx/backtest/funding_schedule.h"
+OPT_STATS = "include/lrvx/backtest/optimization_stats.h"
 RESULT = "src/backtest/backtest_result.cpp"
 RUNNER = "src/backtest/backtest_runner.cpp"
 VENUE = "src/backtest/venue_stack.cpp"
@@ -587,9 +587,9 @@ MUTATIONS: list[Mutation] = [
             "unset parameter leaves no grid points at all and the fold "
             "evaluates nothing",
         file=WALK,
-        old="      FLOX_LOG_WARN(\"WalkForwardRunner: empty parameter axis skipped\");\n"
+        old="      LRVX_LOG_WARN(\"WalkForwardRunner: empty parameter axis skipped\");\n"
             "      continue;",
-        new="      FLOX_LOG_WARN(\"WalkForwardRunner: empty parameter axis skipped\");\n"
+        new="      LRVX_LOG_WARN(\"WalkForwardRunner: empty parameter axis skipped\");\n"
             "      points.clear();\n"
             "      return points;",
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
@@ -1054,7 +1054,7 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             f"  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            f"-DFLOX_BUILD_TESTS=ON -DFLOX_NATIVE=OFF")
+            f"-DLRVX_BUILD_TESTS=ON -DLRVX_NATIVE=OFF")
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
     if not selected:

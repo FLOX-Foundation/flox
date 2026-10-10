@@ -1,16 +1,16 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
 
-#include "flox/clearing/fee_schedule.h"
+#include "lrvx/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 
@@ -18,8 +18,8 @@
 #include <cstdlib>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -270,7 +270,7 @@ void test_fees_to_venue()
   led.deposit(2, QUOTE, quote(10000));
   MatchingEngine<MatchingBook> eng(cfg(), [](const OutboundEvent&) {});
   eng.setLedger(&led, VENUE);
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, /*makerBps*/ 1.0, /*takerBps*/ 2.0);  // both pay
   eng.setFeeSchedule(fs);
 
@@ -299,7 +299,7 @@ void test_taker_fee_policy()
   led.deposit(2, QUOTE, quote(300));  // buyer: EXACTLY the 3@100 notional, nothing spare
   MatchingEngine<MatchingBook> eng(cfg(), [](const OutboundEvent&) {});
   eng.setLedger(&led, VENUE);
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, /*maker*/ 0.0, /*taker*/ 2.0);  // 2bp taker fee = 0.06 on 300
   eng.setFeeSchedule(fs);
 

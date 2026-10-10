@@ -1,6 +1,6 @@
 # API Reference
 
-Complete technical documentation for all FLOX components.
+Complete technical documentation for all lrvx components.
 
 ## Component Categories
 
@@ -18,7 +18,7 @@ Complete technical documentation for all FLOX components.
 | [Aggregator](aggregator/bar.md) | Bar aggregation, footprint, volume and market profiles |
 | [Position](position/position_tracker.md) | Position tracking and reconciliation |
 | [CEX](cex/index.md) | Multi-exchange primitives: composite book, order router, split orders |
-| [C API](capi/flox_capi.md) | The C FFI surface every binding calls into |
+| [C API](capi/lrvx_capi.md) | The C FFI surface every binding calls into |
 | [Metrics](metrics/abstract_pnl_tracker.md) | PnL and execution trackers |
 | [Log](log/log.md) | Logging |
 | [Net](net/abstract_transport.md) | HTTP and WebSocket transports |
@@ -72,10 +72,10 @@ Complete technical documentation for all FLOX components.
 
 ## Header Organization
 
-`include/flox/` has 27 subdirectories plus `common.h`. The ones with reference pages here:
+`include/lrvx/` has 27 subdirectories plus `common.h`. The ones with reference pages here:
 
 ```
-include/flox/
+include/lrvx/
 ├── aggregator/     # Bar aggregation, footprint, volume/market profiles
 ├── backtest/       # Backtesting and optimization
 ├── book/           # Order book, trades, events

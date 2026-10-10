@@ -1,24 +1,24 @@
-# Flox Tools
+# lrvx Tools
 # Command-line utilities for data processing
 
-if(FLOX_ENABLE_BACKTEST)
+if(LRVX_ENABLE_BACKTEST)
     add_executable(preagg_bars preagg_bars.cpp)
-    target_link_libraries(preagg_bars PRIVATE flox)
+    target_link_libraries(preagg_bars PRIVATE lrvx)
     target_include_directories(preagg_bars PRIVATE ${CMAKE_SOURCE_DIR}/include)
 endif()
 
 # Receive-path integration probe (POSIX sockets; AF_XDP parts compile only
-# with FLOX_ENABLE_AF_XDP). Not built on Windows.
+# with LRVX_ENABLE_AF_XDP). Not built on Windows.
 if(NOT WIN32)
   add_executable(afxdp_probe afxdp_probe.cpp)
-  target_link_libraries(afxdp_probe PRIVATE flox)
+  target_link_libraries(afxdp_probe PRIVATE lrvx)
   target_include_directories(afxdp_probe PRIVATE ${CMAKE_SOURCE_DIR}/include)
 endif()
 
 # Journal window replay: "what happened to account N between t1 and t2".
 # Engine-side -- no sockets, so it builds wherever the venue engine does.
-if(FLOX_BUILD_VENUE)
+if(LRVX_BUILD_VENUE)
   add_executable(venue_replay_window venue_replay_window.cpp)
-  target_link_libraries(venue_replay_window PRIVATE flox-venue)
+  target_link_libraries(venue_replay_window PRIVATE lrvx-venue)
   target_include_directories(venue_replay_window PRIVATE ${CMAKE_SOURCE_DIR}/include)
 endif()

@@ -5,7 +5,7 @@ Thread-safe composite order book across multiple exchanges.
 ## Header
 
 ```cpp
-#include "flox/book/composite_book_matrix.h"
+#include "lrvx/book/composite_book_matrix.h"
 ```
 
 ## Synopsis

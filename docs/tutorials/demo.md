@@ -1,6 +1,6 @@
 # Run the Demo
 
-The `demo` folder provides a minimal working example that wires FLOX components into a functioning system. It demonstrates the architecture, event flow, and subsystem lifecycle in a controlled, simulated environment.
+The `demo` folder provides a minimal working example that wires lrvx components into a functioning system. It demonstrates the architecture, event flow, and subsystem lifecycle in a controlled, simulated environment.
 
 ## Features
 
@@ -17,14 +17,14 @@ The `demo` folder provides a minimal working example that wires FLOX components 
 ## Build the Demo
 
 ```bash
-cmake .. -DFLOX_BUILD_DEMO=ON
+cmake .. -DLRVX_BUILD_DEMO=ON
 make -j$(nproc)
 ```
 
 ## Run the Demo
 
 ```bash
-./demo/flox_demo
+./demo/lrvx_demo
 ```
 
 The demo will:
@@ -37,7 +37,7 @@ The demo will:
 
 ## Expected Output
 
-`main.cpp` calls `FLOX_LOG_OFF()` before `engine->start()` and only
+`main.cpp` calls `LRVX_LOG_OFF()` before `engine->start()` and only
 re-enables logging after `engine->stop()`, so the run itself is
 silent. What you see is the report:
 
@@ -68,20 +68,20 @@ demo/
 │   ├── latency_collector.h    # p50/p95/max latency report
 │   └── simple_components.h    # SimpleOrderExecutor, SimplePnLTracker,
 │                              # SimpleKillSwitch, SimpleRiskManager, ...
-└── data/sample.floxlog
+└── data/sample.lrvx
 ```
 
 `demo/CMakeLists.txt` also builds seven other executables from the
 same directory: `multi_timeframe_demo`, `volume_profile_demo`,
 `footprint_demo`, `market_profile_demo`, `cex_demo`, plus
 `backtest_demo` and `grid_search_demo` when
-`FLOX_ENABLE_BACKTEST=ON`.
+`LRVX_ENABLE_BACKTEST=ON`.
 
 ## Understanding the Demo
 
 ### DemoBuilder
 
-The builder demonstrates how to wire FLOX components:
+The builder demonstrates how to wire lrvx components:
 
 ```cpp
 // Create buses
@@ -153,6 +153,6 @@ void DemoStrategy::onTrade(const TradeEvent& event) {
 
 ## See Also
 
-- [Quickstart](quickstart.md) — Build FLOX from source
+- [Quickstart](quickstart.md) — Build lrvx from source
 - [First Strategy](first-strategy.md) — Write your own strategy
 - [Architecture](../explanation/architecture.md) — How components fit together

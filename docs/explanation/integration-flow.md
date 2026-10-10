@@ -1,9 +1,9 @@
 # Integration Flow
 
 !!! info "C++ engine integration"
-    This page walks through wiring up the C++ engine end-to-end (registry → buses → strategies → executor → connector). If you use Python, Node.js, or Codon, all of this is hidden behind `Runner` and `BacktestRunner` — you don't wire buses by hand. Read this if you embed FLOX in a C++ host or want to understand what happens beneath the bindings.
+    This page walks through wiring up the C++ engine end-to-end (registry → buses → strategies → executor → connector). If you use Python, Node.js, or Codon, all of this is hidden behind `Runner` and `BacktestRunner` — you don't wire buses by hand. Read this if you embed lrvx in a C++ host or want to understand what happens beneath the bindings.
 
-Step-by-step guide to integrating FLOX components into a complete trading system.
+Step-by-step guide to integrating lrvx components into a complete trading system.
 
 ## Overview
 
@@ -30,7 +30,7 @@ flowchart TD
 Before anything else, define which trading instruments the system will operate on. Each symbol is registered with an internal registry, which assigns a unique identifier and stores metadata.
 
 ```cpp
-#include "flox/engine/symbol_registry.h"
+#include "lrvx/engine/symbol_registry.h"
 
 SymbolRegistry registry;
 
@@ -60,10 +60,10 @@ auto symbolId = registry.getSymbolId("binance", "BTCUSDT");
 Several core components must be created and wired together:
 
 ```cpp
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/execution/bus/order_execution_bus.h"
-#include "flox/execution/order_tracker.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/execution/bus/order_execution_bus.h"
+#include "lrvx/execution/order_tracker.h"
 
 // Event buses for market data
 auto tradeBus = std::make_unique<TradeBus>();
@@ -87,8 +87,8 @@ auto orderTracker = std::make_unique<OrderTracker>();
 ## 3. Create Executors and Connectors
 
 ```cpp
-#include "flox/execution/abstract_executor.h"
-#include "flox/connector/abstract_exchange_connector.h"
+#include "lrvx/execution/abstract_executor.h"
+#include "lrvx/connector/abstract_exchange_connector.h"
 
 // Order executor sends orders to exchange
 auto executor = std::make_unique<BinanceExecutor>(
@@ -122,7 +122,7 @@ auto connector = std::make_shared<BinanceConnector>(
 Configure buses to distribute events to subscribers:
 
 ```cpp
-#include "flox/strategy/abstract_strategy.h"
+#include "lrvx/strategy/abstract_strategy.h"
 
 // Create strategy
 auto strategy = std::make_unique<MyStrategy>(executor.get());
@@ -160,7 +160,7 @@ tradeBus->subscribe(metrics.get(), /*required=*/false);
 Start components in the correct order:
 
 ```cpp
-#include "flox/engine/engine.h"
+#include "lrvx/engine/engine.h"
 
 // Collect all subsystems
 std::vector<std::unique_ptr<ISubsystem>> subsystems;
@@ -279,7 +279,7 @@ stateDiagram-v2
 | `REVERTED` | Chain rejected the transaction (DEX) |
 | `REPLACED_GAS` | Re-broadcast with higher gas, superseding the pending tx (DEX) |
 
-All 21 values are in `flox/execution/events/order_event.h`. The three
+All 21 values are in `lrvx/execution/events/order_event.h`. The three
 on-chain states are covered in
 [On-chain order lifecycle](onchain-order-lifecycle.md).
 
@@ -322,11 +322,11 @@ void gracefulShutdown() {
 ## Complete Example
 
 ```cpp
-#include "flox/engine/engine.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/execution/bus/order_execution_bus.h"
+#include "lrvx/engine/engine.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/execution/bus/order_execution_bus.h"
 
 int main() {
     // 1. Registry
@@ -383,9 +383,9 @@ flowchart LR
     BR -->|live| EXCH[Exchange]
 ```
 
-`flox_py.paper.PaperBroker` routes signals into its own in-process `SimulatedExecutor`. `flox_py.ccxt.CcxtBroker` routes them to a real exchange. Each broker owns its `Runner`; the strategy class is untouched — only the broker swaps. One strategy class runs backtest, paper, and live.
+`lrvx.paper.PaperBroker` routes signals into its own in-process `SimulatedExecutor`. `lrvx.ccxt.CcxtBroker` routes them to a real exchange. Each broker owns its `Runner`; the strategy class is untouched — only the broker swaps. One strategy class runs backtest, paper, and live.
 
-See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+See [Paper trading](../how-to/paper-trading.md) and [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md).
 
 ## Design Principles
 

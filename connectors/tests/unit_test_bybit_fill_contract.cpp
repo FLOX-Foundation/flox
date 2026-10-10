@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -32,23 +32,23 @@
  * sockets, no credentials.
  */
 
-#include "flox-connectors/bybit/authenticated_rest_client.h"
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
-#include "flox-connectors/bybit/bybit_order_executor.h"
-#include "flox-connectors/util/safe_parse.h"
+#include "lrvx-connectors/bybit/authenticated_rest_client.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/bybit/bybit_order_executor.h"
+#include "lrvx-connectors/util/safe_parse.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/book/composite_book_matrix.h>
-#include <flox/book/events/book_update_event.h>
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/execution/abstract_execution_listener.h>
-#include <flox/execution/bus/order_execution_bus.h>
-#include <flox/execution/events/order_event.h>
-#include <flox/execution/order_tracker.h>
-#include <flox/log/atomic_logger.h>
-#include <flox/util/base/time.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/book/composite_book_matrix.h>
+#include <lrvx/book/events/book_update_event.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/abstract_execution_listener.h>
+#include <lrvx/execution/bus/order_execution_bus.h>
+#include <lrvx/execution/events/order_event.h>
+#include <lrvx/execution/order_tracker.h>
+#include <lrvx/log/atomic_logger.h>
+#include <lrvx/util/base/time.h>
 
 #include <gtest/gtest.h>
 
@@ -59,7 +59,7 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -71,7 +71,7 @@ constexpr const char* kVenueOrderId = "99887766";
 
 std::string tempLogDir()
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_bybit_fill_contract_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_bybit_fill_contract_logs";
   std::filesystem::create_directories(dir);
   return dir.string();
 }

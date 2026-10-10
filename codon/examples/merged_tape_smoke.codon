@@ -8,19 +8,19 @@
 
 import os
 
-from C import flox_registry_create() -> cobj
-from C import flox_registry_destroy(cobj)
-from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
-from C import flox_runner_create(cobj, cobj, cobj) -> cobj
-from C import flox_runner_destroy(cobj)
-from C import flox_runner_start(cobj)
-from C import flox_runner_stop(cobj)
-from C import flox_runner_on_trade(cobj, u32, float, float, u8, i64)
-from C import flox_runner_set_market_data_recorder(cobj, cobj)
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_destroy(cobj)
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import lrvx_runner_create(cobj, cobj, cobj) -> cobj
+from C import lrvx_runner_destroy(cobj)
+from C import lrvx_runner_start(cobj)
+from C import lrvx_runner_stop(cobj)
+from C import lrvx_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import lrvx_runner_set_market_data_recorder(cobj, cobj)
 
-from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
+from C import lrvx_binary_log_recorder_hook_as_recorder(cobj) -> cobj
 
-from flox.tools import MergedTapeReader, BinaryLogRecorderHook
+from lrvx.tools import MergedTapeReader, BinaryLogRecorderHook
 
 
 def check(label: str, ok: bool):
@@ -34,7 +34,7 @@ def check(label: str, ok: bool):
 
 threw = False
 try:
-    MergedTapeReader(["/tmp/floxlog-does-not-exist-codon-xyz"])
+    MergedTapeReader(["/tmp/lrvx-does-not-exist-codon-xyz"])
 except ValueError:
     threw = True
 check("bad path raises ValueError", threw)
@@ -55,9 +55,9 @@ check("empty paths raises ValueError", threw)
 def write_tape(out_dir: str, exchange: str, symbol_name: str,
                trades: List[Tuple[int, float, float, bool]],
                exchange_id: int = 0):
-    """Write a single .floxlog at out_dir via a Runner + BinaryLogRecorderHook."""
-    registry = flox_registry_create()
-    sym = int(flox_registry_add_symbol(
+    """Write a single .lrvx at out_dir via a Runner + BinaryLogRecorderHook."""
+    registry = lrvx_registry_create()
+    sym = int(lrvx_registry_add_symbol(
         registry, exchange.c_str(), symbol_name.c_str(), 0.01))
 
     hook = BinaryLogRecorderHook(
@@ -66,20 +66,20 @@ def write_tape(out_dir: str, exchange: str, symbol_name: str,
         exchange_name=exchange, instrument_type="perpetual")
     hook.add_symbol(sym, symbol_name, "", "", 2, 6)
 
-    runner = flox_runner_create(registry, cobj(), cobj())
-    flox_runner_set_market_data_recorder(
-        runner, flox_binary_log_recorder_hook_as_recorder(hook._h))
-    flox_runner_start(runner)
+    runner = lrvx_runner_create(registry, cobj(), cobj())
+    lrvx_runner_set_market_data_recorder(
+        runner, lrvx_binary_log_recorder_hook_as_recorder(hook._h))
+    lrvx_runner_start(runner)
 
     for entry in trades:
         ts_ns, price, qty, is_buy = entry
-        flox_runner_on_trade(runner, u32(sym), price, qty,
+        lrvx_runner_on_trade(runner, u32(sym), price, qty,
                               u8(1 if is_buy else 0), i64(ts_ns))
 
-    flox_runner_stop(runner)
-    flox_runner_destroy(runner)
+    lrvx_runner_stop(runner)
+    lrvx_runner_destroy(runner)
     hook.close()
-    flox_registry_destroy(registry)
+    lrvx_registry_destroy(registry)
 
 
 root = "/tmp/codon_merged_tape_smoke"

@@ -1,6 +1,6 @@
 # Smoke test: delta book encoder + replayer compile + drive the C API.
 
-from flox.delta_book import DeltaBookEncoder, DeltaBookReplayer
+from lrvx.delta_book import DeltaBookEncoder, DeltaBookReplayer
 
 enc = DeltaBookEncoder(100)
 

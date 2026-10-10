@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
-project(flox VERSION 0.10.1 LANGUAGES CXX C)
+project(lrvx VERSION 0.10.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # An unset CMAKE_BUILD_TYPE is not a neutral default here: without NDEBUG,
-# FLOX_SCALE_CHECKS turns on (include/flox/util/base/scale_check.h) and adds a
+# LRVX_SCALE_CHECKS turns on (include/lrvx/util/base/scale_check.h) and adds a
 # member to Decimal, so sizeof(Price) goes 8 -> 16 and every struct holding a
 # price or quantity changes layout. Consumers that compile their own
 # translation units against a prebuilt archive (the Node addon does) then read
@@ -18,10 +18,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "CMAKE_BUILD_TYPE was unset; defaulting to Release")
 endif()
 
-option(FLOX_ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
+option(LRVX_ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
 
 # ──────────────────────────────────────────────────────────────────────
-# FLOX_VENUE_LITE -- the execution-venue profile.
+# LRVX_VENUE_LITE -- the execution-venue profile.
 #
 # A downstream consumer that runs the execution venue compiles against 37 of
 # this tree's headers (venue/lite_surface.txt): the sequencer and its
@@ -46,59 +46,59 @@ option(FLOX_ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
 # Declared before every option it overrides, so the overrides are in place
 # on a first configure.
 # ──────────────────────────────────────────────────────────────────────
-option(FLOX_VENUE_LITE "Build only the execution venue: engine, perimeter, FIX initiator, utilities" OFF)
+option(LRVX_VENUE_LITE "Build only the execution venue: engine, perimeter, FIX initiator, utilities" OFF)
 
-if(FLOX_VENUE_LITE)
-  macro(_flox_lite_force name value)
-    set(${name} ${value} CACHE BOOL "Forced by FLOX_VENUE_LITE" FORCE)
+if(LRVX_VENUE_LITE)
+  macro(_lrvx_lite_force name value)
+    set(${name} ${value} CACHE BOOL "Forced by LRVX_VENUE_LITE" FORCE)
   endmacro()
 
-  _flox_lite_force(FLOX_BUILD_VENUE ON)
+  _lrvx_lite_force(LRVX_BUILD_VENUE ON)
 
   # The reason this profile exists. Before the clearing primitives moved out
-  # of flox/backtest/ (FeeSchedule, Account, LeveragedPosition -> flox/clearing/),
+  # of lrvx/backtest/ (FeeSchedule, Account, LeveragedPosition -> lrvx/clearing/),
   # the venue could not be built without the backtest module, so a consumer
   # who never ran a backtest compiled all of it.
-  _flox_lite_force(FLOX_ENABLE_BACKTEST OFF)
+  _lrvx_lite_force(LRVX_ENABLE_BACKTEST OFF)
 
   foreach(_off
-      FLOX_BUILD_BENCHMARKS FLOX_BUILD_DEMO FLOX_BUILD_TOOLS
-      FLOX_BUILD_PYTHON FLOX_BUILD_NODE FLOX_BUILD_CAPI
-      FLOX_BUILD_CODON FLOX_BUILD_QUICKJS FLOX_BUILD_CONNECTORS
-      FLOX_ENABLE_ONNX FLOX_ENABLE_AF_XDP FLOX_ENABLE_TRACY
-      FLOX_ENABLE_LZ4)
-    _flox_lite_force(${_off} OFF)
+      LRVX_BUILD_BENCHMARKS LRVX_BUILD_DEMO LRVX_BUILD_TOOLS
+      LRVX_BUILD_PYTHON LRVX_BUILD_NODE LRVX_BUILD_CAPI
+      LRVX_BUILD_CODON LRVX_BUILD_QUICKJS LRVX_BUILD_CONNECTORS
+      LRVX_ENABLE_ONNX LRVX_ENABLE_AF_XDP LRVX_ENABLE_TRACY
+      LRVX_ENABLE_LZ4)
+    _lrvx_lite_force(${_off} OFF)
   endforeach()
 
-  message(STATUS "FLOX_VENUE_LITE: venue engine, perimeter, FIX initiator and utilities only")
+  message(STATUS "LRVX_VENUE_LITE: venue engine, perimeter, FIX initiator and utilities only")
 
   # venue/lite_surface.txt is read once, here, rather than as a second list:
   # its transitive closure (scripts/lite_closure.py --paths) is both the set
   # of headers this configure installs (below, in the install section) and
   # the filter that decides which core .cpp files SRC_FILES gets (right
   # after this block) -- a src/<x>/<y>.cpp is compiled only if
-  # include/flox/<x>/<y>.h is on the closure. The same call is the direction
-  # gate: a closure that has grown into flox/backtest/ or flox/aggregator/
+  # include/lrvx/<x>/<y>.h is on the closure. The same call is the direction
+  # gate: a closure that has grown into lrvx/backtest/ or lrvx/aggregator/
   # fails the configure here, before anything is built.
   execute_process(
     COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/lite_closure.py" --paths
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    OUTPUT_VARIABLE FLOX_LITE_CLOSURE
-    ERROR_VARIABLE FLOX_LITE_CLOSURE_ERR
-    RESULT_VARIABLE FLOX_LITE_CLOSURE_RC)
-  if(NOT FLOX_LITE_CLOSURE_RC EQUAL 0)
+    OUTPUT_VARIABLE LRVX_LITE_CLOSURE
+    ERROR_VARIABLE LRVX_LITE_CLOSURE_ERR
+    RESULT_VARIABLE LRVX_LITE_CLOSURE_RC)
+  if(NOT LRVX_LITE_CLOSURE_RC EQUAL 0)
     message(FATAL_ERROR
       "scripts/lite_closure.py rejected the venue-lite surface:\n"
-      "${FLOX_LITE_CLOSURE}${FLOX_LITE_CLOSURE_ERR}")
+      "${LRVX_LITE_CLOSURE}${LRVX_LITE_CLOSURE_ERR}")
   endif()
-  string(STRIP "${FLOX_LITE_CLOSURE}" FLOX_LITE_CLOSURE)
-  string(REPLACE "\n" ";" FLOX_LITE_CLOSURE "${FLOX_LITE_CLOSURE}")
-  list(LENGTH FLOX_LITE_CLOSURE _flox_lite_closure_n)
-  message(STATUS "FLOX_VENUE_LITE: closure of venue/lite_surface.txt is ${_flox_lite_closure_n} headers")
+  string(STRIP "${LRVX_LITE_CLOSURE}" LRVX_LITE_CLOSURE)
+  string(REPLACE "\n" ";" LRVX_LITE_CLOSURE "${LRVX_LITE_CLOSURE}")
+  list(LENGTH LRVX_LITE_CLOSURE _lrvx_lite_closure_n)
+  message(STATUS "LRVX_VENUE_LITE: closure of venue/lite_surface.txt is ${_lrvx_lite_closure_n} headers")
 endif()
 
 
-if(FLOX_ENABLE_DEV_SETUP)
+if(LRVX_ENABLE_DEV_SETUP)
   message(STATUS "Developer setup enabled")
 
   set(PRECOMMIT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/scripts/pre-commit")
@@ -123,28 +123,28 @@ include_directories(include)
 # symbol_registry.cpp, algos.cpp, order_journey_tracer.cpp,
 # order_tracker.cpp, atomic_logger.cpp) exists for the full engine and the
 # venue links none of it. A src/<x>/<y>.cpp is kept only when
-# include/flox/<x>/<y>.h -- its own header -- is on the venue/lite_surface.txt
+# include/lrvx/<x>/<y>.h -- its own header -- is on the venue/lite_surface.txt
 # closure computed above; that is what decides the install surface too, so
 # both answers come from one list. Verified empirically, not read off the
 # header graph: build with the filter, link, and see what is missing.
-if(FLOX_VENUE_LITE)
-  file(GLOB_RECURSE _flox_lite_candidate_src
+if(LRVX_VENUE_LITE)
+  file(GLOB_RECURSE _lrvx_lite_candidate_src
       src/clearing/*.cpp
       src/engine/*.cpp
       src/execution/*.cpp
       src/log/*.cpp
   )
   set(SRC_FILES "")
-  foreach(_cpp ${_flox_lite_candidate_src})
+  foreach(_cpp ${_lrvx_lite_candidate_src})
     file(RELATIVE_PATH _cpp_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_cpp}")
-    string(REGEX REPLACE "^src/" "include/flox/" _cpp_hdr "${_cpp_rel}")
+    string(REGEX REPLACE "^src/" "include/lrvx/" _cpp_hdr "${_cpp_rel}")
     string(REGEX REPLACE "\\.cpp$" ".h" _cpp_hdr "${_cpp_hdr}")
-    if(_cpp_hdr IN_LIST FLOX_LITE_CLOSURE)
+    if(_cpp_hdr IN_LIST LRVX_LITE_CLOSURE)
       list(APPEND SRC_FILES "${_cpp}")
     endif()
   endforeach()
-  list(LENGTH SRC_FILES _flox_lite_src_n)
-  message(STATUS "FLOX_VENUE_LITE: ${_flox_lite_src_n} core .cpp files match the closure: ${SRC_FILES}")
+  list(LENGTH SRC_FILES _lrvx_lite_src_n)
+  message(STATUS "LRVX_VENUE_LITE: ${_lrvx_lite_src_n} core .cpp files match the closure: ${SRC_FILES}")
 else()
   file(GLOB_RECURSE SRC_FILES
       src/aggregator/*.cpp
@@ -165,15 +165,15 @@ endif()
 # a first configure; the add_subdirectory(venue) itself lives further down,
 # after enable_testing() so the module's tests register.
 # GoogleTest is normally found already built. That works until the compiler
-# building flox and the compiler that built GoogleTest disagree about which
+# building lrvx and the compiler that built GoogleTest disagree about which
 # types exist: clang-cl has __int128, cl does not, and GoogleTest's header
 # declares a printer for it under __SIZEOF_INT128__. A library compiled by cl
 # never contains that printer, so a clang-cl build of code that puts a
 # 128-bit value in an assertion fails to link on a symbol neither project got
 # wrong. Building GoogleTest from source with the same compiler removes the
 # disagreement rather than working around it.
-option(FLOX_FETCH_GTEST "Build GoogleTest from source instead of finding a prebuilt one" OFF)
-if(FLOX_BUILD_TESTS AND FLOX_FETCH_GTEST)
+option(LRVX_FETCH_GTEST "Build GoogleTest from source instead of finding a prebuilt one" OFF)
+if(LRVX_BUILD_TESTS AND LRVX_FETCH_GTEST)
   include(FetchContent)
   FetchContent_Declare(
     googletest
@@ -183,17 +183,17 @@ if(FLOX_BUILD_TESTS AND FLOX_FETCH_GTEST)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
-  message(STATUS "FLOX_FETCH_GTEST: GoogleTest built here, by this compiler")
+  message(STATUS "LRVX_FETCH_GTEST: GoogleTest built here, by this compiler")
 endif()
 
-option(FLOX_BUILD_VENUE "Build the venue module (matching engine, clearing, venue risk)" ON)
+option(LRVX_BUILD_VENUE "Build the venue module (matching engine, clearing, venue risk)" ON)
 
 # The venue ledger keeps money in native 128-bit integers so a notional can
 # never overflow and a rounding drift is impossible.
 #
 # cl has no such type and no announced plan for one, so the module is
 # unavailable there until `venue::Amount` is ported onto the portable wide
-# integers in flox/util/int.
+# integers in lrvx/util/int.
 #
 # clang-cl is a different compiler wearing cl's command line. It has
 # __int128, and its runtime helpers (__divti3 and friends) come from
@@ -201,45 +201,45 @@ option(FLOX_BUILD_VENUE "Build the venue module (matching engine, clearing, venu
 # CMake's MSVC variable -- that variable is true for anything speaking cl's
 # command line, clang-cl included, and gating on it turned the module off on
 # a compiler that can build it.
-if(FLOX_BUILD_VENUE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  message(STATUS "FLOX_BUILD_VENUE: cl has no native 128-bit integer type; disabling.")
-  set(FLOX_BUILD_VENUE OFF CACHE BOOL "Build the venue module" FORCE)
+if(LRVX_BUILD_VENUE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  message(STATUS "LRVX_BUILD_VENUE: cl has no native 128-bit integer type; disabling.")
+  set(LRVX_BUILD_VENUE OFF CACHE BOOL "Build the venue module" FORCE)
 endif()
 
-option(FLOX_ENABLE_BACKTEST "Enable backtest module" OFF)
+option(LRVX_ENABLE_BACKTEST "Enable backtest module" OFF)
 # What is left of the implication after the clearing primitives moved into
-# the core: the venue LIBRARY needs nothing from flox/backtest/ any more, but
+# the core: the venue LIBRARY needs nothing from lrvx/backtest/ any more, but
 # one venue test (test_venue_derivatives) drives the backtest liquidation
-# engine through flox-venue/liquidation_monitor.h, a header-only helper that
+# engine through lrvx-venue/liquidation_monitor.h, a header-only helper that
 # is compiled by nothing else. So the implication stays for the full profile,
 # where it costs nothing and keeps every existing build byte-identical, and
-# the lite profile is exempt: it builds with FLOX_ENABLE_BACKTEST=OFF and
+# the lite profile is exempt: it builds with LRVX_ENABLE_BACKTEST=OFF and
 # drops that one test, which is the criterion this profile was written to.
-if(FLOX_BUILD_VENUE AND NOT FLOX_ENABLE_BACKTEST AND NOT FLOX_VENUE_LITE)
-  message(STATUS "FLOX_BUILD_VENUE=ON implies FLOX_ENABLE_BACKTEST=ON; enabling.")
-  set(FLOX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
+if(LRVX_BUILD_VENUE AND NOT LRVX_ENABLE_BACKTEST AND NOT LRVX_VENUE_LITE)
+  message(STATUS "LRVX_BUILD_VENUE=ON implies LRVX_ENABLE_BACKTEST=ON; enabling.")
+  set(LRVX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
 endif()
-if(FLOX_ENABLE_BACKTEST)
+if(LRVX_ENABLE_BACKTEST)
   file(GLOB BACKTEST_SRC_FILES src/backtest/*.cpp)
   list(APPEND SRC_FILES ${BACKTEST_SRC_FILES})
   message(STATUS "Backtest module enabled")
 endif()
 
-set(FLOX ${PROJECT_NAME})
+set(LRVX ${PROJECT_NAME})
 
-add_library(${FLOX} STATIC ${SRC_FILES})
-add_library(flox::${FLOX} ALIAS ${FLOX})
+add_library(${LRVX} STATIC ${SRC_FILES})
+add_library(lrvx::${LRVX} ALIAS ${LRVX})
 
 # Global EventBus sizing knobs. The headers guard these with #ifndef, but they
 # only take effect if forwarded as compile definitions -- passing them as -D
 # cache vars alone did nothing. Documented in docs/how-to/optimize-performance.md.
-set(FLOX_DEFAULT_EVENTBUS_CAPACITY "" CACHE STRING "Default EventBus ring capacity (power of 2)")
-set(FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS "" CACHE STRING "Default EventBus max consumers")
-if(FLOX_DEFAULT_EVENTBUS_CAPACITY)
-  target_compile_definitions(${FLOX} PUBLIC FLOX_DEFAULT_EVENTBUS_CAPACITY=${FLOX_DEFAULT_EVENTBUS_CAPACITY})
+set(LRVX_DEFAULT_EVENTBUS_CAPACITY "" CACHE STRING "Default EventBus ring capacity (power of 2)")
+set(LRVX_DEFAULT_EVENTBUS_MAX_CONSUMERS "" CACHE STRING "Default EventBus max consumers")
+if(LRVX_DEFAULT_EVENTBUS_CAPACITY)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_DEFAULT_EVENTBUS_CAPACITY=${LRVX_DEFAULT_EVENTBUS_CAPACITY})
 endif()
-if(FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS)
-  target_compile_definitions(${FLOX} PUBLIC FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS=${FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS})
+if(LRVX_DEFAULT_EVENTBUS_MAX_CONSUMERS)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_DEFAULT_EVENTBUS_MAX_CONSUMERS=${LRVX_DEFAULT_EVENTBUS_MAX_CONSUMERS})
 endif()
 
 # 128-bit arithmetic needs runtime helpers -- __divti3, __floattidf, __fixdfti
@@ -257,89 +257,89 @@ endif()
 # The library is found at configure time, so a configure that cannot find it
 # says so here instead of letting the link fail eight minutes later.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
-  set(FLOX_CLANG_BUILTINS "")
+  set(LRVX_CLANG_BUILTINS "")
   # Ask the compiler first; it knows where its own runtime lives.
   execute_process(
     COMMAND "${CMAKE_CXX_COMPILER}" --rtlib=compiler-rt -print-libgcc-file-name
     OUTPUT_VARIABLE _rt OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET RESULT_VARIABLE _rt_rc)
   if(_rt_rc EQUAL 0 AND EXISTS "${_rt}")
-    set(FLOX_CLANG_BUILTINS "${_rt}")
+    set(LRVX_CLANG_BUILTINS "${_rt}")
   else()
     # Otherwise look where clang keeps it, next to the driver.
     get_filename_component(_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
     get_filename_component(_root "${_bin}" DIRECTORY)
     file(GLOB_RECURSE _found "${_root}/lib/clang/*/lib/windows/clang_rt.builtins-x86_64.lib")
     if(_found)
-      list(GET _found 0 FLOX_CLANG_BUILTINS)
+      list(GET _found 0 LRVX_CLANG_BUILTINS)
     endif()
   endif()
-  if(NOT FLOX_CLANG_BUILTINS)
+  if(NOT LRVX_CLANG_BUILTINS)
     message(FATAL_ERROR
       "clang-cl needs clang_rt.builtins for 128-bit arithmetic (__divti3 and "
       "friends) and it was not found near ${CMAKE_CXX_COMPILER}. Install the "
       "LLVM runtime.")
   endif()
-  message(STATUS "128-bit helpers from ${FLOX_CLANG_BUILTINS}")
-  target_link_libraries(${FLOX} PUBLIC "${FLOX_CLANG_BUILTINS}")
+  message(STATUS "128-bit helpers from ${LRVX_CLANG_BUILTINS}")
+  target_link_libraries(${LRVX} PUBLIC "${LRVX_CLANG_BUILTINS}")
 endif()
 
 # Platform-specific settings
 if(WIN32)
   # Prevent Windows.h from defining min/max macros that break std::min/max
-  target_compile_definitions(${FLOX} PUBLIC NOMINMAX)
+  target_compile_definitions(${LRVX} PUBLIC NOMINMAX)
 endif()
 
-# FLOX_NATIVE controls whether Release builds target the build machine's
+# LRVX_NATIVE controls whether Release builds target the build machine's
 # instruction set (`-march=native`) or a portable baseline. `native` is
 # fastest but ties the resulting binary to the build host — if the build
 # CPU has AVX-512 and the runtime CPU does not, the process dies with
 # SIGILL on the first vector instruction. Default ON preserves the
 # historical local-dev behaviour; wheel/binary distribution paths
 # (python/pyproject.toml) flip it OFF.
-option(FLOX_NATIVE
+option(LRVX_NATIVE
   "Compile Release with -march=native. Disable for distributable artifacts."
   ON)
 
 if(NOT MSVC)
-  if(FLOX_NATIVE)
-    set(FLOX_ARCH_OPT -march=native)
+  if(LRVX_NATIVE)
+    set(LRVX_ARCH_OPT -march=native)
   elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
     # x86-64-v3 = AVX2 + BMI2 + FMA, baseline for Haswell/Excavator
     # (~2015) and up. Covers the vast majority of distribution targets
     # without requiring AVX-512.
-    set(FLOX_ARCH_OPT -march=x86-64-v3)
+    set(LRVX_ARCH_OPT -march=x86-64-v3)
   else()
     # arm64/aarch64 etc.: compiler default is portable enough; macOS
     # arm64 wheels are arch-tagged anyway so native vs. baseline is moot.
-    set(FLOX_ARCH_OPT "")
+    set(LRVX_ARCH_OPT "")
   endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Genuine cl.exe: whole-program optimization via /GL + /LTCG.
-  target_compile_options(${FLOX} PUBLIC
+  target_compile_options(${LRVX} PUBLIC
     $<$<CONFIG:Release>:/O2 /GL>
   )
-  target_link_options(${FLOX} PUBLIC
+  target_link_options(${LRVX} PUBLIC
     $<$<CONFIG:Release>:/LTCG>
   )
 elseif(MSVC)
   # clang-cl has the MSVC frontend but does not accept /GL at compile time
   # (it emits "argument unused"). Keep /O2; LTO would need -flto, not /GL.
-  target_compile_options(${FLOX} PUBLIC
+  target_compile_options(${LRVX} PUBLIC
     $<$<CONFIG:Release>:/O2>
   )
 else()
-  set(FLOX_RELEASE_OPTS -O3 -flto -funroll-loops)
-  if(FLOX_ARCH_OPT)
-    list(APPEND FLOX_RELEASE_OPTS ${FLOX_ARCH_OPT})
+  set(LRVX_RELEASE_OPTS -O3 -flto -funroll-loops)
+  if(LRVX_ARCH_OPT)
+    list(APPEND LRVX_RELEASE_OPTS ${LRVX_ARCH_OPT})
   endif()
-  target_compile_options(${FLOX} PUBLIC
-    $<$<CONFIG:Release>:${FLOX_RELEASE_OPTS}>
+  target_compile_options(${LRVX} PUBLIC
+    $<$<CONFIG:Release>:${LRVX_RELEASE_OPTS}>
   )
   # LTO requires -flto flag at link time as well
-  target_link_options(${FLOX} PUBLIC
+  target_link_options(${LRVX} PUBLIC
     $<$<CONFIG:Release>:-flto>
   )
 endif()
@@ -347,75 +347,75 @@ endif()
 # WARNING: CPU affinity can decrease performance on busy/shared systems.
 # It prevents OS scheduler optimization and should only be used on isolated,
 # dedicated hardware where you control the entire system workload.
-option(FLOX_ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" OFF)
-if(FLOX_ENABLE_CPU_AFFINITY)
+option(LRVX_ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" OFF)
+if(LRVX_ENABLE_CPU_AFFINITY)
   message(STATUS "CPU affinity features enabled")
-  target_compile_definitions(${FLOX} PUBLIC FLOX_CPU_AFFINITY_ENABLED=1)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_CPU_AFFINITY_ENABLED=1)
   # Find and conditionally link NUMA library for CPU affinity functionality
   find_library(NUMA_LIBRARY numa)
   if(NUMA_LIBRARY)
-    target_link_libraries(${FLOX} PUBLIC ${NUMA_LIBRARY})
-    target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=1)
+    target_link_libraries(${LRVX} PUBLIC ${NUMA_LIBRARY})
+    target_compile_definitions(${LRVX} PUBLIC LRVX_NUMA_LIBRARY_LINKED=1)
     message(STATUS "Found NUMA library: ${NUMA_LIBRARY}")
   else()
-    target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
+    target_compile_definitions(${LRVX} PUBLIC LRVX_NUMA_LIBRARY_LINKED=0)
     message(WARNING "NUMA library not found")
   endif()
 else()
   message(STATUS "CPU affinity features disabled")
-  target_compile_definitions(${FLOX} PUBLIC FLOX_CPU_AFFINITY_ENABLED=0)
-  target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_CPU_AFFINITY_ENABLED=0)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_NUMA_LIBRARY_LINKED=0)
 endif()
 
-# ONNX Runtime inference nodes for the indicator graph (flox/ml/). Off by
+# ONNX Runtime inference nodes for the indicator graph (lrvx/ml/). Off by
 # default: onnxruntime is a heavy optional dependency of the ML last mile.
-option(FLOX_ENABLE_ONNX "Enable ONNX Runtime inference nodes" OFF)
-if(FLOX_ENABLE_ONNX)
+option(LRVX_ENABLE_ONNX "Enable ONNX Runtime inference nodes" OFF)
+if(LRVX_ENABLE_ONNX)
   find_library(ONNXRUNTIME_LIBRARY NAMES onnxruntime)
   find_path(ONNXRUNTIME_INCLUDE_DIR NAMES onnxruntime_cxx_api.h PATH_SUFFIXES onnxruntime onnxruntime/core/session)
   if(ONNXRUNTIME_LIBRARY AND ONNXRUNTIME_INCLUDE_DIR)
-    target_include_directories(${FLOX} PUBLIC ${ONNXRUNTIME_INCLUDE_DIR})
-    target_link_libraries(${FLOX} PUBLIC ${ONNXRUNTIME_LIBRARY})
-    target_compile_definitions(${FLOX} PUBLIC FLOX_ONNX_ENABLED=1)
+    target_include_directories(${LRVX} PUBLIC ${ONNXRUNTIME_INCLUDE_DIR})
+    target_link_libraries(${LRVX} PUBLIC ${ONNXRUNTIME_LIBRARY})
+    target_compile_definitions(${LRVX} PUBLIC LRVX_ONNX_ENABLED=1)
     message(STATUS "ONNX Runtime found: ${ONNXRUNTIME_LIBRARY}")
   else()
-    message(FATAL_ERROR "FLOX_ENABLE_ONNX=ON but onnxruntime was not found")
+    message(FATAL_ERROR "LRVX_ENABLE_ONNX=ON but onnxruntime was not found")
   endif()
 else()
-  target_compile_definitions(${FLOX} PUBLIC FLOX_ONNX_ENABLED=0)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_ONNX_ENABLED=0)
 endif()
 
-# AF_XDP receive-path backend (flox/net/af_xdp_receive_path.h). Linux-only,
+# AF_XDP receive-path backend (lrvx/net/af_xdp_receive_path.h). Linux-only,
 # needs libxdp/libbpf; off by default.
-option(FLOX_ENABLE_AF_XDP "Enable AF_XDP receive-path backend" OFF)
-if(FLOX_ENABLE_AF_XDP)
+option(LRVX_ENABLE_AF_XDP "Enable AF_XDP receive-path backend" OFF)
+if(LRVX_ENABLE_AF_XDP)
   find_library(XDP_LIBRARY NAMES xdp)
   find_library(BPF_LIBRARY NAMES bpf)
   if(XDP_LIBRARY AND BPF_LIBRARY)
-    target_link_libraries(${FLOX} PUBLIC ${XDP_LIBRARY} ${BPF_LIBRARY})
-    target_compile_definitions(${FLOX} PUBLIC FLOX_AF_XDP_ENABLED=1)
+    target_link_libraries(${LRVX} PUBLIC ${XDP_LIBRARY} ${BPF_LIBRARY})
+    target_compile_definitions(${LRVX} PUBLIC LRVX_AF_XDP_ENABLED=1)
     message(STATUS "AF_XDP backend enabled: ${XDP_LIBRARY}")
   else()
-    message(FATAL_ERROR "FLOX_ENABLE_AF_XDP=ON but libxdp/libbpf were not found")
+    message(FATAL_ERROR "LRVX_ENABLE_AF_XDP=ON but libxdp/libbpf were not found")
   endif()
 else()
-  target_compile_definitions(${FLOX} PUBLIC FLOX_AF_XDP_ENABLED=0)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_AF_XDP_ENABLED=0)
 endif()
 
-option(FLOX_ENABLE_LZ4 "Enable LZ4 compression for binary logs" ON)
-if(FLOX_ENABLE_LZ4)
+option(LRVX_ENABLE_LZ4 "Enable LZ4 compression for binary logs" ON)
+if(LRVX_ENABLE_LZ4)
   # Try find_package first (works with vcpkg on Windows)
   find_package(lz4 CONFIG QUIET)
   if(lz4_FOUND)
-    target_link_libraries(${FLOX} PUBLIC lz4::lz4)
+    target_link_libraries(${LRVX} PUBLIC lz4::lz4)
     message(STATUS "LZ4 found via find_package")
   else()
     # Try find_library (works with brew on macOS)
     find_library(LZ4_LIBRARY NAMES lz4)
     find_path(LZ4_INCLUDE_DIR NAMES lz4.h)
     if(LZ4_LIBRARY AND LZ4_INCLUDE_DIR)
-      target_include_directories(${FLOX} PUBLIC ${LZ4_INCLUDE_DIR})
-      target_link_libraries(${FLOX} PUBLIC ${LZ4_LIBRARY})
+      target_include_directories(${LRVX} PUBLIC ${LZ4_INCLUDE_DIR})
+      target_link_libraries(${LRVX} PUBLIC ${LZ4_LIBRARY})
       message(STATUS "LZ4 found via find_library: ${LZ4_LIBRARY}")
     else()
       # Try pkg-config (Linux with liblz4-devel installed)
@@ -424,15 +424,15 @@ if(FLOX_ENABLE_LZ4)
         pkg_check_modules(LZ4 QUIET liblz4)
       endif()
       if(LZ4_FOUND)
-        target_include_directories(${FLOX} PUBLIC ${LZ4_INCLUDE_DIRS})
-        target_link_libraries(${FLOX} PUBLIC ${LZ4_LINK_LIBRARIES})
+        target_include_directories(${LRVX} PUBLIC ${LZ4_INCLUDE_DIRS})
+        target_link_libraries(${LRVX} PUBLIC ${LZ4_LINK_LIBRARIES})
         message(STATUS "LZ4 found via pkg-config")
       else()
-        # Last resort: vendor lz4 source and compile it directly into flox.
+        # Last resort: vendor lz4 source and compile it directly into lrvx.
         # We avoid lz4's own cmake build because lz4_static lands in lz4's own
-        # export set, conflicting with install(EXPORT floxTargets) below
+        # export set, conflicting with install(EXPORT lrvxTargets) below
         # (a target can belong to only one export set in CMake). Compiling
-        # lz4.c into ${FLOX} sidesteps the issue and keeps lz4 symbols
+        # lz4.c into ${LRVX} sidesteps the issue and keeps lz4 symbols
         # available to compression.h consumers without a separate target.
         include(FetchContent)
         FetchContent_Declare(
@@ -445,25 +445,25 @@ if(FLOX_ENABLE_LZ4)
         if(NOT lz4_src_POPULATED)
           FetchContent_Populate(lz4_src)
         endif()
-        target_sources(${FLOX} PRIVATE ${lz4_src_SOURCE_DIR}/lib/lz4.c)
-        target_include_directories(${FLOX} PUBLIC
+        target_sources(${LRVX} PRIVATE ${lz4_src_SOURCE_DIR}/lib/lz4.c)
+        target_include_directories(${LRVX} PUBLIC
           $<BUILD_INTERFACE:${lz4_src_SOURCE_DIR}/lib>
         )
-        # Install vendored lz4 header so installed flox consumers can include it.
+        # Install vendored lz4 header so installed lrvx consumers can include it.
         install(FILES ${lz4_src_SOURCE_DIR}/lib/lz4.h DESTINATION include)
-        message(STATUS "LZ4 vendored from sources (compiled into flox)")
+        message(STATUS "LZ4 vendored from sources (compiled into lrvx)")
       endif()
     endif()
   endif()
-  target_compile_definitions(${FLOX} PUBLIC FLOX_LZ4_ENABLED=1)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_LZ4_ENABLED=1)
   message(STATUS "LZ4 compression enabled")
 else()
-  target_compile_definitions(${FLOX} PUBLIC FLOX_LZ4_ENABLED=0)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_LZ4_ENABLED=0)
   message(STATUS "LZ4 compression disabled")
 endif()
 
-option(FLOX_ENABLE_TRACY "Enable Tracy profiler" OFF)
-if (FLOX_ENABLE_TRACY)
+option(LRVX_ENABLE_TRACY "Enable Tracy profiler" OFF)
+if (LRVX_ENABLE_TRACY)
   include(FetchContent)
   FetchContent_Declare(
     tracy
@@ -473,65 +473,44 @@ if (FLOX_ENABLE_TRACY)
 
   FetchContent_MakeAvailable(tracy)
 
-  target_link_libraries(${FLOX} PUBLIC Tracy::TracyClient)
-  target_compile_definitions(${FLOX} PUBLIC FLOX_ENABLE_TRACY=1)
+  target_link_libraries(${LRVX} PUBLIC Tracy::TracyClient)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_ENABLE_TRACY=1)
 endif()
 
 # ──────────────────────────────────────────────────────────────────────
-# Build artefacts (FLOX_BUILD_*)
+# Build artefacts (LRVX_BUILD_*)
 #
-# Naming convention: FLOX_BUILD_* gates optional build outputs (binding
-# wheels, demo binary, tools, tests, benchmarks, connectors); FLOX_ENABLE_*
+# Naming convention: LRVX_BUILD_* gates optional build outputs (binding
+# wheels, demo binary, tools, tests, benchmarks, connectors); LRVX_ENABLE_*
 # gates capabilities of the core library (backtest module, LZ4, Tracy,
 # CPU affinity).
-#
-# The eight FLOX_BUILD_* options below were renamed from FLOX_ENABLE_*.
-# The deprecated names continue to work as aliases for one
-# release cycle — passing -DFLOX_ENABLE_PYTHON=ON still flips
-# FLOX_BUILD_PYTHON, with a warning. See docs/build/feature-flags.md.
 # ──────────────────────────────────────────────────────────────────────
 
-# Deprecation aliases: copy each old FLOX_ENABLE_<X> to FLOX_BUILD_<X>
-# when the new form was not set explicitly. Emits a one-line warning
-# per legacy use so downstream caches notice and migrate.
-macro(_flox_deprecate_enable_to_build name)
-  if(DEFINED FLOX_ENABLE_${name} AND NOT DEFINED FLOX_BUILD_${name})
-    message(WARNING
-      "FLOX_ENABLE_${name} is deprecated; use FLOX_BUILD_${name}. "
-      "The legacy name will be removed in a future release.")
-    set(FLOX_BUILD_${name} ${FLOX_ENABLE_${name}})
-  endif()
-endmacro()
-
-foreach(_flox_renamed BENCHMARKS TESTS DEMO TOOLS PYTHON CAPI CODON QUICKJS)
-  _flox_deprecate_enable_to_build(${_flox_renamed})
-endforeach()
-
-option(FLOX_BUILD_BENCHMARKS "Build benchmarks" OFF)
-if (FLOX_BUILD_BENCHMARKS)
+option(LRVX_BUILD_BENCHMARKS "Build benchmarks" OFF)
+if (LRVX_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
 
 
-option(FLOX_BUILD_TESTS "Build tests" OFF)
-if (FLOX_BUILD_TESTS)
+option(LRVX_BUILD_TESTS "Build tests" OFF)
+if (LRVX_BUILD_TESTS)
   enable_testing()
   # tests/ is the core suite: it drives the backtest module, the replay
   # pipeline and the indicator graph, none of which the lite profile builds.
   # The venue's own suite registers from venue/CMakeLists.txt further down,
   # and that is what the lite profile runs.
-  if(NOT FLOX_VENUE_LITE)
+  if(NOT LRVX_VENUE_LITE)
     add_subdirectory(tests)
   endif()
 endif()
 
 # Venue module (option declared above, next to the backtest implication).
-if (FLOX_BUILD_VENUE)
+if (LRVX_BUILD_VENUE)
   add_subdirectory(venue)
 endif()
 
-option(FLOX_BUILD_DEMO "Build demo application" OFF)
-if (FLOX_BUILD_DEMO)
+option(LRVX_BUILD_DEMO "Build demo application" OFF)
+if (LRVX_BUILD_DEMO)
   add_subdirectory(demo)
 endif()
 
@@ -544,59 +523,59 @@ endif()
 # also requires ZLIB and CURL and fetches ixwebsocket and simdjson. One
 # optional dependency behind one flag is cheaper for whoever is writing the
 # strategy, which is the only cost that matters here.
-option(FLOX_FIX_TLS "Build the FIX initiator's TLS channel (needs OpenSSL)" OFF)
-if(FLOX_FIX_TLS)
+option(LRVX_FIX_TLS "Build the FIX initiator's TLS channel (needs OpenSSL)" OFF)
+if(LRVX_FIX_TLS)
   find_package(OpenSSL REQUIRED)
-  target_link_libraries(${FLOX} PUBLIC OpenSSL::SSL OpenSSL::Crypto)
-  target_compile_definitions(${FLOX} PUBLIC FLOX_FIX_TLS=1)
-  message(STATUS "FLOX_FIX_TLS: the FIX initiator can speak TLS")
+  target_link_libraries(${LRVX} PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+  target_compile_definitions(${LRVX} PUBLIC LRVX_FIX_TLS=1)
+  message(STATUS "LRVX_FIX_TLS: the FIX initiator can speak TLS")
 endif()
 
-option(FLOX_BUILD_TOOLS "Build command-line tools" OFF)
-if (FLOX_BUILD_TOOLS)
+option(LRVX_BUILD_TOOLS "Build command-line tools" OFF)
+if (LRVX_BUILD_TOOLS)
   add_subdirectory(tools)
 endif()
 
-option(FLOX_BUILD_PYTHON "Build Python bindings" OFF)
-if (FLOX_BUILD_PYTHON)
+option(LRVX_BUILD_PYTHON "Build Python bindings" OFF)
+if (LRVX_BUILD_PYTHON)
   add_subdirectory(python)
 endif()
 
-# FLOX_BUILD_NODE is an explicit flag for parity with the other
+# LRVX_BUILD_NODE is an explicit flag for parity with the other
 # binding artefacts. The Node addon is built out-of-tree by
 # `npm run build` — this flag exists for documentation completeness
 # and so the CI matrix can reference it uniformly. CMake itself does
 # not invoke npm.
-option(FLOX_BUILD_NODE "Build Node.js bindings (out-of-tree via npm)" OFF)
+option(LRVX_BUILD_NODE "Build Node.js bindings (out-of-tree via npm)" OFF)
 
-option(FLOX_BUILD_CAPI "Build C API shared library" OFF)
-if (FLOX_BUILD_CAPI)
+option(LRVX_BUILD_CAPI "Build C API shared library" OFF)
+if (LRVX_BUILD_CAPI)
   # Static lib must be PIC to link into the shared CAPI lib
-  set_target_properties(${FLOX} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  # The C API exposes the full FLOX surface — including the
+  set_target_properties(${LRVX} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  # The C API exposes the full lrvx surface — including the
   # backtest module — so the shared library has to link against
   # backtest_*.cpp. Auto-enable BACKTEST when it isn't already on.
-  if(NOT FLOX_ENABLE_BACKTEST)
-    message(STATUS "FLOX_BUILD_CAPI=ON implies FLOX_ENABLE_BACKTEST=ON; enabling.")
-    set(FLOX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
+  if(NOT LRVX_ENABLE_BACKTEST)
+    message(STATUS "LRVX_BUILD_CAPI=ON implies LRVX_ENABLE_BACKTEST=ON; enabling.")
+    set(LRVX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
     file(GLOB BACKTEST_SRC_FILES src/backtest/*.cpp)
-    target_sources(${FLOX} PRIVATE ${BACKTEST_SRC_FILES})
+    target_sources(${LRVX} PRIVATE ${BACKTEST_SRC_FILES})
   endif()
   add_subdirectory(src/capi)
 endif()
 
-option(FLOX_BUILD_CODON "Build Codon strategy support" OFF)
-if (FLOX_BUILD_CODON)
-  if (NOT FLOX_BUILD_CAPI)
-    message(FATAL_ERROR "FLOX_BUILD_CODON requires FLOX_BUILD_CAPI=ON")
+option(LRVX_BUILD_CODON "Build Codon strategy support" OFF)
+if (LRVX_BUILD_CODON)
+  if (NOT LRVX_BUILD_CAPI)
+    message(FATAL_ERROR "LRVX_BUILD_CODON requires LRVX_BUILD_CAPI=ON")
   endif()
   add_subdirectory(codon)
 endif()
 
-option(FLOX_BUILD_QUICKJS "Build QuickJS JavaScript strategy support" OFF)
-if (FLOX_BUILD_QUICKJS)
-  if (NOT FLOX_BUILD_CAPI)
-    message(FATAL_ERROR "FLOX_BUILD_QUICKJS requires FLOX_BUILD_CAPI=ON")
+option(LRVX_BUILD_QUICKJS "Build QuickJS JavaScript strategy support" OFF)
+if (LRVX_BUILD_QUICKJS)
+  if (NOT LRVX_BUILD_CAPI)
+    message(FATAL_ERROR "LRVX_BUILD_QUICKJS requires LRVX_BUILD_CAPI=ON")
   endif()
   add_subdirectory(src/quickjs)
 endif()
@@ -606,79 +585,79 @@ endif()
 # dependency cost (OpenSSL/CURL/zlib + ixwebsocket/simdjson via
 # FetchContent). See connectors/CMakeLists.txt for the per-connector
 # wiring.
-option(FLOX_BUILD_CONNECTORS "Build native exchange connectors module" OFF)
+option(LRVX_BUILD_CONNECTORS "Build native exchange connectors module" OFF)
 
-# Subset of connectors to build when FLOX_BUILD_CONNECTORS=ON. Empty
+# Subset of connectors to build when LRVX_BUILD_CONNECTORS=ON. Empty
 # string (the default) means "all venues currently in connectors/src/".
 # Validation lives in connectors/CMakeLists.txt; a configure-time
 # error fires when an unknown name is requested.
-set(FLOX_CONNECTORS "" CACHE STRING
+set(LRVX_CONNECTORS "" CACHE STRING
     "Semicolon-separated list of venues to build under \
 connectors/src/<name>/; empty = all available")
 
-if (FLOX_BUILD_CONNECTORS)
+if (LRVX_BUILD_CONNECTORS)
   add_subdirectory(connectors)
 endif()
 
-target_include_directories(flox PUBLIC
+target_include_directories(lrvx PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-install(TARGETS flox
-  EXPORT floxTargets
+install(TARGETS lrvx
+  EXPORT lrvxTargets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
 
-# flox/ml/onnx_inference.h includes <onnxruntime_cxx_api.h> unconditionally,
-# and FLOX_ENABLE_ONNX is off by default. Shipping it in a build without the
+# lrvx/ml/onnx_inference.h includes <onnxruntime_cxx_api.h> unconditionally,
+# and LRVX_ENABLE_ONNX is off by default. Shipping it in a build without the
 # dependency hands a consumer a header that cannot compile, with nothing to
 # say why -- so it is not shipped in that build. Same rule as the venue's TLS
 # gateway; scripts/check_installed_headers_declared.py is what asks.
 #
 # The lite profile installs the transitive closure of venue/lite_surface.txt
-# and nothing else -- FLOX_LITE_CLOSURE, computed once near the top of this
-# file (next to FLOX_VENUE_LITE) rather than read a second time here, so the
+# and nothing else -- LRVX_LITE_CLOSURE, computed once near the top of this
+# file (next to LRVX_VENUE_LITE) rather than read a second time here, so the
 # installed surface, the direction gate and the core .cpp filter above all
 # come from the same configure-time call.
-if(FLOX_VENUE_LITE)
-  message(STATUS "FLOX_VENUE_LITE: installing ${_flox_lite_closure_n} headers, the closure of venue/lite_surface.txt")
-  foreach(_h ${FLOX_LITE_CLOSURE})
-    # include/flox/util/crc32.h and venue/include/flox-venue/journal.h both
+if(LRVX_VENUE_LITE)
+  message(STATUS "LRVX_VENUE_LITE: installing ${_lrvx_lite_closure_n} headers, the closure of venue/lite_surface.txt")
+  foreach(_h ${LRVX_LITE_CLOSURE})
+    # include/lrvx/util/crc32.h and venue/include/lrvx-venue/journal.h both
     # install under include/, at the path after their own include root.
     string(REGEX REPLACE "^(venue/)?include/" "" _rel "${_h}")
     get_filename_component(_dir "${_rel}" DIRECTORY)
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${_h}" DESTINATION "include/${_dir}")
   endforeach()
-elseif(FLOX_ENABLE_ONNX)
+elseif(LRVX_ENABLE_ONNX)
   install(DIRECTORY include/ DESTINATION include)
 else()
   install(DIRECTORY include/ DESTINATION include PATTERN "onnx_inference.h" EXCLUDE)
 endif()
 
-install(EXPORT floxTargets
-  FILE floxTargets.cmake
-  NAMESPACE flox::
-  DESTINATION lib/cmake/flox
+install(EXPORT lrvxTargets
+  FILE lrvxTargets.cmake
+  NAMESPACE lrvx::
+  DESTINATION lib/cmake/lrvx
 )
 
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/floxConfigVersion.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/lrvxConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY AnyNewerVersion
 )
 
 configure_package_config_file(
-  "${CMAKE_CURRENT_LIST_DIR}/cmake/floxConfig.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/floxConfig.cmake"
-  INSTALL_DESTINATION lib/cmake/flox
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/lrvxConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/lrvxConfig.cmake"
+  INSTALL_DESTINATION lib/cmake/lrvx
 )
 
 install(FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/floxConfig.cmake"
-  "${CMAKE_CURRENT_BINARY_DIR}/floxConfigVersion.cmake"
-  DESTINATION lib/cmake/flox
+  "${CMAKE_CURRENT_BINARY_DIR}/lrvxConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/lrvxConfigVersion.cmake"
+  DESTINATION lib/cmake/lrvx
 )

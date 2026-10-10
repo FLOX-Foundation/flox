@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_result.h"
 
 #include <gtest/gtest.h>
 #include <cstdio>
@@ -16,7 +16,7 @@
 #include <sstream>
 #include <string>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -127,7 +127,7 @@ TEST(BacktestMetrics, EquityCurveCsvRoundTrip)
   roundTrip(result, 100.0, 110.0, 1000, 2000, 1);
   roundTrip(result, 100.0, 95.0, 3000, 4000, 3);
 
-  auto path = std::filesystem::temp_directory_path() / "flox_eq_curve.csv";
+  auto path = std::filesystem::temp_directory_path() / "lrvx_eq_curve.csv";
   ASSERT_TRUE(result.writeEquityCurveCsv(path.string()));
 
   std::ifstream in(path);

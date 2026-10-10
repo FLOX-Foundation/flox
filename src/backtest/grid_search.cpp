@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/grid_search.h"
+#include "lrvx/backtest/grid_search.h"
 
-#include "flox/log/log.h"
+#include "lrvx/log/log.h"
 
-namespace flox
+namespace lrvx
 {
 
 void GridSearch::addAxis(std::vector<double> values)
@@ -66,13 +66,13 @@ std::vector<GridSearchResult> GridSearch::run(std::size_t /*numThreads*/)
   std::vector<GridSearchResult> results;
   if (!_factory)
   {
-    FLOX_LOG_ERROR("GridSearch: no factory set");
+    LRVX_LOG_ERROR("GridSearch: no factory set");
     return results;
   }
   const std::size_t total = totalCombinations();
   if (total == 0)
   {
-    FLOX_LOG_ERROR("GridSearch: no parameter combinations");
+    LRVX_LOG_ERROR("GridSearch: no parameter combinations");
     return results;
   }
   results.reserve(total);
@@ -88,4 +88,4 @@ std::vector<GridSearchResult> GridSearch::run(std::size_t /*numThreads*/)
   return results;
 }
 
-}  // namespace flox
+}  // namespace lrvx

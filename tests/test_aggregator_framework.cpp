@@ -1,32 +1,32 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/error/flox_error.h"
-#include "flox/replay/aggregator.h"
-#include "flox/replay/aggregators/bin_count.h"
-#include "flox/replay/aggregators/event_type_stats.h"
-#include "flox/replay/aggregators/ohlc_bin.h"
-#include "flox/replay/aggregators/peak.h"
-#include "flox/replay/aggregators/quantile.h"
-#include "flox/replay/aggregators/volume_bin.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/merged_tape_reader.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/recording_metadata.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/replay/aggregator.h"
+#include "lrvx/replay/aggregators/bin_count.h"
+#include "lrvx/replay/aggregators/event_type_stats.h"
+#include "lrvx/replay/aggregators/ohlc_bin.h"
+#include "lrvx/replay/aggregators/peak.h"
+#include "lrvx/replay/aggregators/quantile.h"
+#include "lrvx/replay/aggregators/volume_bin.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/merged_tape_reader.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/recording_metadata.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <array>
 #include <filesystem>
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -87,7 +87,7 @@ class AggregatorFrameworkTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_test_aggregator";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_test_aggregator";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }
@@ -1604,7 +1604,7 @@ TEST_F(AggregatorFrameworkTest, ReorderBufferThrowsOnWindowOverflowInStrictMode)
         [](const ReplayEvent&)
         { return true; });
   }
-  catch (const flox::FloxError& e)
+  catch (const lrvx::LrvxError& e)
   {
     threw = true;
     err_code = e.code();
@@ -1755,7 +1755,7 @@ TEST_F(AggregatorFrameworkTest, MergedReorderBufferThrowsOnOverflow)
         [](uint32_t, const ReplayEvent&)
         { return true; });
   }
-  catch (const flox::FloxError& e)
+  catch (const lrvx::LrvxError& e)
   {
     threw = true;
     code = e.code();

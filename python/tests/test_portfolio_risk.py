@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.portfolio_risk.PortfolioRiskAggregator``."""
+"""Tests for ``lrvx.portfolio_risk.PortfolioRiskAggregator``."""
 from __future__ import annotations
 
 import sys
@@ -14,7 +14,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import portfolio_risk as pr  # noqa: E402
+from lrvx import portfolio_risk as pr  # noqa: E402
 
 
 class UpdateAndSnapshotTests(unittest.TestCase):

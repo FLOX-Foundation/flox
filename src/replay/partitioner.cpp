@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/ops/partitioner.h"
+#include "lrvx/replay/ops/partitioner.h"
 
 #include <algorithm>
 #include <cstring>
 #include <sstream>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 Partitioner::Partitioner(const SegmentManifest& manifest) : _manifest(manifest) {}
@@ -493,4 +493,4 @@ std::string partitionToJson(const Partition& partition)
   return ss.str();
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

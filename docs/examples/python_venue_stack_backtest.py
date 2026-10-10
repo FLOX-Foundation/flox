@@ -14,15 +14,15 @@ venue's full economics".
 import pathlib
 from collections import deque
 
-import flox_py as flox
+import lrvx
 
 CSV = str(
-    pathlib.Path(flox.__file__).resolve().parent
+    pathlib.Path(lrvx.__file__).resolve().parent
     / "templates/research/data/btcusdt_sample.csv"
 )
 
 
-class CrossAboveSMA(flox.Strategy):
+class CrossAboveSMA(lrvx.Strategy):
     def __init__(self, symbols, period=20):
         super().__init__(symbols)
         self.window = deque(maxlen=period)
@@ -39,13 +39,13 @@ class CrossAboveSMA(flox.Strategy):
 
 
 def main():
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-    bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000.0)
+    bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000.0)
     bt.set_strategy(CrossAboveSMA([btc]))
 
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     bt.set_venue_stack(stack)  # pass None to revert to the built-in executor
 
     stats = bt.run_csv(CSV, "BTCUSDT")

@@ -1,6 +1,6 @@
 # Smoke test: ADF compiles + computes against the C API.
 
-from flox.indicators import adf
+from lrvx.indicators import adf
 
 
 def check(label: str, ok: bool):

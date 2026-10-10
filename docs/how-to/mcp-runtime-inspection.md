@@ -1,6 +1,6 @@
-# Inspect a running flox engine over MCP
+# Inspect a running lrvx engine over MCP
 
-The `flox-mcp` server can read positions, open orders, PnL, and the kill-switch state from a running flox engine and answer questions about them through any MCP client (Cursor, Claude Code, Cline). The tools on this page are read-only and driven by a JSON snapshot file. Mutating ops (`place_order`, `cancel_order`, `cancel_all`, `flatten_positions`, `set_kill_switch`) ship in the same server but go through a separate, token-scoped HTTP control plane — see [Control a running engine over MCP](mcp-control-plane.md).
+The `lrvx-mcp` server can read positions, open orders, PnL, and the kill-switch state from a running lrvx engine and answer questions about them through any MCP client (Cursor, Claude Code, Cline). The tools on this page are read-only and driven by a JSON snapshot file. Mutating ops (`place_order`, `cancel_order`, `cancel_all`, `flatten_positions`, `set_kill_switch`) ship in the same server but go through a separate, token-scoped HTTP control plane — see [Control a running engine over MCP](mcp-control-plane.md).
 
 ## How it works
 
@@ -13,10 +13,10 @@ Trade-off: snapshots are point-in-time, so the agent gets state with `snapshot_a
 Tools resolve the snapshot in this order:
 
 1. The `state_path` argument passed to the tool (per-call override)
-2. The `FLOX_RUNTIME_STATE` env var
-3. `/tmp/flox-runtime-state.json` (default)
+2. The `LRVX_RUNTIME_STATE` env var
+3. `/tmp/lrvx-runtime-state.json` (default)
 
-The user's app is responsible for writing to whichever of these paths the MCP client reads. The simplest setup is to set `FLOX_RUNTIME_STATE` in both processes' environment.
+The user's app is responsible for writing to whichever of these paths the MCP client reads. The simplest setup is to set `LRVX_RUNTIME_STATE` in both processes' environment.
 
 ## Schema
 
@@ -76,7 +76,7 @@ The user's app is responsible for writing to whichever of these paths the MCP cl
 }
 ```
 
-`schema_version` is required. Tools reject unknown versions with a clear error so a snapshot from a newer flox release does not get parsed wrong by an older MCP build.
+`schema_version` is required. Tools reject unknown versions with a clear error so a snapshot from a newer lrvx release does not get parsed wrong by an older MCP build.
 
 `captured_at_ns` is required for staleness reporting. Use `time.time_ns()` at write time.
 
@@ -84,7 +84,7 @@ The arrays may be empty. Missing optional fields default sensibly: `kill_switch`
 
 ## Writing the snapshot
 
-flox does not ship a built-in snapshot writer. Every app composes its hooks differently, and the writer needs to know which hook instances to query. Here is a minimal pattern:
+lrvx does not ship a built-in snapshot writer. Every app composes its hooks differently, and the writer needs to know which hook instances to query. Here is a minimal pattern:
 
 ```python
 import json
@@ -120,15 +120,15 @@ The atomic `tmp.replace(path)` matters: without it the MCP reader can hit a half
 
 ## MCP client configuration
 
-Add `flox-mcp` to your MCP client's server list. Pass `FLOX_RUNTIME_STATE` so it points at the same snapshot your app writes:
+Add `lrvx-mcp` to your MCP client's server list. Pass `LRVX_RUNTIME_STATE` so it points at the same snapshot your app writes:
 
 ```json
 {
   "mcpServers": {
-    "flox": {
-      "command": "flox-mcp",
+    "lrvx": {
+      "command": "lrvx-mcp",
       "env": {
-        "FLOX_RUNTIME_STATE": "/var/run/flox/state.json"
+        "LRVX_RUNTIME_STATE": "/var/run/lrvx/state.json"
       }
     }
   }
@@ -148,7 +148,7 @@ Every tool returns `{"snapshot_age_ms": int|null, "data": ...}`. If the snapshot
 
 ## Mutating tools use a different transport
 
-The snapshot file is read-only by construction — the MCP server never writes it. The mutating tools do not read it at all; they talk HTTP to a `ControlServer` your app embeds, reading the URL and bearer token from `FLOX_CONTROL_URL` / `FLOX_CONTROL_TOKEN`.
+The snapshot file is read-only by construction — the MCP server never writes it. The mutating tools do not read it at all; they talk HTTP to a `ControlServer` your app embeds, reading the URL and bearer token from `LRVX_CONTROL_URL` / `LRVX_CONTROL_TOKEN`.
 
 | Tool | Purpose |
 |------|---------|

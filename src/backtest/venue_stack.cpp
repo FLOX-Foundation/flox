@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/venue_stack.h"
+#include "lrvx/backtest/venue_stack.h"
 
 #include <cctype>
 #include <stdexcept>
 
-namespace flox
+namespace lrvx
 {
 
 namespace
@@ -167,4 +167,4 @@ VenueStack VenueStack::fromVenue(const std::string& name, uint64_t accountId,
   throw std::invalid_argument("VenueStack::fromVenue: unknown venue '" + name + "'");
 }
 
-}  // namespace flox
+}  // namespace lrvx

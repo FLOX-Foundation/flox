@@ -20,10 +20,10 @@ isn't one of the three supported modes:
 
 === "Python"
     ```python
-    result = flox.adf(prices, max_lag=8, regression="c")
+    result = lrvx.adf(prices, max_lag=8, regression="c")
     ```
 
 ## Common causes
 
 - Passing a long form like `"constant"` instead of `"c"`.
-- Capitalisation: FLOX expects lowercase letters.
+- Capitalisation: lrvx expects lowercase letters.

@@ -1,8 +1,8 @@
-# Reproducibility bundles with `flox bundle`
+# Reproducibility bundles with `lrvx bundle`
 
-A bundle is a single tarball that encodes everything needed to reproduce a backtest result byte-for-byte on another machine: strategy code, the captured tape it ran against, the engine version, and the expected output. `flox bundle pack` captures a run; `flox bundle validate` proves the next run on the same inputs matches.
+A bundle is a single tarball that encodes everything needed to reproduce a backtest result byte-for-byte on another machine: strategy code, the captured tape it ran against, the engine version, and the expected output. `lrvx bundle pack` captures a run; `lrvx bundle validate` proves the next run on the same inputs matches.
 
-**`flox bundle replay` and `flox bundle validate` run the strategy code shipped inside the bundle.** A bundle is designed to be shared, which is exactly why this matters: replaying one is the same as running any other code someone handed you. Only replay or validate a bundle from a source you trust. Nothing in the format authenticates who produced it.
+**`lrvx bundle replay` and `lrvx bundle validate` run the strategy code shipped inside the bundle.** A bundle is designed to be shared, which is exactly why this matters: replaying one is the same as running any other code someone handed you. Only replay or validate a bundle from a source you trust. Nothing in the format authenticates who produced it.
 
 ## Why this exists
 
@@ -21,19 +21,19 @@ bundle.tar
 │   ├── manifest.json
 │   └── trades-*.bin
 ├── expected_output.json   # fill sequence, totals, trade count (legacy JSON summary)
-└── expected.floxrun/      # per-run trace: signals, orders, fills
+└── expected.lrvxrun/      # per-run trace: signals, orders, fills
     ├── manifest.json
     ├── signals-*.bin
     ├── orders-*.bin
     └── fills-*.bin
 ```
 
-Older bundles produced before the `.floxrun` ride-along landed contain only `expected_output.json`. The replay path falls back to JSON-only diff for those; new bundles ship both, so a reader can do richer signal / order / fill comparisons against the bundled trace.
+Older bundles produced before the `.lrvxrun` ride-along landed contain only `expected_output.json`. The replay path falls back to JSON-only diff for those; new bundles ship both, so a reader can do richer signal / order / fill comparisons against the bundled trace.
 
 ## Pack
 
 ```bash
-flox bundle pack \
+lrvx bundle pack \
     --strategy ./my_strategy.py \
     --tape ./tapes/bybit-btc-2026-05-07 \
     --output ./bundles/strat-2026-05-07.tar \
@@ -45,7 +45,7 @@ Pack runs the strategy through the supplied tape with the given config, captures
 ## Replay
 
 ```bash
-flox bundle replay ./bundles/strat-2026-05-07.tar
+lrvx bundle replay ./bundles/strat-2026-05-07.tar
 ```
 
 Extracts the bundle, runs the strategy through the bundled tape with the bundled config, and prints actual versus expected counts. Replay does not assert; for the assertion use `validate`.
@@ -53,7 +53,7 @@ Extracts the bundle, runs the strategy through the bundled tape with the bundled
 ## Validate
 
 ```bash
-flox bundle validate ./bundles/strat-2026-05-07.tar
+lrvx bundle validate ./bundles/strat-2026-05-07.tar
 ```
 
 Replay plus a strict comparison against the recorded `expected_output.json`. Exits `0` on match, `1` on divergence with a per-key diff printed to stderr. This is the form to wire into CI.
@@ -68,13 +68,13 @@ If you need stricter comparison (per-fill timestamps, intermediate equity curve)
 
 ## Strategy file rules
 
-The strategy file is a normal Python module. Pack expects exactly one `flox.Strategy` subclass; multiple subclasses fail with a clear error. The class is instantiated with the symbol list pack registered; if your `__init__` does not accept that, pack falls back to a no-arg constructor.
+The strategy file is a normal Python module. Pack expects exactly one `lrvx.Strategy` subclass; multiple subclasses fail with a clear error. The class is instantiated with the symbol list pack registered; if your `__init__` does not accept that, pack falls back to a no-arg constructor.
 
 ```python
-import flox_py as flox
+import lrvx
 
 
-class MyStrategy(flox.Strategy):
+class MyStrategy(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self._fired = False
@@ -96,10 +96,10 @@ Strategy state should reset every run (no global side effects, no clock dependen
 
 ## Versioning
 
-`bundle_format_version` is recorded in the manifest. A reader from a newer flox release reads `v1` bundles; a `v1` reader rejects newer bundles with a clear error rather than parsing them wrong. Migration paths land alongside any future format bump.
+`bundle_format_version` is recorded in the manifest. A reader from a newer lrvx release reads `v1` bundles; a `v1` reader rejects newer bundles with a clear error rather than parsing them wrong. Migration paths land alongside any future format bump.
 
 ## See also
 
-* [Record and replay tapes](tape-record.md). Bundles consume the same `.floxlog` format.
+* [Record and replay tapes](tape-record.md). Bundles consume the same `.lrvx` format.
 * [Paper trading](paper-trading.md). The same `SimulatedExecutor` powers paper mode and bundle replay.
 * [Backtest with realistic fills](backtest-realistic-fills.md). The slippage / queue knobs flow into bundles unchanged.

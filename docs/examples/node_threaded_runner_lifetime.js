@@ -6,14 +6,14 @@
 // its own because runner.stop() hands Node's event loop back. See
 // docs/explanation/node-threaded-runner-lifetime.md.
 
-const flox = require('../../node');
+const lrvx = require('../../node');
 
-const reg = new flox.SymbolRegistry();
+const reg = new lrvx.SymbolRegistry();
 const sym = Number(reg.addSymbol('binance', 'BTCUSDT', 0.01));
 
 let delivered = 0;
 
-const runner = new flox.Runner(reg, () => {}, /* threaded */ true);
+const runner = new lrvx.Runner(reg, () => {}, /* threaded */ true);
 runner.addStrategy({
   symbols: [sym],
   onStart() { console.log('strategy started'); },

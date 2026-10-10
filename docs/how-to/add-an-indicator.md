@@ -5,12 +5,12 @@
 
 Adding a new indicator takes **one C++ class plus one line in a
 registry**. After those two changes it appears in C++,
-Python, every binding, in `flox.list_indicators()` discovery, in the parity
+Python, every binding, in `lrvx.list_indicators()` discovery, in the parity
 tests, and in the docs site, all automatically.
 
 ## 1. Write the C++ class
 
-Create `include/flox/indicator/my_indicator.h`. Implement the canonical
+Create `include/lrvx/indicator/my_indicator.h`. Implement the canonical
 `compute()` for your indicator — that's the single source of truth for the
 math. Inherit from the matching streaming mixin to get
 `update()`/`value()`/`ready()`/`reset()` on the same class for free:
@@ -18,13 +18,13 @@ math. Inherit from the matching streaming mixin to get
 ```cpp
 #pragma once
 
-#include "flox/indicator/streaming.h"
+#include "lrvx/indicator/streaming.h"
 
 #include <cmath>
 #include <span>
 #include <vector>
 
-namespace flox::indicator
+namespace lrvx::indicator
 {
 
 class MyIndicator : public StreamingSingle<MyIndicator>
@@ -45,10 +45,10 @@ class MyIndicator : public StreamingSingle<MyIndicator>
   size_t _period;
 };
 
-}  // namespace flox::indicator
+}  // namespace lrvx::indicator
 
-#include "flox/indicator/indicator.h"
-static_assert(flox::indicator::SingleIndicator<flox::indicator::MyIndicator>);
+#include "lrvx/indicator/indicator.h"
+static_assert(lrvx::indicator::SingleIndicator<lrvx::indicator::MyIndicator>);
 ```
 
 The streaming mixin you choose depends on the input shape:
@@ -65,10 +65,10 @@ The streaming mixin you choose depends on the input shape:
 
 ## 2. Register it
 
-Add **one line** to `include/flox/indicator/registry.def`:
+Add **one line** to `include/lrvx/indicator/registry.def`:
 
 ```c
-FLOX_INDICATOR(MyIndicator, my_indicator, SingleInput, (size_t period))
+LRVX_INDICATOR(MyIndicator, my_indicator, SingleInput, (size_t period))
 ```
 
 The `Kind` matches the mixin you used (`SingleInput`, `BarInput`,
@@ -84,21 +84,21 @@ ctest --test-dir build
 
 You now have:
 
-- `flox::indicator::MyIndicator` in C++ with `compute()` (batch) and
+- `lrvx::indicator::MyIndicator` in C++ with `compute()` (batch) and
   `update()`/`value()`/`ready()`/`reset()` (streaming) on the same instance.
-- `flox.MyIndicator(...)` in Python with `compute(arr)` and
+- `lrvx.MyIndicator(...)` in Python with `compute(arr)` and
   `update(v)` / `value` / `ready` / `reset()` on the same instance.
-- `flox.MyIndicator(...)` in **Node.js** — same surface, same semantics
+- `lrvx.MyIndicator(...)` in **Node.js** — same surface, same semantics
   (thin N-API wrapper around the same C++ class).
-- `MyIndicator` in **QuickJS** (`quickjs/flox/indicators.js`) — accumulates
+- `MyIndicator` in **QuickJS** (`quickjs/lrvx/indicators.js`) — accumulates
   history and re-runs the batch C-API; same `update`/`value`/`ready`/`reset`.
   Add a 3-line class to that file using one of the `_Stream*` helper bases.
-- `MyIndicator` in **Codon** (`codon/flox/indicators.codon`) — same pattern
+- `MyIndicator` in **Codon** (`codon/lrvx/indicators.codon`) — same pattern
   as QuickJS, history + batch call.
 - The streaming-vs-batch parity test
   (`tests/test_streaming_parity.cpp`) automatically covers it once you add
   one line to the registry-driven test list.
-- `flox.list_indicators()` returns it (Python and Node).
+- `lrvx.list_indicators()` returns it (Python and Node).
 - The docs site lists it on every per-binding page (run
   `python3 scripts/gen_indicator_docs.py`).
 
@@ -109,7 +109,7 @@ buffer, no warmup logic, no seeding to debug.
 ## 4. Reading the existing 21 indicators
 
 Every indicator listed in `registry.def` (EMA, SMA, RSI, ATR, MACD, ...)
-follows exactly this pattern. Look at any `include/flox/indicator/<name>.h`
+follows exactly this pattern. Look at any `include/lrvx/indicator/<name>.h`
 for a working example.
 
 ## When NOT to use the streaming mixin

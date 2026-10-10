@@ -1,6 +1,6 @@
 # First Strategy
 
-Write a simple trading strategy that reacts to market data. After your [language quickstart](README.md) you should already have FLOX building. This tutorial introduces the callback model that every binding shares.
+Write a simple trading strategy that reacts to market data. After your [language quickstart](README.md) you should already have lrvx building. This tutorial introduces the callback model that every binding shares.
 
 ## The model
 
@@ -28,9 +28,9 @@ This strategy logs every trade and tracks the best bid / ask.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    class PrintingStrategy(flox.Strategy):
+    class PrintingStrategy(lrvx.Strategy):
         def __init__(self, symbols):
             super().__init__(symbols)
             self.trade_count = 0
@@ -76,9 +76,9 @@ This strategy logs every trade and tracks the best bid / ask.
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
-    from flox.context import SymbolContext
-    from flox.types import TradeData
+    from lrvx.strategy import Strategy
+    from lrvx.context import SymbolContext
+    from lrvx.types import TradeData
 
     class PrintingStrategy(Strategy):
         trade_count: int = 0
@@ -98,28 +98,28 @@ This strategy logs every trade and tracks the best bid / ask.
 === "C++"
 
     ```cpp
-    #include "flox/strategy/strategy.h"
+    #include "lrvx/strategy/strategy.h"
 
-    using namespace flox;
+    using namespace lrvx;
 
     class PrintingStrategy : public Strategy {
     public:
       PrintingStrategy(SymbolId symbol, const SymbolRegistry& reg)
           : Strategy(/*id=*/1, symbol, reg) {}
 
-      void start() override { FLOX_LOG("PrintingStrategy started"); }
-      void stop()  override { FLOX_LOG("Trades seen: " << _tradeCount); }
+      void start() override { LRVX_LOG("PrintingStrategy started"); }
+      void stop()  override { LRVX_LOG("Trades seen: " << _tradeCount); }
 
     protected:
       void onSymbolTrade(SymbolContext& /*ctx*/, const TradeEvent& ev) override {
         ++_tradeCount;
-        FLOX_LOG("Trade: " << ev.trade.price.toDouble()
+        LRVX_LOG("Trade: " << ev.trade.price.toDouble()
                  << " x " << ev.trade.quantity.toDouble()
                  << " (" << (ev.trade.isBuy ? "BUY" : "SELL") << ")");
       }
 
       void onSymbolBook(SymbolContext& ctx, const BookUpdateEvent& /*ev*/) override {
-        FLOX_LOG("Book: " << ctx.book.bestBid()->toDouble()
+        LRVX_LOG("Book: " << ctx.book.bestBid()->toDouble()
                  << " / " << ctx.book.bestAsk()->toDouble());
       }
 
@@ -135,7 +135,7 @@ Submit a buy after every 10th trade.
 === "Python"
 
     ```python
-    class TenthTradeBuyer(flox.Strategy):
+    class TenthTradeBuyer(lrvx.Strategy):
         def __init__(self, symbols):
             super().__init__(symbols)
             self.count = 0
@@ -175,11 +175,11 @@ Each language has a small bit of boilerplate to register your symbols and run th
 === "Python"
 
     ```python
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
     strat = PrintingStrategy([btc])
-    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
     bt.set_strategy(strat)
     bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
     ```
@@ -187,11 +187,11 @@ Each language has a small bit of boilerplate to register your symbols and run th
 === "Node.js"
 
     ```javascript
-    const reg = new flox.SymbolRegistry();
+    const reg = new lrvx.SymbolRegistry();
     const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
 
     const strat = new PrintingStrategy([btc]);
-    const bt = new flox.BacktestRunner(reg, 0.0004, 10_000);
+    const bt = new lrvx.BacktestRunner(reg, 0.0004, 10_000);
     bt.setStrategy(strat);
     bt.runCsv("data/btcusdt_1m.csv", "BTCUSDT");
     ```

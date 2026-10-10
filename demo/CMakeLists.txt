@@ -1,53 +1,53 @@
-add_executable(flox_demo
+add_executable(lrvx_demo
     src/main.cpp
     src/demo_connector.cpp
     src/demo_strategy.cpp
     src/demo_builder.cpp
 )
 
-target_include_directories(flox_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
+target_include_directories(lrvx_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
                                             ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-target_link_libraries(flox_demo PRIVATE ${FLOX})
+target_link_libraries(lrvx_demo PRIVATE ${LRVX})
 
-if(FLOX_ENABLE_BACKTEST)
+if(LRVX_ENABLE_BACKTEST)
   add_executable(backtest_demo src/backtest_demo.cpp)
   target_include_directories(backtest_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
                                                    ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  target_link_libraries(backtest_demo PRIVATE ${FLOX})
+  target_link_libraries(backtest_demo PRIVATE ${LRVX})
 
   add_executable(grid_search_demo src/grid_search_demo.cpp)
   target_include_directories(grid_search_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
                                                       ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  target_link_libraries(grid_search_demo PRIVATE ${FLOX})
+  target_link_libraries(grid_search_demo PRIVATE ${LRVX})
 endif()
 
 # Bar aggregator demos
 add_executable(multi_timeframe_demo src/multi_timeframe_demo.cpp)
 target_include_directories(multi_timeframe_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(multi_timeframe_demo PRIVATE ${FLOX})
+target_link_libraries(multi_timeframe_demo PRIVATE ${LRVX})
 
 add_executable(volume_profile_demo src/volume_profile_demo.cpp)
 target_include_directories(volume_profile_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(volume_profile_demo PRIVATE ${FLOX})
+target_link_libraries(volume_profile_demo PRIVATE ${LRVX})
 
 add_executable(footprint_demo src/footprint_demo.cpp)
 target_include_directories(footprint_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(footprint_demo PRIVATE ${FLOX})
+target_link_libraries(footprint_demo PRIVATE ${LRVX})
 
 add_executable(market_profile_demo src/market_profile_demo.cpp)
 target_include_directories(market_profile_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(market_profile_demo PRIVATE ${FLOX})
+target_link_libraries(market_profile_demo PRIVATE ${LRVX})
 
 # CEX (Cross-Exchange Coordination) demo
 add_executable(cex_demo src/cex_demo.cpp)
 target_include_directories(cex_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(cex_demo PRIVATE ${FLOX})
+target_link_libraries(cex_demo PRIVATE ${LRVX})
 
 # Multi-agent venue simulation: several agents trading against one shared book
 # through the venue matching engine (needs the venue module).
-if(FLOX_BUILD_VENUE)
+if(LRVX_BUILD_VENUE)
   add_executable(multi_agent_venue_demo src/multi_agent_venue_demo.cpp)
   target_include_directories(multi_agent_venue_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-  target_link_libraries(multi_agent_venue_demo PRIVATE flox::venue)
+  target_link_libraries(multi_agent_venue_demo PRIVATE lrvx::venue)
 endif()

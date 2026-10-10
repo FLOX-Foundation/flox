@@ -14,7 +14,7 @@ OHLCV bars or trades before running.
 
 === "Python"
     ```python
-    eng = flox.Engine()
+    eng = lrvx.Engine()
     eng.add_symbol("BTCUSDT")
     eng.load_csv("BTCUSDT", "btc.csv")        # ← load first
     eng.run(MyStrategy())

@@ -34,7 +34,7 @@ private:
 | Startup      | Calls `start()` on all registered connectors.                           |
 | Shutdown     | `stopAll()` calls `stop()` on every registered connector; the destructor calls `stopAll()` so a manager going out of scope never leaves a connector running. |
 | Callbacks    | Wires trade and book update callbacks to each connector during startup. |
-| Output       | Logs startup and shutdown of each connector via `FLOX_LOG`.             |
+| Output       | Logs startup and shutdown of each connector via `LRVX_LOG`.             |
 
 ## Notes
 

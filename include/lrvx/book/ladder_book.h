@@ -1,0 +1,830 @@
+/*
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
+ *
+ * Copyright (c) 2025 lrvx contributors
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ *
+ * O(1) tick-indexed ladder matching book: the performance-path order-level
+ * resting book of the venue matching engine. The correctness oracle it is
+ * verified against (lrvx-venue/matching_book.h) shares the same interface.
+ *
+ * WHEN TO USE: resting book for matching -- own orders, cancel by id, FIFO
+ * within a level, zero allocations in steady state. For an aggregate L2
+ * market-data view use lrvx/book/nlevel_order_book.h; for an order-level
+ * market-data book use lrvx/book/l3/l3_order_book.h.
+ *
+ * Design:
+ * - Two dense price ladders (bids, asks), one Level per tick over a bounded
+ *   price band. Level index = floor((price - base) / tick), so price<->level
+ *   is O(1); a price outside [base, base + numLevels*tick) has no level.
+ * - Intrusive FIFO order list per level (time priority) over a preallocated
+ *   node pool with a free list -- zero allocations in steady state.
+ * - An occupancy bitmap per side + a cached best cursor: best is O(1), and the
+ *   next non-empty level on a cursor move is a single word scan.
+ * - Order id -> node via an open-addressing table, linear probing with
+ *   backward-shift deletion (no per-order allocation, no tombstones, and so no
+ *   rehash pause on the matching path).
+ *
+ * The band is a property of THIS book, not of the instrument: the engine's
+ * price collar (SymbolConfig min/maxPrice) is optional config and does not
+ * know the ladder's geometry. addResting therefore refuses an out-of-band
+ * price and an exhausted pool rather than assuming a precondition, and the
+ * engine turns the refusal into a reject the owner can read (canRest() lets it
+ * refuse before the order has traded).
+ */
+#pragma once
+
+#include "lrvx/book/resting_order.h"
+
+#include <bit>
+#include <cstdint>
+#include <optional>
+#include <utility>
+#include <vector>
+
+namespace lrvx
+{
+
+class LadderBook
+{
+ public:
+  struct Config
+  {
+    int64_t basePriceRaw{};  // price.raw() of level 0
+    int64_t tickRaw{};       // raw ticks per level (> 0)
+    int32_t numLevels{};     // ladder height per side
+    int32_t maxOrders{};     // node-pool capacity
+  };
+
+  explicit LadderBook(Config c)
+      : base_(c.basePriceRaw),
+        tick_(c.tickRaw),
+        numLevels_(c.numLevels),
+        bidLevels_(static_cast<size_t>(c.numLevels)),
+        askLevels_(static_cast<size_t>(c.numLevels)),
+        nodes_(static_cast<size_t>(c.maxOrders)),
+        bidBits_(wordsFor(c.numLevels), 0),
+        askBits_(wordsFor(c.numLevels), 0)
+  {
+    for (int32_t i = 0; i < c.maxOrders; ++i)
+    {
+      nodes_[static_cast<size_t>(i)].nextFree = i + 1;
+    }
+    if (c.maxOrders > 0)
+    {
+      nodes_[static_cast<size_t>(c.maxOrders) - 1].nextFree = -1;
+    }
+    freeHead_ = c.maxOrders > 0 ? 0 : -1;
+
+    // Strictly more than twice the node pool, so the id index can never pass
+    // half full however long the book runs -- the load bound that makes a
+    // linear probe O(1) expected and guarantees every probe and every deletion
+    // scan meets an empty slot.
+    idxCap_ = 1;
+    while (idxCap_ < static_cast<size_t>(c.maxOrders) * 2 + 1)
+    {
+      idxCap_ <<= 1;
+    }
+    idx_.assign(idxCap_, Slot{});
+  }
+
+  bool contains(OrderId id) const noexcept { return findSlot(id) != -1; }
+  bool empty() const noexcept { return count_ == 0; }
+  bool full() const noexcept { return freeHead_ == -1; }
+
+  // Refuses rather than drops. Both bounds this book has -- the price band and
+  // the node pool -- used to end in a bare `return`, which left the caller
+  // believing the order was resting: the engine acked it, tracked it, held its
+  // reservation and armed its expiry against a book that had never taken it.
+  // The answer is the caller's to act on, so it cannot be ignored.
+  [[nodiscard]] BookAddResult addResting(Side side, const RestingOrder& o) noexcept
+  {
+    const int32_t lvl = levelOf(o.price);
+    if (lvl < 0 || lvl >= numLevels_)
+    {
+      return BookAddResult::PriceOutOfBand;
+    }
+    const int32_t n = allocNode();
+    if (n < 0)
+    {
+      return BookAddResult::PoolExhausted;
+    }
+    // The id index goes in FIRST: an order on a level but not in the index is
+    // invisible to contains(), find() and cancel() -- it can never be taken
+    // off the book again, and it would still trade. Refusing the order is the
+    // lesser failure, so the node goes back to the pool and the caller is told.
+    if (!insertSlot(o.id, n))
+    {
+      freeNode(n);
+      return BookAddResult::PoolExhausted;
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    node.order = o;
+    node.level = lvl;
+    node.side = side;
+    node.prev = -1;
+    node.next = -1;
+
+    Level& level = levelRef(side, lvl);
+    if (level.head < 0)
+    {
+      level.head = level.tail = n;
+      setBit(bitsRef(side), lvl);
+      onLevelOccupied(side, lvl);
+    }
+    else
+    {
+      nodes_[static_cast<size_t>(level.tail)].next = n;
+      node.prev = level.tail;
+      level.tail = n;
+    }
+    level.totalQty += o.leaves + o.hidden;  // hidden reserve is real liquidity
+    return BookAddResult::Accepted;         // count_ is maintained by allocNode/freeNode
+  }
+
+  // Whether this book has a level for `p` at all. The engine asks before it
+  // commits an order to matching, so a price the ladder cannot represent is
+  // refused while refusing is still free -- addResting stays the authority,
+  // but by then the order may already have traded.
+  bool canRest(Price p) const noexcept
+  {
+    const int32_t lvl = levelOf(p);
+    return lvl >= 0 && lvl < numLevels_;
+  }
+
+  const RestingOrder* find(OrderId id) const noexcept
+  {
+    const int32_t n = findSlot(id);
+    return n < 0 ? nullptr : &nodes_[static_cast<size_t>(n)].order;
+  }
+
+  // In-place leaves reduction (keeps FIFO position). Caller guarantees
+  // newLeaves <= current and > 0.
+  bool reduce(OrderId id, Quantity newLeaves) noexcept
+  {
+    const int32_t n = findSlot(id);
+    if (n < 0)
+    {
+      return false;
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    levelRef(node.side, node.level).totalQty -= (node.order.leaves - newLeaves);
+    node.order.leaves = newLeaves;
+    return true;
+  }
+
+  // In-place TOTAL (displayed + hidden) reduction. See
+  // MatchingBook::reduceTotal.
+  bool reduceTotal(OrderId id, Quantity newTotal) noexcept
+  {
+    const int32_t n = findSlot(id);
+    if (n < 0)
+    {
+      return false;
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    if (newTotal < node.order.leaves)
+    {
+      levelRef(node.side, node.level).totalQty -= (node.order.leaves - newTotal);
+      node.order.leaves = newTotal;
+      node.order.hidden = Quantity{};
+    }
+    else
+    {
+      node.order.hidden = newTotal - node.order.leaves;
+    }
+    return true;
+  }
+
+  // Reduce an order (by id) by `by`, with iceberg refill+requeue when its peak
+  // is exhausted, else remove it. Used by pro-rata matching.
+  void consumeById(OrderId id, Quantity by) noexcept
+  {
+    const int32_t n = findSlot(id);
+    if (n < 0)
+    {
+      return;
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    node.order.leaves -= by;
+    node.order.cumQty += by;  // real fill -- track the running total
+    levelRef(node.side, node.level).totalQty -= by;
+    if (!node.order.leaves.isZero())
+    {
+      return;
+    }
+    if (!node.order.hidden.isZero())
+    {
+      const Quantity newVis =
+          (node.order.peak < node.order.hidden) ? node.order.peak : node.order.hidden;
+      node.order.leaves = newVis;
+      node.order.hidden = node.order.hidden - newVis;
+      moveToTail(node.side, node.level, n);
+      return;
+    }
+    unlink(n);
+    eraseSlot(id);
+    freeNode(n);
+  }
+
+  std::optional<RestingOrder> cancel(OrderId id) noexcept
+  {
+    const int32_t n = findSlot(id);
+    if (n < 0)
+    {
+      return std::nullopt;
+    }
+    const RestingOrder copy = nodes_[static_cast<size_t>(n)].order;
+    unlink(n);
+    eraseSlot(id);
+    freeNode(n);
+    return copy;
+  }
+
+  RestingOrder* peekBest(Side restingSide) noexcept
+  {
+    const int32_t lvl = (restingSide == Side::BUY) ? bestBidLevel_ : bestAskLevel_;
+    if (lvl < 0)
+    {
+      return nullptr;
+    }
+    const int32_t head = levelRef(restingSide, lvl).head;
+    return head < 0 ? nullptr : &nodes_[static_cast<size_t>(head)].order;
+  }
+
+  // Aggregated (price, total qty) per level, best-first. Used by auction uncross.
+  void levels(Side side, std::vector<std::pair<Price, Quantity>>& out) const
+  {
+    out.clear();
+    if (side == Side::BUY)
+    {
+      for (int32_t l = bestBidLevel_; l >= 0; l = highestSetAtOrBelow(bidBits_, l - 1))
+      {
+        out.emplace_back(priceOf(l), bidLevels_[static_cast<size_t>(l)].totalQty);
+      }
+    }
+    else
+    {
+      for (int32_t l = bestAskLevel_; l >= 0; l = lowestSetAtOrAbove(askBits_, l + 1))
+      {
+        out.emplace_back(priceOf(l), askLevels_[static_cast<size_t>(l)].totalQty);
+      }
+    }
+  }
+
+  // Copy all orders at the best price of `restingSide` in FIFO order.
+  void bestLevel(Side restingSide, std::vector<RestingOrder>& out) const
+  {
+    out.clear();
+    const int32_t lvl = (restingSide == Side::BUY) ? bestBidLevel_ : bestAskLevel_;
+    if (lvl < 0)
+    {
+      return;
+    }
+    const Level& level =
+        (restingSide == Side::BUY) ? bidLevels_[static_cast<size_t>(lvl)]
+                                   : askLevels_[static_cast<size_t>(lvl)];
+    for (int32_t idx = level.head; idx >= 0; idx = nodes_[static_cast<size_t>(idx)].next)
+    {
+      out.push_back(nodes_[static_cast<size_t>(idx)].order);
+    }
+  }
+
+  void fillBest(Side restingSide, Quantity by) noexcept
+  {
+    const int32_t lvl = (restingSide == Side::BUY) ? bestBidLevel_ : bestAskLevel_;
+    if (lvl < 0)
+    {
+      return;
+    }
+    Level& level = levelRef(restingSide, lvl);
+    const int32_t head = level.head;
+    Node& node = nodes_[static_cast<size_t>(head)];
+    node.order.leaves -= by;
+    node.order.cumQty += by;  // real fill -- track the running total
+    level.totalQty -= by;
+    if (node.order.leaves.isZero())
+    {
+      if (!node.order.hidden.isZero())
+      {
+        // iceberg: expose the next peak, re-queue at the tail (lose priority).
+        const Quantity newVis =
+            (node.order.peak < node.order.hidden) ? node.order.peak : node.order.hidden;
+        node.order.leaves = newVis;
+        node.order.hidden = node.order.hidden - newVis;
+        requeueFrontToTail(restingSide, lvl, head);
+      }
+      else
+      {
+        const OrderId id = node.order.id;
+        unlink(head);  // clears the bit + advances cursor when the level empties
+        eraseSlot(id);
+        freeNode(head);
+      }
+    }
+  }
+
+  // Enumerate every resting order in canonical book order: bids best-first,
+  // then asks best-first, FIFO within each level. Same seam as
+  // MatchingBook::forEachOrder -- the venue checkpoint serializer and state
+  // hash iterate through it (not a hot path).
+  template <class Fn>
+  void forEachOrder(Fn&& fn) const
+  {
+    for (int32_t l = bestBidLevel_; l >= 0; l = highestSetAtOrBelow(bidBits_, l - 1))
+    {
+      for (int32_t i = bidLevels_[static_cast<size_t>(l)].head; i >= 0;
+           i = nodes_[static_cast<size_t>(i)].next)
+      {
+        fn(nodes_[static_cast<size_t>(i)].order);
+      }
+    }
+    for (int32_t l = bestAskLevel_; l >= 0; l = lowestSetAtOrAbove(askBits_, l + 1))
+    {
+      for (int32_t i = askLevels_[static_cast<size_t>(l)].head; i >= 0;
+           i = nodes_[static_cast<size_t>(i)].next)
+      {
+        fn(nodes_[static_cast<size_t>(i)].order);
+      }
+    }
+  }
+
+  std::optional<Price> bestBid() const noexcept
+  {
+    return bestBidLevel_ < 0 ? std::nullopt : std::optional<Price>{priceOf(bestBidLevel_)};
+  }
+  std::optional<Price> bestAsk() const noexcept
+  {
+    return bestAskLevel_ < 0 ? std::nullopt : std::optional<Price>{priceOf(bestAskLevel_)};
+  }
+
+  Quantity availableWithin(Side takerSide, Price limit, bool isMarket) const noexcept
+  {
+    Quantity total{};
+    if (takerSide == Side::BUY)
+    {
+      const int32_t limitLvl = isMarket ? (numLevels_ - 1) : clampLevel(limit);
+      for (int32_t l = bestAskLevel_; l >= 0 && l <= limitLvl;
+           l = lowestSetAtOrAbove(askBits_, l + 1))
+      {
+        total += askLevels_[static_cast<size_t>(l)].totalQty;
+      }
+    }
+    else
+    {
+      const int32_t limitLvl = isMarket ? 0 : clampLevel(limit);
+      for (int32_t l = bestBidLevel_; l >= 0 && l >= limitLvl;
+           l = highestSetAtOrBelow(bidBits_, l - 1))
+      {
+        total += bidLevels_[static_cast<size_t>(l)].totalQty;
+      }
+    }
+    return total;
+  }
+
+  // availableWithin, skipping makers for which skip(order) is true. Iterates the
+  // per-level node lists (not the aggregate totalQty) so an STP-aware FOK
+  // precheck can exclude same-scope liquidity, and a last-look-aware one can
+  // exclude non-firm liquidity. See MatchingBook::availableWithinExcl.
+  template <class Skip>
+  Quantity availableWithinExcl(Side takerSide, Price limit, bool isMarket, Skip skip) const noexcept
+  {
+    Quantity total{};
+    if (takerSide == Side::BUY)
+    {
+      const int32_t limitLvl = isMarket ? (numLevels_ - 1) : clampLevel(limit);
+      for (int32_t l = bestAskLevel_; l >= 0 && l <= limitLvl;
+           l = lowestSetAtOrAbove(askBits_, l + 1))
+      {
+        for (int32_t idx = askLevels_[static_cast<size_t>(l)].head; idx >= 0;
+             idx = nodes_[static_cast<size_t>(idx)].next)
+        {
+          const RestingOrder& o = nodes_[static_cast<size_t>(idx)].order;
+          if (!skip(o))
+          {
+            total += o.leaves + o.hidden;
+          }
+        }
+      }
+    }
+    else
+    {
+      const int32_t limitLvl = isMarket ? 0 : clampLevel(limit);
+      for (int32_t l = bestBidLevel_; l >= 0 && l >= limitLvl;
+           l = highestSetAtOrBelow(bidBits_, l - 1))
+      {
+        for (int32_t idx = bidLevels_[static_cast<size_t>(l)].head; idx >= 0;
+             idx = nodes_[static_cast<size_t>(idx)].next)
+        {
+          const RestingOrder& o = nodes_[static_cast<size_t>(idx)].order;
+          if (!skip(o))
+          {
+            total += o.leaves + o.hidden;
+          }
+        }
+      }
+    }
+    return total;
+  }
+
+ private:
+  struct Level
+  {
+    int32_t head{-1};
+    int32_t tail{-1};
+    Quantity totalQty{};
+  };
+  struct Node
+  {
+    RestingOrder order{};
+    int32_t prev{-1};
+    int32_t next{-1};
+    int32_t level{-1};
+    Side side{};
+    int32_t nextFree{-1};
+  };
+  struct Slot
+  {
+    OrderId id{};
+    int32_t node{-1};
+    uint8_t occupied{0};  // 0 empty, 1 holds an order; no tombstone state
+  };
+
+  static size_t wordsFor(int32_t levels) noexcept
+  {
+    return static_cast<size_t>((levels + 63) / 64);
+  }
+
+  // Integer division truncates toward zero, so the whole window
+  // (base - tick, base) divided out to 0 -- the BASE level. A price under the
+  // ladder was therefore filed one level above itself: the order kept its own
+  // price while bestAsk() quoted the level's, and the two books stopped
+  // agreeing about the same order. Flooring gives that window -1, which is
+  // what "below the ladder" means, and addResting refuses it.
+  static int64_t floorDiv(int64_t n, int64_t d) noexcept
+  {
+    const int64_t q = n / d;
+    return (n % d != 0 && ((n < 0) != (d < 0))) ? q - 1 : q;
+  }
+  // -1 below the ladder, numLevels_ above it. Saturating rather than
+  // narrowing: a price far outside the band overflows int32 on the way back.
+  int32_t levelOf(Price p) const noexcept
+  {
+    const int64_t l = floorDiv(p.raw() - base_, tick_);
+    if (l < 0)
+    {
+      return -1;
+    }
+    if (l >= numLevels_)
+    {
+      return numLevels_;
+    }
+    return static_cast<int32_t>(l);
+  }
+  // The same division for a taker's limit, clamped into the ladder. -1 for a
+  // limit under the base is deliberate: a buyer limited below every level on
+  // the ladder reaches none of them, and the truncating version used to hand
+  // it level 0 and let it sweep asks priced above its limit.
+  int32_t clampLevel(Price p) const noexcept
+  {
+    const int64_t l = floorDiv(p.raw() - base_, tick_);
+    if (l < 0)
+    {
+      return -1;
+    }
+    if (l >= numLevels_)
+    {
+      return numLevels_ - 1;
+    }
+    return static_cast<int32_t>(l);
+  }
+  Price priceOf(int32_t lvl) const noexcept
+  {
+    return Price::fromRaw(base_ + static_cast<int64_t>(lvl) * tick_);
+  }
+
+  Level& levelRef(Side s, int32_t lvl) noexcept
+  {
+    return (s == Side::BUY) ? bidLevels_[static_cast<size_t>(lvl)]
+                            : askLevels_[static_cast<size_t>(lvl)];
+  }
+  std::vector<uint64_t>& bitsRef(Side s) noexcept { return (s == Side::BUY) ? bidBits_ : askBits_; }
+
+  static void setBit(std::vector<uint64_t>& v, int32_t i) noexcept
+  {
+    v[static_cast<size_t>(i) >> 6] |= (1ULL << (static_cast<unsigned>(i) & 63U));
+  }
+  static void clearBit(std::vector<uint64_t>& v, int32_t i) noexcept
+  {
+    v[static_cast<size_t>(i) >> 6] &= ~(1ULL << (static_cast<unsigned>(i) & 63U));
+  }
+
+  static int32_t highestSetAtOrBelow(const std::vector<uint64_t>& v, int32_t i) noexcept
+  {
+    if (i < 0)
+    {
+      return -1;
+    }
+    size_t w = static_cast<size_t>(i) >> 6;
+    const unsigned bit = static_cast<unsigned>(i) & 63U;
+    uint64_t mask = (bit == 63U) ? ~0ULL : ((1ULL << (bit + 1U)) - 1ULL);
+    uint64_t word = v[w] & mask;
+    while (true)
+    {
+      if (word != 0)
+      {
+        return static_cast<int32_t>((w << 6) + static_cast<size_t>(63 - std::countl_zero(word)));
+      }
+      if (w == 0)
+      {
+        return -1;
+      }
+      --w;
+      word = v[w];
+    }
+  }
+
+  int32_t lowestSetAtOrAbove(const std::vector<uint64_t>& v, int32_t i) const noexcept
+  {
+    if (i >= numLevels_)
+    {
+      return -1;
+    }
+    if (i < 0)
+    {
+      i = 0;
+    }
+    size_t w = static_cast<size_t>(i) >> 6;
+    const unsigned bit = static_cast<unsigned>(i) & 63U;
+    uint64_t mask = ~((1ULL << bit) - 1ULL);
+    uint64_t word = v[w] & mask;
+    while (true)
+    {
+      if (word != 0)
+      {
+        const int32_t idx =
+            static_cast<int32_t>((w << 6) + static_cast<size_t>(std::countr_zero(word)));
+        return idx < numLevels_ ? idx : -1;
+      }
+      ++w;
+      if (w >= v.size())
+      {
+        return -1;
+      }
+      word = v[w];
+    }
+  }
+
+  void onLevelOccupied(Side s, int32_t lvl) noexcept
+  {
+    if (s == Side::BUY)
+    {
+      if (lvl > bestBidLevel_)
+      {
+        bestBidLevel_ = lvl;
+      }
+    }
+    else
+    {
+      if (bestAskLevel_ < 0 || lvl < bestAskLevel_)
+      {
+        bestAskLevel_ = lvl;
+      }
+    }
+  }
+
+  void onLevelEmptied(Side s, int32_t lvl) noexcept
+  {
+    clearBit(bitsRef(s), lvl);
+    if (s == Side::BUY)
+    {
+      if (lvl == bestBidLevel_)
+      {
+        bestBidLevel_ = highestSetAtOrBelow(bidBits_, lvl - 1);
+      }
+    }
+    else
+    {
+      if (lvl == bestAskLevel_)
+      {
+        bestAskLevel_ = lowestSetAtOrAbove(askBits_, lvl + 1);
+      }
+    }
+  }
+
+  // Move the level's head node to its tail (iceberg refill re-queue). Precondition:
+  // n == level.head and the level has >= 2 nodes handled; single-node is a no-op.
+  void requeueFrontToTail(Side side, int32_t lvl, int32_t n) noexcept
+  {
+    Level& level = levelRef(side, lvl);
+    if (level.head == level.tail)
+    {
+      return;  // single node -- already at the tail
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    level.head = node.next;
+    nodes_[static_cast<size_t>(node.next)].prev = -1;
+    node.prev = level.tail;
+    node.next = -1;
+    nodes_[static_cast<size_t>(level.tail)].next = n;
+    level.tail = n;
+  }
+
+  // Move any node in a level to its tail (pro-rata iceberg refill re-queue).
+  void moveToTail(Side side, int32_t lvl, int32_t n) noexcept
+  {
+    Level& level = levelRef(side, lvl);
+    if (level.tail == n)
+    {
+      return;  // already at the tail
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    if (node.prev >= 0)
+    {
+      nodes_[static_cast<size_t>(node.prev)].next = node.next;
+    }
+    else
+    {
+      level.head = node.next;
+    }
+    nodes_[static_cast<size_t>(node.next)].prev = node.prev;  // node.next valid (n != tail)
+    node.prev = level.tail;
+    node.next = -1;
+    nodes_[static_cast<size_t>(level.tail)].next = n;
+    level.tail = n;
+  }
+
+  void unlink(int32_t n) noexcept
+  {
+    Node& node = nodes_[static_cast<size_t>(n)];
+    Level& level = levelRef(node.side, node.level);
+    level.totalQty -= (node.order.leaves + node.order.hidden);
+    if (node.prev >= 0)
+    {
+      nodes_[static_cast<size_t>(node.prev)].next = node.next;
+    }
+    else
+    {
+      level.head = node.next;
+    }
+    if (node.next >= 0)
+    {
+      nodes_[static_cast<size_t>(node.next)].prev = node.prev;
+    }
+    else
+    {
+      level.tail = node.prev;
+    }
+    if (level.head < 0)
+    {
+      level.totalQty = Quantity{};  // exact-zero guard against fixed-point drift
+      onLevelEmptied(node.side, node.level);
+    }
+    node.prev = node.next = -1;
+    node.level = -1;
+  }
+
+  int32_t allocNode() noexcept
+  {
+    if (freeHead_ < 0)
+    {
+      return -1;
+    }
+    const int32_t idx = freeHead_;
+    freeHead_ = nodes_[static_cast<size_t>(idx)].nextFree;
+    ++count_;
+    return idx;
+  }
+  void freeNode(int32_t idx) noexcept
+  {
+    nodes_[static_cast<size_t>(idx)] = Node{};
+    nodes_[static_cast<size_t>(idx)].nextFree = freeHead_;
+    freeHead_ = idx;
+    --count_;
+  }
+
+  // ---- open-addressing id index: linear probing, backward-shift deletion ----
+  //
+  // A slot is occupied or empty; there is no tombstone. Deletion closes the
+  // hole by walking the rest of the probe chain and moving back every entry
+  // that the hole would otherwise cut off, so the table after a cancel is
+  // exactly the table the remaining orders would have built from empty.
+  //
+  // Why not tombstones with an amortised rehash: tombstones were the previous
+  // design and nothing ever reclaimed one, so a probe chain grew with the
+  // orders the venue had EVER seen rather than with the orders resting --
+  // contains(), which validate() calls on every new order id, measured 0.9 ns
+  // fresh and 2.5 us after a million add/cancel pairs. A rehash bounds that,
+  // but it pays for the bound with an O(capacity) pause taken in the middle of
+  // a matching pass, on an arbitrary order, which is the one thing this book
+  // exists to avoid. Backward shift has no amortised term at all: every
+  // operation touches only its own chain, and the steady state after any
+  // amount of churn is the steady state of a fresh table.
+  //
+  // The table is a power of two larger than twice the node pool (see the
+  // constructor), and the index holds one entry per resting order, so it can
+  // never pass half full: a probe always ends on an empty slot, and the shift
+  // loop always terminates. insertSlot still answers false if it somehow does
+  // not find one -- an order on a level but outside the index can never be
+  // cancelled -- and addResting turns that into a refusal.
+  size_t hash(OrderId id) const noexcept
+  {
+    uint64_t x = id;
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    return static_cast<size_t>(x) & (idxCap_ - 1);
+  }
+  bool insertSlot(OrderId id, int32_t node) noexcept
+  {
+    const size_t mask = idxCap_ - 1;
+    size_t k = hash(id);
+    for (size_t i = 0; i < idxCap_; ++i, k = (k + 1) & mask)
+    {
+      if (idx_[k].occupied == 0)
+      {
+        idx_[k] = Slot{id, node, 1};
+        return true;
+      }
+    }
+    return false;
+  }
+  int32_t findSlot(OrderId id) const noexcept
+  {
+    const size_t mask = idxCap_ - 1;
+    size_t k = hash(id);
+    for (size_t i = 0; i < idxCap_; ++i, k = (k + 1) & mask)
+    {
+      if (idx_[k].occupied == 0)
+      {
+        return -1;
+      }
+      if (idx_[k].id == id)
+      {
+        return idx_[k].node;
+      }
+    }
+    return -1;
+  }
+  void eraseSlot(OrderId id) noexcept
+  {
+    const size_t mask = idxCap_ - 1;
+    size_t hole = hash(id);
+    size_t i = 0;
+    for (; i < idxCap_; ++i, hole = (hole + 1) & mask)
+    {
+      if (idx_[hole].occupied == 0)
+      {
+        return;  // the chain ended before the id: it is not here
+      }
+      if (idx_[hole].id == id)
+      {
+        break;
+      }
+    }
+    if (i == idxCap_)
+    {
+      return;
+    }
+    // Knuth 6.4 algorithm R. Scan forward to the end of the chain; an entry
+    // whose home slot lies in (hole, j] is still reachable past the hole and
+    // stays where it is, anything else moves back into the hole, which then
+    // follows it. The scan stops at the first empty slot, which is what keeps
+    // the work proportional to this chain rather than to the table.
+    // Bounded by the table: the load factor guarantees an empty slot to stop
+    // on, and the bound is here so that a table that somehow had none would
+    // give a wrong answer rather than hang the matching thread.
+    size_t j = (hole + 1) & mask;
+    for (size_t steps = 0; steps + 1 < idxCap_ && idx_[j].occupied != 0; ++steps, j = (j + 1) & mask)
+    {
+      const size_t home = hash(idx_[j].id);
+      const bool reachablePastHole =
+          (hole <= j) ? (hole < home && home <= j) : (hole < home || home <= j);
+      if (!reachablePastHole)
+      {
+        idx_[hole] = idx_[j];
+        hole = j;
+      }
+    }
+    idx_[hole] = Slot{};
+  }
+
+  int64_t base_;
+  int64_t tick_;
+  int32_t numLevels_;
+  std::vector<Level> bidLevels_;
+  std::vector<Level> askLevels_;
+  std::vector<Node> nodes_;
+  std::vector<uint64_t> bidBits_;
+  std::vector<uint64_t> askBits_;
+  std::vector<Slot> idx_;
+  size_t idxCap_{0};
+  int32_t freeHead_{-1};
+  int32_t bestBidLevel_{-1};
+  int32_t bestAskLevel_{-1};
+  int32_t count_{0};
+};
+
+}  // namespace lrvx

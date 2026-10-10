@@ -13,13 +13,13 @@ echo "=== Format check ==="
 PY="${PYTHON:-python3}"
 
 # Mirror the linux-gcc job's configure. Two things were missing here and both
-# mattered: the FLOX_ENABLE_* names are deprecated aliases, and
+# mattered: the LRVX_ENABLE_* names are deprecated aliases, and
 # without CAPI / PYTHON / QUICKJS this script built 129 of the 144 test targets
 # and never compiled the Codon or QuickJS surface at all -- so "ci-local.sh is
 # green" did not mean CI would be.
-CODON_FLAG="-DFLOX_BUILD_CODON=OFF"
+CODON_FLAG="-DLRVX_BUILD_CODON=OFF"
 if command -v codon >/dev/null 2>&1 || [ -x "$HOME/.codon/bin/codon" ]; then
-    CODON_FLAG="-DFLOX_BUILD_CODON=ON"
+    CODON_FLAG="-DLRVX_BUILD_CODON=ON"
 else
     echo "note: codon not found — skipping the Codon targets (CI builds them)"
 fi
@@ -28,14 +28,14 @@ echo "=== Clean build ==="
 rm -rf "$BUILD_DIR"
 cmake -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DFLOX_BUILD_TESTS=ON \
-    -DFLOX_BUILD_BENCHMARKS=ON \
-    -DFLOX_BUILD_DEMO=ON \
-    -DFLOX_ENABLE_LZ4=ON \
-    -DFLOX_ENABLE_BACKTEST=ON \
-    -DFLOX_BUILD_CAPI=ON \
-    -DFLOX_BUILD_PYTHON=ON \
-    -DFLOX_BUILD_QUICKJS=ON \
+    -DLRVX_BUILD_TESTS=ON \
+    -DLRVX_BUILD_BENCHMARKS=ON \
+    -DLRVX_BUILD_DEMO=ON \
+    -DLRVX_ENABLE_LZ4=ON \
+    -DLRVX_ENABLE_BACKTEST=ON \
+    -DLRVX_BUILD_CAPI=ON \
+    -DLRVX_BUILD_PYTHON=ON \
+    -DLRVX_BUILD_QUICKJS=ON \
     $CODON_FLAG \
     -Dpybind11_DIR="$("$PY" -c 'import pybind11; print(pybind11.get_cmake_dir())' 2>/dev/null)"
 
@@ -51,16 +51,16 @@ echo "=== C++ tests ==="
 
 # Run the binding suites exactly the way CI does. This script used to run none
 # of them, which is how a test that spawns a subprocess with a *relative*
-# PYTHONPATH passed locally (flox_py was pip-installed at an absolute path) and
+# PYTHONPATH passed locally (lrvx was pip-installed at an absolute path) and
 # failed in CI. PYTHONPATH="$BUILD_DIR/python" reproduces the CI environment.
 echo "=== Python test suite ==="
 PYTHONPATH="$BUILD_DIR/python" "$PY" -m pytest python/tests -q
 
 # This script builds the binding, so a skip for a missing one means the build
-# it just did is not importable. FLOX_MCP_REQUIRE_DEPS turns that into a
+# it just did is not importable. LRVX_MCP_REQUIRE_DEPS turns that into a
 # failure instead of a summary line that reads the same as a healthy run.
-echo "=== flox-mcp test suite ==="
-FLOX_MCP_REQUIRE_DEPS=1 PYTHONPATH="$BUILD_DIR/python" "$PY" -m pytest mcp/tests -q
+echo "=== lrvx-mcp test suite ==="
+LRVX_MCP_REQUIRE_DEPS=1 PYTHONPATH="$BUILD_DIR/python" "$PY" -m pytest mcp/tests -q
 
 echo "=== Node.js addon + test suite ==="
 if command -v npm >/dev/null 2>&1; then
@@ -77,7 +77,7 @@ else
 fi
 
 echo "=== Demo ==="
-./scripts/run-with-sanitizer-scan.sh "$BUILD_DIR/demo/flox_demo"
+./scripts/run-with-sanitizer-scan.sh "$BUILD_DIR/demo/lrvx_demo"
 
 echo "=== Benchmarks ==="
 ./scripts/run-benchmarks.sh "$BUILD_DIR/benchmarks"
@@ -87,7 +87,7 @@ echo "=== Benchmarks ==="
 echo "=== Documentation gates ==="
 "$PY" scripts/gen_indicator_docs.py
 git diff --exit-code -- docs/ >/dev/null || {
-  echo "error: docs/ out of sync with include/flox/indicator/registry.def" >&2
+  echo "error: docs/ out of sync with include/lrvx/indicator/registry.def" >&2
   echo "Run: $PY scripts/gen_indicator_docs.py" >&2
   exit 1
 }

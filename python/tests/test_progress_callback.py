@@ -29,13 +29,13 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
 
 def _write_tape(tmp: Path, n_trades: int = 50_000) -> Path:
     out = tmp / "tape"
     out.mkdir(parents=True, exist_ok=True)
-    w = flox_py.DataWriter(str(out), max_segment_mb=64,
+    w = lrvx.DataWriter(str(out), max_segment_mb=64,
                            exchange_id=0, compression="none")
     base = 1_700_000_000_000_000_000
     try:
@@ -55,16 +55,16 @@ class ProgressCallbackTests(unittest.TestCase):
 
     def test_default_run_unchanged(self) -> None:
         tape = _write_tape(self.tmp, n_trades=1_000)
-        r = flox_py.DataReader(str(tape))
-        agg = flox_py.OHLCBinAggregator(bucket_ns=60_000_000_000,
+        r = lrvx.DataReader(str(tape))
+        agg = lrvx.OHLCBinAggregator(bucket_ns=60_000_000_000,
                                         by_symbol=False)
         # Original positional shape still works.
         self.assertTrue(r.run([agg], 1))
 
     def test_callback_fires_with_monotonic_ts(self) -> None:
         tape = _write_tape(self.tmp, n_trades=50_000)
-        r = flox_py.DataReader(str(tape))
-        agg = flox_py.OHLCBinAggregator(bucket_ns=60_000_000_000,
+        r = lrvx.DataReader(str(tape))
+        agg = lrvx.OHLCBinAggregator(bucket_ns=60_000_000_000,
                                         by_symbol=False)
         calls: list[tuple[float, int]] = []
 
@@ -86,8 +86,8 @@ class ProgressCallbackTests(unittest.TestCase):
 
     def test_callback_returning_false_cancels(self) -> None:
         tape = _write_tape(self.tmp, n_trades=50_000)
-        r = flox_py.DataReader(str(tape))
-        agg = flox_py.OHLCBinAggregator(bucket_ns=60_000_000_000,
+        r = lrvx.DataReader(str(tape))
+        agg = lrvx.OHLCBinAggregator(bucket_ns=60_000_000_000,
                                         by_symbol=False)
         calls = [0]
 
@@ -109,8 +109,8 @@ class ProgressCallbackTests(unittest.TestCase):
 
     def test_callback_exception_propagates(self) -> None:
         tape = _write_tape(self.tmp, n_trades=50_000)
-        r = flox_py.DataReader(str(tape))
-        agg = flox_py.OHLCBinAggregator(bucket_ns=60_000_000_000,
+        r = lrvx.DataReader(str(tape))
+        agg = lrvx.OHLCBinAggregator(bucket_ns=60_000_000_000,
                                         by_symbol=False)
 
         class Sentinel(RuntimeError):
@@ -127,8 +127,8 @@ class ProgressCallbackTests(unittest.TestCase):
         # Pythonic forgive-the-bool: returning None (or omitting the
         # return) should NOT cancel — only explicit False cancels.
         tape = _write_tape(self.tmp, n_trades=1_000)
-        r = flox_py.DataReader(str(tape))
-        agg = flox_py.OHLCBinAggregator(bucket_ns=60_000_000_000,
+        r = lrvx.DataReader(str(tape))
+        agg = lrvx.OHLCBinAggregator(bucket_ns=60_000_000_000,
                                         by_symbol=False)
         calls = [0]
 

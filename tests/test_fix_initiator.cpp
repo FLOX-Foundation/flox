@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -12,10 +12,10 @@
  * against the venue's real acceptor lives in
  * venue/tests/test_venue_fix_initiator.cpp.
  */
-#include "flox/connector/fix/fix_client_codec.h"
-#include "flox/connector/fix/fix_executor.h"
-#include "flox/connector/fix/fix_initiator.h"
-#include "flox/connector/fix/fix_wire.h"
+#include "lrvx/connector/fix/fix_client_codec.h"
+#include "lrvx/connector/fix/fix_executor.h"
+#include "lrvx/connector/fix/fix_initiator.h"
+#include "lrvx/connector/fix/fix_wire.h"
 
 #include <gtest/gtest.h>
 #include <unistd.h>
@@ -26,7 +26,7 @@
 #include <variant>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -553,7 +553,7 @@ void test_inbound_report_types()
 void test_sidecar_round_trip_and_damage()
 {
   std::printf("test_sidecar_round_trip_and_damage\n");
-  const std::string path = "/tmp/flox_test_fix_initiator_seq_" + std::to_string(::getpid());
+  const std::string path = "/tmp/lrvx_test_fix_initiator_seq_" + std::to_string(::getpid());
   ::unlink(path.c_str());
 
   fix::FixSeqState out;

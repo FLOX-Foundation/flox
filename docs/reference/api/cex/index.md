@@ -35,10 +35,10 @@ The CEX module provides building blocks for:
 ## Quick Start
 
 ```cpp
-#include "flox/book/composite_book_matrix.h"
-#include "flox/position/aggregated_position_tracker.h"
-#include "flox/execution/order_router.h"
-#include "flox/util/sync/exchange_clock_sync.h"
+#include "lrvx/book/composite_book_matrix.h"
+#include "lrvx/position/aggregated_position_tracker.h"
+#include "lrvx/execution/order_router.h"
+#include "lrvx/util/sync/exchange_clock_sync.h"
 
 // 1. Set up exchanges
 SymbolRegistry registry;

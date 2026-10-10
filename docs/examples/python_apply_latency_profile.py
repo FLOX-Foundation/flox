@@ -1,7 +1,7 @@
 """Apply a named latency profile to a SimulatedExecutor."""
-import flox_py as flox
+import lrvx
 
-exec = flox.SimulatedExecutor()
+exec = lrvx.SimulatedExecutor()
 exec.set_queue_model("tob", 1)
 exec.apply_latency_profile("binance_um_futures")
 

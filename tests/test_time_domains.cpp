@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -17,14 +17,14 @@
  * compile. Runtime checks cover layout and the arithmetic that is allowed.
  */
 
-#include "flox/util/base/time.h"
+#include "lrvx/util/base/time.h"
 
 #include <gtest/gtest.h>
 
 #include <cstring>
 #include <type_traits>
 
-using namespace flox;
+using namespace lrvx;
 
 // The negative half, done with requires-expressions: each names an expression
 // that used to compile under the aliases and no longer may. A static_assert on
@@ -110,9 +110,9 @@ TEST(TimeDomains, WireLayoutIsTheRawInteger)
 }
 
 // fromUnixMs()/fromUnixNs() convert a wall-clock (unix) reading into a
-// FloxClock (steady_clock) TimePoint via unix_to_flox_offset_ns(), a
+// LrvxClock (steady_clock) TimePoint via unix_to_lrvx_offset_ns(), a
 // process-global atomic that init_timebase_mapping() sets exactly once by
-// comparing FloxClock::now() against system_clock::now() at the moment it
+// comparing LrvxClock::now() against system_clock::now() at the moment it
 // runs. Nothing in the live C++ engine startup path calls it -- only a
 // Python aggregator binding does -- so the offset defaults to zero. At
 // zero, fromUnixMs/fromUnixNs do not merely produce a slightly-off answer:
@@ -123,15 +123,15 @@ TEST(TimeDomains, WireLayoutIsTheRawInteger)
 // straight into a steady-clock field; the conversion helper meant to fix
 // that turned out to need this same initialization first, and nothing
 // else in the engine calls it either. Grep for "fromUnixNs(trade" in
-// include/flox/aggregator/ for other call sites this affects -- bar
+// include/lrvx/aggregator/ for other call sites this affects -- bar
 // policies convert a trade's exchangeTsNs the same way.
 //
 // Both tests save and restore the process-global offset so they do not
 // leak state into whichever other TimeDomains test happens to run after.
 TEST(TimeDomains, ZeroOffsetReproducesTheUnixAsSteadyBug)
 {
-  const int64_t savedOffset = unix_to_flox_offset_ns().load();
-  unix_to_flox_offset_ns().store(0);
+  const int64_t savedOffset = unix_to_lrvx_offset_ns().load();
+  unix_to_lrvx_offset_ns().store(0);
 
   const int64_t nowUnixMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::system_clock::now().time_since_epoch())
@@ -147,18 +147,18 @@ TEST(TimeDomains, ZeroOffsetReproducesTheUnixAsSteadyBug)
   // epoch -- decades away on any real system. The magnitude, not the
   // sign, is the point: this must not be a plausible same-day answer.
   EXPECT_GT(std::llabs(diffDays), 3650)
-      << "fromUnixMs(now) landed within 10 years of FloxClock::now() with a "
+      << "fromUnixMs(now) landed within 10 years of LrvxClock::now() with a "
          "zero offset -- either this test's assumption about the platform's "
          "steady_clock epoch is wrong, or the no-op-without-init bug this "
          "pins has been fixed some other way and this test should be "
          "revisited";
 
-  unix_to_flox_offset_ns().store(savedOffset);
+  unix_to_lrvx_offset_ns().store(savedOffset);
 }
 
 TEST(TimeDomains, InitTimebaseMappingFixesTheConversion)
 {
-  const int64_t savedOffset = unix_to_flox_offset_ns().load();
+  const int64_t savedOffset = unix_to_lrvx_offset_ns().load();
 
   init_timebase_mapping();
 
@@ -172,10 +172,10 @@ TEST(TimeDomains, InitTimebaseMappingFixesTheConversion)
       std::chrono::duration_cast<std::chrono::milliseconds>(mapped - steadyNow).count();
 
   // Once the offset is anchored, "now" mapped through it must land within a
-  // second of FloxClock::now() -- generous enough for CI jitter between the
+  // second of LrvxClock::now() -- generous enough for CI jitter between the
   // two now() calls, tight enough that a regression back to the zero-offset
   // behavior (decades off) cannot pass.
   EXPECT_LT(std::llabs(diffMs), 1000);
 
-  unix_to_flox_offset_ns().store(savedOffset);
+  unix_to_lrvx_offset_ns().store(savedOffset);
 }

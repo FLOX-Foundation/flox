@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_result.h"
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <vector>
 
-namespace flox
+namespace lrvx
 {
 
 BacktestResult::BacktestResult(const BacktestConfig& config, size_t expectedFills) : _config(config)
@@ -616,4 +616,4 @@ double BacktestResult::computeTimeWeightedReturn() const
   return product - 1.0;
 }
 
-}  // namespace flox
+}  // namespace lrvx

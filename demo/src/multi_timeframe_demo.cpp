@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -17,21 +17,21 @@
 //
 // Entry: H1 bullish + M5 pullback + M1 reversal candle
 
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bar_matrix.h"
-#include "flox/aggregator/bus/bar_bus.h"
-#include "flox/aggregator/multi_timeframe_aggregator.h"
-#include "flox/aggregator/timeframe.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bar_matrix.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
+#include "lrvx/aggregator/multi_timeframe_aggregator.h"
+#include "lrvx/aggregator/timeframe.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
 
 #include <chrono>
 #include <iostream>
 #include <memory>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 // Multi-timeframe momentum strategy
 template <size_t MaxSymbols = 256, size_t MaxTimeframes = 4, size_t Depth = 64>

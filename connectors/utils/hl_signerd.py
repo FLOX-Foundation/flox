@@ -1,7 +1,7 @@
-# Flox Engine
-# Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+# lrvx Engine
+# Developed by lrvx contributors (https://github.com/lrvx)
 #
-# Copyright (c) 2025 FLOX Foundation
+# Copyright (c) 2025 lrvx contributors
 # Licensed under the MIT License. See LICENSE file in the project root for full
 # license information.
 
@@ -28,7 +28,7 @@ else:
     _IMPORT_ERROR = None
 
 DEFAULT_SOCK = "/dev/shm/hl_sign.sock"
-SOCK_ENV = "FLOX_HL_SIGNER_SOCKET"
+SOCK_ENV = "LRVX_HL_SIGNER_SOCKET"
 
 # A signing request is a few hundred bytes. The length header comes from the
 # peer, so it is a request for an allocation, not a fact.

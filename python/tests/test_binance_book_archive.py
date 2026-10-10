@@ -1,16 +1,16 @@
-"""Tests for ``flox_py.archives.binance.{t1_to_floxlog, depth20_to_floxlog}``.
+"""Tests for ``lrvx.archives.binance.{t1_to_lrvx, depth20_to_lrvx}``.
 
 No network: synthetic bookTicker and bookDepth CSVs matching the
 exact column layouts published on ``data.binance.vision`` are built
-in-memory and fed through the converters. The resulting `.floxlog`
-directory is read back via ``flox_py.DataReader.read_book_updates``
+in-memory and fed through the converters. The resulting `.lrvx`
+directory is read back via ``lrvx.DataReader.read_book_updates``
 and asserted ladder-by-ladder.
 
 Covers:
 
-  * `t1_to_floxlog`: initial snapshot + delta on the next change, no-op
+  * `t1_to_lrvx`: initial snapshot + delta on the next change, no-op
     on unchanged ticks, dedup on re-run by `update_id`.
-  * `depth20_to_floxlog`: long-format snap → 20-level snapshot,
+  * `depth20_to_lrvx`: long-format snap → 20-level snapshot,
     subsequent updates → deltas with qty=0 removals + new prices.
   * Co-existence: aggTrades + book events sit in one tape, monotonic
     on `exchange_ts_ns` (the existing reader interleaves them).
@@ -37,9 +37,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py.archives import binance as bnc  # noqa: E402
+from lrvx.archives import binance as bnc  # noqa: E402
 
 
 # bookTicker rows: update_id, bid_p, bid_q, ask_p, ask_q,
@@ -90,7 +90,7 @@ def _build_depth20_zip(dest: Path) -> Path:
 
 def _read_events(tape_dir: Path):
     """Return list of dict(seq, ts_ns, is_snapshot, bids, asks)."""
-    r = flox_py.DataReader(str(tape_dir))
+    r = lrvx.DataReader(str(tape_dir))
     headers, levels = r.read_book_updates()
     events = []
     for h in headers:
@@ -123,7 +123,7 @@ class T1Tests(unittest.TestCase):
 
     def test_initial_snapshot_then_delta(self) -> None:
         _build_t1_zip(self.zip_path)
-        stats = bnc.t1_to_floxlog(
+        stats = bnc.t1_to_lrvx(
             self.zip_path, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="um-futures",
         )
@@ -149,10 +149,10 @@ class T1Tests(unittest.TestCase):
 
     def test_dedup_on_rerun(self) -> None:
         _build_t1_zip(self.zip_path)
-        bnc.t1_to_floxlog(self.zip_path, self.tape,
+        bnc.t1_to_lrvx(self.zip_path, self.tape,
                           symbol_id=7, symbol_name="BTCUSDT",
                           market="um-futures")
-        second = bnc.t1_to_floxlog(
+        second = bnc.t1_to_lrvx(
             self.zip_path, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="um-futures",
         )
@@ -172,7 +172,7 @@ class Depth20Tests(unittest.TestCase):
 
     def test_snapshot_then_delta(self) -> None:
         _build_depth20_zip(self.zip_path)
-        stats = bnc.depth20_to_floxlog(
+        stats = bnc.depth20_to_lrvx(
             self.zip_path, self.tape, levels=20,
             symbol_id=7, symbol_name="BTCUSDT",
         )
@@ -197,7 +197,7 @@ class Depth20Tests(unittest.TestCase):
 
     def test_metadata_book_fields(self) -> None:
         _build_depth20_zip(self.zip_path)
-        bnc.depth20_to_floxlog(self.zip_path, self.tape, levels=20,
+        bnc.depth20_to_lrvx(self.zip_path, self.tape, levels=20,
                                symbol_id=7, symbol_name="BTCUSDT")
         meta = json.loads((self.tape / "metadata.json").read_text())
         self.assertTrue(meta["has_book_snapshots"])
@@ -230,13 +230,13 @@ class CoexistenceTests(unittest.TestCase):
         bt_zip = self.tmp / "BTCUSDT-bookTicker-2024-01-15.zip"
         _build_t1_zip(bt_zip)
 
-        bnc.aggtrades_to_floxlog(agg_zip, self.tape, symbol_id=1,
+        bnc.aggtrades_to_lrvx(agg_zip, self.tape, symbol_id=1,
                                  symbol_name="BTCUSDT", market="um-futures")
-        bnc.t1_to_floxlog(bt_zip, self.tape, symbol_id=1,
+        bnc.t1_to_lrvx(bt_zip, self.tape, symbol_id=1,
                           symbol_name="BTCUSDT", market="um-futures")
 
         # Trade rows readable.
-        r = flox_py.DataReader(str(self.tape))
+        r = lrvx.DataReader(str(self.tape))
         trades = r.read_trades()
         self.assertEqual(int(trades.size), 3)
         # Book events readable.

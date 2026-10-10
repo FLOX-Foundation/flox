@@ -1,12 +1,12 @@
 'use strict';
 /**
- * node/test/test_tape_diff.js — smoke-test the C++-backed flox.tapeDiff.
+ * node/test/test_tape_diff.js — smoke-test the C++-backed lrvx.tapeDiff.
  *
- * Builds two .floxlog tapes via DataWriter, then exercises:
+ * Builds two .lrvx tapes via DataWriter, then exercises:
  *   - identical tapes return equal=true with no mismatches
  *   - one diverging record is reported with the right index + payloads
  *   - prefix-shorter tape sets firstDivergenceIndex to len(shorter)
- *   - bad path raises FloxError with E_IO_001
+ *   - bad path raises LrvxError with E_IO_001
  *
  * Run from repo root: cd node && node test/test_tape_diff.js
  */
@@ -14,7 +14,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -25,7 +25,7 @@ function check(cond, msg) {
 
 function makeTape(dir, trades) {
   fs.mkdirSync(dir, { recursive: true });
-  const w = new flox.DataWriter(dir, 1, 0);
+  const w = new lrvx.DataWriter(dir, 1, 0);
   for (const t of trades) {
     const sideInt = t.side === 'buy' ? 0 : 1;
     w.writeTrade(t.tsNs, t.tsNs, t.price, t.qty, t.tradeId, t.symbolId, sideInt);
@@ -58,7 +58,7 @@ makeTape(shorter, shorterTrades);
 
 console.log('=== identical tapes ===');
 {
-  const r = flox.tapeDiff(left, left);
+  const r = lrvx.tapeDiff(left, left);
   check(r.equal === true, 'equal true for self-comparison');
   check(r.firstDivergenceIndex === null, 'firstDivergenceIndex null when equal');
   check(r.mismatches.length === 0, 'no mismatches recorded');
@@ -67,7 +67,7 @@ console.log('=== identical tapes ===');
 
 console.log('=== diverging tape ===');
 {
-  const r = flox.tapeDiff(left, right);
+  const r = lrvx.tapeDiff(left, right);
   check(r.equal === false, 'equal false when records differ');
   check(r.firstDivergenceIndex === 1, 'firstDivergenceIndex points at index 1');
   check(r.mismatches.length === 1, 'one mismatch recorded');
@@ -78,7 +78,7 @@ console.log('=== diverging tape ===');
 
 console.log('=== prefix shorter ===');
 {
-  const r = flox.tapeDiff(left, shorter);
+  const r = lrvx.tapeDiff(left, shorter);
   check(r.equal === false, 'equal false when lengths differ');
   check(r.leftCount === 3 && r.rightCount === 2, 'counts reflect both tapes');
   check(r.firstDivergenceIndex === 2, 'firstDivergenceIndex set to shorter length');
@@ -87,7 +87,7 @@ console.log('=== prefix shorter ===');
 console.log('=== invalid path ===');
 {
   let threw = false;
-  try { flox.tapeDiff('/tmp/does-not-exist-xyz', left); }
+  try { lrvx.tapeDiff('/tmp/does-not-exist-xyz', left); }
   catch (e) { threw = true; check(e.code === 'E_IO_001', 'invalid path throws E_IO_001'); }
   check(threw, 'invalid path rejected');
 }

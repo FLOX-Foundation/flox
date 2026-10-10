@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/aggregator/bar_matrix.h"
-#include "flox/aggregator/timeframe.h"
-#include "flox/common.h"
+#include "lrvx/aggregator/bar_matrix.h"
+#include "lrvx/aggregator/timeframe.h"
+#include "lrvx/common.h"
 
 #include <gtest/gtest.h>
 
@@ -17,7 +17,7 @@
 #include <cstddef>
 #include <memory>
 
-using namespace flox;
+using namespace lrvx;
 
 TEST(BarMatrixSizing, StorageGrowsWithTheProductOfItsParameters)
 {

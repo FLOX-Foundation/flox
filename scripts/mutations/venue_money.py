@@ -68,14 +68,14 @@ BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 CTEST_TIMEOUT = 300
 
-FEES_H = "venue/include/flox-venue/engine/fees.h"
-LEDGER_H = "venue/include/flox-venue/ledger.h"
-MESSAGES_H = "venue/include/flox-venue/messages.h"
-CLEARING_H = "venue/include/flox-venue/engine/clearing.h"
-CROSS_MARGIN_H = "venue/include/flox-venue/cross_margin.h"
-FIXED_POINT_TEXT_H = "venue/include/flox-venue/fixed_point_text.h"
-CONTROL_API_H = "venue/include/flox-venue/control_api.h"
-PROMETHEUS_H = "venue/include/flox-venue/prometheus.h"
+FEES_H = "venue/include/lrvx-venue/engine/fees.h"
+LEDGER_H = "venue/include/lrvx-venue/ledger.h"
+MESSAGES_H = "venue/include/lrvx-venue/messages.h"
+CLEARING_H = "venue/include/lrvx-venue/engine/clearing.h"
+CROSS_MARGIN_H = "venue/include/lrvx-venue/cross_margin.h"
+FIXED_POINT_TEXT_H = "venue/include/lrvx-venue/fixed_point_text.h"
+CONTROL_API_H = "venue/include/lrvx-venue/control_api.h"
+PROMETHEUS_H = "venue/include/lrvx-venue/prometheus.h"
 
 FEE = "test_venue_fee_fixed_point"
 FUNDING = "test_venue_funding_fixed_point"

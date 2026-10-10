@@ -2,9 +2,9 @@
 
 #pragma once
 #include <napi.h>
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class PositionTrackerWrap : public Napi::ObjectWrap<PositionTrackerWrap>
@@ -20,12 +20,12 @@ class PositionTrackerWrap : public Napi::ObjectWrap<PositionTrackerWrap>
                         InstanceMethod("totalRealizedPnl", &PositionTrackerWrap::TotalPnl)});
   }
   PositionTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PositionTrackerWrap>(info),
-                                                        _h(flox_position_tracker_create(info.Length() > 0 ? info[0].As<Napi::Number>().Uint32Value() : 0)) {}
+                                                        _h(lrvx_position_tracker_create(info.Length() > 0 ? info[0].As<Napi::Number>().Uint32Value() : 0)) {}
   ~PositionTrackerWrap()
   {
     if (_h)
     {
-      flox_position_tracker_destroy(_h);
+      lrvx_position_tracker_destroy(_h);
     }
   }
 
@@ -33,14 +33,14 @@ class PositionTrackerWrap : public Napi::ObjectWrap<PositionTrackerWrap>
   void OnFill(const Napi::CallbackInfo& info)
   {
     std::string side = info[1].As<Napi::String>().Utf8Value();
-    flox_position_tracker_on_fill(_h, info[0].As<Napi::Number>().Uint32Value(),
+    lrvx_position_tracker_on_fill(_h, info[0].As<Napi::Number>().Uint32Value(),
                                   side == "buy" ? 0 : 1, info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue());
   }
-  Napi::Value Position(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_tracker_position(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  Napi::Value AvgEntry(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_tracker_avg_entry(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  Napi::Value Pnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_tracker_realized_pnl(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  Napi::Value TotalPnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_tracker_total_pnl(_h)); }
-  FloxPositionTrackerHandle _h;
+  Napi::Value Position(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_tracker_position(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  Napi::Value AvgEntry(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_tracker_avg_entry(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  Napi::Value Pnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_tracker_realized_pnl(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  Napi::Value TotalPnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_tracker_total_pnl(_h)); }
+  LrvxPositionTrackerHandle _h;
 };
 
 class PositionGroupTrackerWrap : public Napi::ObjectWrap<PositionGroupTrackerWrap>
@@ -58,12 +58,12 @@ class PositionGroupTrackerWrap : public Napi::ObjectWrap<PositionGroupTrackerWra
                         InstanceMethod("openCount", &PositionGroupTrackerWrap::OpenCount),
                         InstanceMethod("prune", &PositionGroupTrackerWrap::Prune)});
   }
-  PositionGroupTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PositionGroupTrackerWrap>(info), _h(flox_position_group_create()) {}
+  PositionGroupTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PositionGroupTrackerWrap>(info), _h(lrvx_position_group_create()) {}
   ~PositionGroupTrackerWrap()
   {
     if (_h)
     {
-      flox_position_group_destroy(_h);
+      lrvx_position_group_destroy(_h);
     }
   }
 
@@ -71,18 +71,18 @@ class PositionGroupTrackerWrap : public Napi::ObjectWrap<PositionGroupTrackerWra
   Napi::Value Open(const Napi::CallbackInfo& info)
   {
     std::string side = info[2].As<Napi::String>().Utf8Value();
-    return Napi::Number::New(info.Env(), (double)flox_position_group_open(_h,
+    return Napi::Number::New(info.Env(), (double)lrvx_position_group_open(_h,
                                                                           info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Uint32Value(),
                                                                           side == "buy" ? 0 : 1, info[3].As<Napi::Number>().DoubleValue(), info[4].As<Napi::Number>().DoubleValue()));
   }
-  void Close(const Napi::CallbackInfo& info) { flox_position_group_close(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue()); }
-  void PartialClose(const Napi::CallbackInfo& info) { flox_position_group_partial_close(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue()); }
-  Napi::Value Net(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_group_net_position(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  Napi::Value Pnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_group_realized_pnl(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  Napi::Value TotalPnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_group_total_pnl(_h)); }
-  Napi::Value OpenCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_group_open_count(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  void Prune(const Napi::CallbackInfo&) { flox_position_group_prune(_h); }
-  FloxPositionGroupHandle _h;
+  void Close(const Napi::CallbackInfo& info) { lrvx_position_group_close(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue()); }
+  void PartialClose(const Napi::CallbackInfo& info) { lrvx_position_group_partial_close(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue()); }
+  Napi::Value Net(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_group_net_position(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  Napi::Value Pnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_group_realized_pnl(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  Napi::Value TotalPnl(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_group_total_pnl(_h)); }
+  Napi::Value OpenCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_position_group_open_count(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  void Prune(const Napi::CallbackInfo&) { lrvx_position_group_prune(_h); }
+  LrvxPositionGroupHandle _h;
 };
 
 class OrderTrackerWrap : public Napi::ObjectWrap<OrderTrackerWrap>
@@ -99,12 +99,12 @@ class OrderTrackerWrap : public Napi::ObjectWrap<OrderTrackerWrap>
                         InstanceAccessor("totalCount", &OrderTrackerWrap::TotalCount, nullptr),
                         InstanceMethod("prune", &OrderTrackerWrap::Prune)});
   }
-  OrderTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderTrackerWrap>(info), _h(flox_order_tracker_create()) {}
+  OrderTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderTrackerWrap>(info), _h(lrvx_order_tracker_create()) {}
   ~OrderTrackerWrap()
   {
     if (_h)
     {
-      flox_order_tracker_destroy(_h);
+      lrvx_order_tracker_destroy(_h);
     }
   }
 
@@ -112,17 +112,17 @@ class OrderTrackerWrap : public Napi::ObjectWrap<OrderTrackerWrap>
   Napi::Value OnSubmitted(const Napi::CallbackInfo& info)
   {
     std::string side = info[2].As<Napi::String>().Utf8Value();
-    return Napi::Boolean::New(info.Env(), flox_order_tracker_on_submitted(_h,
+    return Napi::Boolean::New(info.Env(), lrvx_order_tracker_on_submitted(_h,
                                                                           info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Uint32Value(),
                                                                           side == "buy" ? 0 : 1, info[3].As<Napi::Number>().DoubleValue(), info[4].As<Napi::Number>().DoubleValue()));
   }
-  Napi::Value OnFilled(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_order_tracker_on_filled(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue())); }
-  Napi::Value OnCanceled(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_order_tracker_on_canceled(_h, info[0].As<Napi::Number>().Int64Value())); }
-  Napi::Value IsActive(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_order_tracker_is_active(_h, info[0].As<Napi::Number>().Int64Value())); }
-  Napi::Value ActiveCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_order_tracker_active_count(_h)); }
-  Napi::Value TotalCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_order_tracker_total_count(_h)); }
-  void Prune(const Napi::CallbackInfo&) { flox_order_tracker_prune(_h); }
-  FloxOrderTrackerHandle _h;
+  Napi::Value OnFilled(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_order_tracker_on_filled(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue())); }
+  Napi::Value OnCanceled(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_order_tracker_on_canceled(_h, info[0].As<Napi::Number>().Int64Value())); }
+  Napi::Value IsActive(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_order_tracker_is_active(_h, info[0].As<Napi::Number>().Int64Value())); }
+  Napi::Value ActiveCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_order_tracker_active_count(_h)); }
+  Napi::Value TotalCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_order_tracker_total_count(_h)); }
+  void Prune(const Napi::CallbackInfo&) { lrvx_order_tracker_prune(_h); }
+  LrvxOrderTrackerHandle _h;
 };
 
 class OrderJourneyTracerWrap : public Napi::ObjectWrap<OrderJourneyTracerWrap>
@@ -175,49 +175,49 @@ class OrderJourneyTracerWrap : public Napi::ObjectWrap<OrderJourneyTracerWrap>
         sampleSalt = cfg.Get("sampleSalt").As<Napi::Number>().Int64Value();
       }
     }
-    _h = flox_order_journey_tracer_create(maxOrders, maxRecordsPerOrder,
+    _h = lrvx_order_journey_tracer_create(maxOrders, maxRecordsPerOrder,
                                           sampleRate, sampleSalt);
   }
   ~OrderJourneyTracerWrap()
   {
     if (_h)
     {
-      flox_order_journey_tracer_destroy(_h);
+      lrvx_order_journey_tracer_destroy(_h);
     }
   }
 
-  FloxOrderJourneyTracerHandle handle() const { return _h; }
+  LrvxOrderJourneyTracerHandle handle() const { return _h; }
 
  private:
   Napi::Value OrderCount(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_order_journey_tracer_order_count(_h));
+    return Napi::Number::New(info.Env(), lrvx_order_journey_tracer_order_count(_h));
   }
   Napi::Value RecordCount(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_order_journey_tracer_record_count(_h));
+    return Napi::Number::New(info.Env(), lrvx_order_journey_tracer_record_count(_h));
   }
   Napi::Value MedianAckLatencyNs(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_order_journey_tracer_median_ack_latency_ns(_h));
+                             lrvx_order_journey_tracer_median_ack_latency_ns(_h));
   }
   Napi::Value MedianTimeToFirstFillNs(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(
-        info.Env(), flox_order_journey_tracer_median_time_to_first_fill_ns(_h));
+        info.Env(), lrvx_order_journey_tracer_median_time_to_first_fill_ns(_h));
   }
   Napi::Value MakerFillRatio(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_order_journey_tracer_maker_fill_ratio(_h));
+                             lrvx_order_journey_tracer_maker_fill_ratio(_h));
   }
   Napi::Value CancelRaceLossRate(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_order_journey_tracer_cancel_race_loss_rate(_h));
+                             lrvx_order_journey_tracer_cancel_race_loss_rate(_h));
   }
-  static Napi::Value rowToObj(Napi::Env env, const FloxOrderTraceRow& r)
+  static Napi::Value rowToObj(Napi::Env env, const LrvxOrderTraceRow& r)
   {
     auto o = Napi::Object::New(env);
     o.Set("orderId", Napi::Number::New(env, static_cast<double>(r.order_id)));
@@ -253,11 +253,11 @@ class OrderJourneyTracerWrap : public Napi::ObjectWrap<OrderJourneyTracerWrap>
   }
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    const uint64_t n = flox_order_journey_tracer_result(_h, nullptr, 0);
-    std::vector<FloxOrderTraceRow> buf(n);
+    const uint64_t n = lrvx_order_journey_tracer_result(_h, nullptr, 0);
+    std::vector<LrvxOrderTraceRow> buf(n);
     if (n > 0)
     {
-      flox_order_journey_tracer_result(_h, buf.data(), n);
+      lrvx_order_journey_tracer_result(_h, buf.data(), n);
     }
     auto arr = Napi::Array::New(info.Env(), n);
     for (uint64_t i = 0; i < n; ++i)
@@ -270,11 +270,11 @@ class OrderJourneyTracerWrap : public Napi::ObjectWrap<OrderJourneyTracerWrap>
   {
     uint64_t orderId = info[0].As<Napi::Number>().Int64Value();
     const uint64_t n =
-        flox_order_journey_tracer_journey(_h, orderId, nullptr, 0);
-    std::vector<FloxOrderTraceRow> buf(n);
+        lrvx_order_journey_tracer_journey(_h, orderId, nullptr, 0);
+    std::vector<LrvxOrderTraceRow> buf(n);
     if (n > 0)
     {
-      flox_order_journey_tracer_journey(_h, orderId, buf.data(), n);
+      lrvx_order_journey_tracer_journey(_h, orderId, buf.data(), n);
     }
     auto arr = Napi::Array::New(info.Env(), n);
     for (uint64_t i = 0; i < n; ++i)
@@ -283,9 +283,9 @@ class OrderJourneyTracerWrap : public Napi::ObjectWrap<OrderJourneyTracerWrap>
     }
     return arr;
   }
-  void Clear(const Napi::CallbackInfo&) { flox_order_journey_tracer_clear(_h); }
+  void Clear(const Napi::CallbackInfo&) { lrvx_order_journey_tracer_clear(_h); }
 
-  FloxOrderJourneyTracerHandle _h;
+  LrvxOrderJourneyTracerHandle _h;
 };
 
 inline void registerPositions(Napi::Env env, Napi::Object exports)
@@ -298,4 +298,4 @@ inline void registerPositions(Napi::Env env, Napi::Object exports)
   exports.Set("POSITION_AVG_COST", Napi::Number::New(env, 1));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

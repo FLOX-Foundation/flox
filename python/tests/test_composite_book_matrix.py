@@ -1,6 +1,6 @@
-"""Tests for `flox_py.CompositeBookMatrix`.
+"""Tests for `lrvx.CompositeBookMatrix`.
 
-Bound from `include/flox/book/composite_book_matrix.h`
+Bound from `include/lrvx/book/composite_book_matrix.h`
 (`python/composite_book_bindings.h`).
 `update_book()` previously had no way to distinguish a delta from a
 snapshot at all (it always went in as a snapshot), and the underlying
@@ -8,14 +8,14 @@ engine, when it does see a delta, used to zero out the untouched side.
 """
 from __future__ import annotations
 
-import flox_py
+import lrvx
 
 SYMBOL = 1
 EXCHANGE = 0
 
 
 def test_snapshot_sets_both_sides() -> None:
-    m = flox_py.CompositeBookMatrix()
+    m = lrvx.CompositeBookMatrix()
     m.update_book(EXCHANGE, SYMBOL, [100.0], [10.0], [100.05], [5.0], 0)
 
     bid = m.best_bid(SYMBOL)
@@ -25,7 +25,7 @@ def test_snapshot_sets_both_sides() -> None:
 
 
 def test_bid_only_delta_does_not_wipe_ask_side() -> None:
-    m = flox_py.CompositeBookMatrix()
+    m = lrvx.CompositeBookMatrix()
     m.update_book(EXCHANGE, SYMBOL, [100.0], [10.0], [100.05], [5.0], 0)
 
     # A Bybit-style incremental delta that only carries a bid update.
@@ -39,7 +39,7 @@ def test_bid_only_delta_does_not_wipe_ask_side() -> None:
 
 
 def test_ask_only_delta_does_not_wipe_bid_side() -> None:
-    m = flox_py.CompositeBookMatrix()
+    m = lrvx.CompositeBookMatrix()
     m.update_book(EXCHANGE, SYMBOL, [100.0], [10.0], [100.05], [5.0], 0)
 
     m.update_book(EXCHANGE, SYMBOL, [], [], [100.10], [2.0], 0, is_delta=True)
@@ -50,7 +50,7 @@ def test_ask_only_delta_does_not_wipe_bid_side() -> None:
 
 
 def test_snapshot_with_empty_side_invalidates_that_side() -> None:
-    m = flox_py.CompositeBookMatrix()
+    m = lrvx.CompositeBookMatrix()
     m.update_book(EXCHANGE, SYMBOL, [100.0], [10.0], [100.05], [5.0], 0)
 
     # A genuine snapshot with no ask levels means the ask side is empty.

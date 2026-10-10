@@ -1,6 +1,6 @@
-"""Every `flox` CLI verb must at least run.
+"""Every `lrvx` CLI verb must at least run.
 
-Of the 18 leaf verbs, 4 were exercised by a test and 14 were not. `flox engine
+Of the 18 leaf verbs, 4 were exercised by a test and 14 were not. `lrvx engine
 sim` is what that costs: it shipped in #234 and raised TypeError on the first
 call after argument parsing, so it had never started once, and its two test
 files (265 lines) covered only private helpers and `--help` text -- which pass
@@ -44,10 +44,10 @@ WIRING_ERRORS = (
 def _subprocess_env() -> dict:
     """Absolutise PYTHONPATH before spawning with a different cwd.
 
-    CI provides flox_py via `PYTHONPATH=build/python`, a path relative to the
+    CI provides lrvx via `PYTHONPATH=build/python`, a path relative to the
     repo root. Every subprocess here runs with cwd set to a temp directory, so
     a relative entry resolves against that temp dir and the import fails with
-    ModuleNotFoundError. Locally this never showed up because flox_py is
+    ModuleNotFoundError. Locally this never showed up because lrvx is
     pip-installed at an absolute site-packages path.
     """
     env = dict(os.environ)
@@ -60,7 +60,7 @@ def _subprocess_env() -> dict:
 
 
 def _run(argv: list[str], cwd: str | None = None, timeout: int = 300):
-    return subprocess.run([sys.executable, "-m", "flox_py.cli", *argv],
+    return subprocess.run([sys.executable, "-m", "lrvx.cli", *argv],
                           cwd=cwd, env=_subprocess_env(),
                           capture_output=True, text=True, timeout=timeout)
 
@@ -69,24 +69,24 @@ def _assert_no_wiring_error(argv: list[str], r) -> None:
     blob = (r.stdout or "") + (r.stderr or "")
     for marker in WIRING_ERRORS:
         assert marker not in blob, (
-            f"`flox {' '.join(argv)}` failed with {marker} — that is mis-wired "
+            f"`lrvx {' '.join(argv)}` failed with {marker} — that is mis-wired "
             f"plumbing, not a rejected input:\n{blob[-1500:]}")
     assert "Traceback (most recent call last)" not in blob, (
-        f"`flox {' '.join(argv)}` died with an unhandled traceback:\n{blob[-1500:]}")
+        f"`lrvx {' '.join(argv)}` died with an unhandled traceback:\n{blob[-1500:]}")
 
 
 @pytest.fixture(scope="module")
 def tape(tmp_path_factory) -> Path:
-    """A real single-symbol .floxlog tape for the offline verbs."""
-    flox_py = pytest.importorskip("flox_py")
-    from flox_py import tape as tape_mod
+    """A real single-symbol .lrvx tape for the offline verbs."""
+    lrvx = pytest.importorskip("lrvx")
+    from lrvx import tape as tape_mod
 
     out = tmp_path_factory.mktemp("tape")
-    reg = flox_py.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
     hook = tape_mod.make_recorder_hook(str(out), exchange_name="binance",
                                        instrument_type="spot")
-    runner = flox_py.Runner(reg, on_signal=lambda s: None, threaded=False)
+    runner = lrvx.Runner(reg, on_signal=lambda s: None, threaded=False)
     runner.set_market_data_recorder(hook)
     runner.start()
     base = 1_704_067_200_000_000_000
@@ -101,8 +101,8 @@ def tape(tmp_path_factory) -> Path:
 def strategy_file(tmp_path_factory) -> Path:
     p = tmp_path_factory.mktemp("strat") / "s.py"
     p.write_text(
-        "import flox_py\n\n\n"
-        "class S(flox_py.Strategy):\n"
+        "import lrvx\n\n\n"
+        "class S(lrvx.Strategy):\n"
         "    def on_trade(self, ctx, trade):\n"
         "        if ctx.is_flat():\n"
         "            self.market_buy(1.0)\n"
@@ -169,7 +169,7 @@ def test_tape_diff_compares_a_tape_with_itself(tape: Path) -> None:
 
 def test_bundle_pack_then_validate(tape: Path, strategy_file: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / "b.floxbundle"
+        out = Path(tmp) / "b.lrvxbundle"
         argv = ["bundle", "pack", "--strategy", str(strategy_file),
                 "--tape", str(tape), "--output", str(out)]
         r = _run(argv)
@@ -201,7 +201,7 @@ def test_lint_lookahead_accepts_a_clean_strategy(strategy_file: Path) -> None:
     ["tape", "view", "/nonexistent/tape"],
     ["engine", "sim", "--strategy", "/nonexistent/s.py",
      "--tape", "/nonexistent/tape"],
-    ["bundle", "replay", "/nonexistent/b.floxbundle"],
+    ["bundle", "replay", "/nonexistent/b.lrvxbundle"],
     ["archive", "binance", "/nonexistent/data.zip", "--output", "/nonexistent/o"],
     ["archive", "bybit", "/nonexistent/data.zip", "--output", "/nonexistent/o"],
     ["archive", "okx", "/nonexistent/data.zip", "--output", "/nonexistent/o"],
@@ -213,9 +213,9 @@ def test_verb_reaches_its_own_validation(argv: list[str]) -> None:
     _assert_no_wiring_error(argv, r)
     # A clean rejection: non-zero with a message, not a crash and not silence.
     assert r.returncode != 0, (
-        f"`flox {' '.join(argv)}` reported success on nonexistent inputs")
+        f"`lrvx {' '.join(argv)}` reported success on nonexistent inputs")
     assert (r.stderr.strip() or r.stdout.strip()), (
-        f"`flox {' '.join(argv)}` failed with no explanation at all")
+        f"`lrvx {' '.join(argv)}` failed with no explanation at all")
 
 
 def test_engine_sim_runs_a_tape_and_stops(tape: Path, strategy_file: Path) -> None:
@@ -229,10 +229,10 @@ def test_engine_sim_runs_a_tape_and_stops(tape: Path, strategy_file: Path) -> No
     import time
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "flox_py.cli", "engine", "sim",
+        [sys.executable, "-m", "lrvx.cli", "engine", "sim",
          "--strategy", str(strategy_file), "--tape", str(tape),
          "--port", "18921",
-         "--state-file", str(Path(tempfile.gettempdir()) / "flox-smoke-state.json")],
+         "--state-file", str(Path(tempfile.gettempdir()) / "lrvx-smoke-state.json")],
         env=_subprocess_env(),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:

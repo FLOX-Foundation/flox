@@ -15,16 +15,16 @@ with each bar.
 
 === "Python"
     ```python
-    import flox_py as flox
+    import lrvx
 
-    runner = flox.BacktestRunner(reg, fee_rate=0.001, initial_capital=10_000)
+    runner = lrvx.BacktestRunner(reg, fee_rate=0.001, initial_capital=10_000)
     runner.set_strategy(MyStrategy())          # ← required first
     runner.run_csv("data.csv")
     ```
 
 === "Node.js"
     ```js
-    const runner = new flox.BacktestRunner(reg, 0.001, 10000);
+    const runner = new lrvx.BacktestRunner(reg, 0.001, 10000);
     runner.setStrategy({ /* ... */ });          // ← required first
     runner.runCsv("data.csv", "BTC");
     ```

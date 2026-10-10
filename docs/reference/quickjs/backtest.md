@@ -40,12 +40,12 @@ executor.reset(); // drop fills before a second hand-driven run
 The JS runtime defaults to 32 MB. To change it when embedding via C++:
 
 ```cpp
-FloxJsEngine engine(64 * 1024 * 1024);  // 64 MB
-FloxJsEngine engine(0);                  // no limit
+LrvxJsEngine engine(64 * 1024 * 1024);  // 64 MB
+LrvxJsEngine engine(0);                  // no limit
 ```
 
 ---
 
 ## IDE support
 
-Copy `quickjs/types/flox.d.ts` and `quickjs/jsconfig.json` into your project directory for VS Code autocomplete.
+Copy `quickjs/types/lrvx.d.ts` and `quickjs/jsconfig.json` into your project directory for VS Code autocomplete.

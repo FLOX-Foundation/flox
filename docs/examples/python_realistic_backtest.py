@@ -3,7 +3,7 @@
 Demonstrates the venue stack pattern: every venue subsystem
 (executor, account, liquidation, fee schedule, funding schedule, rate
 limits, venue availability) is wired with venue-realistic defaults in
-a single `flox.VenueStack.binance_um_futures(...)` call.
+a single `lrvx.VenueStack.binance_um_futures(...)` call.
 
 Exercises:
 - VenueStack factory
@@ -13,14 +13,14 @@ Exercises:
 - Funding settlements
 """
 
-import flox_py as flox
+import lrvx
 
 BTC = 1
 ETH = 2
 
 
 def main():
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     acct = stack.account()
     liq = stack.liquidation()
     fees = stack.fees()

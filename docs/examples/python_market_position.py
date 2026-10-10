@@ -1,8 +1,8 @@
 """React to a resting limit order moving across market-position states."""
-import flox_py as flox
+import lrvx
 
 
-class MarketPositionWatcher(flox.Strategy):
+class MarketPositionWatcher(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self.last = {}

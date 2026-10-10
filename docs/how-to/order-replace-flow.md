@@ -43,26 +43,26 @@ is configured through BacktestConfig in C++.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    ex = flox.SimulatedExecutor()
+    ex = lrvx.SimulatedExecutor()
     ex.set_replace_ack_latency(10_000_000, 2_000_000)
     ```
 
 === "Node.js"
 
     ```javascript
-    const ex = new flox.SimulatedExecutor();
+    const ex = new lrvx.SimulatedExecutor();
     ex.setReplaceAckLatency(10_000_000, 2_000_000);
     ```
 
 === "C++"
 
     ```cpp
-    flox::BacktestConfig cfg;
+    lrvx::BacktestConfig cfg;
     cfg.replaceAckLatencyNs = 10'000'000;
     cfg.replaceAckJitterNs  =  2'000'000;
-    flox::BacktestRunner runner(cfg);
+    lrvx::BacktestRunner runner(cfg);
     ```
 
 ## Detect the race from a strategy
@@ -70,9 +70,9 @@ is configured through BacktestConfig in C++.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    class ReplaceWatcher(flox.Strategy):
+    class ReplaceWatcher(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.replaces_lost = 0

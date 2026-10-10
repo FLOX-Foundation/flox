@@ -5,7 +5,7 @@ Volume Profile tracks the distribution of volume across price levels, providing 
 ## Overview
 
 ```cpp
-#include "flox/aggregator/custom/volume_profile.h"
+#include "lrvx/aggregator/custom/volume_profile.h"
 
 VolumeProfile<256> profile;
 profile.setTickSize(Price::fromDouble(0.50));  // Aggregate to $0.50 levels

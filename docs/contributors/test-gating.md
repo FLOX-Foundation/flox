@@ -1,9 +1,9 @@
 # Test gating
 
 The build matrix has a `tests-only` configuration that builds with
-`FLOX_BUILD_TESTS=ON` but no other flags. If a test exec depends on
-backtest-only sources (`flox/backtest/...`) or C API symbols
-(`flox/capi/...`) without sitting under the matching CMake gating
+`LRVX_BUILD_TESTS=ON` but no other flags. If a test exec depends on
+backtest-only sources (`lrvx/backtest/...`) or C API symbols
+(`lrvx/capi/...`) without sitting under the matching CMake gating
 block, the linker fails on that config — the test cpp compiles fine
 but cannot find the symbols it needs.
 
@@ -14,29 +14,29 @@ fails any PR whose test additions slip through this gate.
 
 | Header prefix       | Required CMake flag      |
 |---------------------|--------------------------|
-| `flox/backtest/...` | `FLOX_ENABLE_BACKTEST`   |
-| `flox/capi/...`     | `FLOX_BUILD_CAPI`        |
+| `lrvx/backtest/...` | `LRVX_ENABLE_BACKTEST`   |
+| `lrvx/capi/...`     | `LRVX_BUILD_CAPI`        |
 
-Implications: `FLOX_BUILD_CAPI` implies `FLOX_ENABLE_BACKTEST`,
-`FLOX_BUILD_CODON` and `FLOX_BUILD_QUICKJS` both imply
-`FLOX_BUILD_CAPI`. The checker walks these so a test under
-`if(FLOX_BUILD_QUICKJS)` is treated as having `FLOX_BUILD_CAPI` and
-`FLOX_ENABLE_BACKTEST` active.
+Implications: `LRVX_BUILD_CAPI` implies `LRVX_ENABLE_BACKTEST`,
+`LRVX_BUILD_CODON` and `LRVX_BUILD_QUICKJS` both imply
+`LRVX_BUILD_CAPI`. The checker walks these so a test under
+`if(LRVX_BUILD_QUICKJS)` is treated as having `LRVX_BUILD_CAPI` and
+`LRVX_ENABLE_BACKTEST` active.
 
 ## What to do when the gate fails
 
 The error tells you which flag is missing for which test. Move
-`add_flox_test(test_name)` into the matching `if(...)` block in
+`add_lrvx_test(test_name)` into the matching `if(...)` block in
 `tests/CMakeLists.txt`. Example fix:
 
 ```cmake
-# Wrong — test_live_queue_position needs FLOX_ENABLE_BACKTEST.
-add_flox_test(test_live_queue_position)
+# Wrong — test_live_queue_position needs LRVX_ENABLE_BACKTEST.
+add_lrvx_test(test_live_queue_position)
 
 # Right — inside the backtest gate.
-if(FLOX_ENABLE_BACKTEST)
+if(LRVX_ENABLE_BACKTEST)
   ...
-  add_flox_test(test_live_queue_position)
+  add_lrvx_test(test_live_queue_position)
 endif()
 ```
 

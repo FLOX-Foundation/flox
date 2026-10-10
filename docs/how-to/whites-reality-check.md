@@ -31,7 +31,7 @@ autocorrelation.
 ## Python
 
 ```python
-import flox_py as flox
+import lrvx
 import numpy as np
 
 # rows = strategies, cols = periods. Pass excess returns.
@@ -41,7 +41,7 @@ returns = np.array([
     strat_c_excess_returns,
 ])
 
-result = flox.whites_reality_check(
+result = lrvx.whites_reality_check(
     returns,
     num_bootstrap=10_000,
     avg_block_size=0.0,   # auto = sqrt(T)
@@ -59,7 +59,7 @@ edge is likely a lucky pick.
 ## Node
 
 ```javascript
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 
 // Flat row-major: strategy 0 first, then strategy 1, ...
 const K = 3;       // strategies
@@ -67,14 +67,14 @@ const T = 1000;    // periods
 const returns = new Float64Array(K * T);
 // fill with excess returns ...
 
-const result = flox.whitesRealityCheck(returns, K, T, 10000, 0.0);
+const result = lrvx.whitesRealityCheck(returns, K, T, 10000, 0.0);
 console.log(result);  // { p_value, best_stat, best_index }
 ```
 
 ## Codon
 
 ```codon
-from C import flox_stat_whites_reality_check(cobj, u64, u64, u32, f64,
+from C import lrvx_stat_whites_reality_check(cobj, u64, u64, u32, f64,
                                               cobj, cobj, cobj) -> None
 
 import numpy as np
@@ -83,7 +83,7 @@ returns = np.array([...], dtype=np.float64).reshape((K, T))
 p = np.array([0.0])
 stat = np.array([0.0])
 idx = np.array([0], dtype=np.int32)
-flox_stat_whites_reality_check(
+lrvx_stat_whites_reality_check(
     returns.ctypes.data, K, T, 10000, 0.0,
     p.ctypes.data, stat.ctypes.data, idx.ctypes.data,
 )
@@ -97,7 +97,7 @@ top-Sharpe cell.
 
 ```python
 import numpy as np
-import flox_py as flox
+import lrvx
 
 results = grid.run()
 
@@ -108,7 +108,7 @@ returns = np.stack([cell["bar_returns"] for cell in results])
 
 # Pass excess returns. Test against zero here; subtract a benchmark
 # series before this line if needed.
-out = flox.whites_reality_check(returns, num_bootstrap=10_000)
+out = lrvx.whites_reality_check(returns, num_bootstrap=10_000)
 print(f"Best of {len(results)} cells: p={out['p_value']:.4f}")
 ```
 

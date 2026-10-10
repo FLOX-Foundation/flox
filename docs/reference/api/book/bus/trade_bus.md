@@ -32,4 +32,4 @@ bool configureTradeBusForPerformance(TradeBus& bus, bool enablePerformanceOptimi
 
 * Uses `ComponentType::MARKET_DATA` for CPU affinity configuration.
 * Stateless; the bus itself performs no buffering or transformation.
-* Supports optional CPU affinity via `FLOX_CPU_AFFINITY_ENABLED`.
+* Supports optional CPU affinity via `LRVX_CPU_AFFINITY_ENABLED`.

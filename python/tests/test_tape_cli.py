@@ -1,13 +1,13 @@
-"""Tests for the ``flox tape`` CLI subcommands.
+"""Tests for the ``lrvx tape`` CLI subcommands.
 
 Covers the recorder hook ↔ DataWriter wiring, replay round-trip, and
 the inspect command. The recorder is exercised end-to-end without
 ccxt — we feed synthetic trades through a Runner with the recorder
-attached, then verify the resulting ``.floxlog`` directory is
+attached, then verify the resulting ``.lrvx`` directory is
 readable via DataReader and contains the same trades in order.
 
-The CLI itself (`flox tape record`, `flox tape replay`,
-`flox tape inspect`) is tested at the argparse level — wiring
+The CLI itself (`lrvx tape record`, `lrvx tape replay`,
+`lrvx tape inspect`) is tested at the argparse level — wiring
 exists, argument parsing works, error paths fire cleanly.
 """
 from __future__ import annotations
@@ -26,9 +26,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import cli, tape  # noqa: E402
+from lrvx import cli, tape  # noqa: E402
 
 
 # ── Recorder hook end-to-end ───────────────────────────────────────
@@ -39,18 +39,18 @@ class RecorderRoundTripTests(unittest.TestCase):
     confirm the on-disk format reads back identical."""
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="flox-tape-rec-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="lrvx-tape-rec-"))
 
     def tearDown(self) -> None:
         import shutil
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_recorder_writes_trades_then_reader_reads_them_back(self) -> None:
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = registry.add_symbol("test", "BTCUSDT", tick_size=0.01)
 
         recorder = tape.make_recorder_hook(self.tmp, max_segment_mb=64)
-        runner = flox.Runner(registry, on_signal=lambda _sig: None)
+        runner = lrvx.Runner(registry, on_signal=lambda _sig: None)
         runner.set_market_data_recorder(recorder)
         runner.start()
 
@@ -84,11 +84,11 @@ class RecorderRoundTripTests(unittest.TestCase):
     def test_recorder_writes_book_updates(self) -> None:
         # BinaryLogRecorderHook captures both trades AND books — events
         # stay in C++ on the hot path via BinaryLogWriter::writeBook.
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = registry.add_symbol("test", "BTCUSDT", tick_size=0.01)
         out_dir = self.tmp / "book_capture"
         recorder = tape.make_recorder_hook(out_dir)
-        runner = flox.Runner(registry, on_signal=lambda _sig: None)
+        runner = lrvx.Runner(registry, on_signal=lambda _sig: None)
         runner.set_market_data_recorder(recorder)
         runner.start()
         runner.on_book_snapshot(sym, [100.0], [1.0], [101.0], [1.0], 1_000_000)
@@ -99,7 +99,7 @@ class RecorderRoundTripTests(unittest.TestCase):
         self.assertEqual(stats["book_updates_written"], 1)
         self.assertEqual(stats["trades_written"], 0)
 
-        reader = flox.DataReader(str(out_dir))
+        reader = lrvx.DataReader(str(out_dir))
         headers, levels = reader.read_book_updates()
         self.assertEqual(headers.size, 1)
         self.assertEqual(int(headers[0]["bid_count"]), 1)
@@ -110,10 +110,48 @@ class RecorderRoundTripTests(unittest.TestCase):
         empty_dir = self.tmp / "empty"
         empty_dir.mkdir()
         # Need at least an empty DataWriter so DataReader doesn't blow up.
-        w = flox.DataWriter(str(empty_dir))
+        w = lrvx.DataWriter(str(empty_dir))
         w.close()
         stats = tape.inspect_tape(empty_dir)
         self.assertEqual(stats.trade_count, 0)
+
+
+class LegacySegmentExtensionTests(unittest.TestCase):
+    """A tape directory holding `.floxlog` segments next to `.lrvx`
+    ones is one tape."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="lrvx-tape-legacy-"))
+
+    def tearDown(self) -> None:
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write_segment(self, first_ts_ns: int, count: int) -> Path:
+        writer = lrvx.DataWriter(str(self.tmp))
+        for i in range(count):
+            ts = first_ts_ns + i * 1_000_000
+            writer.write_trade(ts, ts, 100.0 + i, 1.0, i, 1, 0)
+        path = Path(writer.current_segment_path())
+        writer.close()
+        return path
+
+    def test_mixed_extensions_read_completely(self) -> None:
+        legacy = self._write_segment(1_000_000_000, 5)
+        legacy.rename(legacy.with_suffix(".floxlog"))
+        self._write_segment(2_000_000_000, 7)
+        suffixes = sorted(p.suffix for p in self.tmp.iterdir()
+                          if p.suffix in (".floxlog", ".lrvx"))
+        self.assertEqual(suffixes, [".floxlog", ".lrvx"])
+
+        self.assertEqual(lrvx.DataReader(str(self.tmp)).count(), 12)
+        self.assertEqual(tape.inspect_tape(self.tmp).trade_count, 12)
+        seen: list[int] = []
+        n = tape.replay_tape(
+            self.tmp, on_trade=lambda ts, s, p, q, side: seen.append(ts))
+        self.assertEqual(n, 12)
+        self.assertEqual(seen, sorted(seen))
+        self.assertEqual(seen[0], 1_000_000_000)
 
 
 # ── CLI surface ────────────────────────────────────────────────────
@@ -123,14 +161,14 @@ class CliTapeTests(unittest.TestCase):
     """Argparse + command dispatch checks; no live ccxt or async run."""
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="flox-tape-cli-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="lrvx-tape-cli-"))
 
     def tearDown(self) -> None:
         import shutil
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_parser_registers_tape_subcommand(self) -> None:
-        # Smoke-test: argparse builds, `flox tape --help` includes the
+        # Smoke-test: argparse builds, `lrvx tape --help` includes the
         # three subcommands.
         parser = cli._build_parser()
         out = io.StringIO()
@@ -157,10 +195,10 @@ class CliTapeTests(unittest.TestCase):
 
     def test_inspect_round_trip_via_cli(self) -> None:
         # Build a tape via the recorder hook, then inspect via CLI.
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = registry.add_symbol("test", "BTC", tick_size=0.01)
         rec = tape.make_recorder_hook(self.tmp)
-        r = flox.Runner(registry, on_signal=lambda _s: None)
+        r = lrvx.Runner(registry, on_signal=lambda _s: None)
         r.set_market_data_recorder(rec)
         r.start()
         r.on_trade(sym, 100.0, 1.0, True, 1_000_000)

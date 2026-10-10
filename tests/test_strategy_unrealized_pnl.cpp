@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,17 +16,17 @@
 // +110 instead of +10. A rule of the form "close when the loss passes X"
 // therefore never fired on a long and fired on the first tick of a short.
 
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/position/multi_mode_position_tracker.h"
-#include "flox/position/position_tracker.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/position/multi_mode_position_tracker.h"
+#include "lrvx/position/position_tracker.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

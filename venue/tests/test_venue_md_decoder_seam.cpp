@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -18,8 +18,8 @@
  * different field order, a different size. If the seam were only nominal, this
  * file would not compile, let alone sequence.
  */
-#include "flox-venue/md_recovery.h"
-#include "flox-venue/udp_multicast.h"
+#include "lrvx-venue/md_recovery.h"
+#include "lrvx-venue/udp_multicast.h"
 
 #include <gtest/gtest.h>
 
@@ -28,8 +28,8 @@
 #include <type_traits>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

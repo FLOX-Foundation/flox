@@ -1,14 +1,14 @@
 /**
  * SMA crossover backtest — BTCUSDT 1m data.
  *
- * Demonstrates the QuickJS flox API:
+ * Demonstrates the QuickJS lrvx API:
  *   - Engine: load CSV, access OHLCV bars
- *   - SMA (streaming indicator from flox/indicators.js)
+ *   - SMA (streaming indicator from lrvx/indicators.js)
  *   - SignalBuilder: accumulate buy/sell signals
  *   - engine.run(): replay signals against bars, return stats
  *
  * Run:
- *   flox_js_runner quickjs/examples/backtest_sma.js
+ *   lrvx_js_runner quickjs/examples/backtest_sma.js
  */
 
 // ── Load data ──────────────────────────────────────────────────────────

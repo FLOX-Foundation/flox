@@ -4,7 +4,7 @@ The same `SMAStrategy` class runs in backtest, synchronous live, and threaded li
 
 ```bash
 codon build -exe -o build/codon/codon_backtest_vs_live \
-  -L build/src/capi -lflox_capi docs/examples/codon_backtest_vs_live.codon
+  -L build/src/capi -llrvx_capi docs/examples/codon_backtest_vs_live.codon
 
 DYLD_LIBRARY_PATH=build/src/capi:~/.local/lib/codon \
   ./build/codon/codon_backtest_vs_live

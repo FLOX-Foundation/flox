@@ -10,26 +10,26 @@
 #include <string>
 #include <thread>
 
-namespace flox
+namespace lrvx
 {
 
-// Default capacity of a FloxJsExecutor's event queue. The queue is bounded
+// Default capacity of a LrvxJsExecutor's event queue. The queue is bounded
 // and backpressures producers on overflow -- it never drops an event.
-inline constexpr size_t kFloxJsExecutorDefaultQueueCapacity = 65536;
+inline constexpr size_t kLrvxJsExecutorDefaultQueueCapacity = 65536;
 
-// Runs one FloxJsStrategy on a single thread that it owns for the whole
+// Runs one LrvxJsStrategy on a single thread that it owns for the whole
 // lifetime of the object, and serializes every entry into that strategy's
 // JSRuntime through one bounded multi-producer, single-consumer queue.
 //
 // Background: QuickJS is not reentrant -- a JSRuntime may only ever be
-// touched by one thread. `FloxJsStrategy` on its own relies on the caller
-// to already guarantee that, which holds for `flox_js_runner` and for
+// touched by one thread. `LrvxJsStrategy` on its own relies on the caller
+// to already guarantee that, which holds for `lrvx_js_runner` and for
 // every synchronous unit test in this repo (one thread, one call at a
-// time). It does NOT hold for a live `flox_live_engine`: adding a strategy
+// time). It does NOT hold for a live `lrvx_live_engine`: adding a strategy
 // subscribes it to three independently-threaded event buses (trades, book
 // updates, bars), each of which runs its own consumer thread and calls
 // straight into the strategy's callbacks from whatever thread that is.
-// Wiring `FloxJsStrategy::getCallbacks()` directly into a live engine means
+// Wiring `LrvxJsStrategy::getCallbacks()` directly into a live engine means
 // up to three threads can enter the same JSRuntime at once. That is not a
 // rare hot-reload edge case -- it is the live engine's default
 // configuration -- and it corrupts the interpreter's internal object-shape
@@ -46,31 +46,31 @@ inline constexpr size_t kFloxJsExecutorDefaultQueueCapacity = 65536;
 // every callback body -- market data, fills, order updates, start, stop --
 // runs exclusively on that one dedicated thread.
 //
-// Use `FloxJsExecutor` instead of a bare `FloxJsStrategy` for any
+// Use `LrvxJsExecutor` instead of a bare `LrvxJsStrategy` for any
 // embedding that can call its callbacks from more than one thread (in
-// particular: `flox_live_engine_add_strategy`). Single-threaded callers
-// (`flox_js_runner`, the unit tests) keep using `FloxJsStrategy` directly;
+// particular: `lrvx_live_engine_add_strategy`). Single-threaded callers
+// (`lrvx_js_runner`, the unit tests) keep using `LrvxJsStrategy` directly;
 // see docs/bindings/javascript.md, "Threads".
-class FloxJsExecutor
+class LrvxJsExecutor
 {
  public:
-  explicit FloxJsExecutor(const std::string& scriptPath, SymbolRegistry& registry,
-                          size_t queueCapacity = kFloxJsExecutorDefaultQueueCapacity);
-  ~FloxJsExecutor();
+  explicit LrvxJsExecutor(const std::string& scriptPath, SymbolRegistry& registry,
+                          size_t queueCapacity = kLrvxJsExecutorDefaultQueueCapacity);
+  ~LrvxJsExecutor();
 
-  FloxJsExecutor(const FloxJsExecutor&) = delete;
-  FloxJsExecutor& operator=(const FloxJsExecutor&) = delete;
+  LrvxJsExecutor(const LrvxJsExecutor&) = delete;
+  LrvxJsExecutor& operator=(const LrvxJsExecutor&) = delete;
 
   // Callbacks that only ever enqueue. Safe to call from any thread,
   // including several threads concurrently.
-  FloxStrategyCallbacks getCallbacks();
+  LrvxStrategyCallbacks getCallbacks();
 
   // Symbols the script registered. Stable after construction (construction
   // blocks until the script has finished loading on the executor thread).
   const std::vector<uint32_t>& symbolIds() const;
 
   // Runs on the executor thread as a queued command, like everything else.
-  void injectHandle(FloxStrategyHandle handle);
+  void injectHandle(LrvxStrategyHandle handle);
 
   // Blocks the calling thread until every event enqueued strictly before
   // this call has finished dispatching. Producers on the live-engine path
@@ -108,16 +108,16 @@ class FloxJsExecutor
   struct Event
   {
     Kind kind{};
-    FloxSymbolContext ctx{};
-    FloxTradeData trade{};
-    FloxBookData book{};
-    FloxBarData bar{};
-    FloxOrderEventData orderEv{};
-    // FloxOrderEventData::reject_reason is a borrowed const char* that is
+    LrvxSymbolContext ctx{};
+    LrvxTradeData trade{};
+    LrvxBookData book{};
+    LrvxBarData bar{};
+    LrvxOrderEventData orderEv{};
+    // LrvxOrderEventData::reject_reason is a borrowed const char* that is
     // only valid for the duration of the originating BridgeStrategy call.
     // Copy the text so it survives until the executor thread processes it.
     std::string rejectReasonStorage;
-    FloxStrategyHandle handle = nullptr;
+    LrvxStrategyHandle handle = nullptr;
     std::shared_ptr<std::promise<void>> barrier;
     std::string globalName;
     std::shared_ptr<std::promise<int32_t>> intResult;
@@ -129,16 +129,16 @@ class FloxJsExecutor
   // close the queue, wake both condition variables, and break every promise
   // the dead worker will never keep.
   void releaseWaiters() noexcept;
-  void dispatchOne(Event& ev, const FloxStrategyCallbacks& cb);
-  static Event makeOrderEvent(const FloxSymbolContext* ctx, const FloxOrderEventData* data);
+  void dispatchOne(Event& ev, const LrvxStrategyCallbacks& cb);
+  static Event makeOrderEvent(const LrvxSymbolContext* ctx, const LrvxOrderEventData* data);
 
-  static void onTrade(void*, const FloxSymbolContext*, const FloxTradeData*);
-  static void onBook(void*, const FloxSymbolContext*, const FloxBookData*);
-  static void onBar(void*, const FloxSymbolContext*, const FloxBarData*);
-  static void onFill(void*, const FloxSymbolContext*, const FloxOrderEventData*);
-  static void onOrderUpdate(void*, const FloxSymbolContext*, const FloxOrderEventData*);
-  static void onQueuePositionChange(void*, const FloxSymbolContext*, const FloxOrderEventData*);
-  static void onMarketPositionChange(void*, const FloxSymbolContext*, const FloxOrderEventData*);
+  static void onTrade(void*, const LrvxSymbolContext*, const LrvxTradeData*);
+  static void onBook(void*, const LrvxSymbolContext*, const LrvxBookData*);
+  static void onBar(void*, const LrvxSymbolContext*, const LrvxBarData*);
+  static void onFill(void*, const LrvxSymbolContext*, const LrvxOrderEventData*);
+  static void onOrderUpdate(void*, const LrvxSymbolContext*, const LrvxOrderEventData*);
+  static void onQueuePositionChange(void*, const LrvxSymbolContext*, const LrvxOrderEventData*);
+  static void onMarketPositionChange(void*, const LrvxSymbolContext*, const LrvxOrderEventData*);
   static void onStart(void*);
   static void onStop(void*);
 
@@ -146,7 +146,7 @@ class FloxJsExecutor
   SymbolRegistry& _registry;
   size_t _capacity;
 
-  std::unique_ptr<FloxJsStrategy> _strategy;  // constructed on _thread
+  std::unique_ptr<LrvxJsStrategy> _strategy;  // constructed on _thread
   std::thread _thread;
 
   std::mutex _queueMu;
@@ -163,4 +163,4 @@ class FloxJsExecutor
   static const std::vector<uint32_t> kEmptySymbolIds;
 };
 
-}  // namespace flox
+}  // namespace lrvx

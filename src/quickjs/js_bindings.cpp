@@ -1,7 +1,7 @@
 #include "js_bindings.h"
-#include "flox/capi/abi_check.hpp"
-#include "flox/capi/flox_capi.h"
 #include "js_cstring.h"
+#include "lrvx/capi/abi_check.hpp"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <algorithm>
 #include <atomic>
@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace flox
+namespace lrvx
 {
 
 // A JS-visible count that turns directly into a C++ allocation size (e.g.
@@ -25,7 +25,7 @@ namespace flox
 // this ceiling before it reaches an allocation. Generous enough for any
 // realistic strategy use, small enough that even the largest element type
 // in this file (a bar, 72 bytes) stays under a gigabyte.
-static constexpr uint32_t kFloxJsMaxAllocCount = 10'000'000;
+static constexpr uint32_t kLrvxJsMaxAllocCount = 10'000'000;
 
 // ============================================================
 // Opaque handle class — safe way to pass a C handle through JS
@@ -49,7 +49,7 @@ static constexpr uint32_t kFloxJsMaxAllocCount = 10'000'000;
 // pairs the handle with the destroy function that owns it. One finalizer
 // serves every handle type; createHandleObject's caller supplies the
 // right destroy function once, at creation.
-struct FloxHandleEntry
+struct LrvxHandleEntry
 {
   void* handle;
   void (*destroy)(void*);
@@ -61,11 +61,11 @@ struct FloxHandleEntry
 // A leak test can create a batch, drop every JS reference, force a
 // collection, and assert this returns to its starting value -- catching
 // exactly this class of bug locally, without a sanitizer.
-static std::atomic<size_t> g_floxHandleLiveCount{0};
+static std::atomic<size_t> g_lrvxHandleLiveCount{0};
 
-size_t floxJsHandleLiveCountForTesting()
+size_t lrvxJsHandleLiveCountForTesting()
 {
-  return g_floxHandleLiveCount.load(std::memory_order_relaxed);
+  return g_lrvxHandleLiveCount.load(std::memory_order_relaxed);
 }
 
 static JSClassID jsHandleClassId = 0;
@@ -73,17 +73,17 @@ static JSClassID jsHandleClassId = 0;
 static void js_handle_finalizer(JSRuntime*, JSValue val);
 
 static JSClassDef jsHandleClassDef = {
-    .class_name = "FloxHandle",
+    .class_name = "LrvxHandle",
     .finalizer = js_handle_finalizer,
 };
 
 // QuickJS class IDs are allocated from a process-wide counter: JS_NewClassID
 // must run exactly once per process, not once per engine. Every
-// FloxJsStrategy construction used to call it again, silently reassigning
+// LrvxJsStrategy construction used to call it again, silently reassigning
 // this shared id out from under any other engine that happened to be alive
 // at the same time (harmless when engines are strictly sequential, which is
 // how every caller used this file until the threading fix below (see
-// FloxJsExecutor) made concurrent engines -- one per executor thread -- a
+// LrvxJsExecutor) made concurrent engines -- one per executor thread -- a
 // normal, live configuration).
 // JS_NewClass(rt, id, def) below still runs per-engine: that is what
 // actually registers the class in a given runtime's class table.
@@ -96,25 +96,25 @@ static void ensureHandleClassId()
 }
 
 // `destroyFn` is the C ABI destroy function that owns `handle` (e.g.
-// flox_book_destroy). Pass nullptr only for a *borrowed* handle that JS
-// does not own the lifetime of -- currently just the FloxStrategyHandle
-// FloxJsStrategy::injectHandle hands to the script, which the C++ side
+// lrvx_book_destroy). Pass nullptr only for a *borrowed* handle that JS
+// does not own the lifetime of -- currently just the LrvxStrategyHandle
+// LrvxJsStrategy::injectHandle hands to the script, which the C++ side
 // (not JS) creates, keeps, and destroys.
 JSValue createHandleObject(JSContext* ctx, void* handle, void (*destroyFn)(void*))
 {
   JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(jsHandleClassId));
-  auto* entry = new FloxHandleEntry{handle, destroyFn};
+  auto* entry = new LrvxHandleEntry{handle, destroyFn};
   JS_SetOpaque(obj, entry);
   if (destroyFn)
   {
-    g_floxHandleLiveCount.fetch_add(1, std::memory_order_relaxed);
+    g_lrvxHandleLiveCount.fetch_add(1, std::memory_order_relaxed);
   }
   return obj;
 }
 
 void* getHandlePtr(JSContext* ctx, JSValueConst val)
 {
-  auto* entry = static_cast<FloxHandleEntry*>(JS_GetOpaque(val, jsHandleClassId));
+  auto* entry = static_cast<LrvxHandleEntry*>(JS_GetOpaque(val, jsHandleClassId));
   return entry ? entry->handle : nullptr;
 }
 
@@ -126,7 +126,7 @@ void* getHandlePtr(JSContext* ctx, JSValueConst val)
 // last two steps of.
 static JSValue js_generic_handle_destroy(JSContext*, JSValueConst argv0)
 {
-  auto* entry = static_cast<FloxHandleEntry*>(JS_GetOpaque(argv0, jsHandleClassId));
+  auto* entry = static_cast<LrvxHandleEntry*>(JS_GetOpaque(argv0, jsHandleClassId));
   if (!entry)
   {
     return JS_UNDEFINED;
@@ -134,7 +134,7 @@ static JSValue js_generic_handle_destroy(JSContext*, JSValueConst argv0)
   if (entry->handle && entry->destroy)
   {
     entry->destroy(entry->handle);
-    g_floxHandleLiveCount.fetch_sub(1, std::memory_order_relaxed);
+    g_lrvxHandleLiveCount.fetch_sub(1, std::memory_order_relaxed);
   }
   delete entry;
   JS_SetOpaque(argv0, nullptr);
@@ -143,7 +143,7 @@ static JSValue js_generic_handle_destroy(JSContext*, JSValueConst argv0)
 
 static void js_handle_finalizer(JSRuntime*, JSValue val)
 {
-  auto* entry = static_cast<FloxHandleEntry*>(JS_GetOpaque(val, jsHandleClassId));
+  auto* entry = static_cast<LrvxHandleEntry*>(JS_GetOpaque(val, jsHandleClassId));
   if (!entry)
   {
     return;
@@ -151,7 +151,7 @@ static void js_handle_finalizer(JSRuntime*, JSValue val)
   if (entry->handle && entry->destroy)
   {
     entry->destroy(entry->handle);
-    g_floxHandleLiveCount.fetch_sub(1, std::memory_order_relaxed);
+    g_lrvxHandleLiveCount.fetch_sub(1, std::memory_order_relaxed);
   }
   delete entry;
 }
@@ -160,7 +160,7 @@ static void js_handle_finalizer(JSRuntime*, JSValue val)
 // Finalized handle classes — IndicatorGraph, StreamingIndicatorGraph,
 // multi-feed clock.
 //
-// Unlike the generic FloxHandle above, these three have a real finalizer:
+// Unlike the generic LrvxHandle above, these three have a real finalizer:
 // if a script drops the wrapper object without calling .destroy(), the
 // underlying C++ state (and, for the two graphs, the JS function/thisObj
 // references each node holds) is still freed when QuickJS collects the
@@ -177,15 +177,15 @@ static void js_streaming_finalizer(JSRuntime* rt, JSValue val);
 static void js_feed_clock_finalizer(JSRuntime* rt, JSValue val);
 
 static JSClassDef jsGraphClassDef = {
-    .class_name = "FloxIndicatorGraph",
+    .class_name = "LrvxIndicatorGraph",
     .finalizer = js_graph_finalizer,
 };
 static JSClassDef jsStreamingClassDef = {
-    .class_name = "FloxStreamingIndicatorGraph",
+    .class_name = "LrvxStreamingIndicatorGraph",
     .finalizer = js_streaming_finalizer,
 };
 static JSClassDef jsFeedClockClassDef = {
-    .class_name = "FloxFeedClock",
+    .class_name = "LrvxFeedClock",
     .finalizer = js_feed_clock_finalizer,
 };
 
@@ -316,7 +316,7 @@ static bool toFiniteQtyOrThrow(JSContext* ctx, JSValueConst val, double& out, co
   return JS_EXCEPTION
 
 #define GET_HANDLE_OR_THROW(ctx, argv)                                                    \
-  auto h = static_cast<FloxStrategyHandle>(getHandle((ctx), (argv)[0]));                  \
+  auto h = static_cast<LrvxStrategyHandle>(getHandle((ctx), (argv)[0]));                  \
   if (!h)                                                                                 \
   {                                                                                       \
     return JS_ThrowTypeError((ctx), "Strategy handle is null (not connected to engine)"); \
@@ -331,7 +331,7 @@ static JSValue js_emit_market_buy(JSContext* ctx, JSValueConst, int, JSValueCons
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   TO_QTY_OR_THROW(qty, ctx, argv[2], "quantity");
-  uint64_t oid = flox_emit_market_buy(h, sym, flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_market_buy(h, sym, lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -340,7 +340,7 @@ static JSValue js_emit_market_sell(JSContext* ctx, JSValueConst, int, JSValueCon
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   TO_QTY_OR_THROW(qty, ctx, argv[2], "quantity");
-  uint64_t oid = flox_emit_market_sell(h, sym, flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_market_sell(h, sym, lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -351,8 +351,8 @@ static JSValue js_emit_limit_buy_tif(JSContext* ctx, JSValueConst, int, JSValueC
   TO_PRICE_OR_THROW(price, ctx, argv[2], "price");
   TO_QTY_OR_THROW(qty, ctx, argv[3], "quantity");
   uint32_t tif = toUint32(ctx, argv[4]);
-  uint64_t oid = flox_emit_limit_buy_tif(h, sym, flox_price_from_double(price),
-                                         flox_quantity_from_double(qty),
+  uint64_t oid = lrvx_emit_limit_buy_tif(h, sym, lrvx_price_from_double(price),
+                                         lrvx_quantity_from_double(qty),
                                          static_cast<uint8_t>(tif));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
@@ -364,8 +364,8 @@ static JSValue js_emit_limit_sell_tif(JSContext* ctx, JSValueConst, int, JSValue
   TO_PRICE_OR_THROW(price, ctx, argv[2], "price");
   TO_QTY_OR_THROW(qty, ctx, argv[3], "quantity");
   uint32_t tif = toUint32(ctx, argv[4]);
-  uint64_t oid = flox_emit_limit_sell_tif(h, sym, flox_price_from_double(price),
-                                          flox_quantity_from_double(qty),
+  uint64_t oid = lrvx_emit_limit_sell_tif(h, sym, lrvx_price_from_double(price),
+                                          lrvx_quantity_from_double(qty),
                                           static_cast<uint8_t>(tif));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
@@ -374,7 +374,7 @@ static JSValue js_emit_cancel(JSContext* ctx, JSValueConst, int, JSValueConst* a
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   int64_t oid = toInt64(ctx, argv[1]);
-  flox_emit_cancel(h, static_cast<uint64_t>(oid));
+  lrvx_emit_cancel(h, static_cast<uint64_t>(oid));
   return JS_UNDEFINED;
 }
 
@@ -382,7 +382,7 @@ static JSValue js_emit_cancel_all(JSContext* ctx, JSValueConst, int, JSValueCons
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  flox_emit_cancel_all(h, sym);
+  lrvx_emit_cancel_all(h, sym);
   return JS_UNDEFINED;
 }
 
@@ -392,8 +392,8 @@ static JSValue js_emit_modify(JSContext* ctx, JSValueConst, int, JSValueConst* a
   int64_t oid = toInt64(ctx, argv[1]);
   TO_PRICE_OR_THROW(price, ctx, argv[2], "price");
   TO_QTY_OR_THROW(qty, ctx, argv[3], "quantity");
-  flox_emit_modify(h, static_cast<uint64_t>(oid), flox_price_from_double(price),
-                   flox_quantity_from_double(qty));
+  lrvx_emit_modify(h, static_cast<uint64_t>(oid), lrvx_price_from_double(price),
+                   lrvx_quantity_from_double(qty));
   return JS_UNDEFINED;
 }
 
@@ -404,9 +404,9 @@ static JSValue js_emit_stop_market(JSContext* ctx, JSValueConst, int, JSValueCon
   uint32_t side = toUint32(ctx, argv[2]);
   TO_PRICE_OR_THROW(trigger, ctx, argv[3], "trigger price");
   TO_QTY_OR_THROW(qty, ctx, argv[4], "quantity");
-  uint64_t oid = flox_emit_stop_market(h, sym, static_cast<uint8_t>(side),
-                                       flox_price_from_double(trigger),
-                                       flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_stop_market(h, sym, static_cast<uint8_t>(side),
+                                       lrvx_price_from_double(trigger),
+                                       lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -418,10 +418,10 @@ static JSValue js_emit_stop_limit(JSContext* ctx, JSValueConst, int, JSValueCons
   TO_PRICE_OR_THROW(trigger, ctx, argv[3], "trigger price");
   TO_PRICE_OR_THROW(limit, ctx, argv[4], "limit price");
   TO_QTY_OR_THROW(qty, ctx, argv[5], "quantity");
-  uint64_t oid = flox_emit_stop_limit(h, sym, static_cast<uint8_t>(side),
-                                      flox_price_from_double(trigger),
-                                      flox_price_from_double(limit),
-                                      flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_stop_limit(h, sym, static_cast<uint8_t>(side),
+                                      lrvx_price_from_double(trigger),
+                                      lrvx_price_from_double(limit),
+                                      lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -432,9 +432,9 @@ static JSValue js_emit_take_profit_market(JSContext* ctx, JSValueConst, int, JSV
   uint32_t side = toUint32(ctx, argv[2]);
   TO_PRICE_OR_THROW(trigger, ctx, argv[3], "trigger price");
   TO_QTY_OR_THROW(qty, ctx, argv[4], "quantity");
-  uint64_t oid = flox_emit_take_profit_market(h, sym, static_cast<uint8_t>(side),
-                                              flox_price_from_double(trigger),
-                                              flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_take_profit_market(h, sym, static_cast<uint8_t>(side),
+                                              lrvx_price_from_double(trigger),
+                                              lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -446,10 +446,10 @@ static JSValue js_emit_take_profit_limit(JSContext* ctx, JSValueConst, int, JSVa
   TO_PRICE_OR_THROW(trigger, ctx, argv[3], "trigger price");
   TO_PRICE_OR_THROW(limit, ctx, argv[4], "limit price");
   TO_QTY_OR_THROW(qty, ctx, argv[5], "quantity");
-  uint64_t oid = flox_emit_take_profit_limit(h, sym, static_cast<uint8_t>(side),
-                                             flox_price_from_double(trigger),
-                                             flox_price_from_double(limit),
-                                             flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_take_profit_limit(h, sym, static_cast<uint8_t>(side),
+                                             lrvx_price_from_double(trigger),
+                                             lrvx_price_from_double(limit),
+                                             lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -460,9 +460,9 @@ static JSValue js_emit_trailing_stop(JSContext* ctx, JSValueConst, int, JSValueC
   uint32_t side = toUint32(ctx, argv[2]);
   TO_PRICE_OR_THROW(offset, ctx, argv[3], "offset");
   TO_QTY_OR_THROW(qty, ctx, argv[4], "quantity");
-  uint64_t oid = flox_emit_trailing_stop(h, sym, static_cast<uint8_t>(side),
-                                         flox_price_from_double(offset),
-                                         flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_trailing_stop(h, sym, static_cast<uint8_t>(side),
+                                         lrvx_price_from_double(offset),
+                                         lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -473,8 +473,8 @@ static JSValue js_emit_trailing_stop_pct(JSContext* ctx, JSValueConst, int, JSVa
   uint32_t side = toUint32(ctx, argv[2]);
   int32_t bps = static_cast<int32_t>(toInt64(ctx, argv[3]));
   TO_QTY_OR_THROW(qty, ctx, argv[4], "quantity");
-  uint64_t oid = flox_emit_trailing_stop_percent(h, sym, static_cast<uint8_t>(side), bps,
-                                                 flox_quantity_from_double(qty));
+  uint64_t oid = lrvx_emit_trailing_stop_percent(h, sym, static_cast<uint8_t>(side), bps,
+                                                 lrvx_quantity_from_double(qty));
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -482,7 +482,7 @@ static JSValue js_emit_close_position(JSContext* ctx, JSValueConst, int, JSValue
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  uint64_t oid = flox_emit_close_position(h, sym);
+  uint64_t oid = lrvx_emit_close_position(h, sym);
   return JS_NewFloat64(ctx, static_cast<double>(oid));
 }
 
@@ -494,16 +494,16 @@ static JSValue js_position(JSContext* ctx, JSValueConst, int, JSValueConst* argv
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_position_raw(h, sym);
-  return JS_NewFloat64(ctx, flox_quantity_to_double(raw));
+  int64_t raw = lrvx_position_raw(h, sym);
+  return JS_NewFloat64(ctx, lrvx_quantity_to_double(raw));
 }
 
 static JSValue js_last_trade_price(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_last_trade_price_raw(h, sym);
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  int64_t raw = lrvx_last_trade_price_raw(h, sym);
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }
 
 // null when the side is empty, matching the book bindings below. The raw
@@ -515,11 +515,11 @@ static JSValue js_best_bid(JSContext* ctx, JSValueConst, int, JSValueConst* argv
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_best_bid_raw_opt(h, sym, &raw))
+  if (!lrvx_best_bid_raw_opt(h, sym, &raw))
   {
     return JS_NULL;
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }
 
 static JSValue js_best_ask(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -527,11 +527,11 @@ static JSValue js_best_ask(JSContext* ctx, JSValueConst, int, JSValueConst* argv
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_best_ask_raw_opt(h, sym, &raw))
+  if (!lrvx_best_ask_raw_opt(h, sym, &raw))
   {
     return JS_NULL;
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }
 
 static JSValue js_mid_price(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -539,18 +539,18 @@ static JSValue js_mid_price(JSContext* ctx, JSValueConst, int, JSValueConst* arg
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_mid_price_raw_opt(h, sym, &raw))
+  if (!lrvx_mid_price_raw_opt(h, sym, &raw))
   {
     return JS_NULL;
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }
 
 static JSValue js_get_order_status(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   int64_t oid = toInt64(ctx, argv[1]);
-  int32_t status = flox_get_order_status(h, static_cast<uint64_t>(oid));
+  int32_t status = lrvx_get_order_status(h, static_cast<uint64_t>(oid));
   return JS_NewInt32(ctx, status);
 }
 
@@ -558,15 +558,15 @@ static JSValue js_get_order_status(JSContext* ctx, JSValueConst, int, JSValueCon
 // Multi-timeframe alignment helpers
 // ============================================================
 
-static JSValue jsBarFromFlox(JSContext* ctx, const FloxBar& b)
+static JSValue jsBarFromLrvx(JSContext* ctx, const LrvxBar& b)
 {
   JSValue obj = JS_NewObject(ctx);
-  JS_SetPropertyStr(ctx, obj, "open", JS_NewFloat64(ctx, flox_price_to_double(b.open_raw)));
-  JS_SetPropertyStr(ctx, obj, "high", JS_NewFloat64(ctx, flox_price_to_double(b.high_raw)));
-  JS_SetPropertyStr(ctx, obj, "low", JS_NewFloat64(ctx, flox_price_to_double(b.low_raw)));
-  JS_SetPropertyStr(ctx, obj, "close", JS_NewFloat64(ctx, flox_price_to_double(b.close_raw)));
+  JS_SetPropertyStr(ctx, obj, "open", JS_NewFloat64(ctx, lrvx_price_to_double(b.open_raw)));
+  JS_SetPropertyStr(ctx, obj, "high", JS_NewFloat64(ctx, lrvx_price_to_double(b.high_raw)));
+  JS_SetPropertyStr(ctx, obj, "low", JS_NewFloat64(ctx, lrvx_price_to_double(b.low_raw)));
+  JS_SetPropertyStr(ctx, obj, "close", JS_NewFloat64(ctx, lrvx_price_to_double(b.close_raw)));
   JS_SetPropertyStr(ctx, obj, "volume",
-                    JS_NewFloat64(ctx, flox_quantity_to_double(b.volume_raw)));
+                    JS_NewFloat64(ctx, lrvx_quantity_to_double(b.volume_raw)));
   JS_SetPropertyStr(ctx, obj, "startNs",
                     JS_NewBigInt64(ctx, static_cast<int64_t>(b.start_time_ns)));
   JS_SetPropertyStr(ctx, obj, "endNs",
@@ -580,13 +580,13 @@ static JSValue js_strategy_last_closed_bar(JSContext* ctx, JSValueConst, int, JS
   uint32_t sym = toUint32(ctx, argv[1]);
   uint32_t bt = toUint32(ctx, argv[2]);
   uint64_t param = static_cast<uint64_t>(toInt64(ctx, argv[3]));
-  FloxBar bar{};
-  uint8_t ok = flox_strategy_last_closed_bar(h, sym, static_cast<uint8_t>(bt), param, &bar);
+  LrvxBar bar{};
+  uint8_t ok = lrvx_strategy_last_closed_bar(h, sym, static_cast<uint8_t>(bt), param, &bar);
   if (!ok)
   {
     return JS_NULL;
   }
-  return jsBarFromFlox(ctx, bar);
+  return jsBarFromLrvx(ctx, bar);
 }
 
 static JSValue js_strategy_last_n_closed_bars(JSContext* ctx, JSValueConst, int,
@@ -601,18 +601,18 @@ static JSValue js_strategy_last_n_closed_bars(JSContext* ctx, JSValueConst, int,
   // cap, bypassing the engine's own memory limit (that limit only tracks
   // QuickJS's allocator, not a plain `new`). A bogus or malicious `n`
   // could otherwise request hundreds of gigabytes from one call.
-  if (n > kFloxJsMaxAllocCount)
+  if (n > kLrvxJsMaxAllocCount)
   {
     return JS_ThrowTypeError(ctx, "lastNClosedBars: n=%u exceeds the maximum of %u", n,
-                             kFloxJsMaxAllocCount);
+                             kLrvxJsMaxAllocCount);
   }
-  std::vector<FloxBar> bars(n);
-  uint32_t got = flox_strategy_last_n_closed_bars(h, sym, static_cast<uint8_t>(bt), param,
+  std::vector<LrvxBar> bars(n);
+  uint32_t got = lrvx_strategy_last_n_closed_bars(h, sym, static_cast<uint8_t>(bt), param,
                                                   bars.data(), n);
   JSValue arr = JS_NewArray(ctx);
   for (uint32_t i = 0; i < got; ++i)
   {
-    JS_SetPropertyUint32(ctx, arr, i, jsBarFromFlox(ctx, bars[i]));
+    JS_SetPropertyUint32(ctx, arr, i, jsBarFromLrvx(ctx, bars[i]));
   }
   return arr;
 }
@@ -621,7 +621,7 @@ static JSValue js_strategy_get_bar_ring_capacity(JSContext* ctx, JSValueConst, i
                                                  JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
-  return JS_NewUint32(ctx, flox_strategy_get_bar_ring_capacity(h));
+  return JS_NewUint32(ctx, lrvx_strategy_get_bar_ring_capacity(h));
 }
 
 static JSValue js_strategy_set_bar_ring_capacity(JSContext* ctx, JSValueConst, int,
@@ -629,7 +629,7 @@ static JSValue js_strategy_set_bar_ring_capacity(JSContext* ctx, JSValueConst, i
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t cap = toUint32(ctx, argv[1]);
-  flox_strategy_set_bar_ring_capacity(h, cap);
+  lrvx_strategy_set_bar_ring_capacity(h, cap);
   return JS_UNDEFINED;
 }
 
@@ -640,8 +640,8 @@ static JSValue js_strategy_set_bar_ring_capacity(JSContext* ctx, JSValueConst, i
 // a BigInt (visible in plaintext, defeating ASLR) and accept any BigInt
 // back as a handle with no validation -- `destroy(12345n)` dereferenced
 // address 0x3039. It also had no way to free one at all: the
-// JS facade (quickjs/flox/feed_clock.js) never called
-// __flox_feed_clock_destroy, so every clock leaked unconditionally. Both
+// JS facade (quickjs/lrvx/feed_clock.js) never called
+// __lrvx_feed_clock_destroy, so every clock leaked unconditionally. Both
 // are fixed the same way every other handle-shaped binding in this file
 // is: an opaque JSValue tagged with its own class id, `destroy()` on the
 // facade, and nulling the opaque pointer on free so a second free (or a
@@ -695,7 +695,7 @@ static JSValue js_feed_clock_create(JSContext* ctx, JSValueConst, int argc, JSVa
   int64_t timeout = toInt64(ctx, argv[3]);
   uint32_t leader = toUint32(ctx, argv[4]);
   int64_t budget = toInt64(ctx, argv[5]);
-  void* h = flox_feed_clock_create(sv.data(), count, static_cast<uint8_t>(policy), timeout,
+  void* h = lrvx_feed_clock_create(sv.data(), count, static_cast<uint8_t>(policy), timeout,
                                    leader, budget);
   JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(jsFeedClockClassId));
   JS_SetOpaque(obj, h);
@@ -709,7 +709,7 @@ static JSValue js_feed_clock_destroy(JSContext* ctx, JSValueConst, int, JSValueC
   {
     return JS_UNDEFINED;  // already destroyed (or never created) -- no-op, not a crash
   }
-  flox_feed_clock_destroy(h);
+  lrvx_feed_clock_destroy(h);
   JS_SetOpaque(argv[0], nullptr);
   return JS_UNDEFINED;
 }
@@ -717,14 +717,14 @@ static JSValue js_feed_clock_destroy(JSContext* ctx, JSValueConst, int, JSValueC
 static JSValue js_feed_clock_symbol_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
-  return JS_NewUint32(ctx, flox_feed_clock_symbol_count(fc));
+  return JS_NewUint32(ctx, lrvx_feed_clock_symbol_count(fc));
 }
 
 static JSValue js_feed_clock_symbol_at(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
   uint32_t idx = toUint32(ctx, argv[1]);
-  return JS_NewUint32(ctx, flox_feed_clock_symbol_at(fc, idx));
+  return JS_NewUint32(ctx, lrvx_feed_clock_symbol_at(fc, idx));
 }
 
 static JSValue js_feed_clock_tick(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -732,40 +732,40 @@ static JSValue js_feed_clock_tick(JSContext* ctx, JSValueConst, int, JSValueCons
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
   int64_t ts = toInt64(ctx, argv[1]);
   uint32_t sym = toUint32(ctx, argv[2]);
-  return JS_NewUint32(ctx, flox_feed_clock_tick(fc, ts, sym));
+  return JS_NewUint32(ctx, lrvx_feed_clock_tick(fc, ts, sym));
 }
 
 static JSValue js_feed_clock_last_fired(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
-  return JS_NewUint32(ctx, flox_feed_clock_last_fired(fc));
+  return JS_NewUint32(ctx, lrvx_feed_clock_last_fired(fc));
 }
 
 static JSValue js_feed_clock_last_triggered_by(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
-  return JS_NewUint32(ctx, flox_feed_clock_last_triggered_by(fc));
+  return JS_NewUint32(ctx, lrvx_feed_clock_last_triggered_by(fc));
 }
 
 static JSValue js_feed_clock_last_seen_at(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
   uint32_t idx = toUint32(ctx, argv[1]);
-  return JS_NewBigInt64(ctx, flox_feed_clock_last_seen_at(fc, idx));
+  return JS_NewBigInt64(ctx, lrvx_feed_clock_last_seen_at(fc, idx));
 }
 
 static JSValue js_feed_clock_staleness_at(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
   uint32_t idx = toUint32(ctx, argv[1]);
-  return JS_NewBigInt64(ctx, flox_feed_clock_staleness_at(fc, idx));
+  return JS_NewBigInt64(ctx, lrvx_feed_clock_staleness_at(fc, idx));
 }
 
 static JSValue js_feed_clock_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_FEED_CLOCK_OR_THROW(ctx, argv);
-  flox_feed_clock_reset(fc);
+  lrvx_feed_clock_reset(fc);
   return JS_UNDEFINED;
 }
 
@@ -774,7 +774,7 @@ static void js_feed_clock_finalizer(JSRuntime*, JSValue val)
   void* h = JS_GetOpaque(val, jsFeedClockClassId);
   if (h)
   {
-    flox_feed_clock_destroy(h);
+    lrvx_feed_clock_destroy(h);
   }
 }
 
@@ -814,7 +814,7 @@ static JSValue js_indicator_sma(JSContext* ctx, JSValueConst, int, JSValueConst*
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_sma(data.data(), data.size(), period, output.data());
+  lrvx_indicator_sma(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -823,7 +823,7 @@ static JSValue js_indicator_ema(JSContext* ctx, JSValueConst, int, JSValueConst*
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_ema(data.data(), data.size(), period, output.data());
+  lrvx_indicator_ema(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -832,7 +832,7 @@ static JSValue js_indicator_rsi(JSContext* ctx, JSValueConst, int, JSValueConst*
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_rsi(data.data(), data.size(), period, output.data());
+  lrvx_indicator_rsi(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -865,7 +865,7 @@ static JSValue js_indicator_atr(JSContext* ctx, JSValueConst, int, JSValueConst*
   uint32_t period = toUint32(ctx, argv[3]);
   size_t len = high.size();
   std::vector<double> output(len);
-  flox_indicator_atr(high.data(), low.data(), close.data(), len, period, output.data());
+  lrvx_indicator_atr(high.data(), low.data(), close.data(), len, period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -877,7 +877,7 @@ static JSValue js_indicator_macd(JSContext* ctx, JSValueConst, int argc, JSValue
   uint32_t signal = (argc > 3) ? toUint32(ctx, argv[3]) : 9;
   size_t len = data.size();
   std::vector<double> macdOut(len), signalOut(len), histOut(len);
-  flox_indicator_macd(data.data(), len, fast, slow, signal, macdOut.data(), signalOut.data(),
+  lrvx_indicator_macd(data.data(), len, fast, slow, signal, macdOut.data(), signalOut.data(),
                       histOut.data());
   JSValue result = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, result, "line", jsArrayFromDoubles(ctx, macdOut));
@@ -893,7 +893,7 @@ static JSValue js_indicator_bollinger(JSContext* ctx, JSValueConst, int argc, JS
   double multiplier = (argc > 2) ? toDouble(ctx, argv[2]) : 2.0;
   size_t len = data.size();
   std::vector<double> upper(len), middle(len), lower(len);
-  flox_indicator_bollinger(data.data(), len, period, multiplier, upper.data(), middle.data(),
+  lrvx_indicator_bollinger(data.data(), len, period, multiplier, upper.data(), middle.data(),
                            lower.data());
   JSValue result = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, result, "upper", jsArrayFromDoubles(ctx, upper));
@@ -907,7 +907,7 @@ static JSValue js_indicator_rma(JSContext* ctx, JSValueConst, int, JSValueConst*
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_rma(data.data(), data.size(), period, output.data());
+  lrvx_indicator_rma(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -916,7 +916,7 @@ static JSValue js_indicator_dema(JSContext* ctx, JSValueConst, int, JSValueConst
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_dema(data.data(), data.size(), period, output.data());
+  lrvx_indicator_dema(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -925,7 +925,7 @@ static JSValue js_indicator_tema(JSContext* ctx, JSValueConst, int, JSValueConst
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_tema(data.data(), data.size(), period, output.data());
+  lrvx_indicator_tema(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -936,7 +936,7 @@ static JSValue js_indicator_kama(JSContext* ctx, JSValueConst, int argc, JSValue
   uint32_t fast = (argc > 2) ? toUint32(ctx, argv[2]) : 2;
   uint32_t slow = (argc > 3) ? toUint32(ctx, argv[3]) : 30;
   std::vector<double> output(data.size());
-  flox_indicator_kama(data.data(), data.size(), period, fast, slow, output.data());
+  lrvx_indicator_kama(data.data(), data.size(), period, fast, slow, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -945,7 +945,7 @@ static JSValue js_indicator_slope(JSContext* ctx, JSValueConst, int, JSValueCons
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t length = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_slope(data.data(), data.size(), length, output.data());
+  lrvx_indicator_slope(data.data(), data.size(), length, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -961,7 +961,7 @@ static JSValue js_indicator_adx(JSContext* ctx, JSValueConst, int, JSValueConst*
   uint32_t period = toUint32(ctx, argv[3]);
   size_t len = high.size();
   std::vector<double> adxOut(len), plusDi(len), minusDi(len);
-  flox_indicator_adx(high.data(), low.data(), close.data(), len, period, adxOut.data(),
+  lrvx_indicator_adx(high.data(), low.data(), close.data(), len, period, adxOut.data(),
                      plusDi.data(), minusDi.data());
   JSValue result = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, result, "adx", jsArrayFromDoubles(ctx, adxOut));
@@ -982,7 +982,7 @@ static JSValue js_indicator_cci(JSContext* ctx, JSValueConst, int, JSValueConst*
   uint32_t period = toUint32(ctx, argv[3]);
   size_t len = high.size();
   std::vector<double> output(len);
-  flox_indicator_cci(high.data(), low.data(), close.data(), len, period, output.data());
+  lrvx_indicator_cci(high.data(), low.data(), close.data(), len, period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -999,7 +999,7 @@ static JSValue js_indicator_stochastic(JSContext* ctx, JSValueConst, int argc, J
   uint32_t dPeriod = (argc > 4) ? toUint32(ctx, argv[4]) : 3;
   size_t len = high.size();
   std::vector<double> kOut(len), dOut(len);
-  flox_indicator_stochastic(high.data(), low.data(), close.data(), len, kPeriod, dPeriod,
+  lrvx_indicator_stochastic(high.data(), low.data(), close.data(), len, kPeriod, dPeriod,
                             kOut.data(), dOut.data());
   JSValue result = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, result, "k", jsArrayFromDoubles(ctx, kOut));
@@ -1015,7 +1015,7 @@ static JSValue js_indicator_chop(JSContext* ctx, JSValueConst, int, JSValueConst
   uint32_t period = toUint32(ctx, argv[3]);
   size_t len = high.size();
   std::vector<double> output(len);
-  flox_indicator_chop(high.data(), low.data(), close.data(), len, period, output.data());
+  lrvx_indicator_chop(high.data(), low.data(), close.data(), len, period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1025,7 +1025,7 @@ static JSValue js_indicator_obv(JSContext* ctx, JSValueConst, int, JSValueConst*
   auto volume = jsArrayToDoubles(ctx, argv[1]);
   size_t len = close.size();
   std::vector<double> output(len);
-  flox_indicator_obv(close.data(), volume.data(), len, output.data());
+  lrvx_indicator_obv(close.data(), volume.data(), len, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1036,7 +1036,7 @@ static JSValue js_indicator_vwap(JSContext* ctx, JSValueConst, int, JSValueConst
   uint32_t window = toUint32(ctx, argv[2]);
   size_t len = close.size();
   std::vector<double> output(len);
-  flox_indicator_vwap(close.data(), volume.data(), len, window, output.data());
+  lrvx_indicator_vwap(close.data(), volume.data(), len, window, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1049,7 +1049,7 @@ static JSValue js_indicator_cvd(JSContext* ctx, JSValueConst, int, JSValueConst*
   auto volume = jsArrayToDoubles(ctx, argv[4]);
   size_t len = open.size();
   std::vector<double> output(len);
-  flox_indicator_cvd(open.data(), high.data(), low.data(), close.data(), volume.data(), len,
+  lrvx_indicator_cvd(open.data(), high.data(), low.data(), close.data(), volume.data(), len,
                      output.data());
   return jsArrayFromDoubles(ctx, output);
 }
@@ -1059,7 +1059,7 @@ static JSValue js_indicator_skewness(JSContext* ctx, JSValueConst, int, JSValueC
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_skewness(data.data(), data.size(), period, output.data());
+  lrvx_indicator_skewness(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1068,7 +1068,7 @@ static JSValue js_indicator_kurtosis(JSContext* ctx, JSValueConst, int, JSValueC
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_kurtosis(data.data(), data.size(), period, output.data());
+  lrvx_indicator_kurtosis(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1077,7 +1077,7 @@ static JSValue js_indicator_rolling_zscore(JSContext* ctx, JSValueConst, int, JS
   auto data = jsArrayToDoubles(ctx, argv[0]);
   uint32_t period = toUint32(ctx, argv[1]);
   std::vector<double> output(data.size());
-  flox_indicator_rolling_zscore(data.data(), data.size(), period, output.data());
+  lrvx_indicator_rolling_zscore(data.data(), data.size(), period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1087,7 +1087,7 @@ static JSValue js_indicator_shannon_entropy(JSContext* ctx, JSValueConst, int, J
   uint32_t period = toUint32(ctx, argv[1]);
   uint32_t bins = toUint32(ctx, argv[2]);
   std::vector<double> output(data.size());
-  flox_indicator_shannon_entropy(data.data(), data.size(), period, bins, output.data());
+  lrvx_indicator_shannon_entropy(data.data(), data.size(), period, bins, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1098,7 +1098,7 @@ static JSValue js_indicator_parkinson_vol(JSContext* ctx, JSValueConst, int, JSV
   uint32_t period = toUint32(ctx, argv[2]);
   size_t len = high.size();
   std::vector<double> output(len);
-  flox_indicator_parkinson_vol(high.data(), low.data(), len, period, output.data());
+  lrvx_indicator_parkinson_vol(high.data(), low.data(), len, period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1112,7 +1112,7 @@ static JSValue js_indicator_rogers_satchell_vol(JSContext* ctx, JSValueConst, in
   uint32_t period = toUint32(ctx, argv[4]);
   size_t len = open.size();
   std::vector<double> output(len);
-  flox_indicator_rogers_satchell_vol(open.data(), high.data(), low.data(), close.data(), len,
+  lrvx_indicator_rogers_satchell_vol(open.data(), high.data(), low.data(), close.data(), len,
                                      period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
@@ -1124,7 +1124,7 @@ static JSValue js_indicator_correlation(JSContext* ctx, JSValueConst, int, JSVal
   uint32_t period = toUint32(ctx, argv[2]);
   size_t len = x.size();
   std::vector<double> output(len);
-  flox_indicator_correlation(x.data(), y.data(), len, period, output.data());
+  lrvx_indicator_correlation(x.data(), y.data(), len, period, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1132,7 +1132,7 @@ static JSValue js_indicator_adf(JSContext* ctx, JSValueConst, int argc, JSValueC
 {
   auto input = jsArrayToDoubles(ctx, argv[0]);
   uint32_t maxLag = argc > 1 ? toUint32(ctx, argv[1]) : 4;
-  flox::JsCString regArg = flox::jsOptionalCString(ctx, argc, argv, 2);
+  lrvx::JsCString regArg = lrvx::jsOptionalCString(ctx, argc, argv, 2);
   if (regArg.present() && !regArg.ok())
   {
     return JS_EXCEPTION;
@@ -1141,7 +1141,7 @@ static JSValue js_indicator_adf(JSContext* ctx, JSValueConst, int argc, JSValueC
   double testStat = 0.0;
   double pValue = 0.0;
   size_t usedLag = 0;
-  flox_indicator_adf(input.data(), input.size(), maxLag, reg, &testStat, &pValue, &usedLag);
+  lrvx_indicator_adf(input.data(), input.size(), maxLag, reg, &testStat, &pValue, &usedLag);
   JSValue obj = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, obj, "test_stat", JS_NewFloat64(ctx, testStat));
   JS_SetPropertyStr(ctx, obj, "p_value", JS_NewFloat64(ctx, pValue));
@@ -1157,7 +1157,7 @@ static JSValue js_indicator_autocorrelation(JSContext* ctx, JSValueConst, int,
   uint32_t lag = toUint32(ctx, argv[2]);
   size_t len = in.size();
   std::vector<double> output(len);
-  flox_indicator_autocorrelation(in.data(), len, window, lag, output.data());
+  lrvx_indicator_autocorrelation(in.data(), len, window, lag, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1171,7 +1171,7 @@ static JSValue js_target_future_return(JSContext* ctx, JSValueConst, int, JSValu
   uint32_t horizon = toUint32(ctx, argv[1]);
   size_t len = close.size();
   std::vector<double> output(len);
-  flox_target_future_return(close.data(), len, horizon, output.data());
+  lrvx_target_future_return(close.data(), len, horizon, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1182,7 +1182,7 @@ static JSValue js_target_future_ctc_volatility(JSContext* ctx, JSValueConst, int
   uint32_t horizon = toUint32(ctx, argv[1]);
   size_t len = close.size();
   std::vector<double> output(len);
-  flox_target_future_ctc_volatility(close.data(), len, horizon, output.data());
+  lrvx_target_future_ctc_volatility(close.data(), len, horizon, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1193,7 +1193,7 @@ static JSValue js_target_future_linear_slope(JSContext* ctx, JSValueConst, int,
   uint32_t horizon = toUint32(ctx, argv[1]);
   size_t len = close.size();
   std::vector<double> output(len);
-  flox_target_future_linear_slope(close.data(), len, horizon, output.data());
+  lrvx_target_future_linear_slope(close.data(), len, horizon, output.data());
   return jsArrayFromDoubles(ctx, output);
 }
 
@@ -1214,11 +1214,11 @@ struct JsGraphNodeState
 
 struct JsGraphState
 {
-  FloxIndicatorGraphHandle handle;
+  LrvxIndicatorGraphHandle handle;
   std::vector<std::unique_ptr<JsGraphNodeState>> nodes;
 };
 
-static const double* js_graph_node_trampoline(void* user_data, FloxIndicatorGraphHandle,
+static const double* js_graph_node_trampoline(void* user_data, LrvxIndicatorGraphHandle,
                                               uint32_t symbol, size_t* out_len)
 {
   auto* st = static_cast<JsGraphNodeState*>(user_data);
@@ -1240,13 +1240,13 @@ static const double* js_graph_node_trampoline(void* user_data, FloxIndicatorGrap
 
 }  // namespace
 
-// IndicatorGraph used to share the generic FloxHandle class, whose
+// IndicatorGraph used to share the generic LrvxHandle class, whose
 // finalizer is nullptr -- a graph a script drops without calling
 // .destroy() leaked the C++ state (and every JS function reference each
 // node holds) for the life of the process (measured: ~2.6 KB per graph).
 // Its own class id gives it a real finalizer. destroy() (and the
 // finalizer, for the same reason) null the opaque pointer, so a second
-// destroy() -- or a call through the raw `__flox_graph_destroy` global on
+// destroy() -- or a call through the raw `__lrvx_graph_destroy` global on
 // a handle a script squirreled away -- is a safe no-op instead of a
 // double-free or a use-after-free.
 static JsGraphState* getGraphPtr(JSValueConst val)
@@ -1268,7 +1268,7 @@ static void freeGraphState(JsGraphState* st)
     JS_FreeValueRT(JS_GetRuntime(node->ctx), node->fn);
     JS_FreeValueRT(JS_GetRuntime(node->ctx), node->thisObj);
   }
-  flox_indicator_graph_destroy(st->handle);
+  lrvx_indicator_graph_destroy(st->handle);
   delete st;
 }
 
@@ -1283,7 +1283,7 @@ static void js_graph_finalizer(JSRuntime*, JSValue val)
 
 static JSValue js_graph_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  auto* st = new JsGraphState{flox_indicator_graph_create(), {}};
+  auto* st = new JsGraphState{lrvx_indicator_graph_create(), {}};
   JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(jsGraphClassId));
   JS_SetOpaque(obj, st);
   return obj;
@@ -1337,7 +1337,7 @@ static JSValue js_graph_set_bars(JSContext* ctx, JSValueConst, int argc, JSValue
     }
     vp = volume.data();
   }
-  flox_indicator_graph_set_bars(st->handle, sym, close.data(), hp, lp, vp, close.size());
+  lrvx_indicator_graph_set_bars(st->handle, sym, close.data(), hp, lp, vp, close.size());
   return JS_UNDEFINED;
 }
 
@@ -1347,7 +1347,7 @@ static JSValue js_graph_add_node(JSContext* ctx, JSValueConst, int, JSValueConst
   // A non-string node name (a Symbol, or an object whose toString
   // throws) makes JS_ToCString return null; the string ctor below then
   // calls strlen(nullptr) and segfaults. Same for each dependency name.
-  flox::JsCString name(ctx, argv[1]);
+  lrvx::JsCString name(ctx, argv[1]);
   if (!name)
   {
     return JS_EXCEPTION;
@@ -1366,7 +1366,7 @@ static JSValue js_graph_add_node(JSContext* ctx, JSValueConst, int, JSValueConst
     for (uint32_t i = 0; i < depsLen; ++i)
     {
       JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
-      flox::JsCString s(ctx, v);
+      lrvx::JsCString s(ctx, v);
       if (!s)
       {
         JS_FreeValue(ctx, v);
@@ -1390,7 +1390,7 @@ static JSValue js_graph_add_node(JSContext* ctx, JSValueConst, int, JSValueConst
   node->fn = JS_DupValue(ctx, argv[3]);
   node->thisObj = JS_DupValue(ctx, argv[4]);
 
-  flox_indicator_graph_add_node(st->handle, nameStr.c_str(),
+  lrvx_indicator_graph_add_node(st->handle, nameStr.c_str(),
                                 deps.empty() ? nullptr : depPtrs.data(), deps.size(),
                                 js_graph_node_trampoline, node.get());
   st->nodes.push_back(std::move(node));
@@ -1401,13 +1401,13 @@ static JSValue js_graph_require(JSContext* ctx, JSValueConst, int, JSValueConst*
 {
   GET_GRAPH_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  flox::JsCString name(ctx, argv[2]);
+  lrvx::JsCString name(ctx, argv[2]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   size_t len = 0;
-  const double* p = flox_indicator_graph_require(st->handle, sym, name, &len);
+  const double* p = lrvx_indicator_graph_require(st->handle, sym, name, &len);
   if (!p)
   {
     // `!p` also happens when a dependency node's own function
@@ -1434,13 +1434,13 @@ static JSValue js_graph_get(JSContext* ctx, JSValueConst, int, JSValueConst* arg
 {
   GET_GRAPH_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  flox::JsCString name(ctx, argv[2]);
+  lrvx::JsCString name(ctx, argv[2]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   size_t len = 0;
-  const double* p = flox_indicator_graph_get(st->handle, sym, name, &len);
+  const double* p = lrvx_indicator_graph_get(st->handle, sym, name, &len);
   if (!p)
   {
     return JS_NULL;
@@ -1454,7 +1454,7 @@ static JSValue js_graph_get(JSContext* ctx, JSValueConst, int, JSValueConst* arg
     GET_GRAPH_OR_THROW(ctx, argv);                                                       \
     uint32_t sym = toUint32(ctx, argv[1]);                                               \
     size_t len = 0;                                                                      \
-    const double* p = flox_indicator_graph_##field(st->handle, sym, &len);               \
+    const double* p = lrvx_indicator_graph_##field(st->handle, sym, &len);               \
     return jsArrayFromDoubles(ctx, std::vector<double>(p, p + len));                     \
   }
 GRAPH_FIELD(close)
@@ -1466,14 +1466,14 @@ GRAPH_FIELD(volume)
 static JSValue js_graph_invalidate(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_GRAPH_OR_THROW(ctx, argv);
-  flox_indicator_graph_invalidate(st->handle, toUint32(ctx, argv[1]));
+  lrvx_indicator_graph_invalidate(st->handle, toUint32(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 
 static JSValue js_graph_invalidate_all(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_GRAPH_OR_THROW(ctx, argv);
-  flox_indicator_graph_invalidate_all(st->handle);
+  lrvx_indicator_graph_invalidate_all(st->handle);
   return JS_UNDEFINED;
 }
 
@@ -1486,11 +1486,11 @@ namespace
 
 struct JsStreamingState
 {
-  FloxStreamingGraphHandle handle;
+  LrvxStreamingGraphHandle handle;
   std::vector<std::unique_ptr<JsGraphNodeState>> nodes;
 };
 
-static const double* js_streaming_node_trampoline(void* user_data, FloxIndicatorGraphHandle,
+static const double* js_streaming_node_trampoline(void* user_data, LrvxIndicatorGraphHandle,
                                                   uint32_t symbol, size_t* out_len)
 {
   auto* st = static_cast<JsGraphNodeState*>(user_data);
@@ -1531,7 +1531,7 @@ static void freeStreamingState(JsStreamingState* st)
     JS_FreeValueRT(JS_GetRuntime(node->ctx), node->fn);
     JS_FreeValueRT(JS_GetRuntime(node->ctx), node->thisObj);
   }
-  flox_streaming_graph_destroy(st->handle);
+  lrvx_streaming_graph_destroy(st->handle);
   delete st;
 }
 
@@ -1546,7 +1546,7 @@ static void js_streaming_finalizer(JSRuntime*, JSValue val)
 
 static JSValue js_streaming_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  auto* st = new JsStreamingState{flox_streaming_graph_create(), {}};
+  auto* st = new JsStreamingState{lrvx_streaming_graph_create(), {}};
   JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(jsStreamingClassId));
   JS_SetOpaque(obj, st);
   return obj;
@@ -1567,7 +1567,7 @@ static JSValue js_streaming_destroy(JSContext* ctx, JSValueConst, int, JSValueCo
 static JSValue js_streaming_add_node(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_STREAMING_OR_THROW(ctx, argv);
-  flox::JsCString name(ctx, argv[1]);
+  lrvx::JsCString name(ctx, argv[1]);
   if (!name)
   {
     return JS_EXCEPTION;
@@ -1586,7 +1586,7 @@ static JSValue js_streaming_add_node(JSContext* ctx, JSValueConst, int, JSValueC
     for (uint32_t i = 0; i < depsLen; ++i)
     {
       JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
-      flox::JsCString s(ctx, v);
+      lrvx::JsCString s(ctx, v);
       if (!s)
       {
         JS_FreeValue(ctx, v);
@@ -1609,7 +1609,7 @@ static JSValue js_streaming_add_node(JSContext* ctx, JSValueConst, int, JSValueC
   node->fn = JS_DupValue(ctx, argv[3]);
   node->thisObj = JS_DupValue(ctx, argv[4]);
 
-  flox_streaming_graph_add_node(st->handle, nameStr.c_str(),
+  lrvx_streaming_graph_add_node(st->handle, nameStr.c_str(),
                                 deps.empty() ? nullptr : depPtrs.data(), deps.size(),
                                 js_streaming_node_trampoline, node.get());
   st->nodes.push_back(std::move(node));
@@ -1630,7 +1630,7 @@ static JSValue js_streaming_step(JSContext* ctx, JSValueConst, int argc, JSValue
   double v = argc > 5 && !JS_IsUndefined(argv[5]) && !JS_IsNull(argv[5])
                  ? toDouble(ctx, argv[5])
                  : 0.0;
-  flox_streaming_graph_step(st->handle, sym, c, h, l, c, v);
+  lrvx_streaming_graph_step(st->handle, sym, c, h, l, c, v);
   return JS_UNDEFINED;
 }
 
@@ -1638,12 +1638,12 @@ static JSValue js_streaming_current(JSContext* ctx, JSValueConst, int, JSValueCo
 {
   GET_STREAMING_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  flox::JsCString name(ctx, argv[2]);
+  lrvx::JsCString name(ctx, argv[2]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
-  double val = flox_streaming_graph_current(st->handle, sym, name);
+  double val = lrvx_streaming_graph_current(st->handle, sym, name);
   return JS_NewFloat64(ctx, val);
 }
 
@@ -1651,20 +1651,20 @@ static JSValue js_streaming_bar_count(JSContext* ctx, JSValueConst, int, JSValue
 {
   GET_STREAMING_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  return JS_NewUint32(ctx, flox_streaming_graph_bar_count(st->handle, sym));
+  return JS_NewUint32(ctx, lrvx_streaming_graph_bar_count(st->handle, sym));
 }
 
 static JSValue js_streaming_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_STREAMING_OR_THROW(ctx, argv);
-  flox_streaming_graph_reset(st->handle, toUint32(ctx, argv[1]));
+  lrvx_streaming_graph_reset(st->handle, toUint32(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 
 static JSValue js_streaming_reset_all(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_STREAMING_OR_THROW(ctx, argv);
-  flox_streaming_graph_reset_all(st->handle);
+  lrvx_streaming_graph_reset_all(st->handle);
   return JS_UNDEFINED;
 }
 
@@ -1674,7 +1674,7 @@ static JSValue js_streaming_reset_all(JSContext* ctx, JSValueConst, int, JSValue
     GET_STREAMING_OR_THROW(ctx, argv);                                                       \
     uint32_t sym = toUint32(ctx, argv[1]);                                                   \
     size_t len = 0;                                                                          \
-    const double* p = flox_streaming_graph_##field(st->handle, sym, &len);                   \
+    const double* p = lrvx_streaming_graph_##field(st->handle, sym, &len);                   \
     return jsArrayFromDoubles(ctx, std::vector<double>(p, p + len));                         \
   }
 STREAMING_FIELD(close)
@@ -1689,12 +1689,12 @@ STREAMING_FIELD(volume)
 
 static JSValue js_book_create(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = flox_book_create(toDouble(ctx, argv[0]));
+  auto h = lrvx_book_create(toDouble(ctx, argv[0]));
   if (!h)
   {
     return JS_ThrowRangeError(ctx, "book_create: tick size must be positive");
   }
-  return createHandleObject(ctx, h, flox_book_destroy);
+  return createHandleObject(ctx, h, lrvx_book_destroy);
 }
 static JSValue js_book_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
@@ -1703,7 +1703,7 @@ static JSValue js_book_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* 
 static JSValue js_book_best_bid(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   double p = 0;
-  if (flox_book_best_bid(static_cast<FloxBookHandle>(getHandle(ctx, argv[0])), &p))
+  if (lrvx_book_best_bid(static_cast<LrvxBookHandle>(getHandle(ctx, argv[0])), &p))
   {
     return JS_NewFloat64(ctx, p);
   }
@@ -1712,7 +1712,7 @@ static JSValue js_book_best_bid(JSContext* ctx, JSValueConst, int, JSValueConst*
 static JSValue js_book_best_ask(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   double p = 0;
-  if (flox_book_best_ask(static_cast<FloxBookHandle>(getHandle(ctx, argv[0])), &p))
+  if (lrvx_book_best_ask(static_cast<LrvxBookHandle>(getHandle(ctx, argv[0])), &p))
   {
     return JS_NewFloat64(ctx, p);
   }
@@ -1721,7 +1721,7 @@ static JSValue js_book_best_ask(JSContext* ctx, JSValueConst, int, JSValueConst*
 static JSValue js_book_mid(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   double p = 0;
-  if (flox_book_mid(static_cast<FloxBookHandle>(getHandle(ctx, argv[0])), &p))
+  if (lrvx_book_mid(static_cast<LrvxBookHandle>(getHandle(ctx, argv[0])), &p))
   {
     return JS_NewFloat64(ctx, p);
   }
@@ -1730,7 +1730,7 @@ static JSValue js_book_mid(JSContext* ctx, JSValueConst, int, JSValueConst* argv
 static JSValue js_book_spread(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   double s = 0;
-  if (flox_book_spread(static_cast<FloxBookHandle>(getHandle(ctx, argv[0])), &s))
+  if (lrvx_book_spread(static_cast<LrvxBookHandle>(getHandle(ctx, argv[0])), &s))
   {
     return JS_NewFloat64(ctx, s);
   }
@@ -1738,32 +1738,32 @@ static JSValue js_book_spread(JSContext* ctx, JSValueConst, int, JSValueConst* a
 }
 static JSValue js_book_clear(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_book_clear(static_cast<FloxBookHandle>(getHandle(ctx, argv[0])));
+  lrvx_book_clear(static_cast<LrvxBookHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_book_is_crossed(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewBool(
-      ctx, flox_book_is_crossed(static_cast<FloxBookHandle>(getHandle(ctx, argv[0]))) != 0);
+      ctx, lrvx_book_is_crossed(static_cast<LrvxBookHandle>(getHandle(ctx, argv[0]))) != 0);
 }
 static JSValue js_book_apply_snapshot(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxBookHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxBookHandle>(getHandle(ctx, argv[0]));
   auto bp = jsArrayToDoubles(ctx, argv[1]);
   auto bq = jsArrayToDoubles(ctx, argv[2]);
   auto ap = jsArrayToDoubles(ctx, argv[3]);
   auto aq = jsArrayToDoubles(ctx, argv[4]);
-  flox_book_apply_snapshot(h, bp.data(), bq.data(), bp.size(), ap.data(), aq.data(), ap.size());
+  lrvx_book_apply_snapshot(h, bp.data(), bq.data(), bp.size(), ap.data(), aq.data(), ap.size());
   return JS_UNDEFINED;
 }
 static JSValue js_book_apply_delta(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxBookHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxBookHandle>(getHandle(ctx, argv[0]));
   auto bp = jsArrayToDoubles(ctx, argv[1]);
   auto bq = jsArrayToDoubles(ctx, argv[2]);
   auto ap = jsArrayToDoubles(ctx, argv[3]);
   auto aq = jsArrayToDoubles(ctx, argv[4]);
-  flox_book_apply_delta(h, bp.data(), bq.data(), bp.size(), ap.data(), aq.data(), ap.size());
+  lrvx_book_apply_delta(h, bp.data(), bq.data(), bp.size(), ap.data(), aq.data(), ap.size());
   return JS_UNDEFINED;
 }
 
@@ -1773,7 +1773,7 @@ static JSValue js_book_apply_delta(JSContext* ctx, JSValueConst, int, JSValueCon
 
 static JSValue js_executor_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_simulated_executor_create(), flox_simulated_executor_destroy);
+  return createHandleObject(ctx, lrvx_simulated_executor_create(), lrvx_simulated_executor_destroy);
 }
 static JSValue js_executor_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
@@ -1781,8 +1781,8 @@ static JSValue js_executor_destroy(JSContext* ctx, JSValueConst, int, JSValueCon
 }
 static JSValue js_executor_submit(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
-  flox_simulated_executor_submit_order(h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
+  auto h = static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
+  lrvx_simulated_executor_submit_order(h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
                                        static_cast<uint8_t>(toUint32(ctx, argv[2])),
                                        toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
                                        static_cast<uint8_t>(toUint32(ctx, argv[5])),
@@ -1791,8 +1791,8 @@ static JSValue js_executor_submit(JSContext* ctx, JSValueConst, int, JSValueCons
 }
 static JSValue js_executor_submit_ex(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
-  flox_simulated_executor_submit_order_ex(
+  auto h = static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
+  lrvx_simulated_executor_submit_order_ex(
       h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
       static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), static_cast<uint8_t>(toUint32(ctx, argv[5])),
@@ -1803,8 +1803,8 @@ static JSValue js_executor_submit_ex(JSContext* ctx, JSValueConst, int, JSValueC
 static JSValue js_executor_submit_bracket(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  flox_simulated_executor_submit_bracket(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_submit_bracket(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])),
       toUint32(ctx, argv[2]),
       static_cast<uint8_t>(toUint32(ctx, argv[3])),
@@ -1821,31 +1821,31 @@ static JSValue js_executor_submit_bracket(JSContext* ctx, JSValueConst, int,
 static JSValue js_executor_cancel_bracket(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  flox_simulated_executor_cancel_bracket(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_cancel_bracket(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_bracket_state(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
-  return JS_NewUint32(ctx, flox_simulated_executor_bracket_state(
-                               static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  return JS_NewUint32(ctx, lrvx_simulated_executor_bracket_state(
+                               static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                static_cast<uint64_t>(toInt64(ctx, argv[1]))));
 }
 static JSValue js_executor_set_bracket_child_arm_mode(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
-  flox_simulated_executor_set_bracket_child_arm_mode(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_bracket_child_arm_mode(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint8_t>(toUint32(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_submit_iceberg(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  flox_simulated_executor_submit_iceberg(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_submit_iceberg(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])),
       static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[5]), toUint32(ctx, argv[6]));
@@ -1854,16 +1854,16 @@ static JSValue js_executor_submit_iceberg(JSContext* ctx, JSValueConst, int,
 static JSValue js_executor_set_iceberg_refresh_latency(JSContext* ctx, JSValueConst, int,
                                                        JSValueConst* argv)
 {
-  flox_simulated_executor_set_iceberg_refresh_latency(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_iceberg_refresh_latency(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_iceberg_hidden_remaining_raw(JSContext* ctx, JSValueConst, int,
                                                         JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, flox_simulated_executor_iceberg_hidden_remaining_raw(
-                              static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  return JS_NewInt64(ctx, lrvx_simulated_executor_iceberg_hidden_remaining_raw(
+                              static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                               static_cast<uint64_t>(toInt64(ctx, argv[1]))));
 }
 static JSValue js_executor_set_iceberg_size_randomisation_pct(JSContext* ctx,
@@ -1872,8 +1872,8 @@ static JSValue js_executor_set_iceberg_size_randomisation_pct(JSContext* ctx,
 {
   double pct = 0.0;
   JS_ToFloat64(ctx, &pct, argv[1]);
-  flox_simulated_executor_set_iceberg_size_randomisation_pct(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), pct);
+  lrvx_simulated_executor_set_iceberg_size_randomisation_pct(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), pct);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_iceberg_priority_mode(JSContext* ctx, JSValueConst, int,
@@ -1882,7 +1882,7 @@ static JSValue js_executor_set_iceberg_priority_mode(JSContext* ctx, JSValueCons
   uint8_t code = 0;
   if (JS_IsString(argv[1]))
   {
-    flox::JsCString s(ctx, argv[1]);
+    lrvx::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       std::string name(s);
@@ -1896,21 +1896,21 @@ static JSValue js_executor_set_iceberg_priority_mode(JSContext* ctx, JSValueCons
   {
     code = static_cast<uint8_t>(toUint32(ctx, argv[1]));
   }
-  flox_simulated_executor_set_iceberg_priority_mode(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), code);
+  lrvx_simulated_executor_set_iceberg_priority_mode(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), code);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_iceberg_jitter_seed(JSContext* ctx, JSValueConst, int,
                                                    JSValueConst* argv)
 {
-  flox_simulated_executor_set_iceberg_jitter_seed(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_iceberg_jitter_seed(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_on_bar(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                  toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
   return JS_UNDEFINED;
 }
@@ -1920,8 +1920,8 @@ static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueCons
 // BacktestRunner produces on the same bars.
 static JSValue js_executor_on_bar_ohlc(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_simulated_executor_on_bar_ohlc(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_on_bar_ohlc(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toUint32(ctx, argv[1]), toDouble(ctx, argv[2]), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
   return JS_UNDEFINED;
@@ -1929,46 +1929,46 @@ static JSValue js_executor_on_bar_ohlc(JSContext* ctx, JSValueConst, int, JSValu
 static JSValue js_executor_begin_bar_callback_window(JSContext* ctx, JSValueConst, int,
                                                      JSValueConst* argv)
 {
-  flox_simulated_executor_begin_bar_callback_window(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  lrvx_simulated_executor_begin_bar_callback_window(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_end_bar_callback_window(JSContext* ctx, JSValueConst, int,
                                                    JSValueConst* argv)
 {
-  flox_simulated_executor_end_bar_callback_window(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  lrvx_simulated_executor_end_bar_callback_window(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_simulated_executor_reset(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  lrvx_simulated_executor_reset(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_trade(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_simulated_executor_on_trade(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_on_trade(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                    toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
                                    static_cast<uint8_t>(toUint32(ctx, argv[3])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_advance(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_simulated_executor_advance_clock(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_advance_clock(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                         toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_fill_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewUint32(
-      ctx, flox_simulated_executor_fill_count(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_simulated_executor_fill_count(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0]))));
 }
 
 static JSValue js_executor_set_default_slippage(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  flox_simulated_executor_set_default_slippage(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_default_slippage(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<int32_t>(toInt64(ctx, argv[1])),
       static_cast<int32_t>(toInt64(ctx, argv[2])), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
@@ -1977,8 +1977,8 @@ static JSValue js_executor_set_default_slippage(JSContext* ctx, JSValueConst, in
 static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  flox_simulated_executor_set_symbol_slippage(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
+  lrvx_simulated_executor_set_symbol_slippage(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
       static_cast<int32_t>(toInt64(ctx, argv[2])),
       static_cast<int32_t>(toInt64(ctx, argv[3])), toDouble(ctx, argv[4]),
       toDouble(ctx, argv[5]), toDouble(ctx, argv[6]));
@@ -1987,7 +1987,7 @@ static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int
 static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
 {
-  flox_simulated_executor_set_queue_model(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_queue_model(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                           static_cast<int32_t>(toInt64(ctx, argv[1])),
                                           toUint32(ctx, argv[2]));
   return JS_UNDEFINED;
@@ -1995,8 +1995,8 @@ static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
 static JSValue js_executor_set_queue_fifo_top_n(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  flox_simulated_executor_set_queue_fifo_top_n(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_queue_fifo_top_n(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toUint32(ctx, argv[1]));
   return JS_UNDEFINED;
 }
@@ -2005,14 +2005,14 @@ static JSValue js_executor_set_top_priority_share(JSContext* ctx, JSValueConst, 
 {
   double share = 0.40;
   JS_ToFloat64(ctx, &share, argv[1]);
-  flox_simulated_executor_set_top_priority_share(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), share);
+  lrvx_simulated_executor_set_top_priority_share(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), share);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_lmm_orders(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
   uint32_t n = 0;
   JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
   JS_ToUint32(ctx, &n, lenVal);
@@ -2024,7 +2024,7 @@ static JSValue js_executor_set_lmm_orders(JSContext* ctx, JSValueConst, int,
     JS_ToInt64Ext(ctx, reinterpret_cast<int64_t*>(&ids[i]), v);
     JS_FreeValue(ctx, v);
   }
-  flox_simulated_executor_set_lmm_orders(h, ids.data(), n);
+  lrvx_simulated_executor_set_lmm_orders(h, ids.data(), n);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_lmm_bonus_multiplier(JSContext* ctx, JSValueConst, int,
@@ -2032,8 +2032,8 @@ static JSValue js_executor_set_lmm_bonus_multiplier(JSContext* ctx, JSValueConst
 {
   double m = 1.5;
   JS_ToFloat64(ctx, &m, argv[1]);
-  flox_simulated_executor_set_lmm_bonus_multiplier(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), m);
+  lrvx_simulated_executor_set_lmm_bonus_multiplier(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), m);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_order_priority_multiplier(JSContext* ctx, JSValueConst,
@@ -2041,38 +2041,38 @@ static JSValue js_executor_set_order_priority_multiplier(JSContext* ctx, JSValue
 {
   double m = 1.0;
   JS_ToFloat64(ctx, &m, argv[2]);
-  flox_simulated_executor_set_order_priority_multiplier(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_order_priority_multiplier(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])), m);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_submit_ack(JSContext* ctx, JSValueConst, int argc,
                                           JSValueConst* argv)
 {
-  flox_simulated_executor_set_submit_ack_latency(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_submit_ack_latency(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_cancel_ack(JSContext* ctx, JSValueConst, int argc,
                                           JSValueConst* argv)
 {
-  flox_simulated_executor_set_cancel_ack_latency(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_cancel_ack_latency(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_replace_ack(JSContext* ctx, JSValueConst, int argc,
                                            JSValueConst* argv)
 {
-  flox_simulated_executor_set_replace_ack_latency(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_replace_ack_latency(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
   return JS_UNDEFINED;
 }
 static JSValue js_latency_dist_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_latency_distribution_create(), flox_latency_distribution_destroy);
+  return createHandleObject(ctx, lrvx_latency_distribution_create(), lrvx_latency_distribution_destroy);
 }
 static JSValue js_latency_dist_destroy(JSContext* ctx, JSValueConst, int,
                                        JSValueConst* argv)
@@ -2082,16 +2082,16 @@ static JSValue js_latency_dist_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_latency_dist_set_constant(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  flox_latency_distribution_set_constant(
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
+  lrvx_latency_distribution_set_constant(
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 static JSValue js_latency_dist_set_uniform(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
 {
-  flox_latency_distribution_set_uniform(
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
+  lrvx_latency_distribution_set_uniform(
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), toInt64(ctx, argv[2]));
   return JS_UNDEFINED;
 }
@@ -2100,15 +2100,15 @@ static JSValue js_latency_dist_set_lognormal(JSContext* ctx, JSValueConst, int,
 {
   double sigma = 0.0;
   JS_ToFloat64(ctx, &sigma, argv[2]);
-  flox_latency_distribution_set_lognormal(
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
+  lrvx_latency_distribution_set_lognormal(
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), sigma);
   return JS_UNDEFINED;
 }
 static JSValue js_latency_dist_set_empirical(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
 {
-  auto h = static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[0]));
   uint32_t n = 0;
   JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
   JS_ToUint32(ctx, &n, lenVal);
@@ -2121,7 +2121,7 @@ static JSValue js_latency_dist_set_empirical(JSContext* ctx, JSValueConst, int,
     samples.push_back(toInt64(ctx, v));
     JS_FreeValue(ctx, v);
   }
-  flox_latency_distribution_set_empirical(
+  lrvx_latency_distribution_set_empirical(
       h, samples.empty() ? nullptr : samples.data(), n);
   return JS_UNDEFINED;
 }
@@ -2130,48 +2130,48 @@ static JSValue js_latency_dist_set_burst(JSContext* ctx, JSValueConst, int,
 {
   double rho = 0.0;
   JS_ToFloat64(ctx, &rho, argv[1]);
-  flox_latency_distribution_set_burst_correlation(
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])), rho);
+  lrvx_latency_distribution_set_burst_correlation(
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[0])), rho);
   return JS_UNDEFINED;
 }
 static JSValue js_latency_dist_median_ns(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, flox_latency_distribution_median_ns(
-                              static_cast<FloxLatencyDistributionHandle>(
+  return JS_NewInt64(ctx, lrvx_latency_distribution_median_ns(
+                              static_cast<LrvxLatencyDistributionHandle>(
                                   getHandle(ctx, argv[0]))));
 }
 static JSValue js_executor_set_submit_ack_dist(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  flox_simulated_executor_set_submit_ack_latency_distribution(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
+  lrvx_simulated_executor_set_submit_ack_latency_distribution(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_cancel_ack_dist(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  flox_simulated_executor_set_cancel_ack_latency_distribution(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
+  lrvx_simulated_executor_set_cancel_ack_latency_distribution(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_replace_ack_dist(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  flox_simulated_executor_set_replace_ack_latency_distribution(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
+  lrvx_simulated_executor_set_replace_ack_latency_distribution(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 
 static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
-  const int ok = flox_simulated_executor_apply_latency_profile(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), name);
+  LRVX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
+  const int ok = lrvx_simulated_executor_apply_latency_profile(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), name);
   std::string nameCopy = name ? name : "";
   if (!ok)
   {
@@ -2183,15 +2183,15 @@ static JSValue js_executor_set_stp_mode(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
   uint8_t mode = static_cast<uint8_t>(toUint32(ctx, argv[1]));
-  flox_simulated_executor_set_stp_mode(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), mode);
+  lrvx_simulated_executor_set_stp_mode(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), mode);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_stp_group_membership(JSContext* ctx, JSValueConst, int,
                                                     JSValueConst* argv)
 {
-  flox_simulated_executor_set_stp_group_membership(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_set_stp_group_membership(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])),
       static_cast<uint64_t>(toInt64(ctx, argv[2])));
   return JS_UNDEFINED;
@@ -2199,8 +2199,8 @@ static JSValue js_executor_set_stp_group_membership(JSContext* ctx, JSValueConst
 static JSValue js_executor_stp_group_for(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
-  uint64_t g = flox_simulated_executor_stp_group_for(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  uint64_t g = lrvx_simulated_executor_stp_group_for(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])));
   return JS_NewFloat64(ctx, static_cast<double>(g));
 }
@@ -2210,7 +2210,7 @@ static JSValue js_executor_set_fok_mode(JSContext* ctx, JSValueConst, int,
   uint8_t code = 0;
   if (JS_IsString(argv[1]))
   {
-    flox::JsCString s(ctx, argv[1]);
+    lrvx::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       std::string name(s);
@@ -2224,20 +2224,20 @@ static JSValue js_executor_set_fok_mode(JSContext* ctx, JSValueConst, int,
   {
     code = static_cast<uint8_t>(toUint32(ctx, argv[1]));
   }
-  flox_simulated_executor_set_fok_mode(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), code);
+  lrvx_simulated_executor_set_fok_mode(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), code);
   return JS_UNDEFINED;
 }
 static JSValue js_executor_fok_mode(JSContext* ctx, JSValueConst, int,
                                     JSValueConst* argv)
 {
-  const uint8_t code = flox_simulated_executor_fok_mode(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  const uint8_t code = lrvx_simulated_executor_fok_mode(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_NewUint32(ctx, code);
 }
 static JSValue js_rate_limit_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_rate_limit_policy_create(), flox_rate_limit_policy_destroy);
+  return createHandleObject(ctx, lrvx_rate_limit_policy_create(), lrvx_rate_limit_policy_destroy);
 }
 static JSValue js_rate_limit_destroy(JSContext* ctx, JSValueConst, int,
                                      JSValueConst* argv)
@@ -2247,22 +2247,22 @@ static JSValue js_rate_limit_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_rate_limit_add_bucket(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  auto h = static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
-  flox::JsCString name(ctx, argv[1]);
+  auto h = static_cast<LrvxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
+  lrvx::JsCString name(ctx, argv[1]);
   int64_t window = toInt64(ctx, argv[2]);
   uint32_t cap = toUint32(ctx, argv[3]);
   uint32_t sw = toUint32(ctx, argv[4]);
   uint32_t cw = toUint32(ctx, argv[5]);
   uint32_t rw = toUint32(ctx, argv[6]);
-  flox_rate_limit_policy_add_bucket(h, name ? name : "bucket", window, cap, sw, cw, rw);
+  lrvx_rate_limit_policy_add_bucket(h, name ? name : "bucket", window, cap, sw, cw, rw);
   return JS_UNDEFINED;
 }
 static JSValue js_rate_limit_add_bucket_family(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
   // (handle, name, window_ns, capacity, submit_w, cancel_w, replace_w, family, query_w)
-  auto h = static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
-  flox::JsCString name(ctx, argv[1]);
+  auto h = static_cast<LrvxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
+  lrvx::JsCString name(ctx, argv[1]);
   int64_t window = toInt64(ctx, argv[2]);
   uint32_t cap = toUint32(ctx, argv[3]);
   uint32_t sw = toUint32(ctx, argv[4]);
@@ -2270,23 +2270,23 @@ static JSValue js_rate_limit_add_bucket_family(JSContext* ctx, JSValueConst, int
   uint32_t rw = toUint32(ctx, argv[6]);
   uint8_t family = static_cast<uint8_t>(toUint32(ctx, argv[7]));
   uint32_t qw = toUint32(ctx, argv[8]);
-  flox_rate_limit_policy_add_bucket_family(h, name ? name : "bucket", window, cap,
+  lrvx_rate_limit_policy_add_bucket_family(h, name ? name : "bucket", window, cap,
                                            sw, cw, rw, family, qw);
   return JS_UNDEFINED;
 }
 static JSValue js_rate_limit_set_ban(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_rate_limit_policy_set_ban(
-      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])),
+  lrvx_rate_limit_policy_set_ban(
+      static_cast<LrvxRateLimitPolicyHandle>(getHandle(ctx, argv[0])),
       toUint32(ctx, argv[1]), toInt64(ctx, argv[2]));
   return JS_UNDEFINED;
 }
 static JSValue js_rate_limit_load_profile(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
-  const int ok = flox_rate_limit_policy_load_profile(
-      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])), name);
+  LRVX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
+  const int ok = lrvx_rate_limit_policy_load_profile(
+      static_cast<LrvxRateLimitPolicyHandle>(getHandle(ctx, argv[0])), name);
   std::string nameCopy = name ? name : "";
   if (!ok)
   {
@@ -2297,37 +2297,37 @@ static JSValue js_rate_limit_load_profile(JSContext* ctx, JSValueConst, int,
 static JSValue js_rate_limit_ban_until_ns(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  return JS_NewBigInt64(ctx, flox_rate_limit_policy_ban_until_ns(
-                                 static_cast<FloxRateLimitPolicyHandle>(
+  return JS_NewBigInt64(ctx, lrvx_rate_limit_policy_ban_until_ns(
+                                 static_cast<LrvxRateLimitPolicyHandle>(
                                      getHandle(ctx, argv[0]))));
 }
 static JSValue js_rate_limit_consecutive_rejects(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  return JS_NewUint32(ctx, flox_rate_limit_policy_consecutive_rejects(
-                               static_cast<FloxRateLimitPolicyHandle>(
+  return JS_NewUint32(ctx, lrvx_rate_limit_policy_consecutive_rejects(
+                               static_cast<LrvxRateLimitPolicyHandle>(
                                    getHandle(ctx, argv[0]))));
 }
 static JSValue js_executor_set_rate_limit_policy(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  flox_simulated_executor_set_rate_limit_policy(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[1])));
+  lrvx_simulated_executor_set_rate_limit_policy(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxRateLimitPolicyHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_clear_rate_limit_policy(JSContext* ctx, JSValueConst, int,
                                                    JSValueConst* argv)
 {
-  flox_simulated_executor_clear_rate_limit_policy(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  lrvx_simulated_executor_clear_rate_limit_policy(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
 // Venue availability.
 static JSValue js_venue_availability_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_venue_availability_create(), flox_venue_availability_destroy);
+  return createHandleObject(ctx, lrvx_venue_availability_create(), lrvx_venue_availability_destroy);
 }
 static JSValue js_venue_availability_destroy(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
@@ -2337,8 +2337,8 @@ static JSValue js_venue_availability_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_venue_availability_schedule_outage(JSContext* ctx, JSValueConst, int argc,
                                                      JSValueConst* argv)
 {
-  flox_venue_availability_schedule_outage(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  lrvx_venue_availability_schedule_outage(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), toInt64(ctx, argv[2]),
       argc > 3 ? static_cast<uint8_t>(toInt64(ctx, argv[3])) : 0,
       argc > 4 ? toInt64(ctx, argv[4]) : 0);
@@ -2347,8 +2347,8 @@ static JSValue js_venue_availability_schedule_outage(JSContext* ctx, JSValueCons
 static JSValue js_venue_availability_auto_random_outages(JSContext* ctx, JSValueConst,
                                                          int argc, JSValueConst* argv)
 {
-  flox_venue_availability_auto_random_outages(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  lrvx_venue_availability_auto_random_outages(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toDouble(ctx, argv[1]), toInt64(ctx, argv[2]),
       argc > 3 ? static_cast<uint8_t>(toInt64(ctx, argv[3])) : 0,
       argc > 4 ? static_cast<uint64_t>(toInt64(ctx, argv[4])) : 0xC0FFEEULL);
@@ -2357,8 +2357,8 @@ static JSValue js_venue_availability_auto_random_outages(JSContext* ctx, JSValue
 static JSValue js_venue_availability_is_up(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
 {
-  const uint8_t up = flox_venue_availability_is_up(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  const uint8_t up = lrvx_venue_availability_is_up(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_NewBool(ctx, up != 0);
 }
@@ -2367,7 +2367,7 @@ static JSValue js_venue_availability_schedule_outage_ex(JSContext* ctx, JSValueC
 {
   // (handle, start_ns, duration_ns, outage_type, policy, gtc_ttl_ns,
   //  degradation_latency_multiplier, wrong_side_recovery_bps)
-  auto h = static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0]));
   const int64_t start = toInt64(ctx, argv[1]);
   const int64_t dur = toInt64(ctx, argv[2]);
   const uint8_t outageType = static_cast<uint8_t>(toUint32(ctx, argv[3]));
@@ -2377,39 +2377,39 @@ static JSValue js_venue_availability_schedule_outage_ex(JSContext* ctx, JSValueC
   JS_ToFloat64(ctx, &degr, argv[6]);
   double wsBps = 0.0;
   JS_ToFloat64(ctx, &wsBps, argv[7]);
-  flox_venue_availability_schedule_outage_ex(h, start, dur, outageType, policy, ttl,
+  lrvx_venue_availability_schedule_outage_ex(h, start, dur, outageType, policy, ttl,
                                              degr, wsBps);
   return JS_UNDEFINED;
 }
 static JSValue js_venue_availability_submits_allowed(JSContext* ctx, JSValueConst,
                                                      int, JSValueConst* argv)
 {
-  const uint8_t v = flox_venue_availability_submits_allowed(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  const uint8_t v = lrvx_venue_availability_submits_allowed(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_NewBool(ctx, v != 0);
 }
 static JSValue js_venue_availability_cancels_allowed(JSContext* ctx, JSValueConst,
                                                      int, JSValueConst* argv)
 {
-  const uint8_t v = flox_venue_availability_cancels_allowed(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  const uint8_t v = lrvx_venue_availability_cancels_allowed(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_NewBool(ctx, v != 0);
 }
 static JSValue js_venue_availability_book_updates_allowed(JSContext* ctx, JSValueConst,
                                                           int, JSValueConst* argv)
 {
-  const uint8_t v = flox_venue_availability_book_updates_allowed(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  const uint8_t v = lrvx_venue_availability_book_updates_allowed(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_NewBool(ctx, v != 0);
 }
 static JSValue js_venue_availability_trades_allowed(JSContext* ctx, JSValueConst,
                                                     int, JSValueConst* argv)
 {
-  const uint8_t v = flox_venue_availability_trades_allowed(
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+  const uint8_t v = lrvx_venue_availability_trades_allowed(
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]));
   return JS_NewBool(ctx, v != 0);
 }
@@ -2418,30 +2418,30 @@ static JSValue js_venue_availability_latency_multiplier(JSContext* ctx, JSValueC
 {
   return JS_NewFloat64(
       ctx,
-      flox_venue_availability_latency_multiplier(
-          static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      lrvx_venue_availability_latency_multiplier(
+          static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
           toInt64(ctx, argv[1])));
 }
 static JSValue js_venue_availability_consume_wrong_side_recovery_bps(
     JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_venue_availability_consume_wrong_side_recovery_bps(
-               static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_venue_availability_consume_wrong_side_recovery_bps(
+               static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_executor_set_venue_availability(JSContext* ctx, JSValueConst, int,
                                                   JSValueConst* argv)
 {
-  flox_simulated_executor_set_venue_availability(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[1])));
+  lrvx_simulated_executor_set_venue_availability(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxVenueAvailabilityHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 
 // Fee schedule.
 static JSValue js_fee_schedule_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_fee_schedule_create(), flox_fee_schedule_destroy);
+  return createHandleObject(ctx, lrvx_fee_schedule_create(), lrvx_fee_schedule_destroy);
 }
 static JSValue js_fee_schedule_destroy(JSContext* ctx, JSValueConst, int,
                                        JSValueConst* argv)
@@ -2455,17 +2455,17 @@ static JSValue js_fee_schedule_add_tier(JSContext* ctx, JSValueConst, int,
   JS_ToFloat64(ctx, &min_notional, argv[1]);
   JS_ToFloat64(ctx, &maker, argv[2]);
   JS_ToFloat64(ctx, &taker, argv[3]);
-  flox_fee_schedule_add_tier(
-      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])), min_notional, maker,
+  lrvx_fee_schedule_add_tier(
+      static_cast<LrvxFeeScheduleHandle>(getHandle(ctx, argv[0])), min_notional, maker,
       taker);
   return JS_UNDEFINED;
 }
 static JSValue js_fee_schedule_load_profile(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
-  const int ok = flox_fee_schedule_load_profile(
-      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])), name);
+  LRVX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
+  const int ok = lrvx_fee_schedule_load_profile(
+      static_cast<LrvxFeeScheduleHandle>(getHandle(ctx, argv[0])), name);
   std::string nameCopy = name ? name : "";
   if (!ok)
   {
@@ -2476,7 +2476,7 @@ static JSValue js_fee_schedule_load_profile(JSContext* ctx, JSValueConst, int,
 // Liquidation engine.
 static JSValue js_liquidation_engine_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_liquidation_engine_create(), flox_liquidation_engine_destroy);
+  return createHandleObject(ctx, lrvx_liquidation_engine_create(), lrvx_liquidation_engine_destroy);
 }
 static JSValue js_liquidation_engine_destroy(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
@@ -2486,16 +2486,16 @@ static JSValue js_liquidation_engine_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_liquidation_engine_add_tier(JSContext* ctx, JSValueConst, int,
                                               JSValueConst* argv)
 {
-  flox_liquidation_engine_add_tier(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_add_tier(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       toDouble(ctx, argv[1]), toDouble(ctx, argv[2]));
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_set_insurance_fund_capital(
     JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_liquidation_engine_set_insurance_fund_capital(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_set_insurance_fund_capital(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       toDouble(ctx, argv[1]));
   return JS_UNDEFINED;
 }
@@ -2503,14 +2503,14 @@ static JSValue js_liquidation_engine_insurance_fund_balance(
     JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_liquidation_engine_insurance_fund_balance(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_liquidation_engine_insurance_fund_balance(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_liquidation_engine_set_adl_enabled(JSContext* ctx, JSValueConst, int,
                                                      JSValueConst* argv)
 {
-  flox_liquidation_engine_set_adl_enabled(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_set_adl_enabled(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       static_cast<uint8_t>(toUint32(ctx, argv[1])));
   return JS_UNDEFINED;
 }
@@ -2520,7 +2520,7 @@ static JSValue js_liquidation_engine_set_adl_ranking(JSContext* ctx, JSValueCons
   uint8_t code = 0;
   if (JS_IsString(argv[1]))
   {
-    flox::JsCString s(ctx, argv[1]);
+    lrvx::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       std::string name(s);
@@ -2542,30 +2542,30 @@ static JSValue js_liquidation_engine_set_adl_ranking(JSContext* ctx, JSValueCons
   {
     code = static_cast<uint8_t>(toUint32(ctx, argv[1]));
   }
-  flox_liquidation_engine_set_adl_ranking(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), code);
+  lrvx_liquidation_engine_set_adl_ranking(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])), code);
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_adl_ranking(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  const uint8_t code = flox_liquidation_engine_adl_ranking(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  const uint8_t code = lrvx_liquidation_engine_adl_ranking(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
   return JS_NewUint32(ctx, code);
 }
 static JSValue js_liquidation_engine_set_liquidation_slippage_bps(
     JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_liquidation_engine_set_liquidation_slippage_bps(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_set_liquidation_slippage_bps(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       toDouble(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_open_position(JSContext* ctx, JSValueConst, int,
                                                    JSValueConst* argv)
 {
-  flox_liquidation_engine_open_position(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_open_position(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])),
       toUint32(ctx, argv[2]), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
@@ -2574,8 +2574,8 @@ static JSValue js_liquidation_engine_open_position(JSContext* ctx, JSValueConst,
 static JSValue js_liquidation_engine_close_position(JSContext* ctx, JSValueConst, int,
                                                     JSValueConst* argv)
 {
-  flox_liquidation_engine_close_position(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_close_position(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])),
       toUint32(ctx, argv[2]));
   return JS_UNDEFINED;
@@ -2583,63 +2583,63 @@ static JSValue js_liquidation_engine_close_position(JSContext* ctx, JSValueConst
 static JSValue js_liquidation_engine_on_mark(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
 {
-  return JS_NewUint32(ctx, flox_liquidation_engine_on_mark(
-                               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  return JS_NewUint32(ctx, lrvx_liquidation_engine_on_mark(
+                               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
                                toUint32(ctx, argv[1]), toDouble(ctx, argv[2])));
 }
 static JSValue js_liquidation_engine_liquidations_count(JSContext* ctx, JSValueConst, int,
                                                         JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, static_cast<double>(flox_liquidation_engine_liquidations_count(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+      ctx, static_cast<double>(lrvx_liquidation_engine_liquidations_count(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
 }
 static JSValue js_liquidation_engine_insurance_payments_count(JSContext* ctx, JSValueConst, int,
                                                               JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, static_cast<double>(flox_liquidation_engine_insurance_payments_count(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+      ctx, static_cast<double>(lrvx_liquidation_engine_insurance_payments_count(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
 }
 static JSValue js_liquidation_engine_adl_closeouts_count(JSContext* ctx, JSValueConst, int,
                                                          JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, static_cast<double>(flox_liquidation_engine_adl_closeouts_count(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+      ctx, static_cast<double>(lrvx_liquidation_engine_adl_closeouts_count(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
 }
 static JSValue js_liquidation_engine_load_profile(JSContext* ctx, JSValueConst, int,
                                                   JSValueConst* argv)
 {
-  flox_liquidation_engine_load_profile(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_load_profile(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       static_cast<uint8_t>(toUint32(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_set_executor(JSContext* ctx, JSValueConst, int argc,
                                                   JSValueConst* argv)
 {
-  FloxSimulatedExecutorHandle exec_h = nullptr;
+  LrvxSimulatedExecutorHandle exec_h = nullptr;
   if (argc >= 2 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]))
   {
-    exec_h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[1]));
+    exec_h = static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[1]));
   }
-  flox_liquidation_engine_set_executor(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), exec_h);
+  lrvx_liquidation_engine_set_executor(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])), exec_h);
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_ticks_to_first_adl(JSContext* ctx, JSValueConst, int,
                                                         JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, static_cast<double>(flox_liquidation_engine_ticks_to_first_adl(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+      ctx, static_cast<double>(lrvx_liquidation_engine_ticks_to_first_adl(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
 }
 static JSValue js_liquidation_engine_reset_stats(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  flox_liquidation_engine_reset_stats(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  lrvx_liquidation_engine_reset_stats(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_set_mark_impact_model(
@@ -2648,7 +2648,7 @@ static JSValue js_liquidation_engine_set_mark_impact_model(
   uint8_t code = 0;
   if (argc >= 2 && JS_IsString(argv[1]))
   {
-    flox::JsCString s(ctx, argv[1]);
+    lrvx::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       const std::string name(s);
@@ -2673,8 +2673,8 @@ static JSValue js_liquidation_engine_set_mark_impact_model(
   {
     JS_ToFloat64(ctx, &weight, argv[2]);
   }
-  flox_liquidation_engine_set_mark_impact_model(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), code,
+  lrvx_liquidation_engine_set_mark_impact_model(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])), code,
       weight);
   return JS_UNDEFINED;
 }
@@ -2682,8 +2682,8 @@ static JSValue js_liquidation_engine_mark_impact_model(JSContext* ctx,
                                                        JSValueConst, int,
                                                        JSValueConst* argv)
 {
-  const uint8_t code = flox_liquidation_engine_mark_impact_model(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  const uint8_t code = lrvx_liquidation_engine_mark_impact_model(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
   const char* name = "none";
   switch (code)
   {
@@ -2704,16 +2704,16 @@ static JSValue js_liquidation_engine_mark_impact_weight(JSContext* ctx,
                                                         JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_liquidation_engine_mark_impact_weight(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_liquidation_engine_mark_impact_weight(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_liquidation_engine_set_max_cascade_depth(
     JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   uint32_t depth = 0;
   JS_ToUint32(ctx, &depth, argv[1]);
-  flox_liquidation_engine_set_max_cascade_depth(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), depth);
+  lrvx_liquidation_engine_set_max_cascade_depth(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])), depth);
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_max_cascade_depth(JSContext* ctx,
@@ -2721,8 +2721,8 @@ static JSValue js_liquidation_engine_max_cascade_depth(JSContext* ctx,
                                                        JSValueConst* argv)
 {
   return JS_NewUint32(
-      ctx, flox_liquidation_engine_max_cascade_depth(
-               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_liquidation_engine_max_cascade_depth(
+               static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
 }
 
 // ===== Account =====
@@ -2740,7 +2740,7 @@ static JSValue js_account_create(JSContext* ctx, JSValueConst, int argc,
     JS_ToFloat64(ctx, &equity, argv[1]);
   }
   return createHandleObject(
-      ctx, flox_account_create(static_cast<uint64_t>(id), equity), flox_account_destroy);
+      ctx, lrvx_account_create(static_cast<uint64_t>(id), equity), lrvx_account_destroy);
 }
 static JSValue js_account_destroy(JSContext* ctx, JSValueConst, int,
                                   JSValueConst* argv)
@@ -2749,24 +2749,24 @@ static JSValue js_account_destroy(JSContext* ctx, JSValueConst, int,
 }
 static JSValue js_account_id(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, static_cast<int64_t>(flox_account_id(
-                              static_cast<FloxAccountHandle>(
+  return JS_NewInt64(ctx, static_cast<int64_t>(lrvx_account_id(
+                              static_cast<LrvxAccountHandle>(
                                   getHandle(ctx, argv[0])))));
 }
 static JSValue js_account_equity(JSContext* ctx, JSValueConst, int,
                                  JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_account_equity(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_account_equity(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_account_set_equity(JSContext* ctx, JSValueConst, int,
                                      JSValueConst* argv)
 {
   double v = 0.0;
   JS_ToFloat64(ctx, &v, argv[1]);
-  flox_account_set_equity(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), v);
+  lrvx_account_set_equity(
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), v);
   return JS_UNDEFINED;
 }
 static JSValue js_account_add_equity(JSContext* ctx, JSValueConst, int,
@@ -2774,15 +2774,15 @@ static JSValue js_account_add_equity(JSContext* ctx, JSValueConst, int,
 {
   double v = 0.0;
   JS_ToFloat64(ctx, &v, argv[1]);
-  flox_account_add_equity(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), v);
+  lrvx_account_add_equity(
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), v);
   return JS_UNDEFINED;
 }
 static JSValue js_account_margin_mode(JSContext* ctx, JSValueConst, int,
                                       JSValueConst* argv)
 {
-  const uint8_t m = flox_account_margin_mode(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])));
+  const uint8_t m = lrvx_account_margin_mode(
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])));
   return JS_NewString(ctx, m == 1 ? "isolated" : "cross");
 }
 static JSValue js_account_set_margin_mode(JSContext* ctx, JSValueConst, int argc,
@@ -2791,7 +2791,7 @@ static JSValue js_account_set_margin_mode(JSContext* ctx, JSValueConst, int argc
   uint8_t code = 0;
   if (argc >= 2 && JS_IsString(argv[1]))
   {
-    flox::JsCString s(ctx, argv[1]);
+    lrvx::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       if (std::string(s) == "isolated")
@@ -2806,8 +2806,8 @@ static JSValue js_account_set_margin_mode(JSContext* ctx, JSValueConst, int argc
     JS_ToUint32(ctx, &v, argv[1]);
     code = static_cast<uint8_t>(v);
   }
-  flox_account_set_margin_mode(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), code);
+  lrvx_account_set_margin_mode(
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), code);
   return JS_UNDEFINED;
 }
 static JSValue js_account_open_position(JSContext* ctx, JSValueConst, int argc,
@@ -2822,14 +2822,14 @@ static JSValue js_account_open_position(JSContext* ctx, JSValueConst, int argc,
   {
     double iso = 0.0;
     JS_ToFloat64(ctx, &iso, argv[4]);
-    flox_account_open_position_isolated(
-        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, qty,
+    lrvx_account_open_position_isolated(
+        static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), sym, qty,
         entry, iso);
   }
   else
   {
-    flox_account_open_position(
-        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, qty,
+    lrvx_account_open_position(
+        static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), sym, qty,
         entry);
   }
   return JS_UNDEFINED;
@@ -2839,16 +2839,16 @@ static JSValue js_account_close_position(JSContext* ctx, JSValueConst, int,
 {
   uint32_t sym = 0;
   JS_ToUint32(ctx, &sym, argv[1]);
-  flox_account_close_position(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym);
+  lrvx_account_close_position(
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), sym);
   return JS_UNDEFINED;
 }
 static JSValue js_account_position_count(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
   return JS_NewUint32(
-      ctx, flox_account_position_count(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_account_position_count(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_account_set_mark(JSContext* ctx, JSValueConst, int argc,
                                    JSValueConst* argv)
@@ -2861,13 +2861,13 @@ static JSValue js_account_set_mark(JSContext* ctx, JSValueConst, int argc,
   {
     int64_t ts = 0;
     JS_ToInt64Ext(ctx, &ts, argv[3]);
-    flox_account_set_mark_at(
-        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px, ts);
+    lrvx_account_set_mark_at(
+        static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), sym, px, ts);
   }
   else
   {
-    flox_account_set_mark(
-        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px);
+    lrvx_account_set_mark(
+        static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), sym, px);
   }
   return JS_UNDEFINED;
 }
@@ -2877,8 +2877,8 @@ static JSValue js_account_mark_ts(JSContext* ctx, JSValueConst, int,
   uint32_t sym = 0;
   JS_ToUint32(ctx, &sym, argv[1]);
   return JS_NewInt64(
-      ctx, flox_account_mark_ts(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym));
+      ctx, lrvx_account_mark_ts(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), sym));
 }
 static JSValue js_account_has_stale_marks(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
@@ -2887,8 +2887,8 @@ static JSValue js_account_has_stale_marks(JSContext* ctx, JSValueConst, int,
   JS_ToInt64Ext(ctx, &now, argv[1]);
   JS_ToInt64Ext(ctx, &budget, argv[2]);
   return JS_NewBool(
-      ctx, flox_account_has_stale_marks(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), now,
+      ctx, lrvx_account_has_stale_marks(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), now,
                budget) != 0);
 }
 static JSValue js_liquidation_engine_on_marks(JSContext* ctx, JSValueConst,
@@ -2918,8 +2918,8 @@ static JSValue js_liquidation_engine_on_marks(JSContext* ctx, JSValueConst,
   {
     JS_ToInt64Ext(ctx, &ts, argv[2]);
   }
-  const uint32_t total = flox_liquidation_engine_on_marks(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), n,
+  const uint32_t total = lrvx_liquidation_engine_on_marks(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])), n,
       syms.data(), prices.data(), ts);
   return JS_NewUint32(ctx, total);
 }
@@ -2927,15 +2927,15 @@ static JSValue js_account_total_notional(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_account_total_notional(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_account_total_notional(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_account_total_upnl(JSContext* ctx, JSValueConst, int,
                                      JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_account_total_unrealised_pnl(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_account_total_unrealised_pnl(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_account_record_fill(JSContext* ctx, JSValueConst, int argc,
                                       JSValueConst* argv)
@@ -2948,13 +2948,13 @@ static JSValue js_account_record_fill(JSContext* ctx, JSValueConst, int argc,
   {
     uint32_t sym = 0;
     JS_ToUint32(ctx, &sym, argv[3]);
-    flox_account_record_fill_ex(
-        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), ts, n, sym);
+    lrvx_account_record_fill_ex(
+        static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), ts, n, sym);
   }
   else
   {
-    flox_account_record_fill(
-        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), ts, n);
+    lrvx_account_record_fill(
+        static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])), ts, n);
   }
   return JS_UNDEFINED;
 }
@@ -2962,11 +2962,11 @@ static JSValue js_account_rolling_notional_by_symbol(JSContext* ctx,
                                                      JSValueConst, int,
                                                      JSValueConst* argv)
 {
-  auto h = static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]));
-  const uint32_t n = flox_account_rolling_notional_by_symbol_size(h);
+  auto h = static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0]));
+  const uint32_t n = lrvx_account_rolling_notional_by_symbol_size(h);
   std::vector<uint32_t> syms(n);
   std::vector<double> totals(n);
-  flox_account_rolling_notional_by_symbol_copy(h, syms.data(), totals.data(), n);
+  lrvx_account_rolling_notional_by_symbol_copy(h, syms.data(), totals.data(), n);
   JSValue arr = JS_NewArray(ctx);
   for (uint32_t i = 0; i < n; ++i)
   {
@@ -2981,22 +2981,22 @@ static JSValue js_account_rolling_notional_30d(JSContext* ctx, JSValueConst, int
                                                JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_account_rolling_notional_30d(
-               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_account_rolling_notional_30d(
+               static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_account_reset_rolling(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  flox_account_reset_rolling(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])));
+  lrvx_account_reset_rolling(
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_attach_account(JSContext* ctx, JSValueConst,
                                                     int, JSValueConst* argv)
 {
-  flox_liquidation_engine_attach_account(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[1])));
+  lrvx_liquidation_engine_attach_account(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_liquidation_engine_detach_account(JSContext* ctx, JSValueConst,
@@ -3004,24 +3004,24 @@ static JSValue js_liquidation_engine_detach_account(JSContext* ctx, JSValueConst
 {
   int64_t id = 0;
   JS_ToInt64Ext(ctx, &id, argv[1]);
-  flox_liquidation_engine_detach_account(
-      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+  lrvx_liquidation_engine_detach_account(
+      static_cast<LrvxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(id));
   return JS_UNDEFINED;
 }
 static JSValue js_fee_schedule_bind_account(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  flox_fee_schedule_bind_account(
-      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[1])));
+  lrvx_fee_schedule_bind_account(
+      static_cast<LrvxFeeScheduleHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxAccountHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_fee_schedule_clear_account_binding(JSContext* ctx, JSValueConst,
                                                      int, JSValueConst* argv)
 {
-  flox_fee_schedule_clear_account_binding(
-      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])));
+  lrvx_fee_schedule_clear_account_binding(
+      static_cast<LrvxFeeScheduleHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
@@ -3045,7 +3045,7 @@ static JSValue js_venue_stack_create(JSContext* ctx, JSValueConst, int argc,
     JS_ToFloat64(ctx, &equity, argv[2]);
   }
   return createHandleObject(
-      ctx, flox_venue_stack_create(static_cast<uint8_t>(venueCode), static_cast<uint64_t>(accountId), equity), flox_venue_stack_destroy);
+      ctx, lrvx_venue_stack_create(static_cast<uint8_t>(venueCode), static_cast<uint64_t>(accountId), equity), lrvx_venue_stack_destroy);
 }
 static JSValue js_venue_stack_destroy(JSContext* ctx, JSValueConst, int,
                                       JSValueConst* argv)
@@ -3058,7 +3058,7 @@ static JSValue js_venue_stack_executor(JSContext* ctx, JSValueConst, int,
   // Borrowed: a view into the venue stack's own member, not a
   // separate allocation -- its lifetime is the stack's.
   return createHandleObject(
-      ctx, flox_venue_stack_executor(static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))),
+      ctx, lrvx_venue_stack_executor(static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0]))),
       nullptr);
 }
 static JSValue js_venue_stack_account(JSContext* ctx, JSValueConst, int,
@@ -3067,7 +3067,7 @@ static JSValue js_venue_stack_account(JSContext* ctx, JSValueConst, int,
   // Borrowed: a view into the venue stack's own member, not a
   // separate allocation -- its lifetime is the stack's.
   return createHandleObject(
-      ctx, flox_venue_stack_account(static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))),
+      ctx, lrvx_venue_stack_account(static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0]))),
       nullptr);
 }
 static JSValue js_venue_stack_liquidation(JSContext* ctx, JSValueConst, int,
@@ -3076,7 +3076,7 @@ static JSValue js_venue_stack_liquidation(JSContext* ctx, JSValueConst, int,
   // Borrowed: a view into the venue stack's own member, not a
   // separate allocation -- its lifetime is the stack's.
   return createHandleObject(
-      ctx, flox_venue_stack_liquidation(static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))),
+      ctx, lrvx_venue_stack_liquidation(static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0]))),
       nullptr);
 }
 static JSValue js_venue_stack_fees(JSContext* ctx, JSValueConst, int,
@@ -3085,7 +3085,7 @@ static JSValue js_venue_stack_fees(JSContext* ctx, JSValueConst, int,
   // Borrowed: a view into the venue stack's own member, not a
   // separate allocation -- its lifetime is the stack's.
   return createHandleObject(
-      ctx, flox_venue_stack_fees(static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))),
+      ctx, lrvx_venue_stack_fees(static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0]))),
       nullptr);
 }
 static JSValue js_venue_stack_funding(JSContext* ctx, JSValueConst, int,
@@ -3094,7 +3094,7 @@ static JSValue js_venue_stack_funding(JSContext* ctx, JSValueConst, int,
   // Borrowed: a view into the venue stack's own member, not a
   // separate allocation -- its lifetime is the stack's.
   return createHandleObject(
-      ctx, flox_venue_stack_funding(static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))),
+      ctx, lrvx_venue_stack_funding(static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0]))),
       nullptr);
 }
 static JSValue js_venue_stack_venue(JSContext* ctx, JSValueConst, int,
@@ -3103,14 +3103,14 @@ static JSValue js_venue_stack_venue(JSContext* ctx, JSValueConst, int,
   // Borrowed: a view into the venue stack's own member, not a
   // separate allocation -- its lifetime is the stack's.
   return createHandleObject(
-      ctx, flox_venue_stack_venue(static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))),
+      ctx, lrvx_venue_stack_venue(static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0]))),
       nullptr);
 }
 static JSValue js_venue_stack_venue_name(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
-  const char* name = flox_venue_stack_venue_name(
-      static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0])));
+  const char* name = lrvx_venue_stack_venue_name(
+      static_cast<LrvxVenueStackHandle>(getHandle(ctx, argv[0])));
   return JS_NewString(ctx, name ? name : "");
 }
 template <typename T, typename SizeFn, typename CopyFn>
@@ -3132,12 +3132,12 @@ static JSValue js_liquidation_engine_deficits_paid_by_fund(JSContext* ctx, JSVal
   return copyVecToJs<double>(
       ctx, getHandle(ctx, argv[0]),
       [](void* h)
-      { return flox_liquidation_engine_deficits_paid_by_fund_size(
-            static_cast<FloxLiquidationEngineHandle>(h)); },
+      { return lrvx_liquidation_engine_deficits_paid_by_fund_size(
+            static_cast<LrvxLiquidationEngineHandle>(h)); },
       [](void* h, double* o, uint32_t n)
       {
-        flox_liquidation_engine_deficits_paid_by_fund_copy(
-            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+        lrvx_liquidation_engine_deficits_paid_by_fund_copy(
+            static_cast<LrvxLiquidationEngineHandle>(h), o, n);
       });
 }
 static JSValue js_liquidation_engine_deficits_paid_by_adl(JSContext* ctx, JSValueConst, int,
@@ -3146,12 +3146,12 @@ static JSValue js_liquidation_engine_deficits_paid_by_adl(JSContext* ctx, JSValu
   return copyVecToJs<double>(
       ctx, getHandle(ctx, argv[0]),
       [](void* h)
-      { return flox_liquidation_engine_deficits_paid_by_adl_size(
-            static_cast<FloxLiquidationEngineHandle>(h)); },
+      { return lrvx_liquidation_engine_deficits_paid_by_adl_size(
+            static_cast<LrvxLiquidationEngineHandle>(h)); },
       [](void* h, double* o, uint32_t n)
       {
-        flox_liquidation_engine_deficits_paid_by_adl_copy(
-            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+        lrvx_liquidation_engine_deficits_paid_by_adl_copy(
+            static_cast<LrvxLiquidationEngineHandle>(h), o, n);
       });
 }
 static JSValue js_liquidation_engine_cascade_sizes(JSContext* ctx, JSValueConst, int,
@@ -3160,12 +3160,12 @@ static JSValue js_liquidation_engine_cascade_sizes(JSContext* ctx, JSValueConst,
   return copyVecToJs<uint32_t>(
       ctx, getHandle(ctx, argv[0]),
       [](void* h)
-      { return flox_liquidation_engine_cascade_sizes_size(
-            static_cast<FloxLiquidationEngineHandle>(h)); },
+      { return lrvx_liquidation_engine_cascade_sizes_size(
+            static_cast<LrvxLiquidationEngineHandle>(h)); },
       [](void* h, uint32_t* o, uint32_t n)
       {
-        flox_liquidation_engine_cascade_sizes_copy(
-            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+        lrvx_liquidation_engine_cascade_sizes_copy(
+            static_cast<LrvxLiquidationEngineHandle>(h), o, n);
       });
 }
 static JSValue js_liquidation_engine_fund_balance_history(JSContext* ctx, JSValueConst, int,
@@ -3174,12 +3174,12 @@ static JSValue js_liquidation_engine_fund_balance_history(JSContext* ctx, JSValu
   return copyVecToJs<double>(
       ctx, getHandle(ctx, argv[0]),
       [](void* h)
-      { return flox_liquidation_engine_fund_balance_history_size(
-            static_cast<FloxLiquidationEngineHandle>(h)); },
+      { return lrvx_liquidation_engine_fund_balance_history_size(
+            static_cast<LrvxLiquidationEngineHandle>(h)); },
       [](void* h, double* o, uint32_t n)
       {
-        flox_liquidation_engine_fund_balance_history_copy(
-            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+        lrvx_liquidation_engine_fund_balance_history_copy(
+            static_cast<LrvxLiquidationEngineHandle>(h), o, n);
       });
 }
 
@@ -3188,8 +3188,8 @@ static JSValue js_fee_schedule_record_fill(JSContext* ctx, JSValueConst, int,
 {
   double notional = 0.0;
   JS_ToFloat64(ctx, &notional, argv[2]);
-  flox_fee_schedule_record_fill(
-      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])),
+  lrvx_fee_schedule_record_fill(
+      static_cast<LrvxFeeScheduleHandle>(getHandle(ctx, argv[0])),
       toInt64(ctx, argv[1]), notional);
   return JS_UNDEFINED;
 }
@@ -3199,37 +3199,37 @@ static JSValue js_fee_schedule_fee_for(JSContext* ctx, JSValueConst, int,
   double notional = 0.0;
   JS_ToFloat64(ctx, &notional, argv[2]);
   uint8_t is_maker = static_cast<uint8_t>(toUint32(ctx, argv[3]));
-  return JS_NewFloat64(ctx, flox_fee_schedule_fee_for(
-                                static_cast<FloxFeeScheduleHandle>(
+  return JS_NewFloat64(ctx, lrvx_fee_schedule_fee_for(
+                                static_cast<LrvxFeeScheduleHandle>(
                                     getHandle(ctx, argv[0])),
                                 toInt64(ctx, argv[1]), notional, is_maker));
 }
 static JSValue js_fee_schedule_current_tier(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  return JS_NewUint32(ctx, flox_fee_schedule_current_tier(
-                               static_cast<FloxFeeScheduleHandle>(
+  return JS_NewUint32(ctx, lrvx_fee_schedule_current_tier(
+                               static_cast<LrvxFeeScheduleHandle>(
                                    getHandle(ctx, argv[0]))));
 }
 static JSValue js_fee_schedule_rolling_notional(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  return JS_NewFloat64(ctx, flox_fee_schedule_rolling_notional(
-                                static_cast<FloxFeeScheduleHandle>(
+  return JS_NewFloat64(ctx, lrvx_fee_schedule_rolling_notional(
+                                static_cast<LrvxFeeScheduleHandle>(
                                     getHandle(ctx, argv[0]))));
 }
 static JSValue js_fee_schedule_reset(JSContext* ctx, JSValueConst, int,
                                      JSValueConst* argv)
 {
-  flox_fee_schedule_reset_rolling(
-      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])));
+  lrvx_fee_schedule_reset_rolling(
+      static_cast<LrvxFeeScheduleHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
 // Funding schedule.
 static JSValue js_funding_schedule_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_funding_schedule_create(), flox_funding_schedule_destroy);
+  return createHandleObject(ctx, lrvx_funding_schedule_create(), lrvx_funding_schedule_destroy);
 }
 static JSValue js_funding_schedule_destroy(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
@@ -3239,19 +3239,19 @@ static JSValue js_funding_schedule_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_funding_schedule_set_constant(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0]));
   int64_t interval = toInt64(ctx, argv[1]);
   double rate = 0.0;
   JS_ToFloat64(ctx, &rate, argv[2]);
-  flox_funding_schedule_set_constant(h, interval, rate);
+  lrvx_funding_schedule_set_constant(h, interval, rate);
   return JS_UNDEFINED;
 }
 static JSValue js_funding_schedule_load_profile(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
-  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
-  const int ok = flox_funding_schedule_load_profile(h, name);
+  auto h = static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  LRVX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
+  const int ok = lrvx_funding_schedule_load_profile(h, name);
   std::string nameCopy = name ? name : "";
   if (!ok)
   {
@@ -3262,16 +3262,16 @@ static JSValue js_funding_schedule_load_profile(JSContext* ctx, JSValueConst, in
 static JSValue js_funding_schedule_load_tape(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
 {
-  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
-  FLOX_JS_CSTRING_OR_THROW(path, ctx, argv[1]);
-  const uint8_t ok = flox_funding_schedule_load_tape(h, path);
+  auto h = static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  LRVX_JS_CSTRING_OR_THROW(path, ctx, argv[1]);
+  const uint8_t ok = lrvx_funding_schedule_load_tape(h, path);
   return JS_NewBool(ctx, ok != 0);
 }
 static JSValue js_funding_schedule_set_tape_by_symbol(JSContext* ctx, JSValueConst,
                                                       int, JSValueConst* argv)
 {
   // (handle, timestamps_array, symbols_array, rates_array)
-  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0]));
   uint32_t n = 0;
   JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
   JS_ToUint32(ctx, &n, lenVal);
@@ -3291,29 +3291,29 @@ static JSValue js_funding_schedule_set_tape_by_symbol(JSContext* ctx, JSValueCon
     JS_ToFloat64(ctx, &rates[i], rv);
     JS_FreeValue(ctx, rv);
   }
-  flox_funding_schedule_set_tape_by_symbol(h, ts.data(), sy.data(), rates.data(), n);
+  lrvx_funding_schedule_set_tape_by_symbol(h, ts.data(), sy.data(), rates.data(), n);
   return JS_UNDEFINED;
 }
 static JSValue js_funding_schedule_set_constant_rate(JSContext* ctx, JSValueConst, int,
                                                      JSValueConst* argv)
 {
-  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0]));
   double rate = 0.0;
   JS_ToFloat64(ctx, &rate, argv[1]);
-  flox_funding_schedule_set_constant_rate(h, rate);
+  lrvx_funding_schedule_set_constant_rate(h, rate);
   return JS_UNDEFINED;
 }
 static JSValue js_funding_schedule_reset(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
-  flox_funding_schedule_reset(
-      static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0])));
+  lrvx_funding_schedule_reset(
+      static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_funding_schedule_tick(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxFundingScheduleHandle>(getHandle(ctx, argv[0]));
   int64_t nowNs = toInt64(ctx, argv[1]);
   auto syms = argv[2];
   auto pos = argv[3];
@@ -3342,9 +3342,9 @@ static JSValue js_funding_schedule_tick(JSContext* ctx, JSValueConst, int,
     JS_FreeValue(ctx, v);
   }
   uint32_t count =
-      flox_funding_schedule_tick(h, nowNs, sy.data(), ps.data(), mp.data(), n, nullptr, 0);
+      lrvx_funding_schedule_tick(h, nowNs, sy.data(), ps.data(), mp.data(), n, nullptr, 0);
   std::vector<double> buf(count * 6, 0.0);
-  flox_funding_schedule_tick(h, nowNs, sy.data(), ps.data(), mp.data(), n, buf.data(),
+  lrvx_funding_schedule_tick(h, nowNs, sy.data(), ps.data(), mp.data(), n, buf.data(),
                              count);
   JSValue arr = JS_NewArray(ctx);
   for (uint32_t i = 0; i < count; ++i)
@@ -3364,7 +3364,7 @@ static JSValue js_funding_schedule_tick(JSContext* ctx, JSValueConst, int,
 static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  flox_simulated_executor_on_trade_qty(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_on_trade_qty(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                        toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
                                        toDouble(ctx, argv[3]),
                                        static_cast<uint8_t>(toUint32(ctx, argv[4])));
@@ -3373,7 +3373,7 @@ static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
 static JSValue js_executor_on_best_levels(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  flox_simulated_executor_on_best_levels(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+  lrvx_simulated_executor_on_best_levels(static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                          toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
                                          toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
                                          toDouble(ctx, argv[5]));
@@ -3384,7 +3384,7 @@ static JSValue js_backtest_result_create(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
   return createHandleObject(
-      ctx, flox_backtest_result_create(toDouble(ctx, argv[0]), toDouble(ctx, argv[1]), static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]), toDouble(ctx, argv[4]), toDouble(ctx, argv[5])), flox_backtest_result_destroy);
+      ctx, lrvx_backtest_result_create(toDouble(ctx, argv[0]), toDouble(ctx, argv[1]), static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]), toDouble(ctx, argv[4]), toDouble(ctx, argv[5])), lrvx_backtest_result_destroy);
 }
 static JSValue js_backtest_result_destroy(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
@@ -3394,8 +3394,8 @@ static JSValue js_backtest_result_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_backtest_result_record_fill(JSContext* ctx, JSValueConst, int,
                                               JSValueConst* argv)
 {
-  flox_backtest_result_record_fill(
-      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])),
+  lrvx_backtest_result_record_fill(
+      static_cast<LrvxBacktestResultHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(toInt64(ctx, argv[1])), toUint32(ctx, argv[2]),
       static_cast<uint8_t>(toUint32(ctx, argv[3])), toDouble(ctx, argv[4]),
       toDouble(ctx, argv[5]), toInt64(ctx, argv[6]));
@@ -3404,17 +3404,17 @@ static JSValue js_backtest_result_record_fill(JSContext* ctx, JSValueConst, int,
 static JSValue js_backtest_result_ingest(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
 {
-  flox_backtest_result_ingest_executor(
-      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[1])));
+  lrvx_backtest_result_ingest_executor(
+      static_cast<LrvxBacktestResultHandle>(getHandle(ctx, argv[0])),
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_backtest_result_stats(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  FloxBacktestStats s{};
-  flox_backtest_result_stats(
-      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])), &s);
+  LrvxBacktestStats s{};
+  lrvx_backtest_result_stats(
+      static_cast<LrvxBacktestResultHandle>(getHandle(ctx, argv[0])), &s);
   JSValue obj = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, obj, "totalTrades", JS_NewInt64(ctx, (int64_t)s.totalTrades));
   JS_SetPropertyStr(ctx, obj, "winningTrades", JS_NewInt64(ctx, (int64_t)s.winningTrades));
@@ -3456,12 +3456,12 @@ static JSValue js_backtest_result_stats(JSContext* ctx, JSValueConst, int,
 static JSValue js_backtest_result_equity_curve(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  auto h = static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0]));
-  const uint32_t n = flox_backtest_result_equity_curve(h, nullptr, 0);
-  std::vector<FloxEquityPoint> pts(n);
+  auto h = static_cast<LrvxBacktestResultHandle>(getHandle(ctx, argv[0]));
+  const uint32_t n = lrvx_backtest_result_equity_curve(h, nullptr, 0);
+  std::vector<LrvxEquityPoint> pts(n);
   if (n > 0)
   {
-    flox_backtest_result_equity_curve(h, pts.data(), n);
+    lrvx_backtest_result_equity_curve(h, pts.data(), n);
   }
   JSValue arr = JS_NewArray(ctx);
   for (uint32_t i = 0; i < n; ++i)
@@ -3477,13 +3477,13 @@ static JSValue js_backtest_result_equity_curve(JSContext* ctx, JSValueConst, int
 static JSValue js_backtest_result_write_csv(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  flox::JsCString path(ctx, argv[1]);
+  lrvx::JsCString path(ctx, argv[1]);
   if (!path)
   {
     return JS_NewBool(ctx, 0);
   }
-  uint8_t ok = flox_backtest_result_write_equity_curve_csv(
-      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])), path);
+  uint8_t ok = lrvx_backtest_result_write_equity_curve_csv(
+      static_cast<LrvxBacktestResultHandle>(getHandle(ctx, argv[0])), path);
   return JS_NewBool(ctx, ok != 0);
 }
 
@@ -3494,7 +3494,7 @@ static JSValue js_backtest_result_write_csv(JSContext* ctx, JSValueConst, int,
 static JSValue js_pos_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
 {
   uint8_t basis = (argc > 0) ? static_cast<uint8_t>(toUint32(ctx, argv[0])) : 0;
-  return createHandleObject(ctx, flox_position_tracker_create(basis), flox_position_tracker_destroy);
+  return createHandleObject(ctx, lrvx_position_tracker_create(basis), lrvx_position_tracker_destroy);
 }
 static JSValue js_pos_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
@@ -3502,44 +3502,44 @@ static JSValue js_pos_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* a
 }
 static JSValue js_pos_on_fill(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_position_tracker_on_fill(
-      static_cast<FloxPositionTrackerHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
+  lrvx_position_tracker_on_fill(
+      static_cast<LrvxPositionTrackerHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
       static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]));
   return JS_UNDEFINED;
 }
 static JSValue js_pos_position(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewFloat64(ctx, flox_position_tracker_position(
-                                static_cast<FloxPositionTrackerHandle>(getHandle(ctx, argv[0])),
+  return JS_NewFloat64(ctx, lrvx_position_tracker_position(
+                                static_cast<LrvxPositionTrackerHandle>(getHandle(ctx, argv[0])),
                                 toUint32(ctx, argv[1])));
 }
 static JSValue js_pos_avg_entry(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewFloat64(ctx, flox_position_tracker_avg_entry(
-                                static_cast<FloxPositionTrackerHandle>(getHandle(ctx, argv[0])),
+  return JS_NewFloat64(ctx, lrvx_position_tracker_avg_entry(
+                                static_cast<LrvxPositionTrackerHandle>(getHandle(ctx, argv[0])),
                                 toUint32(ctx, argv[1])));
 }
 static JSValue js_pos_pnl(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_position_tracker_realized_pnl(
-               static_cast<FloxPositionTrackerHandle>(getHandle(ctx, argv[0])),
+      ctx, lrvx_position_tracker_realized_pnl(
+               static_cast<LrvxPositionTrackerHandle>(getHandle(ctx, argv[0])),
                toUint32(ctx, argv[1])));
 }
 static JSValue js_pos_total_pnl(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewFloat64(ctx, flox_position_tracker_total_pnl(
-                                static_cast<FloxPositionTrackerHandle>(getHandle(ctx, argv[0]))));
+  return JS_NewFloat64(ctx, lrvx_position_tracker_total_pnl(
+                                static_cast<LrvxPositionTrackerHandle>(getHandle(ctx, argv[0]))));
 }
 
 // ============================================================
 // Delta book compression bindings
 // ============================================================
 
-static std::vector<FloxBookLevel> readDeltaBookLevels(JSContext* ctx, JSValueConst arr)
+static std::vector<LrvxBookLevel> readDeltaBookLevels(JSContext* ctx, JSValueConst arr)
 {
-  std::vector<FloxBookLevel> out;
+  std::vector<LrvxBookLevel> out;
   if (!JS_IsArray(ctx, arr))
   {
     return out;
@@ -3552,7 +3552,7 @@ static std::vector<FloxBookLevel> readDeltaBookLevels(JSContext* ctx, JSValueCon
   for (uint32_t i = 0; i < len; ++i)
   {
     JSValue entry = JS_GetPropertyUint32(ctx, arr, i);
-    FloxBookLevel l{};
+    LrvxBookLevel l{};
     JSValue p = JS_GetPropertyStr(ctx, entry, "priceRaw");
     JSValue q = JS_GetPropertyStr(ctx, entry, "qtyRaw");
     l.price_raw = toInt64(ctx, p);
@@ -3565,7 +3565,7 @@ static std::vector<FloxBookLevel> readDeltaBookLevels(JSContext* ctx, JSValueCon
   return out;
 }
 
-static JSValue deltaBookLevelsToJs(JSContext* ctx, const std::vector<FloxBookLevel>& levels)
+static JSValue deltaBookLevelsToJs(JSContext* ctx, const std::vector<LrvxBookLevel>& levels)
 {
   JSValue arr = JS_NewArray(ctx);
   for (size_t i = 0; i < levels.size(); ++i)
@@ -3582,12 +3582,12 @@ static JSValue js_delta_book_encoder_create(JSContext* ctx, JSValueConst, int ar
                                             JSValueConst* argv)
 {
   uint32_t anchor_every = (argc > 0) ? toUint32(ctx, argv[0]) : 100;
-  auto h = flox_delta_book_encoder_create(anchor_every);
+  auto h = lrvx_delta_book_encoder_create(anchor_every);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "DeltaBookEncoder: construction failed");
   }
-  return createHandleObject(ctx, h, flox_delta_book_encoder_destroy);
+  return createHandleObject(ctx, h, lrvx_delta_book_encoder_destroy);
 }
 
 static JSValue js_delta_book_encoder_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -3602,24 +3602,24 @@ static JSValue js_delta_book_encoder_encode(JSContext* ctx, JSValueConst, int ar
   {
     return JS_ThrowTypeError(ctx, "encode(handle, symbol, bids, asks)");
   }
-  auto h = static_cast<FloxDeltaBookEncoderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxDeltaBookEncoderHandle>(getHandle(ctx, argv[0]));
   uint32_t sym = toUint32(ctx, argv[1]);
   auto bids = readDeltaBookLevels(ctx, argv[2]);
   auto asks = readDeltaBookLevels(ctx, argv[3]);
   uint8_t is_delta = 0;
   uint64_t bcnt = 0, acnt = 0;
-  flox_delta_book_encoder_encode(h, sym,
+  lrvx_delta_book_encoder_encode(h, sym,
                                  bids.empty() ? nullptr : bids.data(), bids.size(),
                                  asks.empty() ? nullptr : asks.data(), asks.size(),
                                  &is_delta, &bcnt, &acnt);
-  std::vector<FloxBookLevel> out_bids(bcnt), out_asks(acnt);
+  std::vector<LrvxBookLevel> out_bids(bcnt), out_asks(acnt);
   if (bcnt)
   {
-    flox_delta_book_encoder_copy_bids(h, out_bids.data(), bcnt);
+    lrvx_delta_book_encoder_copy_bids(h, out_bids.data(), bcnt);
   }
   if (acnt)
   {
-    flox_delta_book_encoder_copy_asks(h, out_asks.data(), acnt);
+    lrvx_delta_book_encoder_copy_asks(h, out_asks.data(), acnt);
   }
   JSValue out = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, out, "isDelta", JS_NewBool(ctx, is_delta != 0));
@@ -3630,7 +3630,7 @@ static JSValue js_delta_book_encoder_encode(JSContext* ctx, JSValueConst, int ar
 
 static JSValue js_delta_book_replayer_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_delta_book_replayer_create(), flox_delta_book_replayer_destroy);
+  return createHandleObject(ctx, lrvx_delta_book_replayer_create(), lrvx_delta_book_replayer_destroy);
 }
 
 static JSValue js_delta_book_replayer_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -3645,24 +3645,24 @@ static JSValue js_delta_book_replayer_apply(JSContext* ctx, JSValueConst, int ar
   {
     return JS_ThrowTypeError(ctx, "apply(handle, type, symbol, bids, asks)");
   }
-  auto h = static_cast<FloxDeltaBookReplayerHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxDeltaBookReplayerHandle>(getHandle(ctx, argv[0]));
   uint8_t type = static_cast<uint8_t>(toUint32(ctx, argv[1]));
   uint32_t sym = toUint32(ctx, argv[2]);
   auto bids = readDeltaBookLevels(ctx, argv[3]);
   auto asks = readDeltaBookLevels(ctx, argv[4]);
   uint64_t bcnt = 0, acnt = 0;
-  flox_delta_book_replayer_apply(h, type, sym,
+  lrvx_delta_book_replayer_apply(h, type, sym,
                                  bids.empty() ? nullptr : bids.data(), bids.size(),
                                  asks.empty() ? nullptr : asks.data(), asks.size(),
                                  &bcnt, &acnt);
-  std::vector<FloxBookLevel> out_bids(bcnt), out_asks(acnt);
+  std::vector<LrvxBookLevel> out_bids(bcnt), out_asks(acnt);
   if (bcnt)
   {
-    flox_delta_book_replayer_copy_bids(h, out_bids.data(), bcnt);
+    lrvx_delta_book_replayer_copy_bids(h, out_bids.data(), bcnt);
   }
   if (acnt)
   {
-    flox_delta_book_replayer_copy_asks(h, out_asks.data(), acnt);
+    lrvx_delta_book_replayer_copy_asks(h, out_asks.data(), acnt);
   }
   JSValue out = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, out, "bids", deltaBookLevelsToJs(ctx, out_bids));
@@ -3671,7 +3671,7 @@ static JSValue js_delta_book_replayer_apply(JSContext* ctx, JSValueConst, int ar
 }
 
 // ============================================================
-// .floxrun trace recorder / reader bindings
+// .lrvxrun trace recorder / reader bindings
 // ============================================================
 
 static std::vector<uint32_t> readU32Array(JSContext* ctx, JSValueConst arr)
@@ -3722,7 +3722,7 @@ static JSValue js_run_recorder_create(JSContext* ctx, JSValueConst, int argc, JS
       JS_FreeValue(ctx, v);
       return dflt;
     }
-    flox::JsCString s(ctx, v);
+    lrvx::JsCString s(ctx, v);
     std::string out = s ? s : "";
     JS_FreeValue(ctx, v);
     return out;
@@ -3742,12 +3742,12 @@ static JSValue js_run_recorder_create(JSContext* ctx, JSValueConst, int argc, JS
   std::string sid = getStr("strategyId");
   std::string shash = getStr("strategyHash");
   int64_t started = getI64("runStartedNs");
-  auto h = flox_run_recorder_create(path.c_str(), sid.c_str(), shash.c_str(), started);
+  auto h = lrvx_run_recorder_create(path.c_str(), sid.c_str(), shash.c_str(), started);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "TraceRecorder: construction failed");
   }
-  return createHandleObject(ctx, h, flox_run_recorder_destroy);
+  return createHandleObject(ctx, h, lrvx_run_recorder_destroy);
 }
 
 static JSValue js_run_recorder_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -3761,7 +3761,7 @@ static JSValue js_run_recorder_add_tape_ref(JSContext* ctx, JSValueConst, int ar
   {
     return JS_ThrowTypeError(ctx, "addTapeRef(handle, opts)");
   }
-  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxRunRecorderHandle>(getHandle(ctx, argv[0]));
   auto getStr = [&](const char* key) -> std::string
   {
     JSValue v = JS_GetPropertyStr(ctx, argv[1], key);
@@ -3770,7 +3770,7 @@ static JSValue js_run_recorder_add_tape_ref(JSContext* ctx, JSValueConst, int ar
       JS_FreeValue(ctx, v);
       return "";
     }
-    flox::JsCString s(ctx, v);
+    lrvx::JsCString s(ctx, v);
     std::string out = s ? s : "";
     JS_FreeValue(ctx, v);
     return out;
@@ -3788,15 +3788,15 @@ static JSValue js_run_recorder_add_tape_ref(JSContext* ctx, JSValueConst, int ar
   };
   std::string path = getStr("path");
   std::string ch = getStr("contentHash");
-  flox_run_recorder_add_tape_ref(h, path.c_str(), ch.c_str(), getI64("firstEventNs"),
+  lrvx_run_recorder_add_tape_ref(h, path.c_str(), ch.c_str(), getI64("firstEventNs"),
                                  getI64("lastEventNs"));
   return JS_UNDEFINED;
 }
 
 static JSValue js_run_recorder_set_run_ended_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
-  flox_run_recorder_set_run_ended_ns(h, toInt64(ctx, argv[1]));
+  auto h = static_cast<LrvxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  lrvx_run_recorder_set_run_ended_ns(h, toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 
@@ -3806,7 +3806,7 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
   {
     return JS_ThrowTypeError(ctx, "writeSignal(handle, opts)");
   }
-  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxRunRecorderHandle>(getHandle(ctx, argv[0]));
   auto opts = argv[1];
   auto getI64 = [&](const char* k, int64_t d = 0) -> int64_t
   {
@@ -3840,7 +3840,7 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
     JSValue v = JS_GetPropertyStr(ctx, opts, "name");
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      flox::JsCString s(ctx, v);
+      lrvx::JsCString s(ctx, v);
       if (s)
       {
         name = s;
@@ -3862,7 +3862,7 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
     JSValue v = JS_GetPropertyStr(ctx, opts, "payload");
     if (JS_IsString(v))
     {
-      flox::JsCString s(ctx, v);
+      lrvx::JsCString s(ctx, v);
       if (s)
       {
         payload.assign(s.get(), s.get() + std::strlen(s.get()));
@@ -3870,7 +3870,7 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
     }
     JS_FreeValue(ctx, v);
   }
-  flox_run_recorder_write_signal(h, run_ts, feed_ts, signal_id, flags, strength,
+  lrvx_run_recorder_write_signal(h, run_ts, feed_ts, signal_id, flags, strength,
                                  name.empty() ? nullptr : name.data(), name.size(),
                                  sids.empty() ? nullptr : sids.data(), sids.size(),
                                  payload.empty() ? nullptr : payload.data(), payload.size());
@@ -3883,7 +3883,7 @@ static JSValue js_run_recorder_write_order_event(JSContext* ctx, JSValueConst, i
   {
     return JS_ThrowTypeError(ctx, "writeOrderEvent(handle, opts)");
   }
-  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxRunRecorderHandle>(getHandle(ctx, argv[0]));
   auto opts = argv[1];
   auto getI64 = [&](const char* k, int64_t d = 0) -> int64_t
   {
@@ -3912,7 +3912,7 @@ static JSValue js_run_recorder_write_order_event(JSContext* ctx, JSValueConst, i
     JSValue v = JS_GetPropertyStr(ctx, opts, "reason");
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      flox::JsCString s(ctx, v);
+      lrvx::JsCString s(ctx, v);
       if (s)
       {
         reason = s;
@@ -3920,7 +3920,7 @@ static JSValue js_run_recorder_write_order_event(JSContext* ctx, JSValueConst, i
     }
     JS_FreeValue(ctx, v);
   }
-  flox_run_recorder_write_order_event(h, getI64("runTsNs"), getI64("feedTsNs"),
+  lrvx_run_recorder_write_order_event(h, getI64("runTsNs"), getI64("feedTsNs"),
                                       static_cast<uint64_t>(getI64("orderId")),
                                       static_cast<uint64_t>(getI64("parentSignalId")),
                                       getI64("priceRaw"), getI64("qtyRaw"),
@@ -3939,7 +3939,7 @@ static JSValue js_run_recorder_write_fill(JSContext* ctx, JSValueConst, int argc
   {
     return JS_ThrowTypeError(ctx, "writeFill(handle, opts)");
   }
-  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxRunRecorderHandle>(getHandle(ctx, argv[0]));
   auto opts = argv[1];
   auto getI64 = [&](const char* k, int64_t d = 0) -> int64_t
   {
@@ -3963,7 +3963,7 @@ static JSValue js_run_recorder_write_fill(JSContext* ctx, JSValueConst, int argc
     JS_FreeValue(ctx, v);
     return out;
   };
-  flox_run_recorder_write_fill(h, getI64("runTsNs"), getI64("feedTsNs"),
+  lrvx_run_recorder_write_fill(h, getI64("runTsNs"), getI64("feedTsNs"),
                                static_cast<uint64_t>(getI64("orderId")),
                                static_cast<uint64_t>(getI64("fillId")),
                                getI64("priceRaw"), getI64("qtyRaw"), getI64("feeRaw"),
@@ -3975,7 +3975,7 @@ static JSValue js_run_recorder_write_fill(JSContext* ctx, JSValueConst, int argc
 
 static JSValue js_run_recorder_close(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_run_recorder_close(static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0])));
+  lrvx_run_recorder_close(static_cast<LrvxRunRecorderHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
@@ -3985,13 +3985,13 @@ static JSValue js_run_reader_open(JSContext* ctx, JSValueConst, int argc, JSValu
   {
     return JS_ThrowTypeError(ctx, "TraceReader(path)");
   }
-  flox::JsCString path(ctx, argv[0]);
-  auto h = flox_run_reader_open(path ? path : "");
+  lrvx::JsCString path(ctx, argv[0]);
+  auto h = lrvx_run_reader_open(path ? path : "");
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "TraceReader: cannot open path");
   }
-  return createHandleObject(ctx, h, flox_run_reader_close);
+  return createHandleObject(ctx, h, lrvx_run_reader_close);
 }
 
 static JSValue js_run_reader_close(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -4001,54 +4001,54 @@ static JSValue js_run_reader_close(JSContext* ctx, JSValueConst, int, JSValueCon
 
 static JSValue js_run_reader_strategy_id(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  uint64_t n = flox_run_reader_strategy_id(h, nullptr, 0);
+  auto h = static_cast<LrvxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = lrvx_run_reader_strategy_id(h, nullptr, 0);
   std::string out(n, '\0');
   if (n)
   {
-    flox_run_reader_strategy_id(h, out.data(), n);
+    lrvx_run_reader_strategy_id(h, out.data(), n);
   }
   return JS_NewStringLen(ctx, out.data(), out.size());
 }
 
 static JSValue js_run_reader_run_started_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  return JS_NewBigInt64(ctx, flox_run_reader_run_started_ns(h));
+  auto h = static_cast<LrvxRunReaderHandle>(getHandle(ctx, argv[0]));
+  return JS_NewBigInt64(ctx, lrvx_run_reader_run_started_ns(h));
 }
 
 static JSValue js_run_reader_run_ended_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  return JS_NewBigInt64(ctx, flox_run_reader_run_ended_ns(h));
+  auto h = static_cast<LrvxRunReaderHandle>(getHandle(ctx, argv[0]));
+  return JS_NewBigInt64(ctx, lrvx_run_reader_run_ended_ns(h));
 }
 
 static JSValue js_run_reader_signals(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  uint64_t n = flox_run_reader_signal_count(h);
+  auto h = static_cast<LrvxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = lrvx_run_reader_signal_count(h);
   JSValue out = JS_NewArray(ctx);
   for (uint64_t i = 0; i < n; ++i)
   {
     int64_t run_ts = 0, feed_ts = 0, strength = 0;
     uint32_t sid = 0, flags = 0;
     uint64_t name_len = 0, sym_count = 0, payload_len = 0;
-    flox_run_reader_signal_header(h, i, &run_ts, &feed_ts, &sid, &flags, &strength, &name_len,
+    lrvx_run_reader_signal_header(h, i, &run_ts, &feed_ts, &sid, &flags, &strength, &name_len,
                                   &sym_count, &payload_len);
     std::string name(name_len, '\0');
     if (name_len)
     {
-      flox_run_reader_signal_name(h, i, name.data(), name_len);
+      lrvx_run_reader_signal_name(h, i, name.data(), name_len);
     }
     std::vector<uint32_t> sids(sym_count);
     if (sym_count)
     {
-      flox_run_reader_signal_symbol_ids(h, i, sids.data(), sym_count);
+      lrvx_run_reader_signal_symbol_ids(h, i, sids.data(), sym_count);
     }
     std::vector<uint8_t> payload(payload_len);
     if (payload_len)
     {
-      flox_run_reader_signal_payload(h, i, payload.data(), payload_len);
+      lrvx_run_reader_signal_payload(h, i, payload.data(), payload_len);
     }
     JSValue rec = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewBigInt64(ctx, run_ts));
@@ -4068,8 +4068,8 @@ static JSValue js_run_reader_signals(JSContext* ctx, JSValueConst, int, JSValueC
 
 static JSValue js_run_reader_orders(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  uint64_t n = flox_run_reader_order_event_count(h);
+  auto h = static_cast<LrvxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = lrvx_run_reader_order_event_count(h);
   JSValue out = JS_NewArray(ctx);
   for (uint64_t i = 0; i < n; ++i)
   {
@@ -4077,12 +4077,12 @@ static JSValue js_run_reader_orders(JSContext* ctx, JSValueConst, int, JSValueCo
     uint64_t oid = 0, pid = 0, reason_len = 0;
     uint32_t sid = 0, flags = 0;
     uint8_t kind = 0, side = 0, otype = 0;
-    flox_run_reader_order_event_header(h, i, &run_ts, &feed_ts, &oid, &pid, &price, &qty, &sid,
+    lrvx_run_reader_order_event_header(h, i, &run_ts, &feed_ts, &oid, &pid, &price, &qty, &sid,
                                        &kind, &side, &otype, &flags, &reason_len);
     std::string reason(reason_len, '\0');
     if (reason_len)
     {
-      flox_run_reader_order_event_reason(h, i, reason.data(), reason_len);
+      lrvx_run_reader_order_event_reason(h, i, reason.data(), reason_len);
     }
     JSValue rec = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewBigInt64(ctx, run_ts));
@@ -4104,8 +4104,8 @@ static JSValue js_run_reader_orders(JSContext* ctx, JSValueConst, int, JSValueCo
 
 static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  uint64_t n = flox_run_reader_fill_count(h);
+  auto h = static_cast<LrvxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = lrvx_run_reader_fill_count(h);
   JSValue out = JS_NewArray(ctx);
   for (uint64_t i = 0; i < n; ++i)
   {
@@ -4113,7 +4113,7 @@ static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueCon
     uint64_t oid = 0, fid = 0;
     uint32_t sid = 0;
     uint8_t side = 0, liq = 0;
-    flox_run_reader_fill(h, i, &run_ts, &feed_ts, &oid, &fid, &price, &qty, &fee, &sid, &side, &liq);
+    lrvx_run_reader_fill(h, i, &run_ts, &feed_ts, &oid, &fid, &price, &qty, &fee, &sid, &side, &liq);
     JSValue rec = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewBigInt64(ctx, run_ts));
     JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewBigInt64(ctx, feed_ts));
@@ -4135,7 +4135,7 @@ static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueCon
 // ============================================================
 //
 // Thin shim over the C ABI. The high-level OrderGroup class lives in
-// quickjs/flox/order_group.js and wraps these globals so the four
+// quickjs/lrvx/order_group.js and wraps these globals so the four
 // bindings (pybind11 / NAPI / QuickJS / Codon) all reach the same
 // C++ engine.
 
@@ -4148,8 +4148,8 @@ static JSValue js_order_group_create(JSContext* ctx, JSValueConst, int, JSValueC
     JS_ToInt64Ext(ctx, &parent, argv[0]);
     JS_ToUint32(ctx, &policy, argv[1]);
   }
-  auto h = flox_order_group_create(static_cast<uint64_t>(parent), static_cast<uint8_t>(policy));
-  return createHandleObject(ctx, h, flox_order_group_destroy);
+  auto h = lrvx_order_group_create(static_cast<uint64_t>(parent), static_cast<uint8_t>(policy));
+  return createHandleObject(ctx, h, lrvx_order_group_destroy);
 }
 
 static JSValue js_order_group_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -4160,20 +4160,20 @@ static JSValue js_order_group_destroy(JSContext* ctx, JSValueConst, int, JSValue
 static JSValue js_order_group_add_market_leg(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   uint32_t side = toUint32(ctx, argv[2]);
   double qty = toDouble(ctx, argv[3]);
   int64_t qty_raw = static_cast<int64_t>(qty * 100'000'000LL);
   return JS_NewUint32(ctx,
-                      flox_order_group_add_market_leg(h, symbol, static_cast<uint8_t>(side),
+                      lrvx_order_group_add_market_leg(h, symbol, static_cast<uint8_t>(side),
                                                       qty_raw));
 }
 
 static JSValue js_order_group_add_limit_leg(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   uint32_t side = toUint32(ctx, argv[2]);
   double price = toDouble(ctx, argv[3]);
@@ -4181,101 +4181,101 @@ static JSValue js_order_group_add_limit_leg(JSContext* ctx, JSValueConst, int,
   int64_t price_raw = static_cast<int64_t>(price * 100'000'000LL);
   int64_t qty_raw = static_cast<int64_t>(qty * 100'000'000LL);
   return JS_NewUint32(
-      ctx, flox_order_group_add_limit_leg(h, symbol, static_cast<uint8_t>(side), price_raw,
+      ctx, lrvx_order_group_add_limit_leg(h, symbol, static_cast<uint8_t>(side), price_raw,
                                           qty_raw));
 }
 
 static JSValue js_order_group_leg_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
-  return JS_NewUint32(ctx, flox_order_group_leg_count(h));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, lrvx_order_group_leg_count(h));
 }
 
 static JSValue js_order_group_leg_state(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  return JS_NewUint32(ctx, flox_order_group_leg_state(h, i));
+  return JS_NewUint32(ctx, lrvx_order_group_leg_state(h, i));
 }
 
 static JSValue js_order_group_leg_filled(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  int64_t raw = flox_order_group_leg_filled_raw(h, i);
+  int64_t raw = lrvx_order_group_leg_filled_raw(h, i);
   return JS_NewFloat64(ctx, static_cast<double>(raw) / 1e8);
 }
 
 static JSValue js_order_group_leg_order_id(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  return JS_NewInt64(ctx, static_cast<int64_t>(flox_order_group_leg_order_id(h, i)));
+  return JS_NewInt64(ctx, static_cast<int64_t>(lrvx_order_group_leg_order_id(h, i)));
 }
 
 static JSValue js_order_group_record_submit(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
   int64_t order_id = 0;
   JS_ToInt64Ext(ctx, &order_id, argv[2]);
-  flox_order_group_record_submit(h, i, static_cast<uint64_t>(order_id));
+  lrvx_order_group_record_submit(h, i, static_cast<uint64_t>(order_id));
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_record_fill(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
   double qty = toDouble(ctx, argv[2]);
-  flox_order_group_record_fill(h, i, static_cast<int64_t>(qty * 100'000'000LL));
+  lrvx_order_group_record_fill(h, i, static_cast<int64_t>(qty * 100'000'000LL));
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_record_cancel(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  flox_order_group_record_cancel(h, i);
+  lrvx_order_group_record_cancel(h, i);
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_record_failure(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  flox_order_group_record_failure(h, i);
+  lrvx_order_group_record_failure(h, i);
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_record_replace_accepted(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
   uint64_t new_id = static_cast<uint64_t>(toInt64(ctx, argv[2]));
-  flox_order_group_record_replace_accepted(h, i, new_id);
+  lrvx_order_group_record_replace_accepted(h, i, new_id);
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_record_replace_rejected(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  flox_order_group_record_replace_rejected(h, i);
+  lrvx_order_group_record_replace_rejected(h, i);
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_find_leg_by_order_id(JSContext* ctx, JSValueConst, int,
                                                    JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
-  uint32_t idx = flox_order_group_find_leg_by_order_id(h, order_id);
+  uint32_t idx = lrvx_order_group_find_leg_by_order_id(h, order_id);
   if (idx == UINT32_MAX)
   {
     return JS_NULL;
@@ -4285,17 +4285,17 @@ static JSValue js_order_group_find_leg_by_order_id(JSContext* ctx, JSValueConst,
 
 static JSValue js_order_group_state(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
-  return JS_NewUint32(ctx, flox_order_group_state(h));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, lrvx_order_group_state(h));
 }
 
 static JSValue js_order_group_recommended_actions(JSContext* ctx, JSValueConst, int,
                                                   JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   constexpr uint32_t kMax = 32;
   int64_t buf[kMax * 5];
-  uint32_t n = flox_order_group_recommended_actions(h, buf, kMax);
+  uint32_t n = lrvx_order_group_recommended_actions(h, buf, kMax);
   JSValue out = JS_NewArray(ctx);
   for (uint32_t i = 0; i < n; ++i)
   {
@@ -4322,30 +4322,30 @@ static JSValue js_order_group_recommended_actions(JSContext* ctx, JSValueConst, 
 static JSValue js_order_group_mark_action_dispatched(JSContext* ctx, JSValueConst, int,
                                                      JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t leg = toUint32(ctx, argv[1]);
   uint32_t kind = toUint32(ctx, argv[2]);
-  flox_order_group_mark_action_dispatched(h, leg, static_cast<uint8_t>(kind));
+  lrvx_order_group_mark_action_dispatched(h, leg, static_cast<uint8_t>(kind));
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_set_risk_limits(JSContext* ctx, JSValueConst, int,
                                               JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   double max_gross = toDouble(ctx, argv[1]);
   double max_conc = toDouble(ctx, argv[2]);
   double max_leg = toDouble(ctx, argv[3]);
   int64_t gross_raw = static_cast<int64_t>(max_gross * 100'000'000LL);
   int64_t leg_raw = static_cast<int64_t>(max_leg * 100'000'000LL);
-  flox_order_group_set_risk_limits(h, gross_raw, max_conc, leg_raw);
+  lrvx_order_group_set_risk_limits(h, gross_raw, max_conc, leg_raw);
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_precheck_submission(JSContext* ctx, JSValueConst, int,
                                                   JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   double equity = toDouble(ctx, argv[1]);
 
   std::vector<int64_t> prices_raw;
@@ -4368,7 +4368,7 @@ static JSValue js_order_group_precheck_submission(JSContext* ctx, JSValueConst, 
 
   char rule[64] = {};
   char detail[256] = {};
-  uint8_t denied = flox_order_group_precheck_submission(
+  uint8_t denied = lrvx_order_group_precheck_submission(
       h, equity, prices_raw.empty() ? nullptr : prices_raw.data(), plen, rule, sizeof(rule),
       detail, sizeof(detail));
 
@@ -4382,22 +4382,22 @@ static JSValue js_order_group_precheck_submission(JSContext* ctx, JSValueConst, 
 static JSValue js_order_group_set_pair_latency_budget_ns(JSContext* ctx, JSValueConst, int,
                                                          JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   int64_t budget = 0;
   JS_ToInt64Ext(ctx, &budget, argv[1]);
-  flox_order_group_set_pair_latency_budget_ns(h, budget);
+  lrvx_order_group_set_pair_latency_budget_ns(h, budget);
   return JS_UNDEFINED;
 }
 
 static JSValue js_order_group_pair_latency_decision(JSContext* ctx, JSValueConst, int,
                                                     JSValueConst* argv)
 {
-  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxOrderGroupHandle>(getHandle(ctx, argv[0]));
   int64_t submit_ts = 0, ack_ts = 0;
   JS_ToInt64Ext(ctx, &submit_ts, argv[1]);
   JS_ToInt64Ext(ctx, &ack_ts, argv[2]);
   uint32_t ack_received = toUint32(ctx, argv[3]);
-  uint8_t d = flox_order_group_pair_latency_decision(h, submit_ts, ack_ts,
+  uint8_t d = lrvx_order_group_pair_latency_decision(h, submit_ts, ack_ts,
                                                      static_cast<uint8_t>(ack_received));
   const char* name = d == 0 ? "wait" : (d == 1 ? "submit_follower" : "cancel_leader");
   return JS_NewString(ctx, name);
@@ -4409,7 +4409,7 @@ static JSValue js_order_group_pair_latency_decision(JSContext* ctx, JSValueConst
 
 static JSValue js_live_queue_position_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_live_queue_position_create(), flox_live_queue_position_destroy);
+  return createHandleObject(ctx, lrvx_live_queue_position_create(), lrvx_live_queue_position_destroy);
 }
 
 static JSValue js_live_queue_position_destroy(JSContext* ctx, JSValueConst, int,
@@ -4421,25 +4421,25 @@ static JSValue js_live_queue_position_destroy(JSContext* ctx, JSValueConst, int,
 static JSValue js_live_queue_position_set_half_life(JSContext* ctx, JSValueConst, int,
                                                     JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
-  flox_live_queue_position_set_confidence_half_life_ns(h, toInt64(ctx, argv[1]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  lrvx_live_queue_position_set_confidence_half_life_ns(h, toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_set_shrink_factor(JSContext* ctx, JSValueConst, int,
                                                         JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   double factor = 0.0;
   JS_ToFloat64(ctx, &factor, argv[1]);
-  flox_live_queue_position_set_shrink_factor(h, factor);
+  lrvx_live_queue_position_set_shrink_factor(h, factor);
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_on_order_placed(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[2]));
   double price = 0.0, order_qty = 0.0, level_qty = 0.0;
@@ -4448,9 +4448,9 @@ static JSValue js_live_queue_position_on_order_placed(JSContext* ctx, JSValueCon
   JS_ToFloat64(ctx, &order_qty, argv[5]);
   JS_ToFloat64(ctx, &level_qty, argv[6]);
   int64_t ts_ns = toInt64(ctx, argv[7]);
-  flox_live_queue_position_on_order_placed(
-      h, symbol, side, flox_price_from_double(price), order_id,
-      flox_quantity_from_double(order_qty), flox_quantity_from_double(level_qty),
+  lrvx_live_queue_position_on_order_placed(
+      h, symbol, side, lrvx_price_from_double(price), order_id,
+      lrvx_quantity_from_double(order_qty), lrvx_quantity_from_double(level_qty),
       ts_ns);
   return JS_UNDEFINED;
 }
@@ -4458,52 +4458,52 @@ static JSValue js_live_queue_position_on_order_placed(JSContext* ctx, JSValueCon
 static JSValue js_live_queue_position_on_order_cancelled(JSContext* ctx, JSValueConst,
                                                          int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
   int64_t ts_ns = toInt64(ctx, argv[2]);
-  flox_live_queue_position_on_order_cancelled(h, order_id, ts_ns);
+  lrvx_live_queue_position_on_order_cancelled(h, order_id, ts_ns);
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_on_order_filled(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
   double cum = 0.0;
   JS_ToFloat64(ctx, &cum, argv[2]);
   int64_t ts_ns = toInt64(ctx, argv[3]);
-  flox_live_queue_position_on_order_filled(h, order_id,
-                                           flox_quantity_from_double(cum), ts_ns);
+  lrvx_live_queue_position_on_order_filled(h, order_id,
+                                           lrvx_quantity_from_double(cum), ts_ns);
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_on_trade(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   double price = 0.0, qty = 0.0;
   JS_ToFloat64(ctx, &price, argv[2]);
   JS_ToFloat64(ctx, &qty, argv[3]);
   int64_t ts_ns = toInt64(ctx, argv[4]);
-  flox_live_queue_position_on_trade(h, symbol, flox_price_from_double(price),
-                                    flox_quantity_from_double(qty), ts_ns);
+  lrvx_live_queue_position_on_trade(h, symbol, lrvx_price_from_double(price),
+                                    lrvx_quantity_from_double(qty), ts_ns);
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_on_trade_with_flag(JSContext* ctx, JSValueConst,
                                                          int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   double price = 0.0, qty = 0.0;
   JS_ToFloat64(ctx, &price, argv[2]);
   JS_ToFloat64(ctx, &qty, argv[3]);
   int64_t ts_ns = toInt64(ctx, argv[4]);
   uint8_t is_hidden = static_cast<uint8_t>(toUint32(ctx, argv[5]));
-  flox_live_queue_position_on_trade_with_flag(
-      h, symbol, flox_price_from_double(price), flox_quantity_from_double(qty), ts_ns,
+  lrvx_live_queue_position_on_trade_with_flag(
+      h, symbol, lrvx_price_from_double(price), lrvx_quantity_from_double(qty), ts_ns,
       is_hidden);
   return JS_UNDEFINED;
 }
@@ -4512,36 +4512,36 @@ static JSValue js_live_queue_position_set_hidden_order_policy(JSContext* ctx,
                                                               JSValueConst, int,
                                                               JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint8_t policy = static_cast<uint8_t>(toUint32(ctx, argv[1]));
-  flox_live_queue_position_set_hidden_order_policy(h, policy);
+  lrvx_live_queue_position_set_hidden_order_policy(h, policy);
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_on_level_update(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[2]));
   double price = 0.0, new_qty = 0.0;
   JS_ToFloat64(ctx, &price, argv[3]);
   JS_ToFloat64(ctx, &new_qty, argv[4]);
   int64_t ts_ns = toInt64(ctx, argv[5]);
-  flox_live_queue_position_on_level_update(h, symbol, side,
-                                           flox_price_from_double(price),
-                                           flox_quantity_from_double(new_qty), ts_ns);
+  lrvx_live_queue_position_on_level_update(h, symbol, side,
+                                           lrvx_price_from_double(price),
+                                           lrvx_quantity_from_double(new_qty), ts_ns);
   return JS_UNDEFINED;
 }
 
 static JSValue js_live_queue_position_snapshot(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
   int64_t now_ns = toInt64(ctx, argv[2]);
   int64_t slots[6] = {0};
-  uint8_t ok = flox_live_queue_position_snapshot(h, order_id, now_ns, slots);
+  uint8_t ok = lrvx_live_queue_position_snapshot(h, order_id, now_ns, slots);
   if (!ok)
   {
     return JS_NULL;
@@ -4551,21 +4551,21 @@ static JSValue js_live_queue_position_snapshot(JSContext* ctx, JSValueConst, int
   JSValue obj = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, obj, "orderId", JS_NewInt64(ctx, slots[0]));
   JS_SetPropertyStr(ctx, obj, "queueAheadEst",
-                    JS_NewFloat64(ctx, flox_quantity_to_double(slots[1])));
+                    JS_NewFloat64(ctx, lrvx_quantity_to_double(slots[1])));
   JS_SetPropertyStr(ctx, obj, "total",
-                    JS_NewFloat64(ctx, flox_quantity_to_double(slots[2])));
+                    JS_NewFloat64(ctx, lrvx_quantity_to_double(slots[2])));
   JS_SetPropertyStr(ctx, obj, "lastUpdateNs", JS_NewBigInt64(ctx, slots[3]));
   JS_SetPropertyStr(ctx, obj, "confidence", JS_NewFloat64(ctx, conf));
   JS_SetPropertyStr(ctx, obj, "hiddenVolumeSeen",
-                    JS_NewFloat64(ctx, flox_quantity_to_double(slots[5])));
+                    JS_NewFloat64(ctx, lrvx_quantity_to_double(slots[5])));
   return obj;
 }
 
 static JSValue js_live_queue_position_tracked_count(JSContext* ctx, JSValueConst, int,
                                                     JSValueConst* argv)
 {
-  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
-  return JS_NewUint32(ctx, flox_live_queue_position_tracked_count(h));
+  auto h = static_cast<LrvxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, lrvx_live_queue_position_tracked_count(h));
 }
 
 // ============================================================
@@ -4574,7 +4574,7 @@ static JSValue js_live_queue_position_tracked_count(JSContext* ctx, JSValueConst
 
 static JSValue js_bar_dispatch_recorder_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_bar_dispatch_recorder_create(), flox_bar_dispatch_recorder_destroy);
+  return createHandleObject(ctx, lrvx_bar_dispatch_recorder_create(), lrvx_bar_dispatch_recorder_destroy);
 }
 
 static JSValue js_bar_dispatch_recorder_destroy(JSContext* ctx, JSValueConst, int,
@@ -4586,53 +4586,53 @@ static JSValue js_bar_dispatch_recorder_destroy(JSContext* ctx, JSValueConst, in
 static JSValue js_bar_dispatch_recorder_add_time_seconds(JSContext* ctx, JSValueConst, int,
                                                          JSValueConst* argv)
 {
-  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
   uint32_t seconds = toUint32(ctx, argv[1]);
-  return JS_NewUint32(ctx, flox_bar_dispatch_recorder_add_time_seconds(h, seconds));
+  return JS_NewUint32(ctx, lrvx_bar_dispatch_recorder_add_time_seconds(h, seconds));
 }
 
 static JSValue js_bar_dispatch_recorder_on_trade(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
   uint32_t symbol = toUint32(ctx, argv[1]);
   double price = toDouble(ctx, argv[2]);
   double qty = toDouble(ctx, argv[3]);
   int64_t ts_ns = 0;
   JS_ToInt64Ext(ctx, &ts_ns, argv[4]);
-  flox_bar_dispatch_recorder_on_trade(h, symbol, price, qty, ts_ns);
+  lrvx_bar_dispatch_recorder_on_trade(h, symbol, price, qty, ts_ns);
   return JS_UNDEFINED;
 }
 
 static JSValue js_bar_dispatch_recorder_finalize(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  flox_bar_dispatch_recorder_finalize(
-      static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0])));
+  lrvx_bar_dispatch_recorder_finalize(
+      static_cast<LrvxBarDispatchRecorderHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
 static JSValue js_bar_dispatch_recorder_count(JSContext* ctx, JSValueConst, int,
                                               JSValueConst* argv)
 {
-  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
-  return JS_NewUint32(ctx, flox_bar_dispatch_recorder_count(h));
+  auto h = static_cast<LrvxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, lrvx_bar_dispatch_recorder_count(h));
 }
 
 static JSValue js_bar_dispatch_recorder_type_at(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  return JS_NewUint32(ctx, flox_bar_dispatch_recorder_type_at(h, i));
+  return JS_NewUint32(ctx, lrvx_bar_dispatch_recorder_type_at(h, i));
 }
 
 static JSValue js_bar_dispatch_recorder_param_at(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
-  return JS_NewInt64(ctx, static_cast<int64_t>(flox_bar_dispatch_recorder_param_at(h, i)));
+  return JS_NewInt64(ctx, static_cast<int64_t>(lrvx_bar_dispatch_recorder_param_at(h, i)));
 }
 
 // ============================================================
@@ -4645,8 +4645,8 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
   {
     return JS_ThrowTypeError(ctx, "tapeDiff: need leftPath and rightPath");
   }
-  flox::JsCString left(ctx, argv[0]);
-  flox::JsCString right(ctx, argv[1]);
+  lrvx::JsCString left(ctx, argv[0]);
+  lrvx::JsCString right(ctx, argv[1]);
   if (!left || !right)
   {
     return JS_ThrowTypeError(ctx, "tapeDiff: paths must be strings");
@@ -4669,8 +4669,8 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
     JS_FreeValue(ctx, v);
   }
 
-  FloxTapeDiffHandle h =
-      flox_tape_diff_create(left, right, max_mismatches, tolerance_ns);
+  LrvxTapeDiffHandle h =
+      lrvx_tape_diff_create(left, right, max_mismatches, tolerance_ns);
   std::string leftStr = left.str();
   std::string rightStr = right.str();
   if (!h)
@@ -4682,12 +4682,12 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
   JS_SetPropertyStr(ctx, out, "leftPath", JS_NewString(ctx, leftStr.c_str()));
   JS_SetPropertyStr(ctx, out, "rightPath", JS_NewString(ctx, rightStr.c_str()));
   JS_SetPropertyStr(ctx, out, "leftCount",
-                    JS_NewInt64(ctx, static_cast<int64_t>(flox_tape_diff_left_count(h))));
+                    JS_NewInt64(ctx, static_cast<int64_t>(lrvx_tape_diff_left_count(h))));
   JS_SetPropertyStr(ctx, out, "rightCount",
-                    JS_NewInt64(ctx, static_cast<int64_t>(flox_tape_diff_right_count(h))));
+                    JS_NewInt64(ctx, static_cast<int64_t>(lrvx_tape_diff_right_count(h))));
 
   uint64_t div_idx = 0;
-  if (flox_tape_diff_first_divergence(h, &div_idx))
+  if (lrvx_tape_diff_first_divergence(h, &div_idx))
   {
     JS_SetPropertyStr(ctx, out, "firstDivergenceIndex",
                       JS_NewInt64(ctx, static_cast<int64_t>(div_idx)));
@@ -4697,20 +4697,20 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
     JS_SetPropertyStr(ctx, out, "firstDivergenceIndex", JS_NULL);
   }
   JS_SetPropertyStr(ctx, out, "equal",
-                    JS_NewBool(ctx, flox_tape_diff_equal(h) != 0));
+                    JS_NewBool(ctx, lrvx_tape_diff_equal(h) != 0));
 
-  const uint64_t mcount = flox_tape_diff_mismatch_count(h);
+  const uint64_t mcount = lrvx_tape_diff_mismatch_count(h);
   JSValue mlist = JS_NewArray(ctx);
   if (mcount > 0)
   {
-    std::vector<FloxTapeDiffMismatch> buf(mcount);
-    flox_tape_diff_copy_mismatches(h, buf.data(), mcount);
+    std::vector<LrvxTapeDiffMismatch> buf(mcount);
+    lrvx_tape_diff_copy_mismatches(h, buf.data(), mcount);
     for (uint64_t i = 0; i < mcount; ++i)
     {
       JSValue entry = JS_NewObject(ctx);
       JS_SetPropertyStr(ctx, entry, "index",
                         JS_NewInt64(ctx, static_cast<int64_t>(buf[i].index)));
-      auto putSide = [&](const char* key, const FloxTapeDiffTrade& t)
+      auto putSide = [&](const char* key, const LrvxTapeDiffTrade& t)
       {
         JSValue o = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, o, "exchangeTsNs", JS_NewBigInt64(ctx, t.exchange_ts_ns));
@@ -4727,7 +4727,7 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
   }
   JS_SetPropertyStr(ctx, out, "mismatches", mlist);
 
-  flox_tape_diff_destroy(h);
+  lrvx_tape_diff_destroy(h);
   return out;
 }
 
@@ -4752,13 +4752,13 @@ static JSValue js_exec_twap_create(JSContext* ctx, JSValueConst, int argc,
   int64_t duration_ns = toInt64(ctx, argv[5]);
   uint32_t slice_count = toUint32(ctx, argv[6]);
   int64_t start_time_ns = toInt64(ctx, argv[7]);
-  auto h = flox_exec_twap_create(target_qty, side, symbol, type, limit_price,
+  auto h = lrvx_exec_twap_create(target_qty, side, symbol, type, limit_price,
                                  duration_ns, slice_count, start_time_ns);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "twap_create: invalid args");
   }
-  return createHandleObject(ctx, h, flox_exec_destroy);
+  return createHandleObject(ctx, h, lrvx_exec_destroy);
 }
 
 static JSValue js_exec_vwap_create(JSContext* ctx, JSValueConst, int argc,
@@ -4794,7 +4794,7 @@ static JSValue js_exec_vwap_create(JSContext* ctx, JSValueConst, int argc,
     JS_FreeValue(ctx, volv);
     JS_FreeValue(ctx, row);
   }
-  auto h = flox_exec_vwap_create(target_qty, side, symbol, type, limit_price,
+  auto h = lrvx_exec_vwap_create(target_qty, side, symbol, type, limit_price,
                                  ts.empty() ? nullptr : ts.data(),
                                  vol.empty() ? nullptr : vol.data(),
                                  ts.size());
@@ -4802,7 +4802,7 @@ static JSValue js_exec_vwap_create(JSContext* ctx, JSValueConst, int argc,
   {
     return JS_ThrowTypeError(ctx, "vwap_create: invalid args");
   }
-  return createHandleObject(ctx, h, flox_exec_destroy);
+  return createHandleObject(ctx, h, lrvx_exec_destroy);
 }
 
 static JSValue js_exec_iceberg_create(JSContext* ctx, JSValueConst, int argc,
@@ -4820,13 +4820,13 @@ static JSValue js_exec_iceberg_create(JSContext* ctx, JSValueConst, int argc,
   double limit_price, visible_qty;
   JS_ToFloat64(ctx, &limit_price, argv[4]);
   JS_ToFloat64(ctx, &visible_qty, argv[5]);
-  auto h = flox_exec_iceberg_create(target_qty, side, symbol, type, limit_price,
+  auto h = lrvx_exec_iceberg_create(target_qty, side, symbol, type, limit_price,
                                     visible_qty);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "iceberg_create: invalid args");
   }
-  return createHandleObject(ctx, h, flox_exec_destroy);
+  return createHandleObject(ctx, h, lrvx_exec_destroy);
 }
 
 static JSValue js_exec_pov_create(JSContext* ctx, JSValueConst, int argc,
@@ -4845,13 +4845,13 @@ static JSValue js_exec_pov_create(JSContext* ctx, JSValueConst, int argc,
   JS_ToFloat64(ctx, &limit_price, argv[4]);
   JS_ToFloat64(ctx, &rate, argv[5]);
   JS_ToFloat64(ctx, &min_slice, argv[6]);
-  auto h = flox_exec_pov_create(target_qty, side, symbol, type, limit_price, rate,
+  auto h = lrvx_exec_pov_create(target_qty, side, symbol, type, limit_price, rate,
                                 min_slice);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "pov_create: invalid args");
   }
-  return createHandleObject(ctx, h, flox_exec_destroy);
+  return createHandleObject(ctx, h, lrvx_exec_destroy);
 }
 
 static JSValue js_exec_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -4861,14 +4861,14 @@ static JSValue js_exec_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* 
 
 static JSValue js_exec_step(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]));
-  flox_exec_step(h, toInt64(ctx, argv[1]));
-  size_t n = flox_exec_pending_count(h);
+  auto h = static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0]));
+  lrvx_exec_step(h, toInt64(ctx, argv[1]));
+  size_t n = lrvx_exec_pending_count(h);
   JSValue arr = JS_NewArray(ctx);
   for (size_t i = 0; i < n; ++i)
   {
-    FloxExecChildOrder c{};
-    if (flox_exec_pending_at(h, i, &c))
+    LrvxExecChildOrder c{};
+    if (lrvx_exec_pending_at(h, i, &c))
     {
       JSValue o = JS_NewObject(ctx);
       JS_SetPropertyStr(ctx, o, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(c.order_id)));
@@ -4880,7 +4880,7 @@ static JSValue js_exec_step(JSContext* ctx, JSValueConst, int, JSValueConst* arg
       JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
     }
   }
-  flox_exec_clear_pending(h);
+  lrvx_exec_clear_pending(h);
   return arr;
 }
 
@@ -4888,7 +4888,7 @@ static JSValue js_exec_report_fill(JSContext* ctx, JSValueConst, int, JSValueCon
 {
   double q;
   JS_ToFloat64(ctx, &q, argv[1]);
-  flox_exec_report_fill(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0])), q);
+  lrvx_exec_report_fill(static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0])), q);
   return JS_UNDEFINED;
 }
 
@@ -4896,32 +4896,32 @@ static JSValue js_exec_observe_volume(JSContext* ctx, JSValueConst, int, JSValue
 {
   double q;
   JS_ToFloat64(ctx, &q, argv[1]);
-  flox_exec_observe_volume(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0])), q);
+  lrvx_exec_observe_volume(static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0])), q);
   return JS_UNDEFINED;
 }
 
 static JSValue js_exec_submitted_qty(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_exec_submitted_qty(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_exec_submitted_qty(static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0]))));
 }
 
 static JSValue js_exec_filled_qty(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_exec_filled_qty(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_exec_filled_qty(static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0]))));
 }
 
 static JSValue js_exec_remaining_qty(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_exec_remaining_qty(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_exec_remaining_qty(static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0]))));
 }
 
 static JSValue js_exec_is_done(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewBool(
-      ctx, flox_exec_is_done(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))) != 0);
+      ctx, lrvx_exec_is_done(static_cast<LrvxExecAlgoHandle>(getHandle(ctx, argv[0]))) != 0);
 }
 
 // ============================================================
@@ -4931,7 +4931,7 @@ static JSValue js_exec_is_done(JSContext* ctx, JSValueConst, int, JSValueConst* 
 static JSValue js_portfolio_risk_create(JSContext* ctx, JSValueConst, int argc,
                                         JSValueConst* argv)
 {
-  FloxPortfolioRiskRules rules{};
+  LrvxPortfolioRiskRules rules{};
   double initial_equity = 0.0;
   auto readOpt = [&](JSValueConst obj, const char* key, uint8_t& has, double& v)
   {
@@ -4954,7 +4954,7 @@ static JSValue js_portfolio_risk_create(JSContext* ctx, JSValueConst, int argc,
   {
     JS_ToFloat64(ctx, &initial_equity, argv[1]);
   }
-  FloxPortfolioRiskHandle h = flox_portfolio_risk_create(&rules, initial_equity);
+  LrvxPortfolioRiskHandle h = lrvx_portfolio_risk_create(&rules, initial_equity);
   if (!h)
   {
     return JS_ThrowTypeError(ctx,
@@ -4962,7 +4962,7 @@ static JSValue js_portfolio_risk_create(JSContext* ctx, JSValueConst, int argc,
                              "maxDrawdownPct rule needs a positive "
                              "initialEquity to measure against.");
   }
-  return createHandleObject(ctx, h, flox_portfolio_risk_destroy);
+  return createHandleObject(ctx, h, lrvx_portfolio_risk_destroy);
 }
 
 static JSValue js_portfolio_risk_destroy(JSContext* ctx, JSValueConst, int,
@@ -4978,13 +4978,13 @@ static JSValue js_portfolio_risk_update(JSContext* ctx, JSValueConst, int argc,
   {
     return JS_ThrowTypeError(ctx, "update(handle, name, fields)");
   }
-  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
-  flox::JsCString name(ctx, argv[1]);
+  auto h = static_cast<LrvxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  lrvx::JsCString name(ctx, argv[1]);
   if (!name)
   {
     return JS_ThrowTypeError(ctx, "update: name must be a string");
   }
-  FloxStrategyAccountFields f{};
+  LrvxStrategyAccountFields f{};
   uint8_t mask = 0;
   auto putDouble = [&](const char* key, uint8_t bit, double& out)
   {
@@ -5014,18 +5014,18 @@ static JSValue js_portfolio_risk_update(JSContext* ctx, JSValueConst, int argc,
   putDouble("grossExposure", 1u << 3, f.gross_exposure);
   putDouble("netExposure", 1u << 4, f.net_exposure);
   putInt("tradeCount", 1u << 5, f.trade_count);
-  flox_portfolio_risk_update(h, name, &f, mask);
+  lrvx_portfolio_risk_update(h, name, &f, mask);
   return JS_UNDEFINED;
 }
 
 static JSValue js_portfolio_risk_remove(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
-  flox::JsCString name(ctx, argv[1]);
+  auto h = static_cast<LrvxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  lrvx::JsCString name(ctx, argv[1]);
   if (name)
   {
-    flox_portfolio_risk_remove(h, name);
+    lrvx_portfolio_risk_remove(h, name);
   }
   return JS_UNDEFINED;
 }
@@ -5033,12 +5033,12 @@ static JSValue js_portfolio_risk_remove(JSContext* ctx, JSValueConst, int,
 static JSValue js_portfolio_risk_reset_kill_switch(JSContext* ctx, JSValueConst, int,
                                                    JSValueConst* argv)
 {
-  flox_portfolio_risk_reset_kill_switch(
-      static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0])));
+  lrvx_portfolio_risk_reset_kill_switch(
+      static_cast<LrvxPortfolioRiskHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
-static JSValue breachToJsObject(JSContext* ctx, const FloxBreach& b)
+static JSValue breachToJsObject(JSContext* ctx, const LrvxBreach& b)
 {
   JSValue o = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, o, "rule", JS_NewString(ctx, b.rule ? b.rule : ""));
@@ -5055,13 +5055,13 @@ static JSValue js_portfolio_risk_check_order(JSContext* ctx, JSValueConst, int a
   {
     return JS_ThrowTypeError(ctx, "checkOrder(handle, strategy, notional, side)");
   }
-  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
-  flox::JsCString strat(ctx, argv[1]);
+  auto h = static_cast<LrvxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  lrvx::JsCString strat(ctx, argv[1]);
   double notional = 0.0;
   JS_ToFloat64(ctx, &notional, argv[2]);
-  flox::JsCString side(ctx, argv[3]);
-  FloxBreach b{};
-  uint8_t hit = flox_portfolio_risk_check_order(h, strat ? strat : "",
+  lrvx::JsCString side(ctx, argv[3]);
+  LrvxBreach b{};
+  uint8_t hit = lrvx_portfolio_risk_check_order(h, strat ? strat : "",
                                                 notional, side ? side : "", &b);
   JSValue out = hit ? breachToJsObject(ctx, b) : JS_NULL;
   return out;
@@ -5070,31 +5070,31 @@ static JSValue js_portfolio_risk_check_order(JSContext* ctx, JSValueConst, int a
 static JSValue js_portfolio_risk_snapshot(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  auto h = static_cast<LrvxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
   JSValue o = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, o, "totalDailyPnl",
-                    JS_NewFloat64(ctx, flox_portfolio_risk_total_daily_pnl(h)));
+                    JS_NewFloat64(ctx, lrvx_portfolio_risk_total_daily_pnl(h)));
   JS_SetPropertyStr(ctx, o, "totalGrossExposure",
-                    JS_NewFloat64(ctx, flox_portfolio_risk_total_gross_exposure(h)));
+                    JS_NewFloat64(ctx, lrvx_portfolio_risk_total_gross_exposure(h)));
   JS_SetPropertyStr(ctx, o, "currentEquity",
-                    JS_NewFloat64(ctx, flox_portfolio_risk_current_equity(h)));
+                    JS_NewFloat64(ctx, lrvx_portfolio_risk_current_equity(h)));
   JS_SetPropertyStr(ctx, o, "drawdownPct",
-                    JS_NewFloat64(ctx, flox_portfolio_risk_drawdown_pct(h)));
+                    JS_NewFloat64(ctx, lrvx_portfolio_risk_drawdown_pct(h)));
   JS_SetPropertyStr(ctx, o, "killSwitchActive",
-                    JS_NewBool(ctx, flox_portfolio_risk_kill_switch_active(h) != 0));
-  const uint64_t bn = flox_portfolio_risk_breach_count(h);
+                    JS_NewBool(ctx, lrvx_portfolio_risk_kill_switch_active(h) != 0));
+  const uint64_t bn = lrvx_portfolio_risk_breach_count(h);
   JSValue arr = JS_NewArray(ctx);
   for (uint64_t i = 0; i < bn; ++i)
   {
-    FloxBreach b{};
-    if (flox_portfolio_risk_breach_at(h, i, &b))
+    LrvxBreach b{};
+    if (lrvx_portfolio_risk_breach_at(h, i, &b))
     {
       JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), breachToJsObject(ctx, b));
     }
   }
   JS_SetPropertyStr(ctx, o, "breaches", arr);
   JS_SetPropertyStr(ctx, o, "accountCount",
-                    JS_NewInt64(ctx, static_cast<int64_t>(flox_portfolio_risk_account_count(h))));
+                    JS_NewInt64(ctx, static_cast<int64_t>(lrvx_portfolio_risk_account_count(h))));
   return o;
 }
 
@@ -5107,12 +5107,12 @@ static JSValue js_lat_constant_create(JSContext* ctx, JSValueConst, int argc, JS
   int64_t feed = (argc > 0) ? toInt64(ctx, argv[0]) : 0;
   int64_t order = (argc > 1) ? toInt64(ctx, argv[1]) : 0;
   int64_t fill = (argc > 2) ? toInt64(ctx, argv[2]) : 0;
-  FloxLatencyModelHandle h = flox_latency_constant_create(feed, order, fill);
+  LrvxLatencyModelHandle h = lrvx_latency_constant_create(feed, order, fill);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "ConstantLatency: feed/order/fill must be non-negative");
   }
-  return createHandleObject(ctx, h, flox_latency_destroy);
+  return createHandleObject(ctx, h, lrvx_latency_destroy);
 }
 
 static JSValue js_lat_gaussian_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
@@ -5124,12 +5124,12 @@ static JSValue js_lat_gaussian_create(JSContext* ctx, JSValueConst, int argc, JS
   double lm = (argc > 4) ? toDouble(ctx, argv[4]) : 0.0;
   double ls = (argc > 5) ? toDouble(ctx, argv[5]) : 0.0;
   uint64_t seed = (argc > 6) ? static_cast<uint64_t>(toInt64(ctx, argv[6])) : 0;
-  FloxLatencyModelHandle h = flox_latency_gaussian_create(fm, fs, om, os, lm, ls, seed);
+  LrvxLatencyModelHandle h = lrvx_latency_gaussian_create(fm, fs, om, os, lm, ls, seed);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "GaussianLatency: means and stddevs must be non-negative");
   }
-  return createHandleObject(ctx, h, flox_latency_destroy);
+  return createHandleObject(ctx, h, lrvx_latency_destroy);
 }
 
 static JSValue js_lat_exponential_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
@@ -5138,12 +5138,12 @@ static JSValue js_lat_exponential_create(JSContext* ctx, JSValueConst, int argc,
   double om = (argc > 1) ? toDouble(ctx, argv[1]) : 0.0;
   double lm = (argc > 2) ? toDouble(ctx, argv[2]) : 0.0;
   uint64_t seed = (argc > 3) ? static_cast<uint64_t>(toInt64(ctx, argv[3])) : 0;
-  FloxLatencyModelHandle h = flox_latency_exponential_create(fm, om, lm, seed);
+  LrvxLatencyModelHandle h = lrvx_latency_exponential_create(fm, om, lm, seed);
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "ExponentialLatency: means must be non-negative");
   }
-  return createHandleObject(ctx, h, flox_latency_destroy);
+  return createHandleObject(ctx, h, lrvx_latency_destroy);
 }
 
 static std::vector<int64_t> readJsInt64Array(JSContext* ctx, JSValueConst arr)
@@ -5173,7 +5173,7 @@ static JSValue js_lat_empirical_create(JSContext* ctx, JSValueConst, int argc, J
   std::vector<int64_t> order = (argc > 1) ? readJsInt64Array(ctx, argv[1]) : std::vector<int64_t>{};
   std::vector<int64_t> fill = (argc > 2) ? readJsInt64Array(ctx, argv[2]) : std::vector<int64_t>{};
   uint64_t seed = (argc > 3) ? static_cast<uint64_t>(toInt64(ctx, argv[3])) : 0;
-  FloxLatencyModelHandle h = flox_latency_empirical_create(
+  LrvxLatencyModelHandle h = lrvx_latency_empirical_create(
       feed.empty() ? nullptr : feed.data(), feed.size(),
       order.empty() ? nullptr : order.data(), order.size(),
       fill.empty() ? nullptr : fill.data(), fill.size(),
@@ -5182,7 +5182,7 @@ static JSValue js_lat_empirical_create(JSContext* ctx, JSValueConst, int argc, J
   {
     return JS_ThrowTypeError(ctx, "EmpiricalLatency: provide non-empty samples and non-negative values");
   }
-  return createHandleObject(ctx, h, flox_latency_destroy);
+  return createHandleObject(ctx, h, lrvx_latency_destroy);
 }
 
 static JSValue js_lat_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -5191,23 +5191,23 @@ static JSValue js_lat_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* a
 }
 static JSValue js_lat_feed_delay(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, flox_latency_feed_delay(
-                              static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0]))));
+  return JS_NewInt64(ctx, lrvx_latency_feed_delay(
+                              static_cast<LrvxLatencyModelHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_lat_order_delay(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, flox_latency_order_delay(
-                              static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0]))));
+  return JS_NewInt64(ctx, lrvx_latency_order_delay(
+                              static_cast<LrvxLatencyModelHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_lat_fill_delay(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, flox_latency_fill_delay(
-                              static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0]))));
+  return JS_NewInt64(ctx, lrvx_latency_fill_delay(
+                              static_cast<LrvxLatencyModelHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_lat_sample(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  FloxLatencySample s{};
-  flox_latency_sample(static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0])), &s);
+  LrvxLatencySample s{};
+  lrvx_latency_sample(static_cast<LrvxLatencyModelHandle>(getHandle(ctx, argv[0])), &s);
   JSValue obj = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, obj, "feedNs", JS_NewInt64(ctx, s.feed_ns));
   JS_SetPropertyStr(ctx, obj, "orderNs", JS_NewInt64(ctx, s.order_ns));
@@ -5217,7 +5217,7 @@ static JSValue js_lat_sample(JSContext* ctx, JSValueConst, int, JSValueConst* ar
 static JSValue js_lat_reset(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
 {
   uint64_t seed = (argc > 1) ? static_cast<uint64_t>(toInt64(ctx, argv[1])) : 0;
-  flox_latency_reset(static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0])), seed);
+  lrvx_latency_reset(static_cast<LrvxLatencyModelHandle>(getHandle(ctx, argv[0])), seed);
   return JS_UNDEFINED;
 }
 
@@ -5227,7 +5227,7 @@ static JSValue js_lat_reset(JSContext* ctx, JSValueConst, int argc, JSValueConst
 
 static JSValue js_vprofile_create(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return createHandleObject(ctx, flox_volume_profile_create(toDouble(ctx, argv[0])), flox_volume_profile_destroy);
+  return createHandleObject(ctx, lrvx_volume_profile_create(toDouble(ctx, argv[0])), lrvx_volume_profile_destroy);
 }
 static JSValue js_vprofile_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
@@ -5235,34 +5235,34 @@ static JSValue js_vprofile_destroy(JSContext* ctx, JSValueConst, int, JSValueCon
 }
 static JSValue js_vprofile_add_trade(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_volume_profile_add_trade(
-      static_cast<FloxVolumeProfileHandle>(getHandle(ctx, argv[0])), toDouble(ctx, argv[1]),
+  lrvx_volume_profile_add_trade(
+      static_cast<LrvxVolumeProfileHandle>(getHandle(ctx, argv[0])), toDouble(ctx, argv[1]),
       toDouble(ctx, argv[2]), static_cast<uint8_t>(toUint32(ctx, argv[3])));
   return JS_UNDEFINED;
 }
 static JSValue js_vprofile_poc(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_volume_profile_poc(static_cast<FloxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_volume_profile_poc(static_cast<LrvxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_vprofile_vah(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_volume_profile_vah(static_cast<FloxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_volume_profile_vah(static_cast<LrvxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_vprofile_val(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewFloat64(
-      ctx, flox_volume_profile_val(static_cast<FloxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
+      ctx, lrvx_volume_profile_val(static_cast<LrvxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_vprofile_total_vol(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return JS_NewFloat64(ctx, flox_volume_profile_total_volume(
-                                static_cast<FloxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
+  return JS_NewFloat64(ctx, lrvx_volume_profile_total_volume(
+                                static_cast<LrvxVolumeProfileHandle>(getHandle(ctx, argv[0]))));
 }
 static JSValue js_vprofile_clear(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_volume_profile_clear(static_cast<FloxVolumeProfileHandle>(getHandle(ctx, argv[0])));
+  lrvx_volume_profile_clear(static_cast<LrvxVolumeProfileHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 
@@ -5274,7 +5274,7 @@ static JSValue js_stat_correlation(JSContext* ctx, JSValueConst, int, JSValueCon
 {
   auto x = jsArrayToDoubles(ctx, argv[0]);
   auto y = jsArrayToDoubles(ctx, argv[1]);
-  return JS_NewFloat64(ctx, flox_stat_correlation(x.data(), y.data(),
+  return JS_NewFloat64(ctx, lrvx_stat_correlation(x.data(), y.data(),
                                                   std::min(x.size(), y.size())));
 }
 
@@ -5303,7 +5303,7 @@ static JSValue js_console_impl(JSContext* ctx, int argc, JSValueConst* argv, FIL
       }
       else
       {
-        flox::JsCString s(ctx, json);
+        lrvx::JsCString s(ctx, json);
         if (s.ok())
         {
           fputs(s.get(), stream);
@@ -5314,7 +5314,7 @@ static JSValue js_console_impl(JSContext* ctx, int argc, JSValueConst* argv, FIL
     }
     if (!printed)
     {
-      flox::JsCString str(ctx, argv[i]);
+      lrvx::JsCString str(ctx, argv[i]);
       if (str.ok())
       {
         fputs(str.get(), stream);
@@ -5367,7 +5367,7 @@ static void addGlobalFunc(JSContext* ctx, const char* name, JSCFunction* func, i
 
 static JSValue js_mp_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return createHandleObject(c, flox_market_profile_create(toDouble(c, a[0]), toUint32(c, a[1]), toInt64(c, a[2])), flox_market_profile_destroy);
+  return createHandleObject(c, lrvx_market_profile_create(toDouble(c, a[0]), toUint32(c, a[1]), toInt64(c, a[2])), lrvx_market_profile_destroy);
 }
 
 static JSValue js_mp_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -5377,49 +5377,49 @@ static JSValue js_mp_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_mp_add_trade(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_market_profile_add_trade(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0])),
+  lrvx_market_profile_add_trade(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0])),
                                 toInt64(c, a[1]), toDouble(c, a[2]), toDouble(c, a[3]), static_cast<uint8_t>(toUint32(c, a[4])));
   return JS_UNDEFINED;
 }
 
 static JSValue js_mp_poc(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_market_profile_poc(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_market_profile_poc(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_vah(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_market_profile_vah(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_market_profile_vah(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_val(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_market_profile_val(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_market_profile_val(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_ib_high(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_market_profile_ib_high(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_market_profile_ib_high(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_ib_low(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_market_profile_ib_low(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_market_profile_ib_low(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_is_poor_high(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_market_profile_is_poor_high(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewBool(c, lrvx_market_profile_is_poor_high(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_is_poor_low(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_market_profile_is_poor_low(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0]))));
+  return JS_NewBool(c, lrvx_market_profile_is_poor_low(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mp_clear(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_market_profile_clear(static_cast<FloxMarketProfileHandle>(getHandle(c, a[0])));
+  lrvx_market_profile_clear(static_cast<LrvxMarketProfileHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
@@ -5429,7 +5429,7 @@ static JSValue js_mp_clear(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_cb_create(JSContext* c, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(c, flox_composite_book_create(), flox_composite_book_destroy);
+  return createHandleObject(c, lrvx_composite_book_create(), lrvx_composite_book_destroy);
 }
 
 static JSValue js_cb_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -5442,10 +5442,10 @@ static JSValue js_cb_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 // staleness off of. is_delta=false (apply_snapshot) replaces both sides of
 // that exchange's top-of-book wholesale; apply_delta updates only the
 // side(s) present here and leaves the other side untouched -- see
-// flox_composite_book_apply_snapshot/_apply_delta in flox_capi.h.
+// lrvx_composite_book_apply_snapshot/_apply_delta in lrvx_capi.h.
 static JSValue js_cb_apply_snapshot(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxCompositeBookHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0]));
   uint32_t exchange = toUint32(c, a[1]);
   uint32_t symbol = toUint32(c, a[2]);
   auto bp = jsArrayToDoubles(c, a[3]);
@@ -5453,14 +5453,14 @@ static JSValue js_cb_apply_snapshot(JSContext* c, JSValueConst, int, JSValueCons
   auto ap = jsArrayToDoubles(c, a[5]);
   auto aq = jsArrayToDoubles(c, a[6]);
   int64_t recvNs = toInt64(c, a[7]);
-  flox_composite_book_apply_snapshot(h, exchange, symbol, bp.data(), bq.data(), bp.size(),
+  lrvx_composite_book_apply_snapshot(h, exchange, symbol, bp.data(), bq.data(), bp.size(),
                                      ap.data(), aq.data(), ap.size(), recvNs);
   return JS_UNDEFINED;
 }
 
 static JSValue js_cb_apply_delta(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxCompositeBookHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0]));
   uint32_t exchange = toUint32(c, a[1]);
   uint32_t symbol = toUint32(c, a[2]);
   auto bp = jsArrayToDoubles(c, a[3]);
@@ -5468,7 +5468,7 @@ static JSValue js_cb_apply_delta(JSContext* c, JSValueConst, int, JSValueConst* 
   auto ap = jsArrayToDoubles(c, a[5]);
   auto aq = jsArrayToDoubles(c, a[6]);
   int64_t recvNs = toInt64(c, a[7]);
-  flox_composite_book_apply_delta(h, exchange, symbol, bp.data(), bq.data(), bp.size(),
+  lrvx_composite_book_apply_delta(h, exchange, symbol, bp.data(), bq.data(), bp.size(),
                                   ap.data(), aq.data(), ap.size(), recvNs);
   return JS_UNDEFINED;
 }
@@ -5476,7 +5476,7 @@ static JSValue js_cb_apply_delta(JSContext* c, JSValueConst, int, JSValueConst* 
 static JSValue js_cb_best_bid(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   double p = 0, q = 0;
-  if (flox_composite_book_best_bid(static_cast<FloxCompositeBookHandle>(getHandle(c, a[0])),
+  if (lrvx_composite_book_best_bid(static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0])),
                                    toUint32(c, a[1]), &p, &q))
   {
     JSValue o = JS_NewObject(c);
@@ -5490,7 +5490,7 @@ static JSValue js_cb_best_bid(JSContext* c, JSValueConst, int, JSValueConst* a)
 static JSValue js_cb_best_ask(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   double p = 0, q = 0;
-  if (flox_composite_book_best_ask(static_cast<FloxCompositeBookHandle>(getHandle(c, a[0])),
+  if (lrvx_composite_book_best_ask(static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0])),
                                    toUint32(c, a[1]), &p, &q))
   {
     JSValue o = JS_NewObject(c);
@@ -5503,18 +5503,18 @@ static JSValue js_cb_best_ask(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_cb_has_arb(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_composite_book_has_arb(static_cast<FloxCompositeBookHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
+  return JS_NewBool(c, lrvx_composite_book_has_arb(static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
 }
 
 static JSValue js_cb_mark_stale(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_composite_book_mark_stale(static_cast<FloxCompositeBookHandle>(getHandle(c, a[0])), toUint32(c, a[1]), toUint32(c, a[2]));
+  lrvx_composite_book_mark_stale(static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0])), toUint32(c, a[1]), toUint32(c, a[2]));
   return JS_UNDEFINED;
 }
 
 static JSValue js_cb_check_staleness(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_composite_book_check_staleness(static_cast<FloxCompositeBookHandle>(getHandle(c, a[0])), toInt64(c, a[1]), toInt64(c, a[2]));
+  lrvx_composite_book_check_staleness(static_cast<LrvxCompositeBookHandle>(getHandle(c, a[0])), toInt64(c, a[1]), toInt64(c, a[2]));
   return JS_UNDEFINED;
 }
 
@@ -5524,7 +5524,7 @@ static JSValue js_cb_check_staleness(JSContext* c, JSValueConst, int, JSValueCon
 
 static JSValue js_ot_create(JSContext* c, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(c, flox_order_tracker_create(), flox_order_tracker_destroy);
+  return createHandleObject(c, lrvx_order_tracker_create(), lrvx_order_tracker_destroy);
 }
 
 static JSValue js_ot_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -5534,42 +5534,42 @@ static JSValue js_ot_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_ot_submit(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_order_tracker_on_submitted(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0])),
+  return JS_NewBool(c, lrvx_order_tracker_on_submitted(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0])),
                                                        static_cast<uint64_t>(toInt64(c, a[1])), toUint32(c, a[2]), static_cast<uint8_t>(toUint32(c, a[3])),
                                                        toDouble(c, a[4]), toDouble(c, a[5])));
 }
 
 static JSValue js_ot_filled(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_order_tracker_on_filled(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0])),
+  return JS_NewBool(c, lrvx_order_tracker_on_filled(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0])),
                                                     static_cast<uint64_t>(toInt64(c, a[1])), toDouble(c, a[2])));
 }
 
 static JSValue js_ot_canceled(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_order_tracker_on_canceled(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0])),
+  return JS_NewBool(c, lrvx_order_tracker_on_canceled(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0])),
                                                       static_cast<uint64_t>(toInt64(c, a[1]))));
 }
 
 static JSValue js_ot_is_active(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_order_tracker_is_active(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0])),
+  return JS_NewBool(c, lrvx_order_tracker_is_active(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0])),
                                                     static_cast<uint64_t>(toInt64(c, a[1]))));
 }
 
 static JSValue js_ot_active_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewUint32(c, flox_order_tracker_active_count(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0]))));
+  return JS_NewUint32(c, lrvx_order_tracker_active_count(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_ot_total_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewUint32(c, flox_order_tracker_total_count(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0]))));
+  return JS_NewUint32(c, lrvx_order_tracker_total_count(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_ot_prune(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_order_tracker_prune(static_cast<FloxOrderTrackerHandle>(getHandle(c, a[0])));
+  lrvx_order_tracker_prune(static_cast<LrvxOrderTrackerHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
@@ -5584,7 +5584,7 @@ static JSValue js_ojt_create(JSContext* c, JSValueConst, int argc, JSValueConst*
   double sampleRate = (argc > 2) ? toDouble(c, a[2]) : 1.0;
   uint64_t sampleSalt =
       (argc > 3) ? static_cast<uint64_t>(toInt64(c, a[3])) : 0x9E3779B97F4A7C15ULL;
-  return createHandleObject(c, flox_order_journey_tracer_create(maxOrders, maxRecords, sampleRate, sampleSalt), flox_order_journey_tracer_destroy);
+  return createHandleObject(c, lrvx_order_journey_tracer_create(maxOrders, maxRecords, sampleRate, sampleSalt), lrvx_order_journey_tracer_destroy);
 }
 
 static JSValue js_ojt_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -5594,43 +5594,43 @@ static JSValue js_ojt_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_ojt_order_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewInt64(c, static_cast<int64_t>(flox_order_journey_tracer_order_count(
-                            static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])))));
+  return JS_NewInt64(c, static_cast<int64_t>(lrvx_order_journey_tracer_order_count(
+                            static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0])))));
 }
 
 static JSValue js_ojt_record_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewInt64(c, static_cast<int64_t>(flox_order_journey_tracer_record_count(
-                            static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])))));
+  return JS_NewInt64(c, static_cast<int64_t>(lrvx_order_journey_tracer_record_count(
+                            static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0])))));
 }
 
 static JSValue js_ojt_median_ack(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   return JS_NewFloat64(
-      c, flox_order_journey_tracer_median_ack_latency_ns(
-             static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+      c, lrvx_order_journey_tracer_median_ack_latency_ns(
+             static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_ojt_median_ttf(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   return JS_NewFloat64(
-      c, flox_order_journey_tracer_median_time_to_first_fill_ns(
-             static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+      c, lrvx_order_journey_tracer_median_time_to_first_fill_ns(
+             static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_ojt_maker_ratio(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_order_journey_tracer_maker_fill_ratio(
-                              static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_order_journey_tracer_maker_fill_ratio(
+                              static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_ojt_cancel_race(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_order_journey_tracer_cancel_race_loss_rate(
-                              static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_order_journey_tracer_cancel_race_loss_rate(
+                              static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
 }
 
-static JSValue js_ojt_row_to_obj(JSContext* c, const FloxOrderTraceRow& r)
+static JSValue js_ojt_row_to_obj(JSContext* c, const LrvxOrderTraceRow& r)
 {
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "orderId", JS_NewInt64(c, static_cast<int64_t>(r.order_id)));
@@ -5659,12 +5659,12 @@ static JSValue js_ojt_row_to_obj(JSContext* c, const FloxOrderTraceRow& r)
 
 static JSValue js_ojt_result(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]));
-  const uint64_t n = flox_order_journey_tracer_result(h, nullptr, 0);
-  std::vector<FloxOrderTraceRow> buf(n);
+  auto h = static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0]));
+  const uint64_t n = lrvx_order_journey_tracer_result(h, nullptr, 0);
+  std::vector<LrvxOrderTraceRow> buf(n);
   if (n > 0)
   {
-    flox_order_journey_tracer_result(h, buf.data(), n);
+    lrvx_order_journey_tracer_result(h, buf.data(), n);
   }
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < n; ++i)
@@ -5676,13 +5676,13 @@ static JSValue js_ojt_result(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_ojt_journey(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0]));
   uint64_t orderId = static_cast<uint64_t>(toInt64(c, a[1]));
-  const uint64_t n = flox_order_journey_tracer_journey(h, orderId, nullptr, 0);
-  std::vector<FloxOrderTraceRow> buf(n);
+  const uint64_t n = lrvx_order_journey_tracer_journey(h, orderId, nullptr, 0);
+  std::vector<LrvxOrderTraceRow> buf(n);
   if (n > 0)
   {
-    flox_order_journey_tracer_journey(h, orderId, buf.data(), n);
+    lrvx_order_journey_tracer_journey(h, orderId, buf.data(), n);
   }
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < n; ++i)
@@ -5694,8 +5694,8 @@ static JSValue js_ojt_journey(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_ojt_clear(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_order_journey_tracer_clear(
-      static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])));
+  lrvx_order_journey_tracer_clear(
+      static_cast<LrvxOrderJourneyTracerHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
@@ -5705,7 +5705,7 @@ static JSValue js_ojt_clear(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_pg_create(JSContext* c, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(c, flox_position_group_create(), flox_position_group_destroy);
+  return createHandleObject(c, lrvx_position_group_create(), lrvx_position_group_destroy);
 }
 
 static JSValue js_pg_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -5715,53 +5715,53 @@ static JSValue js_pg_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_pg_open(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, static_cast<double>(flox_position_group_open(
-                              static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])),
+  return JS_NewFloat64(c, static_cast<double>(lrvx_position_group_open(
+                              static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])),
                               static_cast<uint64_t>(toInt64(c, a[1])), toUint32(c, a[2]),
                               static_cast<uint8_t>(toUint32(c, a[3])), toDouble(c, a[4]), toDouble(c, a[5]))));
 }
 
 static JSValue js_pg_close(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_position_group_close(static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])),
+  lrvx_position_group_close(static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])),
                             static_cast<uint64_t>(toInt64(c, a[1])), toDouble(c, a[2]));
   return JS_UNDEFINED;
 }
 
 static JSValue js_pg_partial_close(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_position_group_partial_close(static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])),
+  lrvx_position_group_partial_close(static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])),
                                     static_cast<uint64_t>(toInt64(c, a[1])), toDouble(c, a[2]), toDouble(c, a[3]));
   return JS_UNDEFINED;
 }
 
 static JSValue js_pg_net(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_position_group_net_position(
-                              static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
+  return JS_NewFloat64(c, lrvx_position_group_net_position(
+                              static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
 }
 
 static JSValue js_pg_pnl(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_position_group_realized_pnl(
-                              static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
+  return JS_NewFloat64(c, lrvx_position_group_realized_pnl(
+                              static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
 }
 
 static JSValue js_pg_total_pnl(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewFloat64(c, flox_position_group_total_pnl(
-                              static_cast<FloxPositionGroupHandle>(getHandle(c, a[0]))));
+  return JS_NewFloat64(c, lrvx_position_group_total_pnl(
+                              static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_pg_open_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewUint32(c, flox_position_group_open_count(
-                             static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
+  return JS_NewUint32(c, lrvx_position_group_open_count(
+                             static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])), toUint32(c, a[1])));
 }
 
 static JSValue js_pg_prune(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_position_group_prune(static_cast<FloxPositionGroupHandle>(getHandle(c, a[0])));
+  lrvx_position_group_prune(static_cast<LrvxPositionGroupHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
@@ -5771,10 +5771,10 @@ static JSValue js_pg_prune(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dw_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   uint64_t mb = (JS_IsUndefined(a[1]) || JS_IsNull(a[1])) ? 256 : static_cast<uint64_t>(toInt64(c, a[1]));
   uint8_t eid = (JS_IsUndefined(a[2]) || JS_IsNull(a[2])) ? 0 : static_cast<uint8_t>(toUint32(c, a[2]));
-  JSValue ret = createHandleObject(c, flox_data_writer_create(dir, mb, eid), flox_data_writer_destroy);
+  JSValue ret = createHandleObject(c, lrvx_data_writer_create(dir, mb, eid), lrvx_data_writer_destroy);
   return ret;
 }
 
@@ -5785,8 +5785,8 @@ static JSValue js_dw_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dw_write_trade(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBool(c, flox_data_writer_write_trade(
-                           static_cast<FloxDataWriterHandle>(getHandle(c, a[0])),
+  return JS_NewBool(c, lrvx_data_writer_write_trade(
+                           static_cast<LrvxDataWriterHandle>(getHandle(c, a[0])),
                            toInt64(c, a[1]), toInt64(c, a[2]), toDouble(c, a[3]), toDouble(c, a[4]),
                            static_cast<uint64_t>(toInt64(c, a[5])), toUint32(c, a[6]),
                            static_cast<uint8_t>(toUint32(c, a[7]))));
@@ -5794,19 +5794,19 @@ static JSValue js_dw_write_trade(JSContext* c, JSValueConst, int, JSValueConst* 
 
 static JSValue js_dw_flush(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_data_writer_flush(static_cast<FloxDataWriterHandle>(getHandle(c, a[0])));
+  lrvx_data_writer_flush(static_cast<LrvxDataWriterHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
 static JSValue js_dw_close(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_data_writer_close(static_cast<FloxDataWriterHandle>(getHandle(c, a[0])));
+  lrvx_data_writer_close(static_cast<LrvxDataWriterHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
 static JSValue js_dw_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FloxWriterStats s = flox_data_writer_stats(static_cast<FloxDataWriterHandle>(getHandle(c, a[0])));
+  LrvxWriterStats s = lrvx_data_writer_stats(static_cast<LrvxDataWriterHandle>(getHandle(c, a[0])));
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "bytesWritten", JS_NewInt64(c, static_cast<int64_t>(s.bytes_written)));
   JS_SetPropertyStr(c, o, "eventsWritten", JS_NewInt64(c, static_cast<int64_t>(s.events_written)));
@@ -5816,9 +5816,9 @@ static JSValue js_dw_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 }
 
 // Extract raw int64 [price,qty,...] pairs from a BigInt64Array (or ArrayBuffer) into a
-// vector<FloxBookLevel>. Returns true on success; throws on type/size error.
+// vector<LrvxBookLevel>. Returns true on success; throws on type/size error.
 static bool extractBookLevels(JSContext* c, JSValueConst arr, uint32_t expectedPairs,
-                              std::vector<FloxBookLevel>& out)
+                              std::vector<LrvxBookLevel>& out)
 {
   if (expectedPairs == 0)
   {
@@ -5878,7 +5878,7 @@ static bool extractBookLevels(JSContext* c, JSValueConst arr, uint32_t expectedP
 
 static JSValue js_dw_write_book(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataWriterHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataWriterHandle>(getHandle(c, a[0]));
   int64_t exchangeTsNs = toInt64(c, a[1]);
   int64_t recvTsNs = toInt64(c, a[2]);
   int64_t seq = toInt64(c, a[3]);
@@ -5887,8 +5887,8 @@ static JSValue js_dw_write_book(JSContext* c, JSValueConst, int, JSValueConst* a
   uint32_t nBids = toUint32(c, a[7]);
   uint32_t nAsks = toUint32(c, a[9]);
 
-  std::vector<FloxBookLevel> bids;
-  std::vector<FloxBookLevel> asks;
+  std::vector<LrvxBookLevel> bids;
+  std::vector<LrvxBookLevel> asks;
   if (!extractBookLevels(c, a[6], nBids, bids))
   {
     return JS_EXCEPTION;
@@ -5897,7 +5897,7 @@ static JSValue js_dw_write_book(JSContext* c, JSValueConst, int, JSValueConst* a
   {
     return JS_EXCEPTION;
   }
-  uint8_t ok = flox_data_writer_write_book(h, exchangeTsNs, recvTsNs, seq, symbolId, isSnapshot,
+  uint8_t ok = lrvx_data_writer_write_book(h, exchangeTsNs, recvTsNs, seq, symbolId, isSnapshot,
                                            bids.empty() ? nullptr : bids.data(), nBids,
                                            asks.empty() ? nullptr : asks.data(), nAsks);
   return JS_NewBool(c, ok);
@@ -5909,7 +5909,7 @@ static JSValue js_dw_write_book(JSContext* c, JSValueConst, int, JSValueConst* a
 
 static JSValue js_blrh_create(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   uint64_t mb = (argc < 2 || JS_IsUndefined(a[1]) || JS_IsNull(a[1]))
                     ? 256
                     : static_cast<uint64_t>(toInt64(c, a[1]));
@@ -5921,15 +5921,15 @@ static JSValue js_blrh_create(JSContext* c, JSValueConst, int argc, JSValueConst
                      : static_cast<uint8_t>(toUint32(c, a[3]));
   // Optional a[4] = exchange_name, a[5] = instrument_type. Both feed the
   // RecordingMetadata stamp the merged-tape reader keys on.
-  flox::JsCString exch = flox::jsOptionalCString(c, argc, a, 4);
-  flox::JsCString itype = flox::jsOptionalCString(c, argc, a, 5);
+  lrvx::JsCString exch = lrvx::jsOptionalCString(c, argc, a, 4);
+  lrvx::JsCString itype = lrvx::jsOptionalCString(c, argc, a, 5);
   if ((exch.present() && !exch.ok()) || (itype.present() && !itype.ok()))
   {
     return JS_EXCEPTION;
   }
   return createHandleObject(
-      c, flox_binary_log_recorder_hook_create_ex(dir, mb, eid, comp, exch, itype),
-      flox_binary_log_recorder_hook_destroy);
+      c, lrvx_binary_log_recorder_hook_create_ex(dir, mb, eid, comp, exch, itype),
+      lrvx_binary_log_recorder_hook_destroy);
 }
 
 // ── Recorder-handle drivers (used by smoke tests + bindings that want
@@ -5938,7 +5938,7 @@ static JSValue js_blrh_create(JSContext* c, JSValueConst, int argc, JSValueConst
 //    callbacks struct, so the cast is layout-stable.
 static JSValue js_recorder_on_start(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto* cb = static_cast<FloxMarketDataRecorderCallbacks*>(getHandle(c, a[0]));
+  auto* cb = static_cast<LrvxMarketDataRecorderCallbacks*>(getHandle(c, a[0]));
   if (cb && cb->on_start)
   {
     cb->on_start(cb->user_data);
@@ -5948,7 +5948,7 @@ static JSValue js_recorder_on_start(JSContext* c, JSValueConst, int, JSValueCons
 
 static JSValue js_recorder_on_stop(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto* cb = static_cast<FloxMarketDataRecorderCallbacks*>(getHandle(c, a[0]));
+  auto* cb = static_cast<LrvxMarketDataRecorderCallbacks*>(getHandle(c, a[0]));
   if (cb && cb->on_stop)
   {
     cb->on_stop(cb->user_data);
@@ -5959,12 +5959,12 @@ static JSValue js_recorder_on_stop(JSContext* c, JSValueConst, int, JSValueConst
 static JSValue js_recorder_on_trade(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   // (handle, symbolId, price, qty, isBuy, exchangeTsNs)
-  auto* cb = static_cast<FloxMarketDataRecorderCallbacks*>(getHandle(c, a[0]));
+  auto* cb = static_cast<LrvxMarketDataRecorderCallbacks*>(getHandle(c, a[0]));
   if (!cb || !cb->on_trade)
   {
     return JS_UNDEFINED;
   }
-  FloxTradeData td{};
+  LrvxTradeData td{};
   td.symbol = toUint32(c, a[1]);
   double px = toDouble(c, a[2]);
   double qty = toDouble(c, a[3]);
@@ -5983,8 +5983,8 @@ static JSValue js_blrh_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_blrh_as_recorder(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto rec = flox_binary_log_recorder_hook_as_recorder(
-      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  auto rec = lrvx_binary_log_recorder_hook_as_recorder(
+      static_cast<LrvxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
   // Borrowed: this is &hook->recorder_view, a member of the hook object
   // itself, not a separate allocation -- destroying it would free part of
   // the hook out from under it. Its lifetime is the hook's.
@@ -5993,33 +5993,33 @@ static JSValue js_blrh_as_recorder(JSContext* c, JSValueConst, int, JSValueConst
 
 static JSValue js_blrh_add_symbol(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxBinaryLogRecorderHookHandle>(getHandle(c, a[0]));
   uint32_t symbolId = toUint32(c, a[1]);
-  FLOX_JS_CSTRING_OR_THROW(name, c, a[2]);
-  flox::JsCString base = flox::jsOptionalCString(c, argc, a, 3);
-  flox::JsCString quote = flox::jsOptionalCString(c, argc, a, 4);
+  LRVX_JS_CSTRING_OR_THROW(name, c, a[2]);
+  lrvx::JsCString base = lrvx::jsOptionalCString(c, argc, a, 3);
+  lrvx::JsCString quote = lrvx::jsOptionalCString(c, argc, a, 4);
   if ((base.present() && !base.ok()) || (quote.present() && !quote.ok()))
   {
     return JS_EXCEPTION;
   }
   int8_t pp = argc > 5 ? static_cast<int8_t>(toInt64(c, a[5])) : 8;
   int8_t qp = argc > 6 ? static_cast<int8_t>(toInt64(c, a[6])) : 8;
-  flox_binary_log_recorder_hook_add_symbol(h, symbolId, name.get(), base.or_else(""),
+  lrvx_binary_log_recorder_hook_add_symbol(h, symbolId, name.get(), base.or_else(""),
                                            quote.or_else(""), pp, qp);
   return JS_UNDEFINED;
 }
 
 static JSValue js_blrh_flush(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  flox_binary_log_recorder_hook_flush(
-      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  lrvx_binary_log_recorder_hook_flush(
+      static_cast<LrvxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
   return JS_UNDEFINED;
 }
 
 static JSValue js_blrh_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FloxWriterStats s = flox_binary_log_recorder_hook_stats(
-      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  LrvxWriterStats s = lrvx_binary_log_recorder_hook_stats(
+      static_cast<LrvxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "tradesWritten", JS_NewInt64(c, static_cast<int64_t>(s.trades_written)));
   JS_SetPropertyStr(c, o, "bookUpdatesWritten",
@@ -6036,14 +6036,14 @@ static JSValue js_blrh_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dr_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
-  JSValue ret = createHandleObject(c, flox_data_reader_create(dir), flox_data_reader_destroy);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+  JSValue ret = createHandleObject(c, lrvx_data_reader_create(dir), lrvx_data_reader_destroy);
   return ret;
 }
 
 static JSValue js_dr_create_filtered(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   int64_t from_ns = toInt64(c, a[1]);
   int64_t to_ns = toInt64(c, a[2]);
   // a[3] optional: array of symbol ids
@@ -6063,9 +6063,9 @@ static JSValue js_dr_create_filtered(JSContext* c, JSValueConst, int argc, JSVal
   }
   JSValue ret = createHandleObject(
       c,
-      flox_data_reader_create_filtered(dir, from_ns, to_ns, syms.empty() ? nullptr : syms.data(),
+      lrvx_data_reader_create_filtered(dir, from_ns, to_ns, syms.empty() ? nullptr : syms.data(),
                                        static_cast<uint32_t>(syms.size())),
-      flox_data_reader_destroy);
+      lrvx_data_reader_destroy);
   return ret;
 }
 
@@ -6076,13 +6076,13 @@ static JSValue js_dr_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dr_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewInt64(c, static_cast<int64_t>(flox_data_reader_count(
-                            static_cast<FloxDataReaderHandle>(getHandle(c, a[0])))));
+  return JS_NewInt64(c, static_cast<int64_t>(lrvx_data_reader_count(
+                            static_cast<LrvxDataReaderHandle>(getHandle(c, a[0])))));
 }
 
 static JSValue js_dr_summary(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FloxDatasetSummary s = flox_data_reader_summary(static_cast<FloxDataReaderHandle>(getHandle(c, a[0])));
+  LrvxDatasetSummary s = lrvx_data_reader_summary(static_cast<LrvxDataReaderHandle>(getHandle(c, a[0])));
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "firstEventNs", JS_NewBigInt64(c, s.first_event_ns));
   JS_SetPropertyStr(c, o, "lastEventNs", JS_NewBigInt64(c, s.last_event_ns));
@@ -6095,7 +6095,7 @@ static JSValue js_dr_summary(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dr_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FloxReaderStats s = flox_data_reader_stats(static_cast<FloxDataReaderHandle>(getHandle(c, a[0])));
+  LrvxReaderStats s = lrvx_data_reader_stats(static_cast<LrvxDataReaderHandle>(getHandle(c, a[0])));
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "filesRead", JS_NewInt64(c, static_cast<int64_t>(s.files_read)));
   JS_SetPropertyStr(c, o, "eventsRead", JS_NewInt64(c, static_cast<int64_t>(s.events_read)));
@@ -6108,7 +6108,7 @@ static JSValue js_dr_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 // ── helpers shared by read_X / read_X_from ───────────────────────────────
 
-static JSValue js_dr_build_trades_array(JSContext* c, const std::vector<FloxTradeRecord>& trades,
+static JSValue js_dr_build_trades_array(JSContext* c, const std::vector<LrvxTradeRecord>& trades,
                                         uint64_t got)
 {
   JSValue arr = JS_NewArray(c);
@@ -6128,7 +6128,7 @@ static JSValue js_dr_build_trades_array(JSContext* c, const std::vector<FloxTrad
   return arr;
 }
 
-static JSValue js_dr_build_bbos_array(JSContext* c, const std::vector<FloxBBO>& bbos, uint64_t got)
+static JSValue js_dr_build_bbos_array(JSContext* c, const std::vector<LrvxBBO>& bbos, uint64_t got)
 {
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < got; i++)
@@ -6155,9 +6155,9 @@ static JSValue js_dr_build_bbos_array(JSContext* c, const std::vector<FloxBBO>& 
 
 static JSValue js_dr_read_trades(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataReaderHandle>(getHandle(c, a[0]));
   uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
-  uint64_t n = flox_data_reader_count(h);
+  uint64_t n = lrvx_data_reader_count(h);
   if (max > 0 && max < n)
   {
     n = max;
@@ -6166,17 +6166,17 @@ static JSValue js_dr_read_trades(JSContext* c, JSValueConst, int argc, JSValueCo
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxTradeRecord> trades(n);
-  uint64_t got = flox_data_reader_read_trades(h, trades.data(), n);
+  std::vector<LrvxTradeRecord> trades(n);
+  uint64_t got = lrvx_data_reader_read_trades(h, trades.data(), n);
   return js_dr_build_trades_array(c, trades, got);
 }
 
 static JSValue js_dr_read_trades_from(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataReaderHandle>(getHandle(c, a[0]));
   int64_t startTsNs = toInt64(c, a[1]);
   uint64_t max = argc > 2 ? static_cast<uint64_t>(toInt64(c, a[2])) : 0;
-  uint64_t n = flox_data_reader_read_trades_from(h, startTsNs, nullptr, 0);
+  uint64_t n = lrvx_data_reader_read_trades_from(h, startTsNs, nullptr, 0);
   if (max > 0 && max < n)
   {
     n = max;
@@ -6185,16 +6185,16 @@ static JSValue js_dr_read_trades_from(JSContext* c, JSValueConst, int argc, JSVa
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxTradeRecord> trades(n);
-  uint64_t got = flox_data_reader_read_trades_from(h, startTsNs, trades.data(), n);
+  std::vector<LrvxTradeRecord> trades(n);
+  uint64_t got = lrvx_data_reader_read_trades_from(h, startTsNs, trades.data(), n);
   return js_dr_build_trades_array(c, trades, got);
 }
 
 static JSValue js_dr_read_bbo(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataReaderHandle>(getHandle(c, a[0]));
   uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
-  uint64_t n = flox_data_reader_read_bbo(h, nullptr, 0);
+  uint64_t n = lrvx_data_reader_read_bbo(h, nullptr, 0);
   if (max > 0 && max < n)
   {
     n = max;
@@ -6203,17 +6203,17 @@ static JSValue js_dr_read_bbo(JSContext* c, JSValueConst, int argc, JSValueConst
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxBBO> bbos(n);
-  uint64_t got = flox_data_reader_read_bbo(h, bbos.data(), n);
+  std::vector<LrvxBBO> bbos(n);
+  uint64_t got = lrvx_data_reader_read_bbo(h, bbos.data(), n);
   return js_dr_build_bbos_array(c, bbos, got);
 }
 
 static JSValue js_dr_read_bbo_from(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataReaderHandle>(getHandle(c, a[0]));
   int64_t startTsNs = toInt64(c, a[1]);
   uint64_t max = argc > 2 ? static_cast<uint64_t>(toInt64(c, a[2])) : 0;
-  uint64_t n = flox_data_reader_read_bbo_from(h, startTsNs, nullptr, 0);
+  uint64_t n = lrvx_data_reader_read_bbo_from(h, startTsNs, nullptr, 0);
   if (max > 0 && max < n)
   {
     n = max;
@@ -6222,14 +6222,14 @@ static JSValue js_dr_read_bbo_from(JSContext* c, JSValueConst, int argc, JSValue
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxBBO> bbos(n);
-  uint64_t got = flox_data_reader_read_bbo_from(h, startTsNs, bbos.data(), n);
+  std::vector<LrvxBBO> bbos(n);
+  uint64_t got = lrvx_data_reader_read_bbo_from(h, startTsNs, bbos.data(), n);
   return js_dr_build_bbos_array(c, bbos, got);
 }
 
 static JSValue js_dr_build_book_updates_array(JSContext* c,
-                                              const std::vector<FloxBookUpdateHeader>& headers,
-                                              const std::vector<FloxLevel>& levels, uint64_t got)
+                                              const std::vector<LrvxBookUpdateHeader>& headers,
+                                              const std::vector<LrvxLevel>& levels, uint64_t got)
 {
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < got; i++)
@@ -6271,33 +6271,33 @@ static JSValue js_dr_build_book_updates_array(JSContext* c,
 
 static JSValue js_dr_read_book_updates(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataReaderHandle>(getHandle(c, a[0]));
   uint64_t total_levels = 0;
-  uint64_t n_events = flox_data_reader_count_book_updates(h, &total_levels);
+  uint64_t n_events = lrvx_data_reader_count_book_updates(h, &total_levels);
   if (n_events == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxBookUpdateHeader> headers(n_events);
-  std::vector<FloxLevel> levels(total_levels);
-  uint64_t got = flox_data_reader_read_book_updates(h, headers.data(), n_events, levels.data(),
+  std::vector<LrvxBookUpdateHeader> headers(n_events);
+  std::vector<LrvxLevel> levels(total_levels);
+  uint64_t got = lrvx_data_reader_read_book_updates(h, headers.data(), n_events, levels.data(),
                                                     total_levels);
   return js_dr_build_book_updates_array(c, headers, levels, got);
 }
 
 static JSValue js_dr_read_book_updates_from(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxDataReaderHandle>(getHandle(c, a[0]));
   int64_t startTsNs = toInt64(c, a[1]);
   uint64_t total_levels = 0;
-  uint64_t n_events = flox_data_reader_count_book_updates_from(h, startTsNs, &total_levels);
+  uint64_t n_events = lrvx_data_reader_count_book_updates_from(h, startTsNs, &total_levels);
   if (n_events == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxBookUpdateHeader> headers(n_events);
-  std::vector<FloxLevel> levels(total_levels);
-  uint64_t got = flox_data_reader_read_book_updates_from(
+  std::vector<LrvxBookUpdateHeader> headers(n_events);
+  std::vector<LrvxLevel> levels(total_levels);
+  uint64_t got = lrvx_data_reader_read_book_updates_from(
       h, startTsNs, headers.data(), n_events, levels.data(), total_levels);
   return js_dr_build_book_updates_array(c, headers, levels, got);
 }
@@ -6327,7 +6327,7 @@ static JSValue js_mtr_create(JSContext* c, JSValueConst, int argc, JSValueConst*
     for (uint32_t i = 0; i < n; i++)
     {
       JSValue e = JS_GetPropertyUint32(c, a[0], i);
-      flox::JsCString s(c, e);
+      lrvx::JsCString s(c, e);
       if (!s.ok())
       {
         JS_FreeValue(c, e);
@@ -6361,12 +6361,12 @@ static JSValue js_mtr_create(JSContext* c, JSValueConst, int argc, JSValueConst*
     }
   }
 
-  auto handle = flox_merged_tape_reader_create(
+  auto handle = lrvx_merged_tape_reader_create(
       path_cstrs.empty() ? nullptr : path_cstrs.data(),
       static_cast<uint32_t>(path_cstrs.size()), from_ns, to_ns,
       syms.empty() ? nullptr : syms.data(), static_cast<uint32_t>(syms.size()));
 
-  return createHandleObject(c, handle, flox_merged_tape_reader_destroy);
+  return createHandleObject(c, handle, lrvx_merged_tape_reader_destroy);
 }
 
 static JSValue js_mtr_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -6376,20 +6376,20 @@ static JSValue js_mtr_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_mtr_symbol_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewUint32(c, flox_merged_tape_reader_symbol_count(
-                             static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]))));
+  return JS_NewUint32(c, lrvx_merged_tape_reader_symbol_count(
+                             static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mtr_get_symbols(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]));
-  uint32_t n = flox_merged_tape_reader_symbol_count(h);
+  auto h = static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]));
+  uint32_t n = lrvx_merged_tape_reader_symbol_count(h);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxMergedSymbol> syms(n);
-  uint32_t got = flox_merged_tape_reader_get_symbols(h, syms.data(), n);
+  std::vector<LrvxMergedSymbol> syms(n);
+  uint32_t got = lrvx_merged_tape_reader_get_symbols(h, syms.data(), n);
   JSValue arr = JS_NewArray(c);
   for (uint32_t i = 0; i < got; i++)
   {
@@ -6408,20 +6408,20 @@ static JSValue js_mtr_get_symbols(JSContext* c, JSValueConst, int, JSValueConst*
 
 static JSValue js_mtr_tape_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewUint32(c, flox_merged_tape_reader_tape_count(
-                             static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]))));
+  return JS_NewUint32(c, lrvx_merged_tape_reader_tape_count(
+                             static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]))));
 }
 
 static JSValue js_mtr_get_tape_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]));
-  uint32_t n = flox_merged_tape_reader_tape_count(h);
+  auto h = static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]));
+  uint32_t n = lrvx_merged_tape_reader_tape_count(h);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxMergedTapeStats> stats(n);
-  uint32_t got = flox_merged_tape_reader_get_tape_stats(h, stats.data(), n);
+  std::vector<LrvxMergedTapeStats> stats(n);
+  uint32_t got = lrvx_merged_tape_reader_get_tape_stats(h, stats.data(), n);
   JSValue arr = JS_NewArray(c);
   for (uint32_t i = 0; i < got; i++)
   {
@@ -6439,9 +6439,9 @@ static JSValue js_mtr_get_tape_stats(JSContext* c, JSValueConst, int, JSValueCon
 
 static JSValue js_mtr_time_range(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]));
   int64_t lo = 0, hi = 0;
-  flox_merged_tape_reader_time_range(h, &lo, &hi);
+  lrvx_merged_tape_reader_time_range(h, &lo, &hi);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "minFirstNs", JS_NewBigInt64(c, lo));
   JS_SetPropertyStr(c, o, "maxLastNs", JS_NewBigInt64(c, hi));
@@ -6450,15 +6450,15 @@ static JSValue js_mtr_time_range(JSContext* c, JSValueConst, int, JSValueConst* 
 
 static JSValue js_mtr_count_trades(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return JS_NewBigInt64(c, static_cast<int64_t>(flox_merged_tape_reader_count_trades(
-                               static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0])))));
+  return JS_NewBigInt64(c, static_cast<int64_t>(lrvx_merged_tape_reader_count_trades(
+                               static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0])))));
 }
 
 static JSValue js_mtr_read_trades(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]));
   uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
-  uint64_t n = flox_merged_tape_reader_count_trades(h);
+  uint64_t n = lrvx_merged_tape_reader_count_trades(h);
   if (max > 0 && max < n)
   {
     n = max;
@@ -6467,16 +6467,16 @@ static JSValue js_mtr_read_trades(JSContext* c, JSValueConst, int argc, JSValueC
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxTradeRecord> trades(n);
-  uint64_t got = flox_merged_tape_reader_read_trades(h, trades.data(), n);
+  std::vector<LrvxTradeRecord> trades(n);
+  uint64_t got = lrvx_merged_tape_reader_read_trades(h, trades.data(), n);
   return js_dr_build_trades_array(c, trades, got);
 }
 
 static JSValue js_mtr_count_books(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]));
   uint64_t total_levels = 0;
-  uint64_t n_events = flox_merged_tape_reader_count_books(h, &total_levels);
+  uint64_t n_events = lrvx_merged_tape_reader_count_books(h, &total_levels);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "events", JS_NewBigInt64(c, static_cast<int64_t>(n_events)));
   JS_SetPropertyStr(c, o, "levels", JS_NewBigInt64(c, static_cast<int64_t>(total_levels)));
@@ -6485,16 +6485,16 @@ static JSValue js_mtr_count_books(JSContext* c, JSValueConst, int, JSValueConst*
 
 static JSValue js_mtr_read_books(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxMergedTapeReaderHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxMergedTapeReaderHandle>(getHandle(c, a[0]));
   uint64_t total_levels = 0;
-  uint64_t n_events = flox_merged_tape_reader_count_books(h, &total_levels);
+  uint64_t n_events = lrvx_merged_tape_reader_count_books(h, &total_levels);
   if (n_events == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxBookUpdateHeader> headers(n_events);
-  std::vector<FloxLevel> levels(total_levels);
-  uint64_t got = flox_merged_tape_reader_read_books(h, headers.data(), n_events,
+  std::vector<LrvxBookUpdateHeader> headers(n_events);
+  std::vector<LrvxLevel> levels(total_levels);
+  uint64_t got = lrvx_merged_tape_reader_read_books(h, headers.data(), n_events,
                                                     levels.data(), total_levels);
   return js_dr_build_book_updates_array(c, headers, levels, got);
 }
@@ -6503,7 +6503,7 @@ static JSValue js_mtr_read_books(JSContext* c, JSValueConst, int, JSValueConst* 
 // Partitioner
 // ============================================================
 
-static JSValue partitionArrayToJs(JSContext* ctx, const std::vector<FloxPartition>& parts)
+static JSValue partitionArrayToJs(JSContext* ctx, const std::vector<LrvxPartition>& parts)
 {
   JSValue arr = JS_NewArray(ctx);
   for (size_t i = 0; i < parts.size(); i++)
@@ -6521,9 +6521,9 @@ static JSValue partitionArrayToJs(JSContext* ctx, const std::vector<FloxPartitio
   return arr;
 }
 
-static std::vector<FloxPartition> doPartition(
-    JSContext* c, FloxPartitionerHandle h,
-    uint32_t (*fn)(FloxPartitionerHandle, uint32_t, int64_t, FloxPartition*, uint32_t),
+static std::vector<LrvxPartition> doPartition(
+    JSContext* c, LrvxPartitionerHandle h,
+    uint32_t (*fn)(LrvxPartitionerHandle, uint32_t, int64_t, LrvxPartition*, uint32_t),
     uint32_t num, int64_t warmup)
 {
   uint32_t n = fn(h, num, warmup, nullptr, 0);
@@ -6531,15 +6531,15 @@ static std::vector<FloxPartition> doPartition(
   {
     return {};
   }
-  std::vector<FloxPartition> out(n);
+  std::vector<LrvxPartition> out(n);
   fn(h, num, warmup, out.data(), n);
   return out;
 }
 
 static JSValue js_part_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
-  JSValue ret = createHandleObject(c, flox_partitioner_create(dir), flox_partitioner_destroy);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+  JSValue ret = createHandleObject(c, lrvx_partitioner_create(dir), lrvx_partitioner_destroy);
   return ret;
 }
 
@@ -6550,77 +6550,77 @@ static JSValue js_part_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_part_by_time(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxPartitionerHandle>(getHandle(c, a[0]));
-  auto parts = doPartition(c, h, flox_partitioner_by_time, toUint32(c, a[1]),
+  auto h = static_cast<LrvxPartitionerHandle>(getHandle(c, a[0]));
+  auto parts = doPartition(c, h, lrvx_partitioner_by_time, toUint32(c, a[1]),
                            argc > 2 ? toInt64(c, a[2]) : 0);
   return partitionArrayToJs(c, parts);
 }
 
 static JSValue js_part_by_duration(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxPartitionerHandle>(getHandle(c, a[0]));
-  uint32_t n = flox_partitioner_by_duration(h, toInt64(c, a[1]),
+  auto h = static_cast<LrvxPartitionerHandle>(getHandle(c, a[0]));
+  uint32_t n = lrvx_partitioner_by_duration(h, toInt64(c, a[1]),
                                             argc > 2 ? toInt64(c, a[2]) : 0, nullptr, 0);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxPartition> out(n);
-  flox_partitioner_by_duration(h, toInt64(c, a[1]), argc > 2 ? toInt64(c, a[2]) : 0, out.data(), n);
+  std::vector<LrvxPartition> out(n);
+  lrvx_partitioner_by_duration(h, toInt64(c, a[1]), argc > 2 ? toInt64(c, a[2]) : 0, out.data(), n);
   return partitionArrayToJs(c, out);
 }
 
 static JSValue js_part_by_calendar(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  auto h = static_cast<FloxPartitionerHandle>(getHandle(c, a[0]));
+  auto h = static_cast<LrvxPartitionerHandle>(getHandle(c, a[0]));
   uint8_t unit = argc > 1 ? static_cast<uint8_t>(toUint32(c, a[1])) : 2;
   int64_t warmup = argc > 2 ? toInt64(c, a[2]) : 0;
-  uint32_t n = flox_partitioner_by_calendar(h, unit, warmup, nullptr, 0);
+  uint32_t n = lrvx_partitioner_by_calendar(h, unit, warmup, nullptr, 0);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxPartition> out(n);
-  flox_partitioner_by_calendar(h, unit, warmup, out.data(), n);
+  std::vector<LrvxPartition> out(n);
+  lrvx_partitioner_by_calendar(h, unit, warmup, out.data(), n);
   return partitionArrayToJs(c, out);
 }
 
 static JSValue js_part_by_symbol(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxPartitionerHandle>(getHandle(c, a[0]));
-  uint32_t n = flox_partitioner_by_symbol(h, toUint32(c, a[1]), nullptr, 0);
+  auto h = static_cast<LrvxPartitionerHandle>(getHandle(c, a[0]));
+  uint32_t n = lrvx_partitioner_by_symbol(h, toUint32(c, a[1]), nullptr, 0);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxPartition> out(n);
-  flox_partitioner_by_symbol(h, toUint32(c, a[1]), out.data(), n);
+  std::vector<LrvxPartition> out(n);
+  lrvx_partitioner_by_symbol(h, toUint32(c, a[1]), out.data(), n);
   return partitionArrayToJs(c, out);
 }
 
 static JSValue js_part_per_symbol(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxPartitionerHandle>(getHandle(c, a[0]));
-  uint32_t n = flox_partitioner_per_symbol(h, nullptr, 0);
+  auto h = static_cast<LrvxPartitionerHandle>(getHandle(c, a[0]));
+  uint32_t n = lrvx_partitioner_per_symbol(h, nullptr, 0);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxPartition> out(n);
-  flox_partitioner_per_symbol(h, out.data(), n);
+  std::vector<LrvxPartition> out(n);
+  lrvx_partitioner_per_symbol(h, out.data(), n);
   return partitionArrayToJs(c, out);
 }
 
 static JSValue js_part_by_event_count(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  auto h = static_cast<FloxPartitionerHandle>(getHandle(c, a[0]));
-  uint32_t n = flox_partitioner_by_event_count(h, toUint32(c, a[1]), nullptr, 0);
+  auto h = static_cast<LrvxPartitionerHandle>(getHandle(c, a[0]));
+  uint32_t n = lrvx_partitioner_by_event_count(h, toUint32(c, a[1]), nullptr, 0);
   if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxPartition> out(n);
-  flox_partitioner_by_event_count(h, toUint32(c, a[1]), out.data(), n);
+  std::vector<LrvxPartition> out(n);
+  lrvx_partitioner_by_event_count(h, toUint32(c, a[1]), out.data(), n);
   return partitionArrayToJs(c, out);
 }
 
@@ -6650,7 +6650,7 @@ static std::vector<int64_t> jsArrayToInt64s(JSContext* ctx, JSValueConst arr)
   return out;
 }
 
-static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
+static JSValue barsToJsArray(JSContext* ctx, const std::vector<LrvxBar>& bars)
 {
   JSValue arr = JS_NewArray(ctx);
   for (size_t i = 0; i < bars.size(); i++)
@@ -6666,7 +6666,7 @@ static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
     JS_SetPropertyStr(ctx, o, "volume", JS_NewFloat64(ctx, b.volume_raw / kScale));
     JS_SetPropertyStr(ctx, o, "buyVolume", JS_NewFloat64(ctx, b.buy_volume_raw / kScale));
     JS_SetPropertyStr(ctx, o, "trades", JS_NewUint32(ctx, b.trade_count));
-    // flox::Bar::reason, carried through so a batch-aggregated bar says why
+    // lrvx::Bar::reason, carried through so a batch-aggregated bar says why
     // it closed the same way the live callback path's bar object does.
     JS_SetPropertyStr(ctx, o, "closeReason", JS_NewUint32(ctx, b.close_reason));
     JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
@@ -6677,7 +6677,7 @@ static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
 // Generic aggregator: takes (timestamps, prices, qtys, is_buy, param, maxBars)
 // Returns JS array of bar objects.
 using AggTimeFn = uint32_t (*)(const int64_t*, const double*, const double*, const uint8_t*,
-                               size_t, double, FloxBar*, uint32_t);
+                               size_t, double, LrvxBar*, uint32_t);
 
 // Read the optional `sides` array into per-trade buy flags. Shared, because
 // js_agg_tick used to inline an all-zero vector instead and so reported
@@ -6710,7 +6710,7 @@ static JSValue doAgg(JSContext* c, JSValueConst* a, AggTimeFn fn, double param)
   auto qty = jsArrayToDoubles(c, a[2]);
   uint32_t n = static_cast<uint32_t>(ts.size());
   std::vector<uint8_t> side = aggSides(c, a[3], n);
-  std::vector<FloxBar> bars(n);
+  std::vector<LrvxBar> bars(n);
   uint32_t got = fn(ts.data(), px.data(), qty.data(), side.data(), n, param, bars.data(), n);
   // Every aggregator routed through doAgg() except Renko closes at most one
   // bar per input trade, so `n` is always a safe upper bound and `got` is
@@ -6724,14 +6724,14 @@ static JSValue doAgg(JSContext* c, JSValueConst* a, AggTimeFn fn, double param)
   // to the real count instead.
   if (got > n)
   {
-    bars.assign(got, FloxBar{});
+    bars.assign(got, LrvxBar{});
     got = fn(ts.data(), px.data(), qty.data(), side.data(), n, param, bars.data(), got);
   }
   bars.resize(got);
   return barsToJsArray(c, bars);
 }
 
-// flox.timeBars and flox.heikinBars document their interval in
+// lrvx.timeBars and lrvx.heikinBars document their interval in
 // nanoseconds; the C ABI takes seconds as a double and multiplies by 1e9
 // again on the other side. The JS argument used to be passed straight
 // through, so a script following the docs asked for 60'000'000'000
@@ -6755,7 +6755,7 @@ static double intervalNsToSeconds(int64_t interval_ns)
 
 static JSValue js_agg_time(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));
+  return doAgg(c, a, lrvx_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));
 }
 
 static JSValue js_agg_tick(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -6765,8 +6765,8 @@ static JSValue js_agg_tick(JSContext* c, JSValueConst, int, JSValueConst* a)
   auto qty = jsArrayToDoubles(c, a[2]);
   uint32_t n = static_cast<uint32_t>(ts.size());
   std::vector<uint8_t> side = aggSides(c, a[3], n);
-  std::vector<FloxBar> bars(n);
-  uint32_t got = flox_aggregate_tick_bars(ts.data(), px.data(), qty.data(), side.data(),
+  std::vector<LrvxBar> bars(n);
+  uint32_t got = lrvx_aggregate_tick_bars(ts.data(), px.data(), qty.data(), side.data(),
                                           n, toUint32(c, a[4]), bars.data(), n);
   bars.resize(got);
   return barsToJsArray(c, bars);
@@ -6774,22 +6774,22 @@ static JSValue js_agg_tick(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_agg_volume(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_volume_bars, toDouble(c, a[4]));
+  return doAgg(c, a, lrvx_aggregate_volume_bars, toDouble(c, a[4]));
 }
 
 static JSValue js_agg_range(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_range_bars, toDouble(c, a[4]));
+  return doAgg(c, a, lrvx_aggregate_range_bars, toDouble(c, a[4]));
 }
 
 static JSValue js_agg_renko(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_renko_bars, toDouble(c, a[4]));
+  return doAgg(c, a, lrvx_aggregate_renko_bars, toDouble(c, a[4]));
 }
 
 static JSValue js_agg_heikin(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_heikin_ashi_bars, intervalNsToSeconds(toInt64(c, a[4])));
+  return doAgg(c, a, lrvx_aggregate_heikin_ashi_bars, intervalNsToSeconds(toInt64(c, a[4])));
 }
 
 // ============================================================
@@ -6798,9 +6798,9 @@ static JSValue js_agg_heikin(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_seg_merge_dir(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
-  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
-  FloxMergeResult r = flox_segment_merge_dir(in, out);
+  LRVX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(out, c, a[1]);
+  LrvxMergeResult r = lrvx_segment_merge_dir(in, out);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "success", JS_NewBool(c, r.success));
   JS_SetPropertyStr(c, o, "segmentsMerged", JS_NewInt64(c, static_cast<int64_t>(r.segments_merged)));
@@ -6811,12 +6811,12 @@ static JSValue js_seg_merge_dir(JSContext* c, JSValueConst, int, JSValueConst* a
 
 static JSValue js_seg_split(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[1]);
+  LRVX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[1]);
   uint8_t mode = argc > 2 ? static_cast<uint8_t>(toUint32(c, a[2])) : 0;
   int64_t tns = argc > 3 ? toInt64(c, a[3]) : 0;
   uint64_t epc = argc > 4 ? static_cast<uint64_t>(toInt64(c, a[4])) : 0;
-  FloxSplitResult r = flox_segment_split(in, dir, mode, tns, epc);
+  LrvxSplitResult r = lrvx_segment_split(in, dir, mode, tns, epc);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "success", JS_NewBool(c, r.success));
   JS_SetPropertyStr(c, o, "segmentsCreated", JS_NewUint32(c, r.segments_created));
@@ -6826,8 +6826,8 @@ static JSValue js_seg_split(JSContext* c, JSValueConst, int argc, JSValueConst* 
 
 static JSValue js_seg_export(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
-  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
+  LRVX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(out, c, a[1]);
   uint8_t fmt = argc > 2 ? static_cast<uint8_t>(toUint32(c, a[2])) : 0;
   int64_t from = argc > 3 ? toInt64(c, a[3]) : 0;
   int64_t to = argc > 4 ? toInt64(c, a[4]) : 0;
@@ -6845,7 +6845,7 @@ static JSValue js_seg_export(JSContext* c, JSValueConst, int argc, JSValueConst*
       JS_FreeValue(c, e);
     }
   }
-  FloxExportResult r = flox_segment_export(in, out, fmt, from, to,
+  LrvxExportResult r = lrvx_segment_export(in, out, fmt, from, to,
                                            syms.empty() ? nullptr : syms.data(),
                                            static_cast<uint32_t>(syms.size()));
   JSValue o = JS_NewObject(c);
@@ -6857,8 +6857,8 @@ static JSValue js_seg_export(JSContext* c, JSValueConst, int argc, JSValueConst*
 
 static JSValue js_seg_validate_full(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(path, c, a[0]);
-  FloxSegmentValidation r = flox_segment_validate_full(path,
+  LRVX_JS_CSTRING_OR_THROW(path, c, a[0]);
+  LrvxSegmentValidation r = lrvx_segment_validate_full(path,
                                                        argc > 1 ? static_cast<uint8_t>(JS_ToBool(c, a[1])) : 1,
                                                        argc > 2 ? static_cast<uint8_t>(JS_ToBool(c, a[2])) : 1);
   JSValue o = JS_NewObject(c);
@@ -6877,8 +6877,8 @@ static JSValue js_seg_validate_full(JSContext* c, JSValueConst, int argc, JSValu
 
 static JSValue js_dataset_validate(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
-  FloxDatasetValidation r = flox_dataset_validate(dir);
+  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+  LrvxDatasetValidation r = lrvx_dataset_validate(dir);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "valid", JS_NewBool(c, r.valid));
   JS_SetPropertyStr(c, o, "totalSegments", JS_NewUint32(c, r.total_segments));
@@ -6893,17 +6893,17 @@ static JSValue js_dataset_validate(JSContext* c, JSValueConst, int, JSValueConst
 
 static JSValue js_seg_recompress(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
-  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
+  LRVX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(out, c, a[1]);
   uint8_t comp = argc > 2 ? static_cast<uint8_t>(toUint32(c, a[2])) : 1;
-  JSValue ret = JS_NewBool(c, flox_segment_recompress(in, out, comp));
+  JSValue ret = JS_NewBool(c, lrvx_segment_recompress(in, out, comp));
   return ret;
 }
 
 static JSValue js_seg_extract_symbols(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
-  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
+  LRVX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(out, c, a[1]);
   std::vector<uint32_t> syms;
   if (JS_IsArray(c, a[2]))
   {
@@ -6918,15 +6918,15 @@ static JSValue js_seg_extract_symbols(JSContext* c, JSValueConst, int, JSValueCo
       JS_FreeValue(c, e);
     }
   }
-  uint64_t written = flox_segment_extract_symbols(in, out, syms.data(), static_cast<uint32_t>(syms.size()));
+  uint64_t written = lrvx_segment_extract_symbols(in, out, syms.data(), static_cast<uint32_t>(syms.size()));
   return JS_NewInt64(c, static_cast<int64_t>(written));
 }
 
 static JSValue js_seg_extract_time(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
-  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
-  uint64_t written = flox_segment_extract_time_range(in, out, toInt64(c, a[2]), toInt64(c, a[3]));
+  LRVX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(out, c, a[1]);
+  uint64_t written = lrvx_segment_extract_time_range(in, out, toInt64(c, a[2]), toInt64(c, a[3]));
   return JS_NewInt64(c, static_cast<int64_t>(written));
 }
 
@@ -6965,7 +6965,7 @@ static int64_t detectTimestampNs(int64_t ts)
 
 static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  FLOX_JS_CSTRING_OR_THROW(path, c, a[0]);
+  LRVX_JS_CSTRING_OR_THROW(path, c, a[0]);
   std::ifstream f(path);
   if (!f.is_open())
   {
@@ -7037,18 +7037,18 @@ static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_capi_abi_version(JSContext* c, JSValueConst, int, JSValueConst*)
 {
-  return JS_NewUint32(c, flox_capi_abi_version());
+  return JS_NewUint32(c, lrvx_capi_abi_version());
 }
 
-bool registerFloxBindings(JSContext* ctx)
+bool registerLrvxBindings(JSContext* ctx)
 {
   // Before anything else: an engine that loaded against the wrong
   // library must not get a surface that reads wrong numbers. Registering
-  // nothing leaves every __flox_* global undefined, so a script that
+  // nothing leaves every __lrvx_* global undefined, so a script that
   // runs anyway fails on its first call rather than on a wrong price.
   {
     std::string abiMessage;
-    if (!capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &abiMessage))
+    if (!capi::checkAbiVersion(LRVX_CAPI_ABI_VERSION, &abiMessage))
     {
       JS_ThrowInternalError(ctx, "%s", abiMessage.c_str());
       return false;
@@ -7076,630 +7076,630 @@ bool registerFloxBindings(JSContext* ctx)
   JS_FreeValue(ctx, global);
 
   // Signal emission
-  addGlobalFunc(ctx, "__flox_emit_market_buy", js_emit_market_buy, 3);
-  addGlobalFunc(ctx, "__flox_emit_market_sell", js_emit_market_sell, 3);
-  addGlobalFunc(ctx, "__flox_emit_limit_buy_tif", js_emit_limit_buy_tif, 5);
-  addGlobalFunc(ctx, "__flox_emit_limit_sell_tif", js_emit_limit_sell_tif, 5);
-  addGlobalFunc(ctx, "__flox_emit_cancel", js_emit_cancel, 2);
-  addGlobalFunc(ctx, "__flox_emit_cancel_all", js_emit_cancel_all, 2);
-  addGlobalFunc(ctx, "__flox_emit_modify", js_emit_modify, 4);
-  addGlobalFunc(ctx, "__flox_emit_stop_market", js_emit_stop_market, 5);
-  addGlobalFunc(ctx, "__flox_emit_stop_limit", js_emit_stop_limit, 6);
-  addGlobalFunc(ctx, "__flox_emit_take_profit_market", js_emit_take_profit_market, 5);
-  addGlobalFunc(ctx, "__flox_emit_take_profit_limit", js_emit_take_profit_limit, 6);
-  addGlobalFunc(ctx, "__flox_emit_trailing_stop", js_emit_trailing_stop, 5);
-  addGlobalFunc(ctx, "__flox_emit_trailing_stop_pct", js_emit_trailing_stop_pct, 5);
-  addGlobalFunc(ctx, "__flox_emit_close_position", js_emit_close_position, 2);
+  addGlobalFunc(ctx, "__lrvx_emit_market_buy", js_emit_market_buy, 3);
+  addGlobalFunc(ctx, "__lrvx_emit_market_sell", js_emit_market_sell, 3);
+  addGlobalFunc(ctx, "__lrvx_emit_limit_buy_tif", js_emit_limit_buy_tif, 5);
+  addGlobalFunc(ctx, "__lrvx_emit_limit_sell_tif", js_emit_limit_sell_tif, 5);
+  addGlobalFunc(ctx, "__lrvx_emit_cancel", js_emit_cancel, 2);
+  addGlobalFunc(ctx, "__lrvx_emit_cancel_all", js_emit_cancel_all, 2);
+  addGlobalFunc(ctx, "__lrvx_emit_modify", js_emit_modify, 4);
+  addGlobalFunc(ctx, "__lrvx_emit_stop_market", js_emit_stop_market, 5);
+  addGlobalFunc(ctx, "__lrvx_emit_stop_limit", js_emit_stop_limit, 6);
+  addGlobalFunc(ctx, "__lrvx_emit_take_profit_market", js_emit_take_profit_market, 5);
+  addGlobalFunc(ctx, "__lrvx_emit_take_profit_limit", js_emit_take_profit_limit, 6);
+  addGlobalFunc(ctx, "__lrvx_emit_trailing_stop", js_emit_trailing_stop, 5);
+  addGlobalFunc(ctx, "__lrvx_emit_trailing_stop_pct", js_emit_trailing_stop_pct, 5);
+  addGlobalFunc(ctx, "__lrvx_emit_close_position", js_emit_close_position, 2);
 
   // Context queries
-  addGlobalFunc(ctx, "__flox_position", js_position, 2);
-  addGlobalFunc(ctx, "__flox_last_trade_price", js_last_trade_price, 2);
-  addGlobalFunc(ctx, "__flox_best_bid", js_best_bid, 2);
-  addGlobalFunc(ctx, "__flox_best_ask", js_best_ask, 2);
-  addGlobalFunc(ctx, "__flox_mid_price", js_mid_price, 2);
-  addGlobalFunc(ctx, "__flox_get_order_status", js_get_order_status, 2);
-  addGlobalFunc(ctx, "__flox_strategy_last_closed_bar", js_strategy_last_closed_bar, 4);
-  addGlobalFunc(ctx, "__flox_strategy_last_n_closed_bars", js_strategy_last_n_closed_bars, 5);
-  addGlobalFunc(ctx, "__flox_strategy_get_bar_ring_capacity",
+  addGlobalFunc(ctx, "__lrvx_position", js_position, 2);
+  addGlobalFunc(ctx, "__lrvx_last_trade_price", js_last_trade_price, 2);
+  addGlobalFunc(ctx, "__lrvx_best_bid", js_best_bid, 2);
+  addGlobalFunc(ctx, "__lrvx_best_ask", js_best_ask, 2);
+  addGlobalFunc(ctx, "__lrvx_mid_price", js_mid_price, 2);
+  addGlobalFunc(ctx, "__lrvx_get_order_status", js_get_order_status, 2);
+  addGlobalFunc(ctx, "__lrvx_strategy_last_closed_bar", js_strategy_last_closed_bar, 4);
+  addGlobalFunc(ctx, "__lrvx_strategy_last_n_closed_bars", js_strategy_last_n_closed_bars, 5);
+  addGlobalFunc(ctx, "__lrvx_strategy_get_bar_ring_capacity",
                 js_strategy_get_bar_ring_capacity, 1);
-  addGlobalFunc(ctx, "__flox_strategy_set_bar_ring_capacity",
+  addGlobalFunc(ctx, "__lrvx_strategy_set_bar_ring_capacity",
                 js_strategy_set_bar_ring_capacity, 2);
-  addGlobalFunc(ctx, "__flox_feed_clock_create", js_feed_clock_create, 6);
-  addGlobalFunc(ctx, "__flox_feed_clock_destroy", js_feed_clock_destroy, 1);
-  addGlobalFunc(ctx, "__flox_feed_clock_symbol_count", js_feed_clock_symbol_count, 1);
-  addGlobalFunc(ctx, "__flox_feed_clock_symbol_at", js_feed_clock_symbol_at, 2);
-  addGlobalFunc(ctx, "__flox_feed_clock_tick", js_feed_clock_tick, 3);
-  addGlobalFunc(ctx, "__flox_feed_clock_last_fired", js_feed_clock_last_fired, 1);
-  addGlobalFunc(ctx, "__flox_feed_clock_last_triggered_by",
+  addGlobalFunc(ctx, "__lrvx_feed_clock_create", js_feed_clock_create, 6);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_destroy", js_feed_clock_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_symbol_count", js_feed_clock_symbol_count, 1);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_symbol_at", js_feed_clock_symbol_at, 2);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_tick", js_feed_clock_tick, 3);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_last_fired", js_feed_clock_last_fired, 1);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_last_triggered_by",
                 js_feed_clock_last_triggered_by, 1);
-  addGlobalFunc(ctx, "__flox_feed_clock_last_seen_at", js_feed_clock_last_seen_at, 2);
-  addGlobalFunc(ctx, "__flox_feed_clock_staleness_at", js_feed_clock_staleness_at, 2);
-  addGlobalFunc(ctx, "__flox_feed_clock_reset", js_feed_clock_reset, 1);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_last_seen_at", js_feed_clock_last_seen_at, 2);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_staleness_at", js_feed_clock_staleness_at, 2);
+  addGlobalFunc(ctx, "__lrvx_feed_clock_reset", js_feed_clock_reset, 1);
 
   // Batch indicators
-  addGlobalFunc(ctx, "__flox_indicator_sma", js_indicator_sma, 2);
-  addGlobalFunc(ctx, "__flox_indicator_ema", js_indicator_ema, 2);
-  addGlobalFunc(ctx, "__flox_indicator_rsi", js_indicator_rsi, 2);
-  addGlobalFunc(ctx, "__flox_indicator_atr", js_indicator_atr, 4);
-  addGlobalFunc(ctx, "__flox_indicator_macd", js_indicator_macd, 4);
-  addGlobalFunc(ctx, "__flox_indicator_bollinger", js_indicator_bollinger, 3);
-  addGlobalFunc(ctx, "__flox_indicator_rma", js_indicator_rma, 2);
-  addGlobalFunc(ctx, "__flox_indicator_dema", js_indicator_dema, 2);
-  addGlobalFunc(ctx, "__flox_indicator_tema", js_indicator_tema, 2);
-  addGlobalFunc(ctx, "__flox_indicator_kama", js_indicator_kama, 4);
-  addGlobalFunc(ctx, "__flox_indicator_slope", js_indicator_slope, 2);
-  addGlobalFunc(ctx, "__flox_indicator_adx", js_indicator_adx, 4);
-  addGlobalFunc(ctx, "__flox_indicator_cci", js_indicator_cci, 4);
-  addGlobalFunc(ctx, "__flox_indicator_stochastic", js_indicator_stochastic, 5);
-  addGlobalFunc(ctx, "__flox_indicator_chop", js_indicator_chop, 4);
-  addGlobalFunc(ctx, "__flox_indicator_obv", js_indicator_obv, 2);
-  addGlobalFunc(ctx, "__flox_indicator_vwap", js_indicator_vwap, 3);
-  addGlobalFunc(ctx, "__flox_indicator_cvd", js_indicator_cvd, 5);
-  addGlobalFunc(ctx, "__flox_indicator_skewness", js_indicator_skewness, 2);
-  addGlobalFunc(ctx, "__flox_indicator_kurtosis", js_indicator_kurtosis, 2);
-  addGlobalFunc(ctx, "__flox_indicator_rolling_zscore", js_indicator_rolling_zscore, 2);
-  addGlobalFunc(ctx, "__flox_indicator_shannon_entropy", js_indicator_shannon_entropy, 3);
-  addGlobalFunc(ctx, "__flox_indicator_parkinson_vol", js_indicator_parkinson_vol, 3);
-  addGlobalFunc(ctx, "__flox_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
-  addGlobalFunc(ctx, "__flox_indicator_correlation", js_indicator_correlation, 3);
-  addGlobalFunc(ctx, "__flox_indicator_adf", js_indicator_adf, 3);
-  addGlobalFunc(ctx, "__flox_indicator_autocorrelation", js_indicator_autocorrelation, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_sma", js_indicator_sma, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_ema", js_indicator_ema, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_rsi", js_indicator_rsi, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_atr", js_indicator_atr, 4);
+  addGlobalFunc(ctx, "__lrvx_indicator_macd", js_indicator_macd, 4);
+  addGlobalFunc(ctx, "__lrvx_indicator_bollinger", js_indicator_bollinger, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_rma", js_indicator_rma, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_dema", js_indicator_dema, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_tema", js_indicator_tema, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_kama", js_indicator_kama, 4);
+  addGlobalFunc(ctx, "__lrvx_indicator_slope", js_indicator_slope, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_adx", js_indicator_adx, 4);
+  addGlobalFunc(ctx, "__lrvx_indicator_cci", js_indicator_cci, 4);
+  addGlobalFunc(ctx, "__lrvx_indicator_stochastic", js_indicator_stochastic, 5);
+  addGlobalFunc(ctx, "__lrvx_indicator_chop", js_indicator_chop, 4);
+  addGlobalFunc(ctx, "__lrvx_indicator_obv", js_indicator_obv, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_vwap", js_indicator_vwap, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_cvd", js_indicator_cvd, 5);
+  addGlobalFunc(ctx, "__lrvx_indicator_skewness", js_indicator_skewness, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_kurtosis", js_indicator_kurtosis, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_rolling_zscore", js_indicator_rolling_zscore, 2);
+  addGlobalFunc(ctx, "__lrvx_indicator_shannon_entropy", js_indicator_shannon_entropy, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_parkinson_vol", js_indicator_parkinson_vol, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
+  addGlobalFunc(ctx, "__lrvx_indicator_correlation", js_indicator_correlation, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_adf", js_indicator_adf, 3);
+  addGlobalFunc(ctx, "__lrvx_indicator_autocorrelation", js_indicator_autocorrelation, 3);
 
   // Targets (forward-looking labels)
-  addGlobalFunc(ctx, "__flox_target_future_return", js_target_future_return, 2);
-  addGlobalFunc(ctx, "__flox_target_future_ctc_volatility", js_target_future_ctc_volatility, 2);
-  addGlobalFunc(ctx, "__flox_target_future_linear_slope", js_target_future_linear_slope, 2);
+  addGlobalFunc(ctx, "__lrvx_target_future_return", js_target_future_return, 2);
+  addGlobalFunc(ctx, "__lrvx_target_future_ctc_volatility", js_target_future_ctc_volatility, 2);
+  addGlobalFunc(ctx, "__lrvx_target_future_linear_slope", js_target_future_linear_slope, 2);
 
   // IndicatorGraph (batch)
-  addGlobalFunc(ctx, "__flox_graph_create", js_graph_create, 0);
-  addGlobalFunc(ctx, "__flox_graph_destroy", js_graph_destroy, 1);
-  addGlobalFunc(ctx, "__flox_graph_set_bars", js_graph_set_bars, 6);
-  addGlobalFunc(ctx, "__flox_graph_add_node", js_graph_add_node, 5);
-  addGlobalFunc(ctx, "__flox_graph_require", js_graph_require, 3);
-  addGlobalFunc(ctx, "__flox_graph_get", js_graph_get, 3);
-  addGlobalFunc(ctx, "__flox_graph_close", js_graph_close, 2);
-  addGlobalFunc(ctx, "__flox_graph_high", js_graph_high, 2);
-  addGlobalFunc(ctx, "__flox_graph_low", js_graph_low, 2);
-  addGlobalFunc(ctx, "__flox_graph_volume", js_graph_volume, 2);
-  addGlobalFunc(ctx, "__flox_graph_invalidate", js_graph_invalidate, 2);
-  addGlobalFunc(ctx, "__flox_graph_invalidate_all", js_graph_invalidate_all, 1);
+  addGlobalFunc(ctx, "__lrvx_graph_create", js_graph_create, 0);
+  addGlobalFunc(ctx, "__lrvx_graph_destroy", js_graph_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_graph_set_bars", js_graph_set_bars, 6);
+  addGlobalFunc(ctx, "__lrvx_graph_add_node", js_graph_add_node, 5);
+  addGlobalFunc(ctx, "__lrvx_graph_require", js_graph_require, 3);
+  addGlobalFunc(ctx, "__lrvx_graph_get", js_graph_get, 3);
+  addGlobalFunc(ctx, "__lrvx_graph_close", js_graph_close, 2);
+  addGlobalFunc(ctx, "__lrvx_graph_high", js_graph_high, 2);
+  addGlobalFunc(ctx, "__lrvx_graph_low", js_graph_low, 2);
+  addGlobalFunc(ctx, "__lrvx_graph_volume", js_graph_volume, 2);
+  addGlobalFunc(ctx, "__lrvx_graph_invalidate", js_graph_invalidate, 2);
+  addGlobalFunc(ctx, "__lrvx_graph_invalidate_all", js_graph_invalidate_all, 1);
 
   // StreamingIndicatorGraph
-  addGlobalFunc(ctx, "__flox_streaming_create", js_streaming_create, 0);
-  addGlobalFunc(ctx, "__flox_streaming_destroy", js_streaming_destroy, 1);
-  addGlobalFunc(ctx, "__flox_streaming_add_node", js_streaming_add_node, 5);
-  addGlobalFunc(ctx, "__flox_streaming_step", js_streaming_step, 6);
-  addGlobalFunc(ctx, "__flox_streaming_current", js_streaming_current, 3);
-  addGlobalFunc(ctx, "__flox_streaming_bar_count", js_streaming_bar_count, 2);
-  addGlobalFunc(ctx, "__flox_streaming_reset", js_streaming_reset, 2);
-  addGlobalFunc(ctx, "__flox_streaming_reset_all", js_streaming_reset_all, 1);
-  addGlobalFunc(ctx, "__flox_streaming_close", js_streaming_close, 2);
-  addGlobalFunc(ctx, "__flox_streaming_high", js_streaming_high, 2);
-  addGlobalFunc(ctx, "__flox_streaming_low", js_streaming_low, 2);
-  addGlobalFunc(ctx, "__flox_streaming_volume", js_streaming_volume, 2);
+  addGlobalFunc(ctx, "__lrvx_streaming_create", js_streaming_create, 0);
+  addGlobalFunc(ctx, "__lrvx_streaming_destroy", js_streaming_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_streaming_add_node", js_streaming_add_node, 5);
+  addGlobalFunc(ctx, "__lrvx_streaming_step", js_streaming_step, 6);
+  addGlobalFunc(ctx, "__lrvx_streaming_current", js_streaming_current, 3);
+  addGlobalFunc(ctx, "__lrvx_streaming_bar_count", js_streaming_bar_count, 2);
+  addGlobalFunc(ctx, "__lrvx_streaming_reset", js_streaming_reset, 2);
+  addGlobalFunc(ctx, "__lrvx_streaming_reset_all", js_streaming_reset_all, 1);
+  addGlobalFunc(ctx, "__lrvx_streaming_close", js_streaming_close, 2);
+  addGlobalFunc(ctx, "__lrvx_streaming_high", js_streaming_high, 2);
+  addGlobalFunc(ctx, "__lrvx_streaming_low", js_streaming_low, 2);
+  addGlobalFunc(ctx, "__lrvx_streaming_volume", js_streaming_volume, 2);
 
   // Order book
-  addGlobalFunc(ctx, "__flox_book_create", js_book_create, 1);
-  addGlobalFunc(ctx, "__flox_book_destroy", js_book_destroy, 1);
-  addGlobalFunc(ctx, "__flox_book_apply_snapshot", js_book_apply_snapshot, 5);
-  addGlobalFunc(ctx, "__flox_book_apply_delta", js_book_apply_delta, 5);
-  addGlobalFunc(ctx, "__flox_book_best_bid", js_book_best_bid, 1);
-  addGlobalFunc(ctx, "__flox_book_best_ask", js_book_best_ask, 1);
-  addGlobalFunc(ctx, "__flox_book_mid", js_book_mid, 1);
-  addGlobalFunc(ctx, "__flox_book_spread", js_book_spread, 1);
-  addGlobalFunc(ctx, "__flox_book_clear", js_book_clear, 1);
-  addGlobalFunc(ctx, "__flox_book_is_crossed", js_book_is_crossed, 1);
+  addGlobalFunc(ctx, "__lrvx_book_create", js_book_create, 1);
+  addGlobalFunc(ctx, "__lrvx_book_destroy", js_book_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_book_apply_snapshot", js_book_apply_snapshot, 5);
+  addGlobalFunc(ctx, "__lrvx_book_apply_delta", js_book_apply_delta, 5);
+  addGlobalFunc(ctx, "__lrvx_book_best_bid", js_book_best_bid, 1);
+  addGlobalFunc(ctx, "__lrvx_book_best_ask", js_book_best_ask, 1);
+  addGlobalFunc(ctx, "__lrvx_book_mid", js_book_mid, 1);
+  addGlobalFunc(ctx, "__lrvx_book_spread", js_book_spread, 1);
+  addGlobalFunc(ctx, "__lrvx_book_clear", js_book_clear, 1);
+  addGlobalFunc(ctx, "__lrvx_book_is_crossed", js_book_is_crossed, 1);
 
   // Executor
-  addGlobalFunc(ctx, "__flox_simulated_executor_create", js_executor_create, 0);
-  addGlobalFunc(ctx, "__flox_simulated_executor_destroy", js_executor_destroy, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_submit", js_executor_submit, 7);
-  addGlobalFunc(ctx, "__flox_simulated_executor_submit_ex", js_executor_submit_ex, 10);
-  addGlobalFunc(ctx, "__flox_simulated_executor_submit_bracket",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_create", js_executor_create, 0);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_destroy", js_executor_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_submit", js_executor_submit, 7);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_submit_ex", js_executor_submit_ex, 10);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_submit_bracket",
                 js_executor_submit_bracket, 13);
-  addGlobalFunc(ctx, "__flox_simulated_executor_cancel_bracket",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_cancel_bracket",
                 js_executor_cancel_bracket, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_bracket_state",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_bracket_state",
                 js_executor_bracket_state, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_bracket_child_arm_mode",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_bracket_child_arm_mode",
                 js_executor_set_bracket_child_arm_mode, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_submit_iceberg",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_submit_iceberg",
                 js_executor_submit_iceberg, 7);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_refresh_latency",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_iceberg_refresh_latency",
                 js_executor_set_iceberg_refresh_latency, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_iceberg_hidden_remaining_raw",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_iceberg_hidden_remaining_raw",
                 js_executor_iceberg_hidden_remaining_raw, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_size_randomisation_pct",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_iceberg_size_randomisation_pct",
                 js_executor_set_iceberg_size_randomisation_pct, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_priority_mode",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_iceberg_priority_mode",
                 js_executor_set_iceberg_priority_mode, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_jitter_seed",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_iceberg_jitter_seed",
                 js_executor_set_iceberg_jitter_seed, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
-  addGlobalFunc(ctx, "__flox_simulated_executor_on_bar_ohlc", js_executor_on_bar_ohlc, 6);
-  addGlobalFunc(ctx, "__flox_simulated_executor_begin_bar_callback_window",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_on_bar", js_executor_on_bar, 3);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_on_bar_ohlc", js_executor_on_bar_ohlc, 6);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_begin_bar_callback_window",
                 js_executor_begin_bar_callback_window, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_end_bar_callback_window",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_end_bar_callback_window",
                 js_executor_end_bar_callback_window, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_reset", js_executor_reset, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
-  addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_fill_count", js_executor_fill_count, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_default_slippage",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_reset", js_executor_reset, 1);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_on_trade", js_executor_on_trade, 4);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_advance_clock", js_executor_advance, 2);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_fill_count", js_executor_fill_count, 1);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_default_slippage",
                 js_executor_set_default_slippage, 6);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_symbol_slippage",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_symbol_slippage",
                 js_executor_set_symbol_slippage, 7);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_model", js_executor_set_queue_model, 3);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_queue_model", js_executor_set_queue_model, 3);
   // js_strategy.cpp:159 exposes setQueueFifoTopN() and matching-modes.md
   // documents it, but the global was never registered -- every call was a
   // ReferenceError.
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_fifo_top_n",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_queue_fifo_top_n",
                 js_executor_set_queue_fifo_top_n, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_top_priority_share",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_top_priority_share",
                 js_executor_set_top_priority_share, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_lmm_orders",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_lmm_orders",
                 js_executor_set_lmm_orders, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_lmm_bonus_multiplier",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_lmm_bonus_multiplier",
                 js_executor_set_lmm_bonus_multiplier, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_order_priority_multiplier",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_order_priority_multiplier",
                 js_executor_set_order_priority_multiplier, 3);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_submit_ack", js_executor_set_submit_ack, 3);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_cancel_ack", js_executor_set_cancel_ack, 3);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack", js_executor_set_replace_ack, 3);
-  addGlobalFunc(ctx, "__flox_simulated_executor_apply_latency_profile",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_submit_ack", js_executor_set_submit_ack, 3);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_cancel_ack", js_executor_set_cancel_ack, 3);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_replace_ack", js_executor_set_replace_ack, 3);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_apply_latency_profile",
                 js_executor_apply_latency_profile, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_stp_mode",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_stp_mode",
                 js_executor_set_stp_mode, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_stp_group_membership",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_stp_group_membership",
                 js_executor_set_stp_group_membership, 3);
-  addGlobalFunc(ctx, "__flox_simulated_executor_stp_group_for",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_stp_group_for",
                 js_executor_stp_group_for, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_fok_mode",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_fok_mode",
                 js_executor_set_fok_mode, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_fok_mode",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_fok_mode",
                 js_executor_fok_mode, 1);
-  addGlobalFunc(ctx, "__flox_latency_distribution_create", js_latency_dist_create, 0);
-  addGlobalFunc(ctx, "__flox_latency_distribution_destroy", js_latency_dist_destroy, 1);
-  addGlobalFunc(ctx, "__flox_latency_distribution_set_constant",
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_create", js_latency_dist_create, 0);
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_destroy", js_latency_dist_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_set_constant",
                 js_latency_dist_set_constant, 2);
-  addGlobalFunc(ctx, "__flox_latency_distribution_set_uniform",
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_set_uniform",
                 js_latency_dist_set_uniform, 3);
-  addGlobalFunc(ctx, "__flox_latency_distribution_set_lognormal",
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_set_lognormal",
                 js_latency_dist_set_lognormal, 3);
-  addGlobalFunc(ctx, "__flox_latency_distribution_set_empirical",
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_set_empirical",
                 js_latency_dist_set_empirical, 2);
-  addGlobalFunc(ctx, "__flox_latency_distribution_set_burst_correlation",
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_set_burst_correlation",
                 js_latency_dist_set_burst, 2);
-  addGlobalFunc(ctx, "__flox_latency_distribution_median_ns",
+  addGlobalFunc(ctx, "__lrvx_latency_distribution_median_ns",
                 js_latency_dist_median_ns, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_submit_ack_latency_distribution",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_submit_ack_latency_distribution",
                 js_executor_set_submit_ack_dist, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_cancel_ack_latency_distribution",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_cancel_ack_latency_distribution",
                 js_executor_set_cancel_ack_dist, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack_latency_distribution",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_replace_ack_latency_distribution",
                 js_executor_set_replace_ack_dist, 2);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_create", js_rate_limit_create, 0);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_destroy", js_rate_limit_destroy, 1);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_add_bucket_family",
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_create", js_rate_limit_create, 0);
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_destroy", js_rate_limit_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_add_bucket_family",
                 js_rate_limit_add_bucket_family, 9);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_add_bucket",
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_add_bucket",
                 js_rate_limit_add_bucket, 7);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_set_ban", js_rate_limit_set_ban, 3);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_load_profile",
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_set_ban", js_rate_limit_set_ban, 3);
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_load_profile",
                 js_rate_limit_load_profile, 2);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_ban_until_ns",
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_ban_until_ns",
                 js_rate_limit_ban_until_ns, 1);
-  addGlobalFunc(ctx, "__flox_rate_limit_policy_consecutive_rejects",
+  addGlobalFunc(ctx, "__lrvx_rate_limit_policy_consecutive_rejects",
                 js_rate_limit_consecutive_rejects, 1);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_rate_limit_policy",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_rate_limit_policy",
                 js_executor_set_rate_limit_policy, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_clear_rate_limit_policy",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_clear_rate_limit_policy",
                 js_executor_clear_rate_limit_policy, 1);
-  addGlobalFunc(ctx, "__flox_venue_availability_create",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_create",
                 js_venue_availability_create, 0);
-  addGlobalFunc(ctx, "__flox_venue_availability_destroy",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_destroy",
                 js_venue_availability_destroy, 1);
-  addGlobalFunc(ctx, "__flox_venue_availability_schedule_outage_ex",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_schedule_outage_ex",
                 js_venue_availability_schedule_outage_ex, 8);
-  addGlobalFunc(ctx, "__flox_venue_availability_submits_allowed",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_submits_allowed",
                 js_venue_availability_submits_allowed, 2);
-  addGlobalFunc(ctx, "__flox_venue_availability_cancels_allowed",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_cancels_allowed",
                 js_venue_availability_cancels_allowed, 2);
-  addGlobalFunc(ctx, "__flox_venue_availability_book_updates_allowed",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_book_updates_allowed",
                 js_venue_availability_book_updates_allowed, 2);
-  addGlobalFunc(ctx, "__flox_venue_availability_trades_allowed",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_trades_allowed",
                 js_venue_availability_trades_allowed, 2);
-  addGlobalFunc(ctx, "__flox_venue_availability_latency_multiplier",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_latency_multiplier",
                 js_venue_availability_latency_multiplier, 2);
-  addGlobalFunc(ctx, "__flox_venue_availability_consume_wrong_side_recovery_bps",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_consume_wrong_side_recovery_bps",
                 js_venue_availability_consume_wrong_side_recovery_bps, 1);
-  addGlobalFunc(ctx, "__flox_venue_availability_schedule_outage",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_schedule_outage",
                 js_venue_availability_schedule_outage, 5);
-  addGlobalFunc(ctx, "__flox_venue_availability_auto_random_outages",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_auto_random_outages",
                 js_venue_availability_auto_random_outages, 5);
-  addGlobalFunc(ctx, "__flox_venue_availability_is_up",
+  addGlobalFunc(ctx, "__lrvx_venue_availability_is_up",
                 js_venue_availability_is_up, 2);
-  addGlobalFunc(ctx, "__flox_simulated_executor_set_venue_availability",
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_set_venue_availability",
                 js_executor_set_venue_availability, 2);
-  addGlobalFunc(ctx, "__flox_fee_schedule_create", js_fee_schedule_create, 0);
-  addGlobalFunc(ctx, "__flox_fee_schedule_destroy", js_fee_schedule_destroy, 1);
-  addGlobalFunc(ctx, "__flox_fee_schedule_add_tier", js_fee_schedule_add_tier, 4);
-  addGlobalFunc(ctx, "__flox_fee_schedule_load_profile",
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_create", js_fee_schedule_create, 0);
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_destroy", js_fee_schedule_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_add_tier", js_fee_schedule_add_tier, 4);
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_load_profile",
                 js_fee_schedule_load_profile, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_create",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_create",
                 js_liquidation_engine_create, 0);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_destroy",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_destroy",
                 js_liquidation_engine_destroy, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_add_tier",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_add_tier",
                 js_liquidation_engine_add_tier, 3);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_insurance_fund_capital",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_insurance_fund_capital",
                 js_liquidation_engine_set_insurance_fund_capital, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_insurance_fund_balance",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_insurance_fund_balance",
                 js_liquidation_engine_insurance_fund_balance, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_adl_enabled",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_adl_enabled",
                 js_liquidation_engine_set_adl_enabled, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_adl_ranking",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_adl_ranking",
                 js_liquidation_engine_set_adl_ranking, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_adl_ranking",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_adl_ranking",
                 js_liquidation_engine_adl_ranking, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_liquidation_slippage_bps",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_liquidation_slippage_bps",
                 js_liquidation_engine_set_liquidation_slippage_bps, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_open_position",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_open_position",
                 js_liquidation_engine_open_position, 6);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_close_position",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_close_position",
                 js_liquidation_engine_close_position, 3);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_on_mark",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_on_mark",
                 js_liquidation_engine_on_mark, 3);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_liquidations_count",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_liquidations_count",
                 js_liquidation_engine_liquidations_count, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_insurance_payments_count",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_insurance_payments_count",
                 js_liquidation_engine_insurance_payments_count, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_adl_closeouts_count",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_adl_closeouts_count",
                 js_liquidation_engine_adl_closeouts_count, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_load_profile",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_load_profile",
                 js_liquidation_engine_load_profile, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_executor",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_executor",
                 js_liquidation_engine_set_executor, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_ticks_to_first_adl",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_ticks_to_first_adl",
                 js_liquidation_engine_ticks_to_first_adl, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_reset_stats",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_reset_stats",
                 js_liquidation_engine_reset_stats, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_deficits_paid_by_fund",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_deficits_paid_by_fund",
                 js_liquidation_engine_deficits_paid_by_fund, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_deficits_paid_by_adl",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_deficits_paid_by_adl",
                 js_liquidation_engine_deficits_paid_by_adl, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_cascade_sizes",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_cascade_sizes",
                 js_liquidation_engine_cascade_sizes, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_fund_balance_history",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_fund_balance_history",
                 js_liquidation_engine_fund_balance_history, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_mark_impact_model",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_mark_impact_model",
                 js_liquidation_engine_set_mark_impact_model, 3);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_mark_impact_model",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_mark_impact_model",
                 js_liquidation_engine_mark_impact_model, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_mark_impact_weight",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_mark_impact_weight",
                 js_liquidation_engine_mark_impact_weight, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_set_max_cascade_depth",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_set_max_cascade_depth",
                 js_liquidation_engine_set_max_cascade_depth, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_max_cascade_depth",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_max_cascade_depth",
                 js_liquidation_engine_max_cascade_depth, 1);
   // Account + cross-margin bindings.
-  addGlobalFunc(ctx, "__flox_account_create", js_account_create, 2);
-  addGlobalFunc(ctx, "__flox_account_destroy", js_account_destroy, 1);
-  addGlobalFunc(ctx, "__flox_account_id", js_account_id, 1);
-  addGlobalFunc(ctx, "__flox_account_equity", js_account_equity, 1);
-  addGlobalFunc(ctx, "__flox_account_set_equity", js_account_set_equity, 2);
-  addGlobalFunc(ctx, "__flox_account_add_equity", js_account_add_equity, 2);
-  addGlobalFunc(ctx, "__flox_account_margin_mode", js_account_margin_mode, 1);
-  addGlobalFunc(ctx, "__flox_account_set_margin_mode",
+  addGlobalFunc(ctx, "__lrvx_account_create", js_account_create, 2);
+  addGlobalFunc(ctx, "__lrvx_account_destroy", js_account_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_account_id", js_account_id, 1);
+  addGlobalFunc(ctx, "__lrvx_account_equity", js_account_equity, 1);
+  addGlobalFunc(ctx, "__lrvx_account_set_equity", js_account_set_equity, 2);
+  addGlobalFunc(ctx, "__lrvx_account_add_equity", js_account_add_equity, 2);
+  addGlobalFunc(ctx, "__lrvx_account_margin_mode", js_account_margin_mode, 1);
+  addGlobalFunc(ctx, "__lrvx_account_set_margin_mode",
                 js_account_set_margin_mode, 2);
-  addGlobalFunc(ctx, "__flox_account_open_position",
+  addGlobalFunc(ctx, "__lrvx_account_open_position",
                 js_account_open_position, 4);
-  addGlobalFunc(ctx, "__flox_account_close_position",
+  addGlobalFunc(ctx, "__lrvx_account_close_position",
                 js_account_close_position, 2);
-  addGlobalFunc(ctx, "__flox_account_position_count",
+  addGlobalFunc(ctx, "__lrvx_account_position_count",
                 js_account_position_count, 1);
-  addGlobalFunc(ctx, "__flox_account_set_mark", js_account_set_mark, 4);
-  addGlobalFunc(ctx, "__flox_account_mark_ts", js_account_mark_ts, 2);
-  addGlobalFunc(ctx, "__flox_account_has_stale_marks",
+  addGlobalFunc(ctx, "__lrvx_account_set_mark", js_account_set_mark, 4);
+  addGlobalFunc(ctx, "__lrvx_account_mark_ts", js_account_mark_ts, 2);
+  addGlobalFunc(ctx, "__lrvx_account_has_stale_marks",
                 js_account_has_stale_marks, 3);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_on_marks",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_on_marks",
                 js_liquidation_engine_on_marks, 3);
-  addGlobalFunc(ctx, "__flox_account_total_notional",
+  addGlobalFunc(ctx, "__lrvx_account_total_notional",
                 js_account_total_notional, 1);
-  addGlobalFunc(ctx, "__flox_account_total_unrealised_pnl",
+  addGlobalFunc(ctx, "__lrvx_account_total_unrealised_pnl",
                 js_account_total_upnl, 1);
-  addGlobalFunc(ctx, "__flox_account_record_fill", js_account_record_fill, 4);
-  addGlobalFunc(ctx, "__flox_account_rolling_notional_by_symbol",
+  addGlobalFunc(ctx, "__lrvx_account_record_fill", js_account_record_fill, 4);
+  addGlobalFunc(ctx, "__lrvx_account_rolling_notional_by_symbol",
                 js_account_rolling_notional_by_symbol, 1);
-  addGlobalFunc(ctx, "__flox_account_rolling_notional_30d",
+  addGlobalFunc(ctx, "__lrvx_account_rolling_notional_30d",
                 js_account_rolling_notional_30d, 1);
-  addGlobalFunc(ctx, "__flox_account_reset_rolling",
+  addGlobalFunc(ctx, "__lrvx_account_reset_rolling",
                 js_account_reset_rolling, 1);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_attach_account",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_attach_account",
                 js_liquidation_engine_attach_account, 2);
-  addGlobalFunc(ctx, "__flox_liquidation_engine_detach_account",
+  addGlobalFunc(ctx, "__lrvx_liquidation_engine_detach_account",
                 js_liquidation_engine_detach_account, 2);
-  addGlobalFunc(ctx, "__flox_fee_schedule_bind_account",
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_bind_account",
                 js_fee_schedule_bind_account, 2);
-  addGlobalFunc(ctx, "__flox_fee_schedule_clear_account_binding",
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_clear_account_binding",
                 js_fee_schedule_clear_account_binding, 1);
   // VenueStack.
-  addGlobalFunc(ctx, "__flox_venue_stack_create", js_venue_stack_create, 3);
-  addGlobalFunc(ctx, "__flox_venue_stack_destroy", js_venue_stack_destroy, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_executor", js_venue_stack_executor, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_account", js_venue_stack_account, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_liquidation",
+  addGlobalFunc(ctx, "__lrvx_venue_stack_create", js_venue_stack_create, 3);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_destroy", js_venue_stack_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_executor", js_venue_stack_executor, 1);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_account", js_venue_stack_account, 1);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_liquidation",
                 js_venue_stack_liquidation, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_fees", js_venue_stack_fees, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_funding", js_venue_stack_funding, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_venue", js_venue_stack_venue, 1);
-  addGlobalFunc(ctx, "__flox_venue_stack_venue_name",
+  addGlobalFunc(ctx, "__lrvx_venue_stack_fees", js_venue_stack_fees, 1);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_funding", js_venue_stack_funding, 1);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_venue", js_venue_stack_venue, 1);
+  addGlobalFunc(ctx, "__lrvx_venue_stack_venue_name",
                 js_venue_stack_venue_name, 1);
-  addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
-  addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
-  addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_current_tier",
                 js_fee_schedule_current_tier, 1);
-  addGlobalFunc(ctx, "__flox_fee_schedule_rolling_notional",
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_rolling_notional",
                 js_fee_schedule_rolling_notional, 1);
-  addGlobalFunc(ctx, "__flox_fee_schedule_reset_rolling", js_fee_schedule_reset, 1);
-  addGlobalFunc(ctx, "__flox_funding_schedule_create", js_funding_schedule_create, 0);
-  addGlobalFunc(ctx, "__flox_funding_schedule_destroy", js_funding_schedule_destroy, 1);
-  addGlobalFunc(ctx, "__flox_funding_schedule_set_constant",
+  addGlobalFunc(ctx, "__lrvx_fee_schedule_reset_rolling", js_fee_schedule_reset, 1);
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_create", js_funding_schedule_create, 0);
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_destroy", js_funding_schedule_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_set_constant",
                 js_funding_schedule_set_constant, 3);
-  addGlobalFunc(ctx, "__flox_funding_schedule_load_profile",
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_load_profile",
                 js_funding_schedule_load_profile, 2);
-  addGlobalFunc(ctx, "__flox_funding_schedule_load_tape",
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_load_tape",
                 js_funding_schedule_load_tape, 2);
-  addGlobalFunc(ctx, "__flox_funding_schedule_set_tape_by_symbol",
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_set_tape_by_symbol",
                 js_funding_schedule_set_tape_by_symbol, 4);
-  addGlobalFunc(ctx, "__flox_funding_schedule_set_constant_rate",
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_set_constant_rate",
                 js_funding_schedule_set_constant_rate, 2);
-  addGlobalFunc(ctx, "__flox_funding_schedule_reset", js_funding_schedule_reset, 1);
-  addGlobalFunc(ctx, "__flox_funding_schedule_tick", js_funding_schedule_tick, 5);
-  addGlobalFunc(ctx, "__flox_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
-  addGlobalFunc(ctx, "__flox_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_reset", js_funding_schedule_reset, 1);
+  addGlobalFunc(ctx, "__lrvx_funding_schedule_tick", js_funding_schedule_tick, 5);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
+  addGlobalFunc(ctx, "__lrvx_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
 
   // Backtest result
-  addGlobalFunc(ctx, "__flox_backtest_result_create", js_backtest_result_create, 6);
-  addGlobalFunc(ctx, "__flox_backtest_result_destroy", js_backtest_result_destroy, 1);
-  addGlobalFunc(ctx, "__flox_backtest_result_record_fill",
+  addGlobalFunc(ctx, "__lrvx_backtest_result_create", js_backtest_result_create, 6);
+  addGlobalFunc(ctx, "__lrvx_backtest_result_destroy", js_backtest_result_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_backtest_result_record_fill",
                 js_backtest_result_record_fill, 7);
-  addGlobalFunc(ctx, "__flox_backtest_result_ingest", js_backtest_result_ingest, 2);
-  addGlobalFunc(ctx, "__flox_backtest_result_stats", js_backtest_result_stats, 1);
-  addGlobalFunc(ctx, "__flox_backtest_result_equity_curve",
+  addGlobalFunc(ctx, "__lrvx_backtest_result_ingest", js_backtest_result_ingest, 2);
+  addGlobalFunc(ctx, "__lrvx_backtest_result_stats", js_backtest_result_stats, 1);
+  addGlobalFunc(ctx, "__lrvx_backtest_result_equity_curve",
                 js_backtest_result_equity_curve, 1);
-  addGlobalFunc(ctx, "__flox_backtest_result_write_csv", js_backtest_result_write_csv, 2);
+  addGlobalFunc(ctx, "__lrvx_backtest_result_write_csv", js_backtest_result_write_csv, 2);
 
   // Position tracker
-  addGlobalFunc(ctx, "__flox_pos_create", js_pos_create, 1);
-  addGlobalFunc(ctx, "__flox_pos_destroy", js_pos_destroy, 1);
-  addGlobalFunc(ctx, "__flox_pos_on_fill", js_pos_on_fill, 5);
-  addGlobalFunc(ctx, "__flox_pos_position", js_pos_position, 2);
-  addGlobalFunc(ctx, "__flox_pos_avg_entry", js_pos_avg_entry, 2);
-  addGlobalFunc(ctx, "__flox_pos_pnl", js_pos_pnl, 2);
-  addGlobalFunc(ctx, "__flox_pos_total_pnl", js_pos_total_pnl, 1);
+  addGlobalFunc(ctx, "__lrvx_pos_create", js_pos_create, 1);
+  addGlobalFunc(ctx, "__lrvx_pos_destroy", js_pos_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_pos_on_fill", js_pos_on_fill, 5);
+  addGlobalFunc(ctx, "__lrvx_pos_position", js_pos_position, 2);
+  addGlobalFunc(ctx, "__lrvx_pos_avg_entry", js_pos_avg_entry, 2);
+  addGlobalFunc(ctx, "__lrvx_pos_pnl", js_pos_pnl, 2);
+  addGlobalFunc(ctx, "__lrvx_pos_total_pnl", js_pos_total_pnl, 1);
 
   // Delta book compression
-  addGlobalFunc(ctx, "__flox_delta_book_encoder_create", js_delta_book_encoder_create, 1);
-  addGlobalFunc(ctx, "__flox_delta_book_encoder_destroy", js_delta_book_encoder_destroy, 1);
-  addGlobalFunc(ctx, "__flox_delta_book_encoder_encode", js_delta_book_encoder_encode, 4);
-  addGlobalFunc(ctx, "__flox_delta_book_replayer_create", js_delta_book_replayer_create, 0);
-  addGlobalFunc(ctx, "__flox_delta_book_replayer_destroy", js_delta_book_replayer_destroy, 1);
-  addGlobalFunc(ctx, "__flox_delta_book_replayer_apply", js_delta_book_replayer_apply, 5);
+  addGlobalFunc(ctx, "__lrvx_delta_book_encoder_create", js_delta_book_encoder_create, 1);
+  addGlobalFunc(ctx, "__lrvx_delta_book_encoder_destroy", js_delta_book_encoder_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_delta_book_encoder_encode", js_delta_book_encoder_encode, 4);
+  addGlobalFunc(ctx, "__lrvx_delta_book_replayer_create", js_delta_book_replayer_create, 0);
+  addGlobalFunc(ctx, "__lrvx_delta_book_replayer_destroy", js_delta_book_replayer_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_delta_book_replayer_apply", js_delta_book_replayer_apply, 5);
 
-  addGlobalFunc(ctx, "__flox_run_recorder_create", js_run_recorder_create, 1);
-  addGlobalFunc(ctx, "__flox_run_recorder_destroy", js_run_recorder_destroy, 1);
-  addGlobalFunc(ctx, "__flox_run_recorder_add_tape_ref", js_run_recorder_add_tape_ref, 2);
-  addGlobalFunc(ctx, "__flox_run_recorder_set_run_ended_ns", js_run_recorder_set_run_ended_ns, 2);
-  addGlobalFunc(ctx, "__flox_run_recorder_write_signal", js_run_recorder_write_signal, 2);
-  addGlobalFunc(ctx, "__flox_run_recorder_write_order_event", js_run_recorder_write_order_event, 2);
-  addGlobalFunc(ctx, "__flox_run_recorder_write_fill", js_run_recorder_write_fill, 2);
-  addGlobalFunc(ctx, "__flox_run_recorder_close", js_run_recorder_close, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_open", js_run_reader_open, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_close", js_run_reader_close, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_strategy_id", js_run_reader_strategy_id, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_run_started_ns", js_run_reader_run_started_ns, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_run_ended_ns", js_run_reader_run_ended_ns, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_signals", js_run_reader_signals, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_orders", js_run_reader_orders, 1);
-  addGlobalFunc(ctx, "__flox_run_reader_fills", js_run_reader_fills, 1);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_create", js_run_recorder_create, 1);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_destroy", js_run_recorder_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_add_tape_ref", js_run_recorder_add_tape_ref, 2);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_set_run_ended_ns", js_run_recorder_set_run_ended_ns, 2);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_write_signal", js_run_recorder_write_signal, 2);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_write_order_event", js_run_recorder_write_order_event, 2);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_write_fill", js_run_recorder_write_fill, 2);
+  addGlobalFunc(ctx, "__lrvx_run_recorder_close", js_run_recorder_close, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_open", js_run_reader_open, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_close", js_run_reader_close, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_strategy_id", js_run_reader_strategy_id, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_run_started_ns", js_run_reader_run_started_ns, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_run_ended_ns", js_run_reader_run_ended_ns, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_signals", js_run_reader_signals, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_orders", js_run_reader_orders, 1);
+  addGlobalFunc(ctx, "__lrvx_run_reader_fills", js_run_reader_fills, 1);
 
   // Order group (multi-leg state machine; QuickJS class wraps these in
-  // quickjs/flox/order_group.js so all four bindings share the engine).
-  addGlobalFunc(ctx, "__flox_order_group_create", js_order_group_create, 2);
-  addGlobalFunc(ctx, "__flox_order_group_destroy", js_order_group_destroy, 1);
-  addGlobalFunc(ctx, "__flox_order_group_add_market_leg", js_order_group_add_market_leg, 4);
-  addGlobalFunc(ctx, "__flox_order_group_add_limit_leg", js_order_group_add_limit_leg, 5);
-  addGlobalFunc(ctx, "__flox_order_group_leg_count", js_order_group_leg_count, 1);
-  addGlobalFunc(ctx, "__flox_order_group_leg_state", js_order_group_leg_state, 2);
-  addGlobalFunc(ctx, "__flox_order_group_leg_filled", js_order_group_leg_filled, 2);
-  addGlobalFunc(ctx, "__flox_order_group_leg_order_id", js_order_group_leg_order_id, 2);
-  addGlobalFunc(ctx, "__flox_order_group_record_submit", js_order_group_record_submit, 3);
-  addGlobalFunc(ctx, "__flox_order_group_record_fill", js_order_group_record_fill, 3);
-  addGlobalFunc(ctx, "__flox_order_group_record_cancel", js_order_group_record_cancel, 2);
-  addGlobalFunc(ctx, "__flox_order_group_record_failure", js_order_group_record_failure, 2);
-  addGlobalFunc(ctx, "__flox_order_group_record_replace_accepted",
+  // quickjs/lrvx/order_group.js so all four bindings share the engine).
+  addGlobalFunc(ctx, "__lrvx_order_group_create", js_order_group_create, 2);
+  addGlobalFunc(ctx, "__lrvx_order_group_destroy", js_order_group_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_order_group_add_market_leg", js_order_group_add_market_leg, 4);
+  addGlobalFunc(ctx, "__lrvx_order_group_add_limit_leg", js_order_group_add_limit_leg, 5);
+  addGlobalFunc(ctx, "__lrvx_order_group_leg_count", js_order_group_leg_count, 1);
+  addGlobalFunc(ctx, "__lrvx_order_group_leg_state", js_order_group_leg_state, 2);
+  addGlobalFunc(ctx, "__lrvx_order_group_leg_filled", js_order_group_leg_filled, 2);
+  addGlobalFunc(ctx, "__lrvx_order_group_leg_order_id", js_order_group_leg_order_id, 2);
+  addGlobalFunc(ctx, "__lrvx_order_group_record_submit", js_order_group_record_submit, 3);
+  addGlobalFunc(ctx, "__lrvx_order_group_record_fill", js_order_group_record_fill, 3);
+  addGlobalFunc(ctx, "__lrvx_order_group_record_cancel", js_order_group_record_cancel, 2);
+  addGlobalFunc(ctx, "__lrvx_order_group_record_failure", js_order_group_record_failure, 2);
+  addGlobalFunc(ctx, "__lrvx_order_group_record_replace_accepted",
                 js_order_group_record_replace_accepted, 3);
-  addGlobalFunc(ctx, "__flox_order_group_record_replace_rejected",
+  addGlobalFunc(ctx, "__lrvx_order_group_record_replace_rejected",
                 js_order_group_record_replace_rejected, 2);
-  addGlobalFunc(ctx, "__flox_order_group_find_leg_by_order_id",
+  addGlobalFunc(ctx, "__lrvx_order_group_find_leg_by_order_id",
                 js_order_group_find_leg_by_order_id, 2);
-  addGlobalFunc(ctx, "__flox_order_group_state", js_order_group_state, 1);
-  addGlobalFunc(ctx, "__flox_order_group_recommended_actions",
+  addGlobalFunc(ctx, "__lrvx_order_group_state", js_order_group_state, 1);
+  addGlobalFunc(ctx, "__lrvx_order_group_recommended_actions",
                 js_order_group_recommended_actions, 1);
-  addGlobalFunc(ctx, "__flox_order_group_mark_action_dispatched",
+  addGlobalFunc(ctx, "__lrvx_order_group_mark_action_dispatched",
                 js_order_group_mark_action_dispatched, 3);
-  addGlobalFunc(ctx, "__flox_order_group_set_risk_limits", js_order_group_set_risk_limits, 4);
-  addGlobalFunc(ctx, "__flox_order_group_precheck_submission",
+  addGlobalFunc(ctx, "__lrvx_order_group_set_risk_limits", js_order_group_set_risk_limits, 4);
+  addGlobalFunc(ctx, "__lrvx_order_group_precheck_submission",
                 js_order_group_precheck_submission, 3);
-  addGlobalFunc(ctx, "__flox_order_group_set_pair_latency_budget_ns",
+  addGlobalFunc(ctx, "__lrvx_order_group_set_pair_latency_budget_ns",
                 js_order_group_set_pair_latency_budget_ns, 2);
-  addGlobalFunc(ctx, "__flox_order_group_pair_latency_decision",
+  addGlobalFunc(ctx, "__lrvx_order_group_pair_latency_decision",
                 js_order_group_pair_latency_decision, 4);
 
   // Live queue position estimator
-  addGlobalFunc(ctx, "__flox_live_queue_position_create",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_create",
                 js_live_queue_position_create, 0);
-  addGlobalFunc(ctx, "__flox_live_queue_position_destroy",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_destroy",
                 js_live_queue_position_destroy, 1);
-  addGlobalFunc(ctx, "__flox_live_queue_position_set_confidence_half_life_ns",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_set_confidence_half_life_ns",
                 js_live_queue_position_set_half_life, 2);
-  addGlobalFunc(ctx, "__flox_live_queue_position_set_shrink_factor",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_set_shrink_factor",
                 js_live_queue_position_set_shrink_factor, 2);
-  addGlobalFunc(ctx, "__flox_live_queue_position_on_order_placed",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_on_order_placed",
                 js_live_queue_position_on_order_placed, 8);
-  addGlobalFunc(ctx, "__flox_live_queue_position_on_order_cancelled",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_on_order_cancelled",
                 js_live_queue_position_on_order_cancelled, 3);
-  addGlobalFunc(ctx, "__flox_live_queue_position_on_order_filled",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_on_order_filled",
                 js_live_queue_position_on_order_filled, 4);
-  addGlobalFunc(ctx, "__flox_live_queue_position_on_trade",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_on_trade",
                 js_live_queue_position_on_trade, 5);
-  addGlobalFunc(ctx, "__flox_live_queue_position_on_trade_with_flag",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_on_trade_with_flag",
                 js_live_queue_position_on_trade_with_flag, 6);
-  addGlobalFunc(ctx, "__flox_live_queue_position_set_hidden_order_policy",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_set_hidden_order_policy",
                 js_live_queue_position_set_hidden_order_policy, 2);
-  addGlobalFunc(ctx, "__flox_live_queue_position_on_level_update",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_on_level_update",
                 js_live_queue_position_on_level_update, 6);
-  addGlobalFunc(ctx, "__flox_live_queue_position_snapshot",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_snapshot",
                 js_live_queue_position_snapshot, 3);
-  addGlobalFunc(ctx, "__flox_live_queue_position_tracked_count",
+  addGlobalFunc(ctx, "__lrvx_live_queue_position_tracked_count",
                 js_live_queue_position_tracked_count, 1);
 
   // Bar dispatch recorder (cross-binding parity test fixture)
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_create", js_bar_dispatch_recorder_create, 0);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_destroy", js_bar_dispatch_recorder_destroy, 1);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_add_time_seconds",
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_create", js_bar_dispatch_recorder_create, 0);
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_destroy", js_bar_dispatch_recorder_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_add_time_seconds",
                 js_bar_dispatch_recorder_add_time_seconds, 2);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_on_trade",
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_on_trade",
                 js_bar_dispatch_recorder_on_trade, 5);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_finalize",
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_finalize",
                 js_bar_dispatch_recorder_finalize, 1);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_count", js_bar_dispatch_recorder_count, 1);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_type_at",
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_count", js_bar_dispatch_recorder_count, 1);
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_type_at",
                 js_bar_dispatch_recorder_type_at, 2);
-  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_param_at",
+  addGlobalFunc(ctx, "__lrvx_bar_dispatch_recorder_param_at",
                 js_bar_dispatch_recorder_param_at, 2);
 
   // Tape diff
-  addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);
+  addGlobalFunc(ctx, "__lrvx_tape_diff", js_tape_diff, 3);
 
   // Execution algos (TWAP / VWAP / Iceberg / POV)
-  addGlobalFunc(ctx, "__flox_exec_twap_create", js_exec_twap_create, 8);
-  addGlobalFunc(ctx, "__flox_exec_vwap_create", js_exec_vwap_create, 6);
-  addGlobalFunc(ctx, "__flox_exec_iceberg_create", js_exec_iceberg_create, 6);
-  addGlobalFunc(ctx, "__flox_exec_pov_create", js_exec_pov_create, 7);
-  addGlobalFunc(ctx, "__flox_exec_destroy", js_exec_destroy, 1);
-  addGlobalFunc(ctx, "__flox_exec_step", js_exec_step, 2);
-  addGlobalFunc(ctx, "__flox_exec_report_fill", js_exec_report_fill, 2);
-  addGlobalFunc(ctx, "__flox_exec_observe_volume", js_exec_observe_volume, 2);
-  addGlobalFunc(ctx, "__flox_exec_submitted_qty", js_exec_submitted_qty, 1);
-  addGlobalFunc(ctx, "__flox_exec_filled_qty", js_exec_filled_qty, 1);
-  addGlobalFunc(ctx, "__flox_exec_remaining_qty", js_exec_remaining_qty, 1);
-  addGlobalFunc(ctx, "__flox_exec_is_done", js_exec_is_done, 1);
+  addGlobalFunc(ctx, "__lrvx_exec_twap_create", js_exec_twap_create, 8);
+  addGlobalFunc(ctx, "__lrvx_exec_vwap_create", js_exec_vwap_create, 6);
+  addGlobalFunc(ctx, "__lrvx_exec_iceberg_create", js_exec_iceberg_create, 6);
+  addGlobalFunc(ctx, "__lrvx_exec_pov_create", js_exec_pov_create, 7);
+  addGlobalFunc(ctx, "__lrvx_exec_destroy", js_exec_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_exec_step", js_exec_step, 2);
+  addGlobalFunc(ctx, "__lrvx_exec_report_fill", js_exec_report_fill, 2);
+  addGlobalFunc(ctx, "__lrvx_exec_observe_volume", js_exec_observe_volume, 2);
+  addGlobalFunc(ctx, "__lrvx_exec_submitted_qty", js_exec_submitted_qty, 1);
+  addGlobalFunc(ctx, "__lrvx_exec_filled_qty", js_exec_filled_qty, 1);
+  addGlobalFunc(ctx, "__lrvx_exec_remaining_qty", js_exec_remaining_qty, 1);
+  addGlobalFunc(ctx, "__lrvx_exec_is_done", js_exec_is_done, 1);
 
   // Portfolio risk aggregator
-  addGlobalFunc(ctx, "__flox_portfolio_risk_create", js_portfolio_risk_create, 2);
-  addGlobalFunc(ctx, "__flox_portfolio_risk_destroy", js_portfolio_risk_destroy, 1);
-  addGlobalFunc(ctx, "__flox_portfolio_risk_update", js_portfolio_risk_update, 3);
-  addGlobalFunc(ctx, "__flox_portfolio_risk_remove", js_portfolio_risk_remove, 2);
-  addGlobalFunc(ctx, "__flox_portfolio_risk_reset", js_portfolio_risk_reset_kill_switch, 1);
-  addGlobalFunc(ctx, "__flox_portfolio_risk_check_order", js_portfolio_risk_check_order, 4);
-  addGlobalFunc(ctx, "__flox_portfolio_risk_snapshot", js_portfolio_risk_snapshot, 1);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_create", js_portfolio_risk_create, 2);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_destroy", js_portfolio_risk_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_update", js_portfolio_risk_update, 3);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_remove", js_portfolio_risk_remove, 2);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_reset", js_portfolio_risk_reset_kill_switch, 1);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_check_order", js_portfolio_risk_check_order, 4);
+  addGlobalFunc(ctx, "__lrvx_portfolio_risk_snapshot", js_portfolio_risk_snapshot, 1);
 
   // Latency models (Phase 1 sampling primitive)
-  addGlobalFunc(ctx, "__flox_lat_constant_create", js_lat_constant_create, 3);
-  addGlobalFunc(ctx, "__flox_lat_gaussian_create", js_lat_gaussian_create, 7);
-  addGlobalFunc(ctx, "__flox_lat_exponential_create", js_lat_exponential_create, 4);
-  addGlobalFunc(ctx, "__flox_lat_empirical_create", js_lat_empirical_create, 4);
-  addGlobalFunc(ctx, "__flox_lat_destroy", js_lat_destroy, 1);
-  addGlobalFunc(ctx, "__flox_lat_feed_delay", js_lat_feed_delay, 1);
-  addGlobalFunc(ctx, "__flox_lat_order_delay", js_lat_order_delay, 1);
-  addGlobalFunc(ctx, "__flox_lat_fill_delay", js_lat_fill_delay, 1);
-  addGlobalFunc(ctx, "__flox_lat_sample", js_lat_sample, 1);
-  addGlobalFunc(ctx, "__flox_lat_reset", js_lat_reset, 2);
+  addGlobalFunc(ctx, "__lrvx_lat_constant_create", js_lat_constant_create, 3);
+  addGlobalFunc(ctx, "__lrvx_lat_gaussian_create", js_lat_gaussian_create, 7);
+  addGlobalFunc(ctx, "__lrvx_lat_exponential_create", js_lat_exponential_create, 4);
+  addGlobalFunc(ctx, "__lrvx_lat_empirical_create", js_lat_empirical_create, 4);
+  addGlobalFunc(ctx, "__lrvx_lat_destroy", js_lat_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_lat_feed_delay", js_lat_feed_delay, 1);
+  addGlobalFunc(ctx, "__lrvx_lat_order_delay", js_lat_order_delay, 1);
+  addGlobalFunc(ctx, "__lrvx_lat_fill_delay", js_lat_fill_delay, 1);
+  addGlobalFunc(ctx, "__lrvx_lat_sample", js_lat_sample, 1);
+  addGlobalFunc(ctx, "__lrvx_lat_reset", js_lat_reset, 2);
 
   // Volume profile
-  addGlobalFunc(ctx, "__flox_vprofile_create", js_vprofile_create, 1);
-  addGlobalFunc(ctx, "__flox_vprofile_destroy", js_vprofile_destroy, 1);
-  addGlobalFunc(ctx, "__flox_vprofile_add_trade", js_vprofile_add_trade, 4);
-  addGlobalFunc(ctx, "__flox_vprofile_poc", js_vprofile_poc, 1);
-  addGlobalFunc(ctx, "__flox_vprofile_vah", js_vprofile_vah, 1);
-  addGlobalFunc(ctx, "__flox_vprofile_val", js_vprofile_val, 1);
-  addGlobalFunc(ctx, "__flox_vprofile_total_volume", js_vprofile_total_vol, 1);
-  addGlobalFunc(ctx, "__flox_vprofile_clear", js_vprofile_clear, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_create", js_vprofile_create, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_destroy", js_vprofile_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_add_trade", js_vprofile_add_trade, 4);
+  addGlobalFunc(ctx, "__lrvx_vprofile_poc", js_vprofile_poc, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_vah", js_vprofile_vah, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_val", js_vprofile_val, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_total_volume", js_vprofile_total_vol, 1);
+  addGlobalFunc(ctx, "__lrvx_vprofile_clear", js_vprofile_clear, 1);
 
   // Stats
-  addGlobalFunc(ctx, "__flox_stat_correlation", js_stat_correlation, 2);
+  addGlobalFunc(ctx, "__lrvx_stat_correlation", js_stat_correlation, 2);
 
   // Stat extras
   // L3 book
-  addGlobalFunc(ctx, "__flox_l3_create", [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue
-                { return createHandleObject(c, flox_l3_book_create(), flox_l3_book_destroy); }, 0);
-  addGlobalFunc(ctx, "__flox_l3_destroy", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_l3_create", [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue
+                { return createHandleObject(c, lrvx_l3_book_create(), lrvx_l3_book_destroy); }, 0);
+  addGlobalFunc(ctx, "__lrvx_l3_destroy", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return js_generic_handle_destroy(c, a[0]); }, 1);
-  addGlobalFunc(ctx, "__flox_l3_add_order", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_l3_add_order", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return JS_NewInt32(
-                      c, flox_l3_book_add_order(
-                             static_cast<FloxL3BookHandle>(getHandle(c, a[0])),
+                      c, lrvx_l3_book_add_order(
+                             static_cast<LrvxL3BookHandle>(getHandle(c, a[0])),
                              static_cast<uint64_t>(toInt64(c, a[1])), toDouble(c, a[2]),
                              toDouble(c, a[3]), static_cast<uint8_t>(toUint32(c, a[4])))); }, 5);
-  addGlobalFunc(ctx, "__flox_l3_remove_order", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_l3_remove_order", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return JS_NewInt32(
-                      c, flox_l3_book_remove_order(
-                             static_cast<FloxL3BookHandle>(getHandle(c, a[0])),
+                      c, lrvx_l3_book_remove_order(
+                             static_cast<LrvxL3BookHandle>(getHandle(c, a[0])),
                              static_cast<uint64_t>(toInt64(c, a[1])))); }, 2);
-  addGlobalFunc(ctx, "__flox_l3_modify_order", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_l3_modify_order", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return JS_NewInt32(
-                      c, flox_l3_book_modify_order(
-                             static_cast<FloxL3BookHandle>(getHandle(c, a[0])),
+                      c, lrvx_l3_book_modify_order(
+                             static_cast<LrvxL3BookHandle>(getHandle(c, a[0])),
                              static_cast<uint64_t>(toInt64(c, a[1])), toDouble(c, a[2]))); }, 3);
-  addGlobalFunc(ctx, "__flox_l3_best_bid", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_l3_best_bid", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
                   double p = 0;
-                  if (flox_l3_book_best_bid(
-                          static_cast<FloxL3BookHandle>(getHandle(c, a[0])), &p)){
+                  if (lrvx_l3_book_best_bid(
+                          static_cast<LrvxL3BookHandle>(getHandle(c, a[0])), &p)){
                     return JS_NewFloat64(c, p);
 }
                   return JS_NULL; }, 1);
-  addGlobalFunc(ctx, "__flox_l3_best_ask", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_l3_best_ask", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
                   double p = 0;
-                  if (flox_l3_book_best_ask(
-                          static_cast<FloxL3BookHandle>(getHandle(c, a[0])), &p)){
+                  if (lrvx_l3_book_best_ask(
+                          static_cast<LrvxL3BookHandle>(getHandle(c, a[0])), &p)){
                     return JS_NewFloat64(c, p);
 }
                   return JS_NULL; }, 1);
 
   // Footprint (native, separate from volume profile)
-  addGlobalFunc(ctx, "__flox_fp_create", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
-                { return createHandleObject(c, flox_footprint_create(toDouble(c, a[0])), flox_footprint_destroy); }, 1);
-  addGlobalFunc(ctx, "__flox_fp_destroy", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_fp_create", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+                { return createHandleObject(c, lrvx_footprint_create(toDouble(c, a[0])), lrvx_footprint_destroy); }, 1);
+  addGlobalFunc(ctx, "__lrvx_fp_destroy", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return js_generic_handle_destroy(c, a[0]); }, 1);
-  addGlobalFunc(ctx, "__flox_fp_add_trade", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_fp_add_trade", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
-                  flox_footprint_add_trade(
-                      static_cast<FloxFootprintHandle>(getHandle(c, a[0])), toDouble(c, a[1]),
+                  lrvx_footprint_add_trade(
+                      static_cast<LrvxFootprintHandle>(getHandle(c, a[0])), toDouble(c, a[1]),
                       toDouble(c, a[2]), static_cast<uint8_t>(toUint32(c, a[3])));
                   return JS_UNDEFINED; }, 4);
-  addGlobalFunc(ctx, "__flox_fp_total_delta", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_fp_total_delta", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return JS_NewFloat64(
-                      c, flox_footprint_total_delta(
-                             static_cast<FloxFootprintHandle>(getHandle(c, a[0])))); }, 1);
-  addGlobalFunc(ctx, "__flox_fp_total_volume", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+                      c, lrvx_footprint_total_delta(
+                             static_cast<LrvxFootprintHandle>(getHandle(c, a[0])))); }, 1);
+  addGlobalFunc(ctx, "__lrvx_fp_total_volume", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 { return JS_NewFloat64(
-                      c, flox_footprint_total_volume(
-                             static_cast<FloxFootprintHandle>(getHandle(c, a[0])))); }, 1);
-  addGlobalFunc(ctx, "__flox_fp_clear", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+                      c, lrvx_footprint_total_volume(
+                             static_cast<LrvxFootprintHandle>(getHandle(c, a[0])))); }, 1);
+  addGlobalFunc(ctx, "__lrvx_fp_clear", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
-                  flox_footprint_clear(static_cast<FloxFootprintHandle>(getHandle(c, a[0])));
+                  lrvx_footprint_clear(static_cast<LrvxFootprintHandle>(getHandle(c, a[0])));
                   return JS_UNDEFINED; }, 1);
 
   // Book level access
-  addGlobalFunc(ctx, "__flox_book_get_bids", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_book_get_bids", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
                   double prices[100], qtys[100];
-                  uint32_t n = flox_book_get_bids(
-                      static_cast<FloxBookHandle>(getHandle(c, a[0])), prices, qtys,
+                  uint32_t n = lrvx_book_get_bids(
+                      static_cast<LrvxBookHandle>(getHandle(c, a[0])), prices, qtys,
                       std::min(toUint32(c, a[1]), 100u));
                   JSValue arr = JS_NewArray(c);
                   for (uint32_t i = 0; i < n; i++)
@@ -7710,11 +7710,11 @@ bool registerFloxBindings(JSContext* ctx)
                     JS_SetPropertyUint32(c, arr, i, level);
                   }
                   return arr; }, 2);
-  addGlobalFunc(ctx, "__flox_book_get_asks", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_book_get_asks", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
                   double prices[100], qtys[100];
-                  uint32_t n = flox_book_get_asks(
-                      static_cast<FloxBookHandle>(getHandle(c, a[0])), prices, qtys,
+                  uint32_t n = lrvx_book_get_asks(
+                      static_cast<LrvxBookHandle>(getHandle(c, a[0])), prices, qtys,
                       std::min(toUint32(c, a[1]), 100u));
                   JSValue arr = JS_NewArray(c);
                   for (uint32_t i = 0; i < n; i++)
@@ -7727,13 +7727,13 @@ bool registerFloxBindings(JSContext* ctx)
                   return arr; }, 2);
 
   // Bootstrap CI
-  addGlobalFunc(ctx, "__flox_stat_bootstrap_ci", [](JSContext* c, JSValueConst, int argc, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_stat_bootstrap_ci", [](JSContext* c, JSValueConst, int argc, JSValueConst* a) -> JSValue
                 {
                   auto data = jsArrayToDoubles(c, a[0]);
                   double conf = (argc > 1) ? toDouble(c, a[1]) : 0.95;
                   uint32_t samples = (argc > 2) ? toUint32(c, a[2]) : 10000;
                   double lo, med, hi;
-                  flox_stat_bootstrap_ci(data.data(), data.size(), conf, samples, &lo, &med, &hi);
+                  lrvx_stat_bootstrap_ci(data.data(), data.size(), conf, samples, &lo, &med, &hi);
                   JSValue r = JS_NewObject(c);
                   JS_SetPropertyStr(c, r, "lower", JS_NewFloat64(c, lo));
                   JS_SetPropertyStr(c, r, "median", JS_NewFloat64(c, med));
@@ -7741,188 +7741,188 @@ bool registerFloxBindings(JSContext* ctx)
                   return r; }, 3);
 
   // Permutation test
-  addGlobalFunc(ctx, "__flox_stat_permutation_test", [](JSContext* c, JSValueConst, int argc, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_stat_permutation_test", [](JSContext* c, JSValueConst, int argc, JSValueConst* a) -> JSValue
                 {
                   auto g1 = jsArrayToDoubles(c, a[0]);
                   auto g2 = jsArrayToDoubles(c, a[1]);
                   uint32_t n = (argc > 2) ? toUint32(c, a[2]) : 10000;
                   return JS_NewFloat64(
-                      c, flox_stat_permutation_test(g1.data(), g1.size(), g2.data(), g2.size(), n)); }, 3);
+                      c, lrvx_stat_permutation_test(g1.data(), g1.size(), g2.data(), g2.size(), n)); }, 3);
 
   // Segment ops
-  addGlobalFunc(ctx, "__flox_segment_validate", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_segment_validate", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
-                  FLOX_JS_CSTRING_OR_THROW(path, c, a[0]);
-                  uint8_t r = flox_segment_validate(path);
+                  LRVX_JS_CSTRING_OR_THROW(path, c, a[0]);
+                  uint8_t r = lrvx_segment_validate(path);
                   return JS_NewBool(c, r); }, 1);
-  addGlobalFunc(ctx, "__flox_segment_merge", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_segment_merge", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
-                  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
-                  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
-                  uint8_t r = flox_segment_merge(dir, out);
+                  LRVX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+                  LRVX_JS_CSTRING_OR_THROW(out, c, a[1]);
+                  uint8_t r = lrvx_segment_merge(dir, out);
                   return JS_NewBool(c, r); }, 2);
 
-  addGlobalFunc(ctx, "__flox_stat_profit_factor", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+  addGlobalFunc(ctx, "__lrvx_stat_profit_factor", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
                   auto d = jsArrayToDoubles(c, a[0]);
-                  return JS_NewFloat64(c, flox_stat_profit_factor(d.data(), d.size())); }, 1);
-  addGlobalFunc(ctx, "__flox_stat_win_rate", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
+                  return JS_NewFloat64(c, lrvx_stat_profit_factor(d.data(), d.size())); }, 1);
+  addGlobalFunc(ctx, "__lrvx_stat_win_rate", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
                   auto d = jsArrayToDoubles(c, a[0]);
-                  return JS_NewFloat64(c, flox_stat_win_rate(d.data(), d.size())); }, 1);
+                  return JS_NewFloat64(c, lrvx_stat_win_rate(d.data(), d.size())); }, 1);
 
   // MarketProfile
-  addGlobalFunc(ctx, "__flox_mp_create", js_mp_create, 3);
-  addGlobalFunc(ctx, "__flox_mp_destroy", js_mp_destroy, 1);
-  addGlobalFunc(ctx, "__flox_mp_add_trade", js_mp_add_trade, 5);
-  addGlobalFunc(ctx, "__flox_mp_poc", js_mp_poc, 1);
-  addGlobalFunc(ctx, "__flox_mp_vah", js_mp_vah, 1);
-  addGlobalFunc(ctx, "__flox_mp_val", js_mp_val, 1);
-  addGlobalFunc(ctx, "__flox_mp_ib_high", js_mp_ib_high, 1);
-  addGlobalFunc(ctx, "__flox_mp_ib_low", js_mp_ib_low, 1);
-  addGlobalFunc(ctx, "__flox_mp_is_poor_high", js_mp_is_poor_high, 1);
-  addGlobalFunc(ctx, "__flox_mp_is_poor_low", js_mp_is_poor_low, 1);
-  addGlobalFunc(ctx, "__flox_mp_clear", js_mp_clear, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_create", js_mp_create, 3);
+  addGlobalFunc(ctx, "__lrvx_mp_destroy", js_mp_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_add_trade", js_mp_add_trade, 5);
+  addGlobalFunc(ctx, "__lrvx_mp_poc", js_mp_poc, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_vah", js_mp_vah, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_val", js_mp_val, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_ib_high", js_mp_ib_high, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_ib_low", js_mp_ib_low, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_is_poor_high", js_mp_is_poor_high, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_is_poor_low", js_mp_is_poor_low, 1);
+  addGlobalFunc(ctx, "__lrvx_mp_clear", js_mp_clear, 1);
 
   // CompositeBook
-  addGlobalFunc(ctx, "__flox_cb_create", js_cb_create, 0);
-  addGlobalFunc(ctx, "__flox_cb_destroy", js_cb_destroy, 1);
-  addGlobalFunc(ctx, "__flox_cb_apply_snapshot", js_cb_apply_snapshot, 8);
-  addGlobalFunc(ctx, "__flox_cb_apply_delta", js_cb_apply_delta, 8);
-  addGlobalFunc(ctx, "__flox_cb_best_bid", js_cb_best_bid, 2);
-  addGlobalFunc(ctx, "__flox_cb_best_ask", js_cb_best_ask, 2);
-  addGlobalFunc(ctx, "__flox_cb_has_arb", js_cb_has_arb, 2);
-  addGlobalFunc(ctx, "__flox_cb_mark_stale", js_cb_mark_stale, 3);
-  addGlobalFunc(ctx, "__flox_cb_check_staleness", js_cb_check_staleness, 3);
+  addGlobalFunc(ctx, "__lrvx_cb_create", js_cb_create, 0);
+  addGlobalFunc(ctx, "__lrvx_cb_destroy", js_cb_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_cb_apply_snapshot", js_cb_apply_snapshot, 8);
+  addGlobalFunc(ctx, "__lrvx_cb_apply_delta", js_cb_apply_delta, 8);
+  addGlobalFunc(ctx, "__lrvx_cb_best_bid", js_cb_best_bid, 2);
+  addGlobalFunc(ctx, "__lrvx_cb_best_ask", js_cb_best_ask, 2);
+  addGlobalFunc(ctx, "__lrvx_cb_has_arb", js_cb_has_arb, 2);
+  addGlobalFunc(ctx, "__lrvx_cb_mark_stale", js_cb_mark_stale, 3);
+  addGlobalFunc(ctx, "__lrvx_cb_check_staleness", js_cb_check_staleness, 3);
 
   // OrderTracker
-  addGlobalFunc(ctx, "__flox_ot_create", js_ot_create, 0);
-  addGlobalFunc(ctx, "__flox_ot_destroy", js_ot_destroy, 1);
-  addGlobalFunc(ctx, "__flox_ot_submit", js_ot_submit, 6);
-  addGlobalFunc(ctx, "__flox_ot_filled", js_ot_filled, 3);
-  addGlobalFunc(ctx, "__flox_ot_canceled", js_ot_canceled, 2);
-  addGlobalFunc(ctx, "__flox_ot_is_active", js_ot_is_active, 2);
-  addGlobalFunc(ctx, "__flox_ot_active_count", js_ot_active_count, 1);
-  addGlobalFunc(ctx, "__flox_ot_total_count", js_ot_total_count, 1);
-  addGlobalFunc(ctx, "__flox_ot_prune", js_ot_prune, 1);
+  addGlobalFunc(ctx, "__lrvx_ot_create", js_ot_create, 0);
+  addGlobalFunc(ctx, "__lrvx_ot_destroy", js_ot_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_ot_submit", js_ot_submit, 6);
+  addGlobalFunc(ctx, "__lrvx_ot_filled", js_ot_filled, 3);
+  addGlobalFunc(ctx, "__lrvx_ot_canceled", js_ot_canceled, 2);
+  addGlobalFunc(ctx, "__lrvx_ot_is_active", js_ot_is_active, 2);
+  addGlobalFunc(ctx, "__lrvx_ot_active_count", js_ot_active_count, 1);
+  addGlobalFunc(ctx, "__lrvx_ot_total_count", js_ot_total_count, 1);
+  addGlobalFunc(ctx, "__lrvx_ot_prune", js_ot_prune, 1);
 
   // OrderJourneyTracer
-  addGlobalFunc(ctx, "__flox_ojt_create", js_ojt_create, 4);
-  addGlobalFunc(ctx, "__flox_ojt_destroy", js_ojt_destroy, 1);
-  addGlobalFunc(ctx, "__flox_ojt_order_count", js_ojt_order_count, 1);
-  addGlobalFunc(ctx, "__flox_ojt_record_count", js_ojt_record_count, 1);
-  addGlobalFunc(ctx, "__flox_ojt_median_ack", js_ojt_median_ack, 1);
-  addGlobalFunc(ctx, "__flox_ojt_median_ttf", js_ojt_median_ttf, 1);
-  addGlobalFunc(ctx, "__flox_ojt_maker_ratio", js_ojt_maker_ratio, 1);
-  addGlobalFunc(ctx, "__flox_ojt_cancel_race", js_ojt_cancel_race, 1);
-  addGlobalFunc(ctx, "__flox_ojt_result", js_ojt_result, 1);
-  addGlobalFunc(ctx, "__flox_ojt_journey", js_ojt_journey, 2);
-  addGlobalFunc(ctx, "__flox_ojt_clear", js_ojt_clear, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_create", js_ojt_create, 4);
+  addGlobalFunc(ctx, "__lrvx_ojt_destroy", js_ojt_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_order_count", js_ojt_order_count, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_record_count", js_ojt_record_count, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_median_ack", js_ojt_median_ack, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_median_ttf", js_ojt_median_ttf, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_maker_ratio", js_ojt_maker_ratio, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_cancel_race", js_ojt_cancel_race, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_result", js_ojt_result, 1);
+  addGlobalFunc(ctx, "__lrvx_ojt_journey", js_ojt_journey, 2);
+  addGlobalFunc(ctx, "__lrvx_ojt_clear", js_ojt_clear, 1);
 
   // PositionGroupTracker
-  addGlobalFunc(ctx, "__flox_pg_create", js_pg_create, 0);
-  addGlobalFunc(ctx, "__flox_pg_destroy", js_pg_destroy, 1);
-  addGlobalFunc(ctx, "__flox_pg_open", js_pg_open, 6);
-  addGlobalFunc(ctx, "__flox_pg_close", js_pg_close, 3);
-  addGlobalFunc(ctx, "__flox_pg_partial_close", js_pg_partial_close, 4);
-  addGlobalFunc(ctx, "__flox_pg_net", js_pg_net, 2);
-  addGlobalFunc(ctx, "__flox_pg_pnl", js_pg_pnl, 2);
-  addGlobalFunc(ctx, "__flox_pg_total_pnl", js_pg_total_pnl, 1);
-  addGlobalFunc(ctx, "__flox_pg_open_count", js_pg_open_count, 2);
-  addGlobalFunc(ctx, "__flox_pg_prune", js_pg_prune, 1);
+  addGlobalFunc(ctx, "__lrvx_pg_create", js_pg_create, 0);
+  addGlobalFunc(ctx, "__lrvx_pg_destroy", js_pg_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_pg_open", js_pg_open, 6);
+  addGlobalFunc(ctx, "__lrvx_pg_close", js_pg_close, 3);
+  addGlobalFunc(ctx, "__lrvx_pg_partial_close", js_pg_partial_close, 4);
+  addGlobalFunc(ctx, "__lrvx_pg_net", js_pg_net, 2);
+  addGlobalFunc(ctx, "__lrvx_pg_pnl", js_pg_pnl, 2);
+  addGlobalFunc(ctx, "__lrvx_pg_total_pnl", js_pg_total_pnl, 1);
+  addGlobalFunc(ctx, "__lrvx_pg_open_count", js_pg_open_count, 2);
+  addGlobalFunc(ctx, "__lrvx_pg_prune", js_pg_prune, 1);
 
   // DataWriter
-  addGlobalFunc(ctx, "__flox_dw_create", js_dw_create, 3);
-  addGlobalFunc(ctx, "__flox_dw_destroy", js_dw_destroy, 1);
-  addGlobalFunc(ctx, "__flox_dw_write_trade", js_dw_write_trade, 8);
-  addGlobalFunc(ctx, "__flox_dw_write_book", js_dw_write_book, 10);
-  addGlobalFunc(ctx, "__flox_dw_flush", js_dw_flush, 1);
-  addGlobalFunc(ctx, "__flox_dw_close", js_dw_close, 1);
-  addGlobalFunc(ctx, "__flox_dw_stats", js_dw_stats, 1);
+  addGlobalFunc(ctx, "__lrvx_dw_create", js_dw_create, 3);
+  addGlobalFunc(ctx, "__lrvx_dw_destroy", js_dw_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_dw_write_trade", js_dw_write_trade, 8);
+  addGlobalFunc(ctx, "__lrvx_dw_write_book", js_dw_write_book, 10);
+  addGlobalFunc(ctx, "__lrvx_dw_flush", js_dw_flush, 1);
+  addGlobalFunc(ctx, "__lrvx_dw_close", js_dw_close, 1);
+  addGlobalFunc(ctx, "__lrvx_dw_stats", js_dw_stats, 1);
 
   // DataReader
-  addGlobalFunc(ctx, "__flox_dr_create", js_dr_create, 1);
-  addGlobalFunc(ctx, "__flox_dr_create_filtered", js_dr_create_filtered, 4);
-  addGlobalFunc(ctx, "__flox_dr_destroy", js_dr_destroy, 1);
-  addGlobalFunc(ctx, "__flox_dr_count", js_dr_count, 1);
-  addGlobalFunc(ctx, "__flox_dr_summary", js_dr_summary, 1);
-  addGlobalFunc(ctx, "__flox_dr_stats", js_dr_stats, 1);
-  addGlobalFunc(ctx, "__flox_dr_read_trades", js_dr_read_trades, 2);
-  addGlobalFunc(ctx, "__flox_dr_read_bbo", js_dr_read_bbo, 2);
-  addGlobalFunc(ctx, "__flox_dr_read_book_updates", js_dr_read_book_updates, 1);
-  addGlobalFunc(ctx, "__flox_dr_read_trades_from", js_dr_read_trades_from, 3);
-  addGlobalFunc(ctx, "__flox_dr_read_bbo_from", js_dr_read_bbo_from, 3);
-  addGlobalFunc(ctx, "__flox_dr_read_book_updates_from", js_dr_read_book_updates_from, 2);
+  addGlobalFunc(ctx, "__lrvx_dr_create", js_dr_create, 1);
+  addGlobalFunc(ctx, "__lrvx_dr_create_filtered", js_dr_create_filtered, 4);
+  addGlobalFunc(ctx, "__lrvx_dr_destroy", js_dr_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_dr_count", js_dr_count, 1);
+  addGlobalFunc(ctx, "__lrvx_dr_summary", js_dr_summary, 1);
+  addGlobalFunc(ctx, "__lrvx_dr_stats", js_dr_stats, 1);
+  addGlobalFunc(ctx, "__lrvx_dr_read_trades", js_dr_read_trades, 2);
+  addGlobalFunc(ctx, "__lrvx_dr_read_bbo", js_dr_read_bbo, 2);
+  addGlobalFunc(ctx, "__lrvx_dr_read_book_updates", js_dr_read_book_updates, 1);
+  addGlobalFunc(ctx, "__lrvx_dr_read_trades_from", js_dr_read_trades_from, 3);
+  addGlobalFunc(ctx, "__lrvx_dr_read_bbo_from", js_dr_read_bbo_from, 3);
+  addGlobalFunc(ctx, "__lrvx_dr_read_book_updates_from", js_dr_read_book_updates_from, 2);
 
   // MergedTapeReader
-  addGlobalFunc(ctx, "__flox_mtr_create", js_mtr_create, 4);
-  addGlobalFunc(ctx, "__flox_mtr_destroy", js_mtr_destroy, 1);
-  addGlobalFunc(ctx, "__flox_mtr_symbol_count", js_mtr_symbol_count, 1);
-  addGlobalFunc(ctx, "__flox_mtr_get_symbols", js_mtr_get_symbols, 1);
-  addGlobalFunc(ctx, "__flox_mtr_tape_count", js_mtr_tape_count, 1);
-  addGlobalFunc(ctx, "__flox_mtr_get_tape_stats", js_mtr_get_tape_stats, 1);
-  addGlobalFunc(ctx, "__flox_mtr_time_range", js_mtr_time_range, 1);
-  addGlobalFunc(ctx, "__flox_mtr_count_trades", js_mtr_count_trades, 1);
-  addGlobalFunc(ctx, "__flox_mtr_read_trades", js_mtr_read_trades, 2);
-  addGlobalFunc(ctx, "__flox_mtr_count_books", js_mtr_count_books, 1);
-  addGlobalFunc(ctx, "__flox_mtr_read_books", js_mtr_read_books, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_create", js_mtr_create, 4);
+  addGlobalFunc(ctx, "__lrvx_mtr_destroy", js_mtr_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_symbol_count", js_mtr_symbol_count, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_get_symbols", js_mtr_get_symbols, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_tape_count", js_mtr_tape_count, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_get_tape_stats", js_mtr_get_tape_stats, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_time_range", js_mtr_time_range, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_count_trades", js_mtr_count_trades, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_read_trades", js_mtr_read_trades, 2);
+  addGlobalFunc(ctx, "__lrvx_mtr_count_books", js_mtr_count_books, 1);
+  addGlobalFunc(ctx, "__lrvx_mtr_read_books", js_mtr_read_books, 1);
 
   // BinaryLogRecorderHook
-  addGlobalFunc(ctx, "__flox_blrh_create", js_blrh_create, 6);
-  addGlobalFunc(ctx, "__flox_blrh_destroy", js_blrh_destroy, 1);
-  addGlobalFunc(ctx, "__flox_blrh_as_recorder", js_blrh_as_recorder, 1);
-  addGlobalFunc(ctx, "__flox_blrh_add_symbol", js_blrh_add_symbol, 7);
-  addGlobalFunc(ctx, "__flox_blrh_flush", js_blrh_flush, 1);
-  addGlobalFunc(ctx, "__flox_blrh_stats", js_blrh_stats, 1);
+  addGlobalFunc(ctx, "__lrvx_blrh_create", js_blrh_create, 6);
+  addGlobalFunc(ctx, "__lrvx_blrh_destroy", js_blrh_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_blrh_as_recorder", js_blrh_as_recorder, 1);
+  addGlobalFunc(ctx, "__lrvx_blrh_add_symbol", js_blrh_add_symbol, 7);
+  addGlobalFunc(ctx, "__lrvx_blrh_flush", js_blrh_flush, 1);
+  addGlobalFunc(ctx, "__lrvx_blrh_stats", js_blrh_stats, 1);
 
   // MarketDataRecorder handle drivers — push lifecycle + trade events
   // directly through the recorder callbacks, no Runner required.
-  addGlobalFunc(ctx, "__flox_recorder_on_start", js_recorder_on_start, 1);
-  addGlobalFunc(ctx, "__flox_recorder_on_stop", js_recorder_on_stop, 1);
-  addGlobalFunc(ctx, "__flox_recorder_on_trade", js_recorder_on_trade, 6);
+  addGlobalFunc(ctx, "__lrvx_recorder_on_start", js_recorder_on_start, 1);
+  addGlobalFunc(ctx, "__lrvx_recorder_on_stop", js_recorder_on_stop, 1);
+  addGlobalFunc(ctx, "__lrvx_recorder_on_trade", js_recorder_on_trade, 6);
 
   // Partitioner
-  addGlobalFunc(ctx, "__flox_part_create", js_part_create, 1);
-  addGlobalFunc(ctx, "__flox_part_destroy", js_part_destroy, 1);
-  addGlobalFunc(ctx, "__flox_part_by_time", js_part_by_time, 3);
-  addGlobalFunc(ctx, "__flox_part_by_duration", js_part_by_duration, 3);
-  addGlobalFunc(ctx, "__flox_part_by_calendar", js_part_by_calendar, 3);
-  addGlobalFunc(ctx, "__flox_part_by_symbol", js_part_by_symbol, 2);
-  addGlobalFunc(ctx, "__flox_part_per_symbol", js_part_per_symbol, 1);
-  addGlobalFunc(ctx, "__flox_part_by_event_count", js_part_by_event_count, 2);
+  addGlobalFunc(ctx, "__lrvx_part_create", js_part_create, 1);
+  addGlobalFunc(ctx, "__lrvx_part_destroy", js_part_destroy, 1);
+  addGlobalFunc(ctx, "__lrvx_part_by_time", js_part_by_time, 3);
+  addGlobalFunc(ctx, "__lrvx_part_by_duration", js_part_by_duration, 3);
+  addGlobalFunc(ctx, "__lrvx_part_by_calendar", js_part_by_calendar, 3);
+  addGlobalFunc(ctx, "__lrvx_part_by_symbol", js_part_by_symbol, 2);
+  addGlobalFunc(ctx, "__lrvx_part_per_symbol", js_part_per_symbol, 1);
+  addGlobalFunc(ctx, "__lrvx_part_by_event_count", js_part_by_event_count, 2);
 
   // Aggregators
-  addGlobalFunc(ctx, "__flox_agg_time", js_agg_time, 5);
-  addGlobalFunc(ctx, "__flox_agg_tick", js_agg_tick, 5);
-  addGlobalFunc(ctx, "__flox_agg_volume", js_agg_volume, 5);
-  addGlobalFunc(ctx, "__flox_agg_range", js_agg_range, 5);
-  addGlobalFunc(ctx, "__flox_agg_renko", js_agg_renko, 5);
-  addGlobalFunc(ctx, "__flox_agg_heikin", js_agg_heikin, 5);
+  addGlobalFunc(ctx, "__lrvx_agg_time", js_agg_time, 5);
+  addGlobalFunc(ctx, "__lrvx_agg_tick", js_agg_tick, 5);
+  addGlobalFunc(ctx, "__lrvx_agg_volume", js_agg_volume, 5);
+  addGlobalFunc(ctx, "__lrvx_agg_range", js_agg_range, 5);
+  addGlobalFunc(ctx, "__lrvx_agg_renko", js_agg_renko, 5);
+  addGlobalFunc(ctx, "__lrvx_agg_heikin", js_agg_heikin, 5);
 
   // Extended segment ops
-  addGlobalFunc(ctx, "__flox_seg_merge_dir", js_seg_merge_dir, 2);
-  addGlobalFunc(ctx, "__flox_seg_split", js_seg_split, 5);
-  addGlobalFunc(ctx, "__flox_seg_export", js_seg_export, 6);
-  addGlobalFunc(ctx, "__flox_seg_validate_full", js_seg_validate_full, 3);
-  addGlobalFunc(ctx, "__flox_dataset_validate", js_dataset_validate, 1);
-  addGlobalFunc(ctx, "__flox_seg_recompress", js_seg_recompress, 3);
-  addGlobalFunc(ctx, "__flox_seg_extract_symbols", js_seg_extract_symbols, 3);
-  addGlobalFunc(ctx, "__flox_seg_extract_time", js_seg_extract_time, 4);
+  addGlobalFunc(ctx, "__lrvx_seg_merge_dir", js_seg_merge_dir, 2);
+  addGlobalFunc(ctx, "__lrvx_seg_split", js_seg_split, 5);
+  addGlobalFunc(ctx, "__lrvx_seg_export", js_seg_export, 6);
+  addGlobalFunc(ctx, "__lrvx_seg_validate_full", js_seg_validate_full, 3);
+  addGlobalFunc(ctx, "__lrvx_dataset_validate", js_dataset_validate, 1);
+  addGlobalFunc(ctx, "__lrvx_seg_recompress", js_seg_recompress, 3);
+  addGlobalFunc(ctx, "__lrvx_seg_extract_symbols", js_seg_extract_symbols, 3);
+  addGlobalFunc(ctx, "__lrvx_seg_extract_time", js_seg_extract_time, 4);
 
   // CSV loader
-  addGlobalFunc(ctx, "__flox_load_csv", js_load_csv, 1);
+  addGlobalFunc(ctx, "__lrvx_load_csv", js_load_csv, 1);
 
   // The ABI pair the handshake above compared, so a script can report
   // what the engine it is running inside was built against.
-  addGlobalFunc(ctx, "__flox_capi_abi_version", js_capi_abi_version, 0);
+  addGlobalFunc(ctx, "__lrvx_capi_abi_version", js_capi_abi_version, 0);
   {
     JSValue g = JS_GetGlobalObject(ctx);
-    JS_SetPropertyStr(ctx, g, "__FLOX_CAPI_ABI_VERSION",
-                      JS_NewUint32(ctx, FLOX_CAPI_ABI_VERSION));
+    JS_SetPropertyStr(ctx, g, "__LRVX_CAPI_ABI_VERSION",
+                      JS_NewUint32(ctx, LRVX_CAPI_ABI_VERSION));
     JS_FreeValue(ctx, g);
   }
 
   return true;
 }
 
-}  // namespace flox
+}  // namespace lrvx

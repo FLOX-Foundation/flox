@@ -1,0 +1,35 @@
+# lrvx/targets.codon -- Forward-looking labels (research-only).
+#
+# Targets are batch-only and live in their own module so look-ahead is
+# visible at the call site. Feeding them into a live update loop is a
+# look-ahead-bias bug.
+
+# The C ABI handshake runs when this module is imported: see
+# lrvx/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from lrvx.abi import check_abi_version
+
+from C import lrvx_target_future_return(Ptr[f64], int, int, Ptr[f64])
+from C import lrvx_target_future_ctc_volatility(Ptr[f64], int, int, Ptr[f64])
+from C import lrvx_target_future_linear_slope(Ptr[f64], int, int, Ptr[f64])
+
+
+def future_return(close: List[float], horizon: int) -> List[float]:
+    n = len(close)
+    out = [0.0] * n
+    lrvx_target_future_return(close.arr.ptr, n, horizon, out.arr.ptr)
+    return out
+
+
+def future_ctc_volatility(close: List[float], horizon: int) -> List[float]:
+    n = len(close)
+    out = [0.0] * n
+    lrvx_target_future_ctc_volatility(close.arr.ptr, n, horizon, out.arr.ptr)
+    return out
+
+
+def future_linear_slope(close: List[float], horizon: int) -> List[float]:
+    n = len(close)
+    out = [0.0] * n
+    lrvx_target_future_linear_slope(close.arr.ptr, n, horizon, out.arr.ptr)
+    return out

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for
  * full license information.
  */
@@ -14,17 +14,17 @@
 
 #include "dex_amount_bindings.h"
 
-#include "flox/backtest/concentrated_liquidity_curve.h"
-#include "flox/backtest/constant_product_curve.h"
-#include "flox/backtest/ntoken_curve.h"
-#include "flox/backtest/raydium_cp_curve.h"
+#include "lrvx/backtest/concentrated_liquidity_curve.h"
+#include "lrvx/backtest/constant_product_curve.h"
+#include "lrvx/backtest/ntoken_curve.h"
+#include "lrvx/backtest/raydium_cp_curve.h"
 
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-namespace flox_py
+namespace lrvx
 {
 
 namespace py = pybind11;
@@ -40,19 +40,19 @@ namespace py = pybind11;
 class PyAmmCurve
 {
  public:
-  explicit PyAmmCurve(std::unique_ptr<flox::INTokenCurve> c) : _c(std::move(c)) {}
+  explicit PyAmmCurve(std::unique_ptr<lrvx::INTokenCurve> c) : _c(std::move(c)) {}
 
   static PyAmmCurve constantProduct(const py::int_& reserve0, const py::int_& reserve1,
                                     uint64_t feeNum, uint64_t feeDen)
   {
-    return PyAmmCurve(std::make_unique<flox::ConstantProductCurve>(
+    return PyAmmCurve(std::make_unique<lrvx::ConstantProductCurve>(
         toU256(reserve0), toU256(reserve1), feeNum, feeDen));
   }
 
   static PyAmmCurve raydiumCp(const py::int_& reserve0, const py::int_& reserve1,
                               uint64_t tradeFeeRate, uint64_t creatorFeeRate, bool creatorFeeOnInput)
   {
-    return PyAmmCurve(std::make_unique<flox::RaydiumCpCurve>(
+    return PyAmmCurve(std::make_unique<lrvx::RaydiumCpCurve>(
         toU256(reserve0), toU256(reserve1), tradeFeeRate, creatorFeeRate, creatorFeeOnInput));
   }
 
@@ -61,14 +61,14 @@ class PyAmmCurve
   static PyAmmCurve uniswapV3(const py::int_& sqrtPriceX96, const py::int_& liquidity,
                               uint32_t feePips, const py::list& ticks)
   {
-    std::vector<flox::ClTick> ts;
+    std::vector<lrvx::ClTick> ts;
     ts.reserve(ticks.size());
     for (const py::handle& t : ticks)
     {
       auto pair = t.cast<std::pair<py::int_, py::int_>>();
       ts.push_back({toU256(pair.first), toI256(pair.second)});
     }
-    return PyAmmCurve(std::make_unique<flox::ConcentratedLiquidityCurve>(
+    return PyAmmCurve(std::make_unique<lrvx::ConcentratedLiquidityCurve>(
         toU256(sqrtPriceX96), toU256(liquidity), feePips, std::move(ts)));
   }
 
@@ -87,7 +87,7 @@ class PyAmmCurve
   py::list balances() const
   {
     py::list out;
-    for (const flox::u256& b : _c->balances())
+    for (const lrvx::u256& b : _c->balances())
     {
       out.append(fromU256(b));
     }
@@ -100,7 +100,7 @@ class PyAmmCurve
   // Raydium CP). The comfort layer derives price / tick from these.
   std::optional<py::int_> sqrtPrice() const
   {
-    const auto* cl = dynamic_cast<const flox::ConcentratedLiquidityCurve*>(_c.get());
+    const auto* cl = dynamic_cast<const lrvx::ConcentratedLiquidityCurve*>(_c.get());
     if (cl == nullptr)
     {
       return std::nullopt;
@@ -109,7 +109,7 @@ class PyAmmCurve
   }
   std::optional<py::int_> liquidity() const
   {
-    const auto* cl = dynamic_cast<const flox::ConcentratedLiquidityCurve*>(_c.get());
+    const auto* cl = dynamic_cast<const lrvx::ConcentratedLiquidityCurve*>(_c.get());
     if (cl == nullptr)
     {
       return std::nullopt;
@@ -118,11 +118,11 @@ class PyAmmCurve
   }
 
  private:
-  static flox::u256 toU256(const py::int_& v) { return flox::u256::fromDec(decimalFromInt(v)); }
-  static flox::i256 toI256(const py::int_& v) { return flox::i256::fromDec(decimalFromInt(v)); }
-  static py::int_ fromU256(const flox::u256& v) { return intFromDecimal(v.toDec()); }
+  static lrvx::u256 toU256(const py::int_& v) { return lrvx::u256::fromDec(decimalFromInt(v)); }
+  static lrvx::i256 toI256(const py::int_& v) { return lrvx::i256::fromDec(decimalFromInt(v)); }
+  static py::int_ fromU256(const lrvx::u256& v) { return intFromDecimal(v.toDec()); }
 
-  std::unique_ptr<flox::INTokenCurve> _c;
+  std::unique_ptr<lrvx::INTokenCurve> _c;
 };
 
 inline void bindAmmCurve(py::module_& m)
@@ -144,4 +144,4 @@ inline void bindAmmCurve(py::module_& m)
       .def("clone", &PyAmmCurve::clone);
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

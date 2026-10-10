@@ -1,13 +1,13 @@
 # Smoke test: SimulatedExecutor.submit_order order-type encoding, in both
-# flox.tools and flox.backtest -- see codon/flox/order_type_codes.codon.
+# lrvx.tools and lrvx.backtest -- see codon/lrvx/order_type_codes.codon.
 #
-# `flox.tools.SimulatedExecutor.submit_order` used to take a raw int with
-# default 0 (= LIMIT in flox::OrderType), unlike its sibling in
-# flox.backtest, which always took the correct string contract. Both now
+# `lrvx.tools.SimulatedExecutor.submit_order` used to take a raw int with
+# default 0 (= LIMIT in lrvx::OrderType), unlike its sibling in
+# lrvx.backtest, which always took the correct string contract. Both now
 # route through the same encoder.
 
-from flox.tools import SimulatedExecutor as ToolsExecutor
-from flox.backtest import SimulatedExecutor as BacktestExecutor
+from lrvx.tools import SimulatedExecutor as ToolsExecutor
+from lrvx.backtest import SimulatedExecutor as BacktestExecutor
 
 failed = 0
 
@@ -23,7 +23,7 @@ def check(cond: bool, msg: str):
 
 SYM = 1
 
-# ── flox.tools.SimulatedExecutor (fill_count is a property) ──────────
+# ── lrvx.tools.SimulatedExecutor (fill_count is a property) ──────────
 
 tools_exe = ToolsExecutor()
 tools_exe.submit_order(1, "buy", 1.0, 1.0, "market", SYM)
@@ -37,7 +37,7 @@ check(tools_exe.fill_count == 1, "tools: limit at 50 does not fill while market 
 tools_exe.on_bar(SYM, 50.0)
 check(tools_exe.fill_count == 2, "tools: limit at 50 fills once the market reaches 50")
 
-# ── flox.backtest.SimulatedExecutor (fill_count is a method) ─────────
+# ── lrvx.backtest.SimulatedExecutor (fill_count is a method) ─────────
 
 bt_exe = BacktestExecutor()
 bt_exe.submit_order(1, "buy", 1.0, 1.0, "market", SYM)

@@ -1,7 +1,7 @@
 """Liquidation cascade demo: insurance fund drains, then ADL fires."""
-import flox_py as flox
+import lrvx
 
-eng = flox.LiquidationEngine()
+eng = lrvx.LiquidationEngine()
 eng.add_tier(0.0, 0.005)
 eng.set_insurance_fund_capital(1000.0)
 eng.set_adl_enabled(True)

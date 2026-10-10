@@ -47,7 +47,7 @@ Usage:
 
 The build directory is expected to be configured already:
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON
 """
 
 from __future__ import annotations
@@ -69,11 +69,11 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-BOOK = "include/flox/book/nlevel_order_book.h"
-TRACKER = "include/flox/position/position_tracker.h"
-ACCOUNT_H = "include/flox/clearing/account.h"
+BOOK = "include/lrvx/book/nlevel_order_book.h"
+TRACKER = "include/lrvx/position/position_tracker.h"
+ACCOUNT_H = "include/lrvx/clearing/account.h"
 ACCOUNT_CPP = "src/clearing/account.cpp"
-MATH = "include/flox/util/base/math.h"
+MATH = "include/lrvx/util/base/math.h"
 
 NLEVEL = "test_nlevel_tick_rounding"
 TRACKER_T = "test_position_tracker_fixed_point"
@@ -761,8 +761,8 @@ def main() -> int:
 
     if not (BUILD / "CMakeCache.txt").is_file():
         raise SystemExit(f"{BUILD} is not configured; run\n  cmake -S . -B build "
-                         f"-DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON "
-                         f"-DFLOX_ENABLE_BACKTEST=ON")
+                         f"-DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON "
+                         f"-DLRVX_ENABLE_BACKTEST=ON")
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
     if not selected:

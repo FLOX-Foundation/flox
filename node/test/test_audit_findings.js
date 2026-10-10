@@ -10,7 +10,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const flox = require('../index.js');
+const lrvx = require('../index.js');
 
 let passed = 0;
 function check(cond, msg) {
@@ -39,17 +39,17 @@ function throws(fn, needle, msg) {
     deribit: 'deribit',
   };
   for (const [fn, venue] of Object.entries(expected)) {
-    const stack = flox.VenueStack[fn](1, 100000);
+    const stack = lrvx.VenueStack[fn](1, 100000);
     check(stack.venueName() === venue, `${fn}() -> ${venue}`);
   }
   for (const [name, venue] of [['binance', 'binance_um_futures'],
                                ['bybit', 'bybit_linear'],
                                ['okx_swap', 'okx_swap'],
                                ['deribit', 'deribit']]) {
-    check(flox.VenueStack.fromVenue(name, 1, 100000).venueName() === venue,
+    check(lrvx.VenueStack.fromVenue(name, 1, 100000).venueName() === venue,
           `fromVenue(${name})`);
   }
-  throws(() => flox.VenueStack.fromVenue('nope', 1, 100000),
+  throws(() => lrvx.VenueStack.fromVenue('nope', 1, 100000),
          'unknown venue', 'fromVenue rejects an unknown venue');
 }
 
@@ -57,15 +57,15 @@ function throws(fn, needle, msg) {
 // These were no-ops on an unknown name, so a typo'd venue produced a
 // zero-fee, unthrottled backtest that looked perfectly healthy.
 {
-  const fee = new flox.FeeSchedule();
+  const fee = new lrvx.FeeSchedule();
   fee.loadProfile('binance_um_futures');
   check(fee.feeFor(0, 10000, true) !== 0, 'a real profile sets a fee');
   throws(() => fee.loadProfile('TOTALLY_BOGUS'), 'unknown fee schedule profile',
          'FeeSchedule.loadProfile rejects a typo');
 
-  throws(() => new flox.FundingSchedule().loadProfile('nope'),
+  throws(() => new lrvx.FundingSchedule().loadProfile('nope'),
          'unknown funding schedule profile', 'FundingSchedule.loadProfile rejects a typo');
-  throws(() => new flox.RateLimitPolicy().loadProfile('nope'),
+  throws(() => new lrvx.RateLimitPolicy().loadProfile('nope'),
          'unknown rate limit policy profile', 'RateLimitPolicy.loadProfile rejects a typo');
 }
 
@@ -74,8 +74,8 @@ function throws(fn, needle, msg) {
 // read Number for all three, so only an undeclared all-numeric call worked.
 // bigint matters: 1765615835519000000 does not survive a double.
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flox-writetrade-'));
-  const w = new flox.DataWriter(dir);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lrvx-writetrade-'));
+  const w = new lrvx.DataWriter(dir);
   const ts = 1765615835519000000n;
   check(w.writeTrade(ts, ts, 100.5, 1.0, 7, 1, 'buy') === true,
         'writeTrade accepts bigint timestamps and a Side string');
@@ -90,8 +90,8 @@ function throws(fn, needle, msg) {
 // else branch -- so every typo silently partitioned by hour (unit 0) instead
 // of by the unit asked for.
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flox-partition-'));
-  const p = new flox.Partitioner(dir);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lrvx-partition-'));
+  const p = new lrvx.Partitioner(dir);
   for (const unit of ['hour', 'day', 'week', 'month']) {
     p.byCalendar(unit, 0);
     passed++;

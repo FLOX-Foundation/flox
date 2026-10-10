@@ -1,33 +1,33 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 // The Codon binding has no struct declarations to work from -- the codegen
-// emits every out-struct as an opaque cobj -- so codon/flox/dispatch.codon
-// reads FloxTradeData, FloxBarData, FloxOrderEventData and FloxSymbolContext
-// by integer byte offsets typed in by hand, and codon/flox/strategy.codon
-// does the same for FloxBar. The offsets are right today. Nothing in the
+// emits every out-struct as an opaque cobj -- so codon/lrvx/dispatch.codon
+// reads LrvxTradeData, LrvxBarData, LrvxOrderEventData and LrvxSymbolContext
+// by integer byte offsets typed in by hand, and codon/lrvx/strategy.codon
+// does the same for LrvxBar. The offsets are right today. Nothing in the
 // build says so: add a field, widen one, reorder two, and every strategy
 // written in Codon starts reading a different field than it asks for, with
 // no diagnostic anywhere.
 //
-// The generated table in flox_capi_layout.h is what the Codon side is built
+// The generated table in lrvx_capi_layout.h is what the Codon side is built
 // from. This test is the other end of it: every entry is compared against
 // offsetof/sizeof on the real struct, so a layout change that does not reach
 // the table fails here rather than in a user's strategy.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-#if __has_include("flox/capi/flox_capi_layout.h")
-#include "flox/capi/flox_capi_layout.h"
-#define FLOX_HAS_LAYOUT_TABLE 1
+#if __has_include("lrvx/capi/lrvx_capi_layout.h")
+#include "lrvx/capi/lrvx_capi_layout.h"
+#define LRVX_HAS_LAYOUT_TABLE 1
 #else
-#define FLOX_HAS_LAYOUT_TABLE 0
+#define LRVX_HAS_LAYOUT_TABLE 0
 #endif
 
 #include <gtest/gtest.h>
@@ -48,7 +48,7 @@ struct Field
   std::size_t size;
 };
 
-#define FLOX_FIELD(S, F) \
+#define LRVX_FIELD(S, F) \
   Field { #S, #F, offsetof(S, F), sizeof(S::F) }
 
 // Every field of every struct the Codon binding reads. Padding is left out:
@@ -56,81 +56,81 @@ struct Field
 const std::vector<Field>& expectedFields()
 {
   static const std::vector<Field> kFields = {
-      FLOX_FIELD(FloxTradeData, symbol),
-      FLOX_FIELD(FloxTradeData, price_raw),
-      FLOX_FIELD(FloxTradeData, quantity_raw),
-      FLOX_FIELD(FloxTradeData, is_buy),
-      FLOX_FIELD(FloxTradeData, exchange_ts_ns),
+      LRVX_FIELD(LrvxTradeData, symbol),
+      LRVX_FIELD(LrvxTradeData, price_raw),
+      LRVX_FIELD(LrvxTradeData, quantity_raw),
+      LRVX_FIELD(LrvxTradeData, is_buy),
+      LRVX_FIELD(LrvxTradeData, exchange_ts_ns),
 
-      FLOX_FIELD(FloxBookSnapshot, bid_price_raw),
-      FLOX_FIELD(FloxBookSnapshot, bid_qty_raw),
-      FLOX_FIELD(FloxBookSnapshot, ask_price_raw),
-      FLOX_FIELD(FloxBookSnapshot, ask_qty_raw),
-      FLOX_FIELD(FloxBookSnapshot, mid_raw),
-      FLOX_FIELD(FloxBookSnapshot, spread_raw),
-      FLOX_FIELD(FloxBookSnapshot, has_bid),
-      FLOX_FIELD(FloxBookSnapshot, has_ask),
+      LRVX_FIELD(LrvxBookSnapshot, bid_price_raw),
+      LRVX_FIELD(LrvxBookSnapshot, bid_qty_raw),
+      LRVX_FIELD(LrvxBookSnapshot, ask_price_raw),
+      LRVX_FIELD(LrvxBookSnapshot, ask_qty_raw),
+      LRVX_FIELD(LrvxBookSnapshot, mid_raw),
+      LRVX_FIELD(LrvxBookSnapshot, spread_raw),
+      LRVX_FIELD(LrvxBookSnapshot, has_bid),
+      LRVX_FIELD(LrvxBookSnapshot, has_ask),
 
-      FLOX_FIELD(FloxSymbolContext, symbol_id),
-      FLOX_FIELD(FloxSymbolContext, has_avg_entry_price),
-      FLOX_FIELD(FloxSymbolContext, position_raw),
-      FLOX_FIELD(FloxSymbolContext, avg_entry_price_raw),
-      FLOX_FIELD(FloxSymbolContext, last_trade_price_raw),
-      FLOX_FIELD(FloxSymbolContext, last_update_ns),
-      FLOX_FIELD(FloxSymbolContext, book),
+      LRVX_FIELD(LrvxSymbolContext, symbol_id),
+      LRVX_FIELD(LrvxSymbolContext, has_avg_entry_price),
+      LRVX_FIELD(LrvxSymbolContext, position_raw),
+      LRVX_FIELD(LrvxSymbolContext, avg_entry_price_raw),
+      LRVX_FIELD(LrvxSymbolContext, last_trade_price_raw),
+      LRVX_FIELD(LrvxSymbolContext, last_update_ns),
+      LRVX_FIELD(LrvxSymbolContext, book),
 
-      FLOX_FIELD(FloxBarData, symbol),
-      FLOX_FIELD(FloxBarData, bar_type),
-      FLOX_FIELD(FloxBarData, close_reason),
-      FLOX_FIELD(FloxBarData, bar_type_param),
-      FLOX_FIELD(FloxBarData, open_raw),
-      FLOX_FIELD(FloxBarData, high_raw),
-      FLOX_FIELD(FloxBarData, low_raw),
-      FLOX_FIELD(FloxBarData, close_raw),
-      FLOX_FIELD(FloxBarData, volume_raw),
-      FLOX_FIELD(FloxBarData, buy_volume_raw),
-      FLOX_FIELD(FloxBarData, trade_count_raw),
-      FLOX_FIELD(FloxBarData, start_time_ns),
-      FLOX_FIELD(FloxBarData, end_time_ns),
+      LRVX_FIELD(LrvxBarData, symbol),
+      LRVX_FIELD(LrvxBarData, bar_type),
+      LRVX_FIELD(LrvxBarData, close_reason),
+      LRVX_FIELD(LrvxBarData, bar_type_param),
+      LRVX_FIELD(LrvxBarData, open_raw),
+      LRVX_FIELD(LrvxBarData, high_raw),
+      LRVX_FIELD(LrvxBarData, low_raw),
+      LRVX_FIELD(LrvxBarData, close_raw),
+      LRVX_FIELD(LrvxBarData, volume_raw),
+      LRVX_FIELD(LrvxBarData, buy_volume_raw),
+      LRVX_FIELD(LrvxBarData, trade_count_raw),
+      LRVX_FIELD(LrvxBarData, start_time_ns),
+      LRVX_FIELD(LrvxBarData, end_time_ns),
 
-      FLOX_FIELD(FloxOrderEventData, order_id),
-      FLOX_FIELD(FloxOrderEventData, symbol_id),
-      FLOX_FIELD(FloxOrderEventData, side),
-      FLOX_FIELD(FloxOrderEventData, order_type),
-      FLOX_FIELD(FloxOrderEventData, status),
-      FLOX_FIELD(FloxOrderEventData, fill_qty_raw),
-      FLOX_FIELD(FloxOrderEventData, fill_price_raw),
-      FLOX_FIELD(FloxOrderEventData, exchange_ts_ns),
-      FLOX_FIELD(FloxOrderEventData, reject_reason),
-      FLOX_FIELD(FloxOrderEventData, queue_ahead_raw),
-      FLOX_FIELD(FloxOrderEventData, queue_total_raw),
-      FLOX_FIELD(FloxOrderEventData, submitted_at_ns),
-      FLOX_FIELD(FloxOrderEventData, accepted_at_ns),
-      FLOX_FIELD(FloxOrderEventData, first_fill_at_ns),
-      FLOX_FIELD(FloxOrderEventData, last_fill_at_ns),
-      FLOX_FIELD(FloxOrderEventData, canceled_at_ns),
-      FLOX_FIELD(FloxOrderEventData, rejected_at_ns),
-      FLOX_FIELD(FloxOrderEventData, triggered_at_ns),
-      FLOX_FIELD(FloxOrderEventData, expired_at_ns),
-      FLOX_FIELD(FloxOrderEventData, is_maker),
-      FLOX_FIELD(FloxOrderEventData, market_position),
-      FLOX_FIELD(FloxOrderEventData, distance_to_best_ticks),
+      LRVX_FIELD(LrvxOrderEventData, order_id),
+      LRVX_FIELD(LrvxOrderEventData, symbol_id),
+      LRVX_FIELD(LrvxOrderEventData, side),
+      LRVX_FIELD(LrvxOrderEventData, order_type),
+      LRVX_FIELD(LrvxOrderEventData, status),
+      LRVX_FIELD(LrvxOrderEventData, fill_qty_raw),
+      LRVX_FIELD(LrvxOrderEventData, fill_price_raw),
+      LRVX_FIELD(LrvxOrderEventData, exchange_ts_ns),
+      LRVX_FIELD(LrvxOrderEventData, reject_reason),
+      LRVX_FIELD(LrvxOrderEventData, queue_ahead_raw),
+      LRVX_FIELD(LrvxOrderEventData, queue_total_raw),
+      LRVX_FIELD(LrvxOrderEventData, submitted_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, accepted_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, first_fill_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, last_fill_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, canceled_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, rejected_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, triggered_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, expired_at_ns),
+      LRVX_FIELD(LrvxOrderEventData, is_maker),
+      LRVX_FIELD(LrvxOrderEventData, market_position),
+      LRVX_FIELD(LrvxOrderEventData, distance_to_best_ticks),
 
-      FLOX_FIELD(FloxBar, start_time_ns),
-      FLOX_FIELD(FloxBar, end_time_ns),
-      FLOX_FIELD(FloxBar, open_raw),
-      FLOX_FIELD(FloxBar, high_raw),
-      FLOX_FIELD(FloxBar, low_raw),
-      FLOX_FIELD(FloxBar, close_raw),
-      FLOX_FIELD(FloxBar, volume_raw),
-      FLOX_FIELD(FloxBar, buy_volume_raw),
-      FLOX_FIELD(FloxBar, trade_count),
-      FLOX_FIELD(FloxBar, close_reason),
+      LRVX_FIELD(LrvxBar, start_time_ns),
+      LRVX_FIELD(LrvxBar, end_time_ns),
+      LRVX_FIELD(LrvxBar, open_raw),
+      LRVX_FIELD(LrvxBar, high_raw),
+      LRVX_FIELD(LrvxBar, low_raw),
+      LRVX_FIELD(LrvxBar, close_raw),
+      LRVX_FIELD(LrvxBar, volume_raw),
+      LRVX_FIELD(LrvxBar, buy_volume_raw),
+      LRVX_FIELD(LrvxBar, trade_count),
+      LRVX_FIELD(LrvxBar, close_reason),
   };
   return kFields;
 }
 
-#undef FLOX_FIELD
+#undef LRVX_FIELD
 
 struct Struct
 {
@@ -139,55 +139,55 @@ struct Struct
   std::size_t alignment;
 };
 
-#define FLOX_STRUCT(S) \
+#define LRVX_STRUCT(S) \
   Struct { #S, sizeof(S), alignof(S) }
 
 const std::vector<Struct>& expectedStructs()
 {
   static const std::vector<Struct> kStructs = {
-      FLOX_STRUCT(FloxTradeData),
-      FLOX_STRUCT(FloxBookSnapshot),
-      FLOX_STRUCT(FloxSymbolContext),
-      FLOX_STRUCT(FloxBarData),
-      FLOX_STRUCT(FloxOrderEventData),
-      FLOX_STRUCT(FloxBar),
+      LRVX_STRUCT(LrvxTradeData),
+      LRVX_STRUCT(LrvxBookSnapshot),
+      LRVX_STRUCT(LrvxSymbolContext),
+      LRVX_STRUCT(LrvxBarData),
+      LRVX_STRUCT(LrvxOrderEventData),
+      LRVX_STRUCT(LrvxBar),
   };
   return kStructs;
 }
 
-#undef FLOX_STRUCT
+#undef LRVX_STRUCT
 
-#if FLOX_HAS_LAYOUT_TABLE
+#if LRVX_HAS_LAYOUT_TABLE
 std::size_t fieldCount()
 {
-  return sizeof(kFloxEventLayout) / sizeof(kFloxEventLayout[0]);
+  return sizeof(kLrvxEventLayout) / sizeof(kLrvxEventLayout[0]);
 }
 
 std::size_t structCount()
 {
-  return sizeof(kFloxEventStructLayout) / sizeof(kFloxEventStructLayout[0]);
+  return sizeof(kLrvxEventStructLayout) / sizeof(kLrvxEventStructLayout[0]);
 }
 
-const FloxFieldLayout* findField(const char* structName, const char* fieldName)
+const LrvxFieldLayout* findField(const char* structName, const char* fieldName)
 {
   for (std::size_t i = 0; i < fieldCount(); ++i)
   {
-    if (std::strcmp(kFloxEventLayout[i].struct_name, structName) == 0 &&
-        std::strcmp(kFloxEventLayout[i].field_name, fieldName) == 0)
+    if (std::strcmp(kLrvxEventLayout[i].struct_name, structName) == 0 &&
+        std::strcmp(kLrvxEventLayout[i].field_name, fieldName) == 0)
     {
-      return &kFloxEventLayout[i];
+      return &kLrvxEventLayout[i];
     }
   }
   return nullptr;
 }
 
-const FloxStructLayout* findStruct(const char* name)
+const LrvxStructLayout* findStruct(const char* name)
 {
   for (std::size_t i = 0; i < structCount(); ++i)
   {
-    if (std::strcmp(kFloxEventStructLayout[i].struct_name, name) == 0)
+    if (std::strcmp(kLrvxEventStructLayout[i].struct_name, name) == 0)
     {
-      return &kFloxEventStructLayout[i];
+      return &kLrvxEventStructLayout[i];
     }
   }
   return nullptr;
@@ -195,7 +195,7 @@ const FloxStructLayout* findStruct(const char* name)
 #endif
 
 constexpr const char* kMissingTable =
-    "include/flox/capi/flox_capi_layout.h is missing: the Codon binding's "
+    "include/lrvx/capi/lrvx_capi_layout.h is missing: the Codon binding's "
     "struct offsets are generated from it and this test is what checks them "
     "against offsetof";
 
@@ -203,7 +203,7 @@ constexpr const char* kMissingTable =
 
 TEST(CapiEventLayout, TableCarriesEveryFieldCodonCanRead)
 {
-#if !FLOX_HAS_LAYOUT_TABLE
+#if !LRVX_HAS_LAYOUT_TABLE
   FAIL() << kMissingTable;
 #else
   for (const auto& f : expectedFields())
@@ -216,12 +216,12 @@ TEST(CapiEventLayout, TableCarriesEveryFieldCodonCanRead)
 
 TEST(CapiEventLayout, EveryOffsetAndWidthMatchesTheStruct)
 {
-#if !FLOX_HAS_LAYOUT_TABLE
+#if !LRVX_HAS_LAYOUT_TABLE
   FAIL() << kMissingTable;
 #else
   for (const auto& f : expectedFields())
   {
-    const FloxFieldLayout* entry = findField(f.structName, f.fieldName);
+    const LrvxFieldLayout* entry = findField(f.structName, f.fieldName);
     if (entry == nullptr)
     {
       continue;  // reported by TableCarriesEveryFieldCodonCanRead
@@ -236,12 +236,12 @@ TEST(CapiEventLayout, EveryOffsetAndWidthMatchesTheStruct)
 
 TEST(CapiEventLayout, StructSizesAndAlignmentsMatch)
 {
-#if !FLOX_HAS_LAYOUT_TABLE
+#if !LRVX_HAS_LAYOUT_TABLE
   FAIL() << kMissingTable;
 #else
   for (const auto& s : expectedStructs())
   {
-    const FloxStructLayout* entry = findStruct(s.name);
+    const LrvxStructLayout* entry = findStruct(s.name);
     ASSERT_NE(entry, nullptr) << s.name << " has no layout entry";
     EXPECT_EQ(static_cast<std::size_t>(entry->size), s.size) << s.name;
     EXPECT_EQ(static_cast<std::size_t>(entry->alignment), s.alignment) << s.name;
@@ -254,12 +254,12 @@ TEST(CapiEventLayout, TableDescribesNoFieldTheStructDoesNotHave)
   // A generated table that grew an entry nobody can account for is as bad as
   // a missing one: the Codon side would import a constant pointing at
   // nothing. Padding members are the only unlisted names allowed.
-#if !FLOX_HAS_LAYOUT_TABLE
+#if !LRVX_HAS_LAYOUT_TABLE
   FAIL() << kMissingTable;
 #else
   for (std::size_t i = 0; i < fieldCount(); ++i)
   {
-    const FloxFieldLayout& entry = kFloxEventLayout[i];
+    const LrvxFieldLayout& entry = kLrvxEventLayout[i];
     if (entry.field_name[0] == '_')
     {
       continue;
@@ -284,12 +284,12 @@ TEST(CapiEventLayout, RejectReasonIsReachable)
 {
   // The field the C ABI fills in on every rejection, and the one Codon had no
   // constant for at all.
-#if !FLOX_HAS_LAYOUT_TABLE
+#if !LRVX_HAS_LAYOUT_TABLE
   FAIL() << kMissingTable;
 #else
-  const FloxFieldLayout* entry = findField("FloxOrderEventData", "reject_reason");
+  const LrvxFieldLayout* entry = findField("LrvxOrderEventData", "reject_reason");
   ASSERT_NE(entry, nullptr);
   EXPECT_EQ(static_cast<std::size_t>(entry->offset),
-            offsetof(FloxOrderEventData, reject_reason));
+            offsetof(LrvxOrderEventData, reject_reason));
 #endif
 }

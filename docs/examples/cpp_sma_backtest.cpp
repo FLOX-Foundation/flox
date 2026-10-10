@@ -5,23 +5,23 @@
 // it through BacktestRunner against a CSV.
 //
 // Build:
-//   cmake -B build -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+//   cmake -B build -DLRVX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 //   cmake --build build --target cpp_sma_backtest
 //
 // Run:
 //   ./build/docs/examples/cpp_sma_backtest docs/examples/data/btcusdt_1m.csv
 
-#include "flox/backtest/backtest_config.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/replay/abstract_event_reader.h"
-#include "flox/replay/readers/csv_ohlcv_reader.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/backtest/backtest_config.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/replay/abstract_event_reader.h"
+#include "lrvx/replay/readers/csv_ohlcv_reader.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <deque>
 #include <iostream>
 
-using namespace flox;
+using namespace lrvx;
 
 class SmaCrossover : public Strategy
 {

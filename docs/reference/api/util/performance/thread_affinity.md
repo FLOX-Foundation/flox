@@ -84,4 +84,4 @@ Used directly or via:
 
 * `CpuAffinity` as part of performance toolkit
 * `NumaAffinityGuard` for NUMA-aware scoped locality
-* Benchmark tools and real-time strategy components in FLOX
+* Benchmark tools and real-time strategy components in lrvx

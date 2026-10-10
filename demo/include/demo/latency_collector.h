@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -18,9 +18,9 @@
 #include <numeric>
 #include <string_view>
 
-#include "flox/common.h"
-#include "flox/log/log.h"
-#include "flox/util/base/time.h"
+#include "lrvx/common.h"
+#include "lrvx/log/log.h"
+#include "lrvx/util/base/time.h"
 
 namespace demo
 {
@@ -74,7 +74,7 @@ class LatencyCollector
       int64_t p95 = sorted[(n * 95) / 100];
       int64_t max = sorted[n - 1];
 
-      FLOX_LOG(
+      LRVX_LOG(
           "[latency] "
           << Labels[i]
           << " | count=" << n
@@ -104,7 +104,7 @@ namespace demo
 class LatencyGuard
 {
  public:
-  LatencyGuard(LatencyCollector::LabelId id, flox::TimePoint start)
+  LatencyGuard(LatencyCollector::LabelId id, lrvx::TimePoint start)
       : _id(id), _start(start) {}
 
   ~LatencyGuard()
@@ -115,7 +115,7 @@ class LatencyGuard
 
  private:
   LatencyCollector::LabelId _id;
-  flox::TimePoint _start;
+  lrvx::TimePoint _start;
 };
 
 }  // namespace demo

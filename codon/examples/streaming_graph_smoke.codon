@@ -1,4 +1,4 @@
-from flox.graph import StreamingIndicatorGraph, IndicatorGraph
+from lrvx.graph import StreamingIndicatorGraph, IndicatorGraph
 import math
 
 # Streaming graph smoke test.
@@ -6,9 +6,9 @@ import math
 
 @export
 def double_close_fn(user_data: cobj, g: cobj, sym: u32, out_len: Ptr[int]) -> Ptr[f64]:
-    from flox.graph import flox_indicator_graph_close
+    from lrvx.graph import lrvx_indicator_graph_close
     n = [0]
-    p = flox_indicator_graph_close(g, sym, n.arr.ptr)
+    p = lrvx_indicator_graph_close(g, sym, n.arr.ptr)
     result = Ptr[f64](n[0])
     for i in range(n[0]):
         result[i] = p[i] * 2.0

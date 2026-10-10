@@ -7,7 +7,7 @@ The same `SMAStrategy` class runs unchanged in three modes:
 3. **Runner(threaded=True)** — events go into a lock-free ring buffer; strategy runs in a background C++ thread
 
 ```
-cd /path/to/flox
+cd /path/to/lrvx
 PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
 ```
 

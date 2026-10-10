@@ -11,7 +11,7 @@ from typing import List
 
 import pytest
 
-from flox_py.composite import TIME_BARS, when
+from lrvx.composite import TIME_BARS, when
 
 
 class StubStrategy:

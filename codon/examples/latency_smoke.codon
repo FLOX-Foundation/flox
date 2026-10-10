@@ -1,6 +1,6 @@
 # Smoke test: latency models compile + sample against the C API.
 
-from flox.latency import (
+from lrvx.latency import (
     ConstantLatency, GaussianLatency, ExponentialLatency, EmpiricalLatency,
 )
 

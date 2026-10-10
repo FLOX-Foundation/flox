@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -21,8 +21,8 @@
  * consumer was in the middle of. That is the whole point -- the journal has
  * to survive being abandoned, not being closed.
  */
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
 #include "support/recovery_scenario.h"
 
 #include <cstdio>
@@ -36,8 +36,8 @@
 #include <unistd.h>
 #endif
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

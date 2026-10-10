@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -11,7 +11,7 @@
 // trade and book update fed into the runner, plus on_start / on_stop
 // lifecycle balanced against runner start/stop.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -44,7 +44,7 @@ struct State
   int64_t last_top_ask_price_raw{0};
 };
 
-void on_trade_cb(void* ud, const FloxTradeData* trade)
+void on_trade_cb(void* ud, const LrvxTradeData* trade)
 {
   auto* s = static_cast<State*>(ud);
   s->trade_calls.fetch_add(1, std::memory_order_relaxed);
@@ -57,8 +57,8 @@ void on_trade_cb(void* ud, const FloxTradeData* trade)
 
 void on_book_cb(void* ud,
                 uint32_t symbol, uint8_t is_snapshot,
-                const FloxBookLevel* bids, uint32_t n_bids,
-                const FloxBookLevel* asks, uint32_t n_asks,
+                const LrvxBookLevel* bids, uint32_t n_bids,
+                const LrvxBookLevel* asks, uint32_t n_asks,
                 int64_t /*ts*/)
 {
   auto* s = static_cast<State*>(ud);
@@ -88,49 +88,49 @@ void on_stop_cb(void* ud)
 
 struct RunnerCtx
 {
-  FloxRegistryHandle registry{nullptr};
-  FloxStrategyHandle strategy{nullptr};
-  FloxRunnerHandle runner{nullptr};
+  LrvxRegistryHandle registry{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
+  LrvxRunnerHandle runner{nullptr};
   uint32_t symbol_id{0};
 
   ~RunnerCtx()
   {
     if (runner)
     {
-      flox_runner_destroy(runner);
+      lrvx_runner_destroy(runner);
     }
     if (strategy)
     {
-      flox_strategy_destroy(strategy);
+      lrvx_strategy_destroy(strategy);
     }
     if (registry)
     {
-      flox_registry_destroy(registry);
+      lrvx_registry_destroy(registry);
     }
   }
 };
 
-void noop_signal(void*, const FloxSignal*) {}
+void noop_signal(void*, const LrvxSignal*) {}
 
 void make_runner(RunnerCtx& s)
 {
-  s.registry = flox_registry_create();
+  s.registry = lrvx_registry_create();
   ASSERT_NE(s.registry, nullptr);
-  s.symbol_id = flox_registry_add_symbol(s.registry, "test", "BTC", 0.01);
+  s.symbol_id = lrvx_registry_add_symbol(s.registry, "test", "BTC", 0.01);
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   uint32_t syms[] = {s.symbol_id};
-  s.strategy = flox_strategy_create(/*id=*/1, syms, 1, s.registry, cb);
+  s.strategy = lrvx_strategy_create(/*id=*/1, syms, 1, s.registry, cb);
   ASSERT_NE(s.strategy, nullptr);
 
-  s.runner = flox_runner_create(s.registry, noop_signal, nullptr);
+  s.runner = lrvx_runner_create(s.registry, noop_signal, nullptr);
   ASSERT_NE(s.runner, nullptr);
-  flox_runner_add_strategy(s.runner, s.strategy);
+  lrvx_runner_add_strategy(s.runner, s.strategy);
 }
 
-FloxMarketDataRecorderCallbacks make_callbacks(State& state)
+LrvxMarketDataRecorderCallbacks make_callbacks(State& state)
 {
-  FloxMarketDataRecorderCallbacks cb{};
+  LrvxMarketDataRecorderCallbacks cb{};
   cb.on_trade = on_trade_cb;
   cb.on_book_update = on_book_cb;
   cb.on_start = on_start_cb;
@@ -147,24 +147,24 @@ TEST(CapiMarketDataRecorder, FiresOnTradeAndBookUpdate)
   RunnerCtx s;
   make_runner(s);
 
-  auto* rec = flox_market_data_recorder_create(make_callbacks(state));
+  auto* rec = lrvx_market_data_recorder_create(make_callbacks(state));
   ASSERT_NE(rec, nullptr);
-  flox_runner_set_market_data_recorder(s.runner, rec);
+  lrvx_runner_set_market_data_recorder(s.runner, rec);
 
-  flox_runner_start(s.runner);
+  lrvx_runner_start(s.runner);
 
-  flox_runner_on_trade(s.runner, s.symbol_id, /*price=*/100.5, /*qty=*/2.0,
+  lrvx_runner_on_trade(s.runner, s.symbol_id, /*price=*/100.5, /*qty=*/2.0,
                        /*is_buy=*/1, /*ts=*/1'000);
 
   double bid_p[] = {100.0, 99.0};
   double bid_q[] = {1.0, 2.0};
   double ask_p[] = {101.0, 102.0};
   double ask_q[] = {1.5, 2.5};
-  flox_runner_on_book_snapshot(s.runner, s.symbol_id,
+  lrvx_runner_on_book_snapshot(s.runner, s.symbol_id,
                                bid_p, bid_q, 2, ask_p, ask_q, 2,
                                /*ts=*/2'000);
 
-  flox_runner_stop(s.runner);
+  lrvx_runner_stop(s.runner);
 
   EXPECT_EQ(state.trade_calls.load(), 1);
   EXPECT_EQ(state.book_calls.load(), 1);
@@ -191,7 +191,7 @@ TEST(CapiMarketDataRecorder, FiresOnTradeAndBookUpdate)
   EXPECT_EQ(state.last_top_bid_price_raw, 10000000000LL);
   EXPECT_EQ(state.last_top_ask_price_raw, 10100000000LL);
 
-  flox_market_data_recorder_destroy(rec);
+  lrvx_market_data_recorder_destroy(rec);
 }
 
 TEST(CapiMarketDataRecorder, NullDetachesRecorder)
@@ -200,25 +200,25 @@ TEST(CapiMarketDataRecorder, NullDetachesRecorder)
   RunnerCtx s;
   make_runner(s);
 
-  auto* rec = flox_market_data_recorder_create(make_callbacks(state));
-  flox_runner_set_market_data_recorder(s.runner, rec);
-  flox_runner_start(s.runner);
+  auto* rec = lrvx_market_data_recorder_create(make_callbacks(state));
+  lrvx_runner_set_market_data_recorder(s.runner, rec);
+  lrvx_runner_start(s.runner);
 
-  flox_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
+  lrvx_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
   EXPECT_EQ(state.trade_calls.load(), 1);
 
   // Detach mid-run. on_stop fires for the outgoing recorder.
-  flox_runner_set_market_data_recorder(s.runner, nullptr);
+  lrvx_runner_set_market_data_recorder(s.runner, nullptr);
   EXPECT_EQ(state.stop_calls.load(), 1) << "detach must fire on_stop";
 
-  flox_runner_on_trade(s.runner, s.symbol_id, 101.0, 1.0, 1, 1'000);
+  lrvx_runner_on_trade(s.runner, s.symbol_id, 101.0, 1.0, 1, 1'000);
   EXPECT_EQ(state.trade_calls.load(), 1) << "no callbacks after detach";
 
-  flox_runner_stop(s.runner);
+  lrvx_runner_stop(s.runner);
   // No additional on_stop after detach.
   EXPECT_EQ(state.stop_calls.load(), 1);
 
-  flox_market_data_recorder_destroy(rec);
+  lrvx_market_data_recorder_destroy(rec);
 }
 
 TEST(CapiMarketDataRecorder, AttachMidRunFiresOnStart)
@@ -227,21 +227,21 @@ TEST(CapiMarketDataRecorder, AttachMidRunFiresOnStart)
   RunnerCtx s;
   make_runner(s);
 
-  flox_runner_start(s.runner);
+  lrvx_runner_start(s.runner);
   EXPECT_EQ(state.start_calls.load(), 0) << "no recorder yet";
 
-  auto* rec = flox_market_data_recorder_create(make_callbacks(state));
-  flox_runner_set_market_data_recorder(s.runner, rec);
+  auto* rec = lrvx_market_data_recorder_create(make_callbacks(state));
+  lrvx_runner_set_market_data_recorder(s.runner, rec);
   EXPECT_EQ(state.start_calls.load(), 1)
       << "attaching while running must fire on_start";
 
-  flox_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
+  lrvx_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
   EXPECT_EQ(state.trade_calls.load(), 1);
 
-  flox_runner_stop(s.runner);
+  lrvx_runner_stop(s.runner);
   EXPECT_EQ(state.stop_calls.load(), 1);
 
-  flox_market_data_recorder_destroy(rec);
+  lrvx_market_data_recorder_destroy(rec);
 }
 
 TEST(CapiMarketDataRecorder, NullCallbackFunctionsAreNoOp)
@@ -251,27 +251,27 @@ TEST(CapiMarketDataRecorder, NullCallbackFunctionsAreNoOp)
   make_runner(s);
 
   // All-null callbacks: handle is non-null, but every function is null.
-  FloxMarketDataRecorderCallbacks cb{};
+  LrvxMarketDataRecorderCallbacks cb{};
   cb.user_data = &state;
-  auto* rec = flox_market_data_recorder_create(cb);
-  flox_runner_set_market_data_recorder(s.runner, rec);
+  auto* rec = lrvx_market_data_recorder_create(cb);
+  lrvx_runner_set_market_data_recorder(s.runner, rec);
 
-  flox_runner_start(s.runner);
-  flox_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
+  lrvx_runner_start(s.runner);
+  lrvx_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
   double bid_p[] = {100.0};
   double bid_q[] = {1.0};
   double ask_p[] = {101.0};
   double ask_q[] = {1.0};
-  flox_runner_on_book_snapshot(s.runner, s.symbol_id, bid_p, bid_q, 1,
+  lrvx_runner_on_book_snapshot(s.runner, s.symbol_id, bid_p, bid_q, 1,
                                ask_p, ask_q, 1, 2'000);
-  flox_runner_stop(s.runner);
+  lrvx_runner_stop(s.runner);
 
   EXPECT_EQ(state.trade_calls.load(), 0);
   EXPECT_EQ(state.book_calls.load(), 0);
   EXPECT_EQ(state.start_calls.load(), 0);
   EXPECT_EQ(state.stop_calls.load(), 0);
 
-  flox_market_data_recorder_destroy(rec);
+  lrvx_market_data_recorder_destroy(rec);
 }
 
 TEST(CapiMarketDataRecorder, ReplaceRecorderRotatesLifecycle)
@@ -281,31 +281,31 @@ TEST(CapiMarketDataRecorder, ReplaceRecorderRotatesLifecycle)
   RunnerCtx s;
   make_runner(s);
 
-  auto* recA = flox_market_data_recorder_create(make_callbacks(a));
-  auto* recB = flox_market_data_recorder_create(make_callbacks(b));
+  auto* recA = lrvx_market_data_recorder_create(make_callbacks(a));
+  auto* recB = lrvx_market_data_recorder_create(make_callbacks(b));
 
-  flox_runner_set_market_data_recorder(s.runner, recA);
-  flox_runner_start(s.runner);
+  lrvx_runner_set_market_data_recorder(s.runner, recA);
+  lrvx_runner_start(s.runner);
   EXPECT_EQ(a.start_calls.load(), 1);
 
-  flox_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
+  lrvx_runner_on_trade(s.runner, s.symbol_id, 100.0, 1.0, 1, 1'000);
   EXPECT_EQ(a.trade_calls.load(), 1);
   EXPECT_EQ(b.trade_calls.load(), 0);
 
   // Hot-swap: A.on_stop fires, B.on_start fires.
-  flox_runner_set_market_data_recorder(s.runner, recB);
+  lrvx_runner_set_market_data_recorder(s.runner, recB);
   EXPECT_EQ(a.stop_calls.load(), 1);
   EXPECT_EQ(b.start_calls.load(), 1);
 
-  flox_runner_on_trade(s.runner, s.symbol_id, 101.0, 1.0, 1, 1'000);
+  lrvx_runner_on_trade(s.runner, s.symbol_id, 101.0, 1.0, 1, 1'000);
   EXPECT_EQ(a.trade_calls.load(), 1);
   EXPECT_EQ(b.trade_calls.load(), 1);
 
-  flox_runner_stop(s.runner);
+  lrvx_runner_stop(s.runner);
   // Only B sees on_stop on shutdown — A already saw it on swap.
   EXPECT_EQ(a.stop_calls.load(), 1);
   EXPECT_EQ(b.stop_calls.load(), 1);
 
-  flox_market_data_recorder_destroy(recA);
-  flox_market_data_recorder_destroy(recB);
+  lrvx_market_data_recorder_destroy(recA);
+  lrvx_market_data_recorder_destroy(recB);
 }

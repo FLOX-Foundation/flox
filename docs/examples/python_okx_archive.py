@@ -1,6 +1,6 @@
 """OKX public archive round-trip — build a synthetic OKX-format CSV
-in memory, run `okx.trades_to_floxlog`, then read the resulting
-`.floxlog` back through `DataReader` to confirm the trade stream
+in memory, run `okx.trades_to_lrvx`, then read the resulting
+`.lrvx` back through `DataReader` to confirm the trade stream
 round-trips.
 
 CI-runnable companion to
@@ -8,7 +8,7 @@ CI-runnable companion to
 No network — the fixture is built in memory.
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_okx_archive.py
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-import flox_py
-from flox_py.archives import okx
+import lrvx
+from lrvx.archives import okx
 
 
 _ROWS = [
@@ -41,17 +41,17 @@ def _build_zip(dest: Path) -> Path:
 
 
 def main() -> None:
-    workdir = Path(tempfile.mkdtemp(prefix="flox-okx-"))
+    workdir = Path(tempfile.mkdtemp(prefix="lrvx-okx-"))
     try:
         z = workdir / "BTC-USDT-SWAP-trades-2024-01-15.zip"
         _build_zip(z)
 
         tape = workdir / "tape"
-        stats = okx.trades_to_floxlog(
+        stats = okx.trades_to_lrvx(
             z, tape,
             symbol_id=1, symbol_name="BTC-USDT-SWAP", market="swap",
         )
-        trades = flox_py.DataReader(str(tape)).read_trades()
+        trades = lrvx.DataReader(str(tape)).read_trades()
         print(
             f"converted: rows_read={stats.rows_read} "
             f"trades_written={stats.trades_written} "

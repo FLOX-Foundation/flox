@@ -4,7 +4,7 @@ const path = require('path');
 const { TraceRecorder, TraceReader } = require('../');
 
 function scratch(tag) {
-  const p = path.join(os.tmpdir(), `flox_run_node_${tag}`);
+  const p = path.join(os.tmpdir(), `lrvx_run_node_${tag}`);
   if (fs.existsSync(p)) {
     fs.rmSync(p, { recursive: true, force: true });
   }
@@ -27,7 +27,7 @@ function roundTrip() {
     strategyHash: 'sha256:test',
     runStartedNs: 1700000000000000000,
   });
-  rec.addTapeRef({ path: 'BTCUSDT.floxlog', contentHash: 'sha256:abc',
+  rec.addTapeRef({ path: 'BTCUSDT.lrvx', contentHash: 'sha256:abc',
                    firstEventNs: 1700000000000000000, lastEventNs: 1700000000500000000 });
   rec.writeSignal({
     runTsNs: 1700000000100000000,
@@ -73,7 +73,7 @@ function roundTrip() {
   check('run ended', reader.runEndedNs() === 1700000000400000000);
   const refs = reader.tapeRefs();
   check('tape ref count', refs.length === 1);
-  check('tape ref path', refs[0].path === 'BTCUSDT.floxlog');
+  check('tape ref path', refs[0].path === 'BTCUSDT.lrvx');
 
   const sigs = reader.readAllSignals();
   check('signal count', sigs.length === 1);

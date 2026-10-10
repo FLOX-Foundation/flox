@@ -4,7 +4,7 @@
 The Phase 2 North Star for the RL env is "one policy, three deployment
 modes." This script enforces a CI-checkable bound on the drift between
 modes: a canonical deterministic policy is run through
-``FloxTradingEnv`` and through ``PaperBroker`` against an identical
+``LrvxTradingEnv`` and through ``PaperBroker`` against an identical
 synthetic tape; the script asserts that the per-step reward
 distributions stay close (paper equity-at-end within a configured
 percentage of env equity-at-end).
@@ -93,13 +93,13 @@ def _equity_trajectory_env(
     qty: float,
     window_size: int,
 ) -> List[float]:
-    import flox_py
-    from flox_py.rl_env import FloxTradingEnv
+    import lrvx
+    from lrvx.rl_env import LrvxTradingEnv
 
-    stack = flox_py.VenueStack.binance_um_futures(
+    stack = lrvx.VenueStack.binance_um_futures(
         account_id=1, equity=10_000.0
     )
-    env = FloxTradingEnv.from_venue_stack(
+    env = LrvxTradingEnv.from_venue_stack(
         stack, tape=trades, qty=qty, max_position=qty,
         window_size=window_size, symbol_id=1, n_open_slots=0,
         tick_size=0.5,
@@ -125,14 +125,14 @@ def _equity_trajectory_paper(
 ) -> List[float]:
     """Run the same stub policy through PaperBroker by hand. We do
     not invoke the real Runner because the stub policy is not a
-    flox.Strategy subclass; instead we simulate what the adapter
+    lrvx.Strategy subclass; instead we simulate what the adapter
     does: on each tick, update the obs builder, run the policy,
     emit an order through the paper executor. The resulting equity
     trajectory is what the broker would have produced."""
-    import flox_py
-    from flox_py.rl_env import ObservationBuilder
+    import lrvx
+    from lrvx.rl_env import ObservationBuilder
 
-    stack = flox_py.VenueStack.binance_um_futures(
+    stack = lrvx.VenueStack.binance_um_futures(
         account_id=2, equity=10_000.0
     )
     exec_ = stack.executor()
@@ -262,7 +262,7 @@ def main(argv: Sequence[str]) -> int:
     )
     parser.add_argument(
         "--tape", type=str, default="",
-        help="Optional local-only path to a real .floxlog tape. When "
+        help="Optional local-only path to a real .lrvx tape. When "
              "set the gate refuses to write CI artifacts.",
     )
     args = parser.parse_args(argv)
@@ -270,9 +270,9 @@ def main(argv: Sequence[str]) -> int:
     if args.tape:
         # Real data path is opt-in and stays out of CI.
         try:
-            from flox_py.rl_env import _load_tape_trades  # type: ignore
+            from lrvx.rl_env import _load_tape_trades  # type: ignore
         except ImportError:
-            print("error: flox_py not importable", file=sys.stderr)
+            print("error: lrvx not importable", file=sys.stderr)
             return 2
         trades = _load_tape_trades(args.tape)
         print(f"# loaded {len(trades)} real trades from {args.tape}")

@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # matching_engine.h; its definitions sit in the engine/*.inl fragments that
 # header includes, one per section, so a handler counts as the engine's
 # wherever its section was filed.
-ENGINE_SOURCES = ("matching_engine.h", "flox-venue/engine/")
+ENGINE_SOURCES = ("matching_engine.h", "lrvx-venue/engine/")
 
 # The matching entry point every order must pass through, and the trade-emitting
 # helper behind it. Keyed by the method name on Matcher.
@@ -81,7 +81,7 @@ def _load_clang():
 
     import os
 
-    candidates = [os.environ.get("FLOX_LIBCLANG")]
+    candidates = [os.environ.get("LRVX_LIBCLANG")]
     candidates += [
         "/opt/homebrew/opt/llvm/lib/libclang.dylib",
         "/usr/local/opt/llvm/lib/libclang.dylib",

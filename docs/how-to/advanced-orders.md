@@ -155,7 +155,7 @@ SELL trailing trigger follows price up; when price drops to trigger, the order e
     emitLimitBuy(symbol, price, qty, TimeInForce::POST_ONLY);
     ```
 
-`POST_ONLY` orders that would cross the book are rejected at submit time (matches real-exchange behaviour, including in `BacktestRunner` since [#124](https://github.com/FLOX-Foundation/flox/pull/124)).
+`POST_ONLY` orders that would cross the book are rejected at submit time (matches real-exchange behaviour, including in `BacktestRunner` since [#124](https://github.com/lrvx/lrvx/pull/124)).
 
 ## Close current position
 
@@ -254,7 +254,7 @@ Real exchanges support different subsets of order types. Before using an advance
 === "Python"
 
     ```python
-    caps = executor.capabilities()      # flox_py.ExchangeCapabilities
+    caps = executor.capabilities()      # lrvx.ExchangeCapabilities
     has_trailing = caps.trailing_stop
     has_oco      = caps.oco
     ```

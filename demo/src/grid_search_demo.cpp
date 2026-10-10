@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -18,14 +18,14 @@
  * 5. Use OptimizationStatistics for analysis
  */
 
-#include "flox/backtest/backtest_optimizer.h"
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/optimization_stats.h"
+#include "lrvx/backtest/backtest_optimizer.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/optimization_stats.h"
 
 #include <iostream>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 // =============================================================================
 // Step 1: Define your strategy parameters

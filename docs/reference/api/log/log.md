@@ -1,18 +1,18 @@
 # Logging Macros
 
-FLOX provides a set of lightweight logging macros with compile-time and runtime control. These macros wrap `LogStream` for structured message building and support selective log-level filtering.
+lrvx provides a set of lightweight logging macros with compile-time and runtime control. These macros wrap `LogStream` for structured message building and support selective log-level filtering.
 
 ## Macros Overview
 
 | Macro               | Description                                      |
 |---------------------|--------------------------------------------------|
-| `FLOX_LOG(...)`     | Logs message at `Info` level                     |
-| `FLOX_LOG_INFO(...)`| Shortcut for `Info` level                        |
-| `FLOX_LOG_WARN(...)`| Shortcut for `Warn` level                        |
-| `FLOX_LOG_ERROR(...)`| Shortcut for `Error` level                      |
-| `FLOX_LOG_LEVEL(lvl, ...)` | Logs at custom level (`LogLevel`)        |
-| `FLOX_LOG_ON()`     | Enable runtime logging                          |
-| `FLOX_LOG_OFF()`    | Disable runtime logging                         |
+| `LRVX_LOG(...)`     | Logs message at `Info` level                     |
+| `LRVX_LOG_INFO(...)`| Shortcut for `Info` level                        |
+| `LRVX_LOG_WARN(...)`| Shortcut for `Warn` level                        |
+| `LRVX_LOG_ERROR(...)`| Shortcut for `Error` level                      |
+| `LRVX_LOG_LEVEL(lvl, ...)` | Logs at custom level (`LogLevel`)        |
+| `LRVX_LOG_ON()`     | Enable runtime logging                          |
+| `LRVX_LOG_OFF()`    | Disable runtime logging                         |
 
 ## LogStream Integration
 
@@ -21,8 +21,8 @@ All macros internally use `LogStream`, a RAII-style helper that sends the log me
 Example:
 
 ```cpp
-FLOX_LOG("Book update: bid=" << update.bestBidPrice());
-FLOX_LOG_WARN("Rejecting order due to risk check failure");
+LRVX_LOG("Book update: bid=" << update.bestBidPrice());
+LRVX_LOG_WARN("Rejecting order due to risk check failure");
 ```
 
 This is equivalent to:
@@ -47,11 +47,11 @@ it are evaluated.
 ConsoleLogger errorsOnly(LogLevel::Error);
 setGlobalLogger(&errorsOnly);
 
-FLOX_LOG_INFO("book depth " << summariseBook(book));  // summariseBook is not called
+LRVX_LOG_INFO("book depth " << summariseBook(book));  // summariseBook is not called
 ```
 
 The threshold used to live inside the sink alone, applied after the allocation
-and after every argument had been formatted. `FLOX_LOG_WARN` sits on
+and after every argument had been formatted. `LRVX_LOG_WARN` sits on
 `OrderTracker`'s unknown-order path and in the EventBus consumer loop, so a
 reconnect burst was an allocation storm on the execution path for messages
 nobody would read.
@@ -62,10 +62,10 @@ free to do so — the macro's check is the cheap one, not the only one.
 
 ## Compile-Time Disable
 
-If `FLOX_DISABLE_LOGGING` is defined at compile time, all logging macros become no-ops:
+If `LRVX_DISABLE_LOGGING` is defined at compile time, all logging macros become no-ops:
 
 ```cpp
-#define FLOX_DISABLE_LOGGING
+#define LRVX_DISABLE_LOGGING
 ```
 
 This is useful for benchmark builds or environments where logging must be completely stripped out.
@@ -77,6 +77,6 @@ This is useful for benchmark builds or environments where logging must be comple
 
 ## Notes
 
-* No log message will be emitted if `FLOX_LOG_OFF()` was called, logging was disabled at runtime, or the level is below the installed sink's `minLevel()`.
+* No log message will be emitted if `LRVX_LOG_OFF()` was called, logging was disabled at runtime, or the level is below the installed sink's `minLevel()`.
 * Message formatting is deferred until `LogStream` destructor runs, and does not happen at all for a filtered line.
 * Logs can be redirected by configuring a global logger (`ILogger` implementation).

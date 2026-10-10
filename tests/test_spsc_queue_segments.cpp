@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,12 +15,12 @@
 #include <thread>
 #include <vector>
 
-#include "flox/util/concurrency/spsc_queue.h"
+#include "lrvx/util/concurrency/spsc_queue.h"
 
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 struct Tracked
 {

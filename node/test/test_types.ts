@@ -42,7 +42,7 @@ function checkAcceptsBigint(fn: () => void, msg: string): void {
   }
 }
 
-import * as flox from "..";
+import * as lrvx from "..";
 import {
   // Classes
   ATR,
@@ -292,25 +292,25 @@ void bbBatch.middle;
 void bbBatch.lower;
 
 // ── Batch indicator functions ──────────────────────────────────────────
-void flox.sma(arr, 3);
-void flox.ema(arr, 3);
-void flox.rma(arr, 3);
-void flox.rsi(arr, 14);
-void flox.dema(arr, 3);
-void flox.tema(arr, 3);
-void flox.kama(arr, 10, 2, 30);
-void flox.slope(arr, 5);
-void flox.skewness(arr, 20);
-void flox.kurtosis(arr, 20);
-void flox.rolling_zscore(arr, 20);
-void flox.shannon_entropy(arr, 20, 8);
-void flox.autocorrelation(arr, 20, 1);
-const adfV = flox.adf(arr, 1, "c");
+void lrvx.sma(arr, 3);
+void lrvx.ema(arr, 3);
+void lrvx.rma(arr, 3);
+void lrvx.rsi(arr, 14);
+void lrvx.dema(arr, 3);
+void lrvx.tema(arr, 3);
+void lrvx.kama(arr, 10, 2, 30);
+void lrvx.slope(arr, 5);
+void lrvx.skewness(arr, 20);
+void lrvx.kurtosis(arr, 20);
+void lrvx.rolling_zscore(arr, 20);
+void lrvx.shannon_entropy(arr, 20, 8);
+void lrvx.autocorrelation(arr, 20, 1);
+const adfV = lrvx.adf(arr, 1, "c");
 check(typeof adfV.testStat === "number", "adf() returns { testStat, pValue, usedLag }");
 void adfV.pValue;
 void adfV.usedLag;
-void flox.chop(arr, arr, arr, 14);
-void flox.atr(arr, arr, arr, 14);
+void lrvx.chop(arr, arr, arr, 14);
+void lrvx.atr(arr, arr, arr, 14);
 {
   // Mismatched array lengths used to be read past the short array's end
   // (denormals on a small input, SIGSEGV on a large one) instead of
@@ -318,38 +318,38 @@ void flox.atr(arr, arr, arr, 14);
   const shortArr = new Float64Array([1]);
   let threw = false;
   try {
-    flox.atr(arr, shortArr, arr, 14);
+    lrvx.atr(arr, shortArr, arr, 14);
   } catch {
     threw = true;
   }
-  check(threw, "flox.atr rejects mismatched array lengths instead of reading out of bounds");
+  check(threw, "lrvx.atr rejects mismatched array lengths instead of reading out of bounds");
 }
-void flox.cci(arr, arr, arr, 14);
-void flox.parkinson_vol(arr, arr, 14);
-void flox.rogers_satchell_vol(arr, arr, arr, arr, 14);
-const adxOut = flox.adx(arr, arr, arr, 14);
+void lrvx.cci(arr, arr, arr, 14);
+void lrvx.parkinson_vol(arr, arr, 14);
+void lrvx.rogers_satchell_vol(arr, arr, arr, arr, 14);
+const adxOut = lrvx.adx(arr, arr, arr, 14);
 void adxOut.plusDi;
 void adxOut.minusDi;
-const bbBatch2 = flox.bollinger(arr, 20, 2);
+const bbBatch2 = lrvx.bollinger(arr, 20, 2);
 void bbBatch2.middle;
-const macdBatch2 = flox.macd(arr, 12, 26, 9);
+const macdBatch2 = lrvx.macd(arr, 12, 26, 9);
 void macdBatch2.histogram;
-const stochBatch2 = flox.stochastic(arr, arr, arr, 14, 3);
+const stochBatch2 = lrvx.stochastic(arr, arr, arr, 14, 3);
 void stochBatch2.k;
-void flox.obv(arr, arr);
-void flox.vwap(arr, arr, 20);
-void flox.cvd(arr, arr, arr, arr, arr);
-const indNames: string[] = flox.list_indicators();
+void lrvx.obv(arr, arr);
+void lrvx.vwap(arr, arr, 20);
+void lrvx.cvd(arr, arr, arr, arr, arr);
+const indNames: string[] = lrvx.list_indicators();
 void indNames;
 
 // ── Aggregators ───────────────────────────────────────────────────────
-const bars: AggregatedBar[] = flox.aggregateTimeBars(arr, arr, arr, ib, 60);
+const bars: AggregatedBar[] = lrvx.aggregateTimeBars(arr, arr, arr, ib, 60);
 void bars[0]?.open;
-void flox.aggregateTickBars(arr, arr, arr, ib, 100);
-void flox.aggregateVolumeBars(arr, arr, arr, ib, 1000);
-void flox.aggregateRangeBars(arr, arr, arr, ib, 1.0);
-void flox.aggregateRenkoBars(arr, arr, arr, ib, 1.0);
-void flox.aggregateHeikinAshiBars(arr, arr, arr, ib, 60);
+void lrvx.aggregateTickBars(arr, arr, arr, ib, 100);
+void lrvx.aggregateVolumeBars(arr, arr, arr, ib, 1000);
+void lrvx.aggregateRangeBars(arr, arr, arr, ib, 1.0);
+void lrvx.aggregateRenkoBars(arr, arr, arr, ib, 1.0);
+void lrvx.aggregateHeikinAshiBars(arr, arr, arr, ib, 60);
 
 // ── Books ─────────────────────────────────────────────────────────────
 const ob = new OrderBook(0.01);
@@ -465,18 +465,18 @@ const _nl: number = fb.numLevels;
 fb.clear();
 
 // ── Stats ─────────────────────────────────────────────────────────────
-const _corr: number = flox.correlation(arr, arr);
+const _corr: number = lrvx.correlation(arr, arr);
 void _corr;
-void flox.profitFactor(arr);
-void flox.winRate(arr);
-const ci = flox.bootstrapCI(arr, 0.95, 1000);
+void lrvx.profitFactor(arr);
+void lrvx.winRate(arr);
+const ci = lrvx.bootstrapCI(arr, 0.95, 1000);
 void ci.lower;
 void ci.median;
 void ci.upper;
 const sigInt = new Int8Array([1, 0, -1, 0, 1]);
-void flox.permutationTest(arr, arr, 1000);
-void flox.barReturns(sigInt, sigInt, arr);
-void flox.tradePnl(sigInt, sigInt, arr);
+void lrvx.permutationTest(arr, arr, 1000);
+void lrvx.barReturns(sigInt, sigInt, arr);
+void lrvx.tradePnl(sigInt, sigInt, arr);
 
 // ── Data I/O ─────────────────────────────────────────────────────────
 // A fresh directory per run: this block writes/reads/re-writes the
@@ -484,7 +484,7 @@ void flox.tradePnl(sigInt, sigInt, arr);
 // -> Partitioner), and a fixed path accumulated trades across repeated
 // local runs (DataReader.readTrades returning more each time), unlike a
 // CI job which always starts from a clean /tmp.
-const testDataDir = `/tmp/flox-test-types-${Date.now()}`;
+const testDataDir = `/tmp/lrvx-test-types-${Date.now()}`;
 const dw = new DataWriter(testDataDir, 64, 1);
 void dw.writeTrade(0n, 0n, 100, 0.1, 1, 1, "buy");
 dw.flush();
@@ -536,36 +536,36 @@ void part.perSymbol();
 void part.byEventCount(4);
 
 // ── Segment ops ──────────────────────────────────────────────────────
-const _vsOk: boolean = flox.validateSegment("/tmp/x");
+const _vsOk: boolean = lrvx.validateSegment("/tmp/x");
 void _vsOk;
-const valRes = flox.validate("/tmp/x");
+const valRes = lrvx.validate("/tmp/x");
 void valRes.headerValid;
 void valRes.tradesFound;
-const dsRes = flox.validateDataset("/tmp/x");
+const dsRes = lrvx.validateDataset("/tmp/x");
 void dsRes.totalSegments;
 void dsRes.firstTimestamp;
-const _msOk: boolean = flox.mergeSegments("/tmp/a", "/tmp/b");
+const _msOk: boolean = lrvx.mergeSegments("/tmp/a", "/tmp/b");
 void _msOk;
-const mdRes = flox.mergeDir("/tmp/a", "/tmp/b");
+const mdRes = lrvx.mergeDir("/tmp/a", "/tmp/b");
 void mdRes.segmentsMerged;
-const splitRes = flox.split("/tmp/a", "/tmp/b", "time", 3_600_000_000_000n, 1_000_000);
+const splitRes = lrvx.split("/tmp/a", "/tmp/b", "time", 3_600_000_000_000n, 1_000_000);
 void splitRes.segmentsCreated;
-const exRes = flox.exportData("/tmp/a", "/tmp/b", "json", 0n, 0n);
+const exRes = lrvx.exportData("/tmp/a", "/tmp/b", "json", 0n, 0n);
 void exRes.eventsExported;
-const _rcOk: boolean = flox.recompress("/tmp/a", "/tmp/b", "lz4");
+const _rcOk: boolean = lrvx.recompress("/tmp/a", "/tmp/b", "lz4");
 void _rcOk;
-const _esCount: number = flox.extractSymbols(
+const _esCount: number = lrvx.extractSymbols(
   "/tmp/a",
   "/tmp/b",
   new Uint32Array([1, 2, 3]),
 );
 void _esCount;
-const _etCount: number = flox.extractTimeRange("/tmp/a", "/tmp/b", 0n, 1n);
+const _etCount: number = lrvx.extractTimeRange("/tmp/a", "/tmp/b", 0n, 1n);
 void _etCount;
-const insp = flox.inspect("/tmp/x");
+const insp = lrvx.inspect("/tmp/x");
 void insp.totalEvents;
 void insp.durationSeconds;
-void flox.rollingCorrelation(arr, arr, 20);
+void lrvx.rollingCorrelation(arr, arr, 20);
 
 // ── Indicator graphs ──────────────────────────────────────────────────
 const ig = new IndicatorGraph();

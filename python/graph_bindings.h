@@ -5,16 +5,16 @@
 
 #include <pybind11/stl.h>
 #include "bindings_common.h"
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include <optional>
 #include <span>
 #include <string>
 #include <vector>
 
-#include "flox/aggregator/bar.h"
-#include "flox/common.h"
-#include "flox/indicator/indicator_pipeline.h"
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/common.h"
+#include "lrvx/indicator/indicator_pipeline.h"
 
 namespace py = pybind11;
 
@@ -50,7 +50,7 @@ class PyIndicatorGraph
       auto b = high->request();
       if (static_cast<size_t>(b.shape[0]) != n)
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_LEN_001",
             "set_bars: 'high' array must have the same length as 'close'.");
       }
@@ -61,7 +61,7 @@ class PyIndicatorGraph
       auto b = low->request();
       if (static_cast<size_t>(b.shape[0]) != n)
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_LEN_001",
             "set_bars: 'low' array must have the same length as 'close'.");
       }
@@ -72,24 +72,24 @@ class PyIndicatorGraph
       auto b = volume->request();
       if (static_cast<size_t>(b.shape[0]) != n)
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_LEN_001",
             "set_bars: 'volume' array must have the same length as 'close'.");
       }
       v = static_cast<const double*>(b.ptr);
     }
 
-    std::vector<flox::Bar> bars(n);
+    std::vector<lrvx::Bar> bars(n);
     for (size_t i = 0; i < n; ++i)
     {
-      bars[i].open = flox::Price::fromDouble(c[i]);
-      bars[i].high = flox::Price::fromDouble(h[i]);
-      bars[i].low = flox::Price::fromDouble(l[i]);
-      bars[i].close = flox::Price::fromDouble(c[i]);
-      bars[i].volume = v ? flox::Volume::fromDouble(v[i]) : flox::Volume{};
+      bars[i].open = lrvx::Price::fromDouble(c[i]);
+      bars[i].high = lrvx::Price::fromDouble(h[i]);
+      bars[i].low = lrvx::Price::fromDouble(l[i]);
+      bars[i].close = lrvx::Price::fromDouble(c[i]);
+      bars[i].volume = v ? lrvx::Volume::fromDouble(v[i]) : lrvx::Volume{};
     }
-    _graph.setBars(static_cast<flox::SymbolId>(symbol),
-                   std::span<const flox::Bar>(bars));
+    _graph.setBars(static_cast<lrvx::SymbolId>(symbol),
+                   std::span<const lrvx::Bar>(bars));
   }
 
   void addNode(const std::string& name, std::vector<std::string> deps, py::object fn)
@@ -97,7 +97,7 @@ class PyIndicatorGraph
     PyIndicatorGraph* self = this;
     _graph.addNode(
         name, std::move(deps),
-        [self, fn](flox::indicator::IndicatorGraph&, flox::SymbolId sym) -> std::vector<double>
+        [self, fn](lrvx::indicator::IndicatorGraph&, lrvx::SymbolId sym) -> std::vector<double>
         {
           py::object result = fn(py::cast(self, py::return_value_policy::reference),
                                  static_cast<uint32_t>(sym));
@@ -112,13 +112,13 @@ class PyIndicatorGraph
 
   py::array_t<double> require(uint32_t symbol, const std::string& name)
   {
-    const auto& v = _graph.require(static_cast<flox::SymbolId>(symbol), name);
+    const auto& v = _graph.require(static_cast<lrvx::SymbolId>(symbol), name);
     return toArray(v);
   }
 
   py::object get(uint32_t symbol, const std::string& name) const
   {
-    const auto* v = _graph.get(static_cast<flox::SymbolId>(symbol), name);
+    const auto* v = _graph.get(static_cast<lrvx::SymbolId>(symbol), name);
     if (!v)
     {
       return py::none();
@@ -130,48 +130,48 @@ class PyIndicatorGraph
   void step(uint32_t symbol, double close, std::optional<double> high,
             std::optional<double> low, std::optional<double> volume)
   {
-    flox::Bar bar;
+    lrvx::Bar bar;
     double h = high.value_or(close);
     double l = low.value_or(close);
     double v = volume.value_or(0.0);
-    bar.open = flox::Price::fromDouble(close);
-    bar.high = flox::Price::fromDouble(h);
-    bar.low = flox::Price::fromDouble(l);
-    bar.close = flox::Price::fromDouble(close);
-    bar.volume = flox::Volume::fromDouble(v);
-    _graph.step(static_cast<flox::SymbolId>(symbol), bar);
+    bar.open = lrvx::Price::fromDouble(close);
+    bar.high = lrvx::Price::fromDouble(h);
+    bar.low = lrvx::Price::fromDouble(l);
+    bar.close = lrvx::Price::fromDouble(close);
+    bar.volume = lrvx::Volume::fromDouble(v);
+    _graph.step(static_cast<lrvx::SymbolId>(symbol), bar);
   }
 
   double current(uint32_t symbol, const std::string& name)
   {
-    return _graph.current(static_cast<flox::SymbolId>(symbol), name);
+    return _graph.current(static_cast<lrvx::SymbolId>(symbol), name);
   }
 
   size_t barCount(uint32_t symbol) const
   {
-    return _graph.barCount(static_cast<flox::SymbolId>(symbol));
+    return _graph.barCount(static_cast<lrvx::SymbolId>(symbol));
   }
 
   py::array_t<double> close(uint32_t symbol)
   {
-    return toArray(_graph.close(static_cast<flox::SymbolId>(symbol)));
+    return toArray(_graph.close(static_cast<lrvx::SymbolId>(symbol)));
   }
   py::array_t<double> high(uint32_t symbol)
   {
-    return toArray(_graph.high(static_cast<flox::SymbolId>(symbol)));
+    return toArray(_graph.high(static_cast<lrvx::SymbolId>(symbol)));
   }
   py::array_t<double> low(uint32_t symbol)
   {
-    return toArray(_graph.low(static_cast<flox::SymbolId>(symbol)));
+    return toArray(_graph.low(static_cast<lrvx::SymbolId>(symbol)));
   }
   py::array_t<double> volume(uint32_t symbol)
   {
-    return toArray(_graph.volume(static_cast<flox::SymbolId>(symbol)));
+    return toArray(_graph.volume(static_cast<lrvx::SymbolId>(symbol)));
   }
 
-  void invalidate(uint32_t symbol) { _graph.invalidate(static_cast<flox::SymbolId>(symbol)); }
+  void invalidate(uint32_t symbol) { _graph.invalidate(static_cast<lrvx::SymbolId>(symbol)); }
   void invalidateAll() { _graph.invalidateAll(); }
-  void reset(uint32_t symbol) { _graph.reset(static_cast<flox::SymbolId>(symbol)); }
+  void reset(uint32_t symbol) { _graph.reset(static_cast<lrvx::SymbolId>(symbol)); }
   void resetAll() { _graph.resetAll(); }
 
  private:
@@ -182,7 +182,7 @@ class PyIndicatorGraph
     return out;
   }
 
-  flox::indicator::IndicatorGraph _graph;
+  lrvx::indicator::IndicatorGraph _graph;
 };
 
 }  // namespace
@@ -215,7 +215,7 @@ inline void bindIndicatorGraph(py::module_& m)
 
   // Declarative helper. Sugar over add_node:
   //
-  //   g.indicator("ema5", flox.EMA(5), source="close")
+  //   g.indicator("ema5", lrvx.EMA(5), source="close")
   //
   // is equivalent to:
   //

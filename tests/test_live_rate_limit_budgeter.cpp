@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -11,11 +11,11 @@
 
 #include <vector>
 
-#include "flox/execution/live_rate_limit_budgeter.h"
-#include "flox/execution/rate_limit_policy.h"
+#include "lrvx/execution/live_rate_limit_budgeter.h"
+#include "lrvx/execution/rate_limit_policy.h"
 
-using flox::LiveRateLimitBudgeter;
-using flox::RateLimitPolicy;
+using lrvx::LiveRateLimitBudgeter;
+using lrvx::RateLimitPolicy;
 using Action = RateLimitPolicy::ActionKind;
 using Decision = LiveRateLimitBudgeter::Decision;
 
@@ -115,27 +115,27 @@ TEST(LiveRateLimitBudgeter, SharedProfileMatchesBacktestSemantics)
 namespace
 {
 
-class RecordingExecutor : public flox::IRoutableExecutor
+class RecordingExecutor : public lrvx::IRoutableExecutor
 {
  public:
-  void submit(flox::SymbolId, flox::Side, flox::Price, flox::Quantity, flox::OrderId id) override
+  void submit(lrvx::SymbolId, lrvx::Side, lrvx::Price, lrvx::Quantity, lrvx::OrderId id) override
   {
     submitted.push_back(id);
   }
-  void cancel(flox::OrderId id) override { canceled.push_back(id); }
+  void cancel(lrvx::OrderId id) override { canceled.push_back(id); }
 
-  std::vector<flox::OrderId> submitted;
-  std::vector<flox::OrderId> canceled;
+  std::vector<lrvx::OrderId> submitted;
+  std::vector<lrvx::OrderId> canceled;
 };
 
 int64_t fakeClock() { return 500; }
 
 struct RejectLog
 {
-  std::vector<std::pair<flox::OrderId, Decision>> entries;
+  std::vector<std::pair<lrvx::OrderId, Decision>> entries;
 };
 
-void onReject(flox::OrderId id, Decision d, void* user)
+void onReject(lrvx::OrderId id, Decision d, void* user)
 {
   static_cast<RejectLog*>(user)->entries.emplace_back(id, d);
 }
@@ -147,12 +147,12 @@ TEST(RateLimitedExecutor, DecoratorDropsLocallyAndReports)
   LiveRateLimitBudgeter budgeter(tinyPolicy(2), {.cancelHeadroom = 0.0});
   RecordingExecutor inner;
   RejectLog log;
-  flox::RateLimitedExecutor exec(&inner, &budgeter, /*strategyId=*/1, &fakeClock,
+  lrvx::RateLimitedExecutor exec(&inner, &budgeter, /*strategyId=*/1, &fakeClock,
                                  &onReject, &log);
 
-  exec.submit(1, flox::Side::BUY, flox::Price::fromRaw(100), flox::Quantity::fromRaw(1), /*orderId=*/11);
-  exec.submit(1, flox::Side::BUY, flox::Price::fromRaw(100), flox::Quantity::fromRaw(1), /*orderId=*/12);
-  exec.submit(1, flox::Side::BUY, flox::Price::fromRaw(100), flox::Quantity::fromRaw(1), /*orderId=*/13);  // over budget
+  exec.submit(1, lrvx::Side::BUY, lrvx::Price::fromRaw(100), lrvx::Quantity::fromRaw(1), /*orderId=*/11);
+  exec.submit(1, lrvx::Side::BUY, lrvx::Price::fromRaw(100), lrvx::Quantity::fromRaw(1), /*orderId=*/12);
+  exec.submit(1, lrvx::Side::BUY, lrvx::Price::fromRaw(100), lrvx::Quantity::fromRaw(1), /*orderId=*/13);  // over budget
 
   ASSERT_EQ(inner.submitted.size(), 2u);
   ASSERT_EQ(log.entries.size(), 1u);

@@ -1,4 +1,4 @@
-// Type declarations for the `@flox-foundation/flox/lib/dex` subpath import.
+// Type declarations for the `lrvx/lib/dex` subpath import.
 //
 // Single source of truth: the `dex` namespace in ../index.d.ts, which is
 // derived from lib/dex.js. This file only re-exports it, so the subpath

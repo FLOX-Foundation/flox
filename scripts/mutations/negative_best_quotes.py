@@ -10,9 +10,9 @@ in the source, and checks that a test goes red.
 
 Three areas, three kinds of primary target:
 
-    include/flox/book/nlevel_order_book.h   -> test_nlevel_order_book_negative_prices
-    src/capi/flox_capi.cpp,
-    include/flox/capi/flox_capi.h           -> test_capi_negative_book
+    include/lrvx/book/nlevel_order_book.h   -> test_nlevel_order_book_negative_prices
+    src/capi/lrvx_capi.cpp,
+    include/lrvx/capi/lrvx_capi.h           -> test_capi_negative_book
     src/quickjs/js_bindings.cpp             -> test_quickjs
 
 Every mutation runs its primary target first: a narrow gtest filter naming
@@ -32,7 +32,7 @@ check, only a repeat of the control run):
 
 test_capi_book and test_capi_strategy, named in the task brief, are not
 build targets in this tree (grep tests/CMakeLists.txt); test_capi_infra is
-the actual binary exercising flox_book_*/flox_strategy_* through the C API
+the actual binary exercising lrvx_book_*/lrvx_strategy_* through the C API
 and stands in for both.
 
 Every run is honest about the build: the mutated file's hash is printed
@@ -54,12 +54,12 @@ Usage:
 
 The build directory is expected to be configured already:
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON \
-          -DFLOX_BUILD_CAPI=ON -DFLOX_NATIVE=OFF -DFLOX_BUILD_QUICKJS=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON \
+          -DLRVX_BUILD_CAPI=ON -DLRVX_NATIVE=OFF -DLRVX_BUILD_QUICKJS=ON
 
-(FLOX_BUILD_QUICKJS=ON is not part of the task's baseline build line, but is
+(LRVX_BUILD_QUICKJS=ON is not part of the task's baseline build line, but is
 needed to compile test_quickjs at all -- src/quickjs is not built without it.
-Every mutation here still applies with FLOX_BUILD_QUICKJS left OFF; the two
+Every mutation here still applies with LRVX_BUILD_QUICKJS left OFF; the two
 quickjs-* mutations just have no target to run against and are skipped, not
 counted as survivors.)
 """
@@ -83,9 +83,9 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 300
 TEST_TIMEOUT = 60
 
-BOOK = "include/flox/book/nlevel_order_book.h"
-CAPI_CPP = "src/capi/flox_capi.cpp"
-CAPI_H = "include/flox/capi/flox_capi.h"
+BOOK = "include/lrvx/book/nlevel_order_book.h"
+CAPI_CPP = "src/capi/lrvx_capi.cpp"
+CAPI_H = "include/lrvx/capi/lrvx_capi.h"
 JS_BINDINGS = "src/quickjs/js_bindings.cpp"
 
 NLEVEL_NEG = "test_nlevel_order_book_negative_prices"
@@ -93,9 +93,9 @@ CAPI_NEG = "test_capi_negative_book"
 QUICKJS = "test_quickjs"
 
 # The book sweep: every binary that includes nlevel_order_book.h, directly or
-# (for the two capi ones) via flox_capi.cpp. test_capi_book / test_capi_strategy
+# (for the two capi ones) via lrvx_capi.cpp. test_capi_book / test_capi_strategy
 # from the task brief do not exist in this tree -- test_capi_infra is the real
-# binary covering flox_book_*/flox_strategy_*.
+# binary covering lrvx_book_*/lrvx_strategy_*.
 BOOK_SWEEP = [
     "test_nlevel_order_book",
     "test_nlevel_order_book_window",
@@ -104,7 +104,7 @@ BOOK_SWEEP = [
     "test_capi_negative_book",
     "test_capi_infra",
 ]
-# The capi sweep: binaries that link flox_capi and exercise the strategy-side
+# The capi sweep: binaries that link lrvx_capi and exercise the strategy-side
 # book accessors, minus the primary target itself.
 CAPI_SWEEP = ["test_capi_infra"]
 QUICKJS_SWEEP: list[str] = []
@@ -124,7 +124,7 @@ class Mutation:
     sweep: list[str] = field(default_factory=list)
     equivalent_reason: str | None = None
     # Set when the primary target's binary does not exist under the
-    # configured build (quickjs mutations when FLOX_BUILD_QUICKJS=OFF).
+    # configured build (quickjs mutations when LRVX_BUILD_QUICKJS=OFF).
     optional_binary: bool = False
 
 
@@ -480,28 +480,28 @@ MUTATIONS: list[Mutation] = [
     ),
 
     # ========================================================================
-    # C API: flox_capi.cpp / flox_capi.h
+    # C API: lrvx_capi.cpp / lrvx_capi.h
     # ========================================================================
     Mutation(
         name="capi-macro-removed",
-        why="FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE is removed from flox_capi.h, the "
+        why="LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE is removed from lrvx_capi.h, the "
             "header the test includes, so the acceptance case compiles its "
             "#else branch (an explicit FAIL())",
         file=CAPI_H,
-        old="#define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1",
-        new="/* FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE removed by mutation */",
+        old="#define LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE 1",
+        new="/* LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE removed by mutation */",
         primary=CAPI_NEG,
         gtest_filter="CapiNegativeBook.StrategyRawBestQuotesSeparateNoQuoteFromAPriceOfZero",
         sweep=CAPI_SWEEP,
     ),
     Mutation(
         name="capi-bid-opt-flag-inverted",
-        why="flox_best_bid_raw_opt returns 1 for an empty side and 0 for a "
+        why="lrvx_best_bid_raw_opt returns 1 for an empty side and 0 for a "
             "present one -- the presence flag inverted",
         file=CAPI_CPP,
-        old="""uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        old="""uint8_t lrvx_best_bid_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto bid = toStrategy(s)->ctx(symbol).book.bestBid();
   if (!bid)
   {
@@ -512,11 +512,11 @@ MUTATIONS: list[Mutation] = [
     *price_out = bid->raw();
   }
   return 1;
-  FLOX_CAPI_LEAVE;
+  LRVX_CAPI_LEAVE;
 }""",
-        new="""uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        new="""uint8_t lrvx_best_bid_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto bid = toStrategy(s)->ctx(symbol).book.bestBid();
   if (!bid)
   {
@@ -527,7 +527,7 @@ MUTATIONS: list[Mutation] = [
     *price_out = bid->raw();
   }
   return 0;
-  FLOX_CAPI_LEAVE;
+  LRVX_CAPI_LEAVE;
 }""",
         primary=CAPI_NEG,
         gtest_filter="CapiNegativeBook.StrategyRawBestQuotesSeparateNoQuoteFromAPriceOfZero",
@@ -535,13 +535,13 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="capi-ask-opt-flag-inverted",
-        why="flox_best_ask_raw_opt's presence flag inverted, same as the bid "
+        why="lrvx_best_ask_raw_opt's presence flag inverted, same as the bid "
             "mutation above. No acceptance or regression test calls "
-            "flox_best_ask_raw_opt at all -- see the task note for this as a hole",
+            "lrvx_best_ask_raw_opt at all -- see the task note for this as a hole",
         file=CAPI_CPP,
-        old="""uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        old="""uint8_t lrvx_best_ask_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto ask = toStrategy(s)->ctx(symbol).book.bestAsk();
   if (!ask)
   {
@@ -552,11 +552,11 @@ MUTATIONS: list[Mutation] = [
     *price_out = ask->raw();
   }
   return 1;
-  FLOX_CAPI_LEAVE;
+  LRVX_CAPI_LEAVE;
 }""",
-        new="""uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        new="""uint8_t lrvx_best_ask_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto ask = toStrategy(s)->ctx(symbol).book.bestAsk();
   if (!ask)
   {
@@ -567,31 +567,31 @@ MUTATIONS: list[Mutation] = [
     *price_out = ask->raw();
   }
   return 0;
-  FLOX_CAPI_LEAVE;
+  LRVX_CAPI_LEAVE;
 }""",
         primary=CAPI_NEG,
         sweep=CAPI_SWEEP,
     ),
     Mutation(
         name="capi-mid-opt-uses-bid",
-        why="flox_mid_price_raw_opt reads ctx(symbol).book.bestBid() instead of "
+        why="lrvx_mid_price_raw_opt reads ctx(symbol).book.bestBid() instead of "
             "ctx(symbol).mid() -- the mid price becomes the bid price. No "
-            "acceptance or regression test calls flox_mid_price_raw_opt at all",
+            "acceptance or regression test calls lrvx_mid_price_raw_opt at all",
         file=CAPI_CPP,
-        old="""uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        old="""uint8_t lrvx_mid_price_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto mid = toStrategy(s)->ctx(symbol).mid();""",
-        new="""uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        new="""uint8_t lrvx_mid_price_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto mid = toStrategy(s)->ctx(symbol).book.bestBid();""",
         primary=CAPI_NEG,
         sweep=CAPI_SWEEP,
     ),
     Mutation(
         name="capi-bid-opt-price-written-when-absent",
-        why="flox_best_bid_raw_opt writes 0 into *price_out on the empty-side "
+        why="lrvx_best_bid_raw_opt writes 0 into *price_out on the empty-side "
             "path before returning 0. The acceptance test reuses the same "
             "local across both calls and only checks it after the present-bid "
             "call, so a write on the absent path is never observed",
@@ -626,14 +626,14 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="capi-bid-opt-null-deref-unconditional",
-        why="flox_best_bid_raw_opt drops the `if (price_out)` guard and "
+        why="lrvx_best_bid_raw_opt drops the `if (price_out)` guard and "
             "dereferences price_out unconditionally, contradicting the header "
             "comment that price_out may be NULL. Every caller in the tree "
             "passes a real pointer, so nothing here crashes and nothing catches it",
         file=CAPI_CPP,
-        old="""uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        old="""uint8_t lrvx_best_bid_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto bid = toStrategy(s)->ctx(symbol).book.bestBid();
   if (!bid)
   {
@@ -644,11 +644,11 @@ MUTATIONS: list[Mutation] = [
     *price_out = bid->raw();
   }
   return 1;
-  FLOX_CAPI_LEAVE;
+  LRVX_CAPI_LEAVE;
 }""",
-        new="""uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+        new="""uint8_t lrvx_best_bid_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out)
 {
-  FLOX_CAPI_ENTER(s);
+  LRVX_CAPI_ENTER(s);
   auto bid = toStrategy(s)->ctx(symbol).book.bestBid();
   if (!bid)
   {
@@ -656,7 +656,7 @@ MUTATIONS: list[Mutation] = [
   }
   *price_out = bid->raw();
   return 1;
-  FLOX_CAPI_LEAVE;
+  LRVX_CAPI_LEAVE;
 }""",
         primary=CAPI_NEG,
         gtest_filter="CapiNegativeBook.StrategyRawBestQuotesSeparateNoQuoteFromAPriceOfZero",
@@ -679,22 +679,22 @@ MUTATIONS: list[Mutation] = [
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_best_bid_raw_opt(h, sym, &raw))
+  if (!lrvx_best_bid_raw_opt(h, sym, &raw))
   {
     return JS_NULL;
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }""",
         new="""static JSValue js_best_bid(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_best_bid_raw_opt(h, sym, &raw))
+  if (!lrvx_best_bid_raw_opt(h, sym, &raw))
   {
     return JS_NewFloat64(ctx, 0.0);
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }""",
         primary=QUICKJS,
         sweep=QUICKJS_SWEEP,
@@ -710,22 +710,22 @@ MUTATIONS: list[Mutation] = [
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_mid_price_raw_opt(h, sym, &raw))
+  if (!lrvx_mid_price_raw_opt(h, sym, &raw))
   {
     return JS_NULL;
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }""",
         new="""static JSValue js_mid_price(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
   int64_t raw = 0;
-  if (!flox_mid_price_raw_opt(h, sym, &raw))
+  if (!lrvx_mid_price_raw_opt(h, sym, &raw))
   {
     return JS_NewFloat64(ctx, 0.0);
   }
-  return JS_NewFloat64(ctx, flox_price_to_double(raw));
+  return JS_NewFloat64(ctx, lrvx_price_to_double(raw));
 }""",
         primary=QUICKJS,
         sweep=QUICKJS_SWEEP,
@@ -929,8 +929,8 @@ def main() -> int:
     if not (BUILD / "CMakeCache.txt").is_file():
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
-            "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON "
-            "-DFLOX_BUILD_CAPI=ON -DFLOX_NATIVE=OFF"
+            "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON "
+            "-DLRVX_BUILD_CAPI=ON -DLRVX_NATIVE=OFF"
         )
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
@@ -942,7 +942,7 @@ def main() -> int:
         for m in selected:
             if m.optional_binary:
                 print(f"[{m.name}] skipped -- {QUICKJS} was not built "
-                      f"(configure with -DFLOX_BUILD_QUICKJS=ON to include it)")
+                      f"(configure with -DLRVX_BUILD_QUICKJS=ON to include it)")
         selected = [m for m in selected if not m.optional_binary]
 
     if not selected:

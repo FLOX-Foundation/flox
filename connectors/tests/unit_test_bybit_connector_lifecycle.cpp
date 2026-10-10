@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -20,12 +20,12 @@
  * process never got here.
  */
 
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/log/abstract_logger.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/log/abstract_logger.h>
 
 #include <gtest/gtest.h>
 
@@ -34,12 +34,12 @@
 #include <string>
 #include <thread>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
 
-struct NullLogger final : public flox::ILogger
+struct NullLogger final : public lrvx::ILogger
 {
   void info(std::string_view) override {}
   void warn(std::string_view) override {}

@@ -1,6 +1,6 @@
-# Round-trip smoke for the .floxrun bindings under Codon.
+# Round-trip smoke for the .lrvxrun bindings under Codon.
 
-from flox.run_trace import (TraceRecorder, TraceReader,
+from lrvx.run_trace import (TraceRecorder, TraceReader,
                             SIGNAL_FLAG_ENTER, ORDER_FLAG_POST_ONLY,
                             ORDER_KIND_SUBMIT, LIQUIDITY_MAKER)
 
@@ -15,13 +15,13 @@ def check(label: str, ok: bool):
 
 
 def run():
-    path = "/tmp/flox_run_codon_smoke"
+    path = "/tmp/lrvx_run_codon_smoke"
     os.system("rm -rf " + path)
 
     rec = TraceRecorder(path, strategy_id="codon-smoke",
                         strategy_hash="sha256:test",
                         run_started_ns=1700000000000000000)
-    rec.add_tape_ref("BTCUSDT.floxlog", "sha256:abc",
+    rec.add_tape_ref("BTCUSDT.lrvx", "sha256:abc",
                      1700000000000000000, 1700000000500000000)
     rec.write_signal(1700000000100000000, name="ratio-cross",
                      symbol_ids=[1, 2], feed_ts_ns=1700000000099000000,

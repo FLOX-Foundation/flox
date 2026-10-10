@@ -163,7 +163,7 @@ std::filesystem::path my_rotation_cb(
   auto* ctx = static_cast<MyContext*>(user_data);
   std::ostringstream fname;
   fname << ctx->prefix << "_" << std::setfill('0') << std::setw(3)
-        << (ctx->sequence + segment_number - 1) << ".floxlog";
+        << (ctx->sequence + segment_number - 1) << ".lrvx";
   return output_dir / fname.str();
 }
 
@@ -172,14 +172,14 @@ MyContext ctx{"2025-01-15", 1};
 
 replay::WriterConfig config{
   .output_dir = "/data/market",
-  .output_filename = "2025-01-15_001.floxlog",  // First segment
+  .output_filename = "2025-01-15_001.lrvx",  // First segment
   .max_segment_bytes = 256ull << 20,
   .rotation_callback = my_rotation_cb,
   .rotation_user_data = &ctx,  // Must outlive writer!
 };
 
 replay::BinaryLogWriter writer(config);
-// When segment rotates, callback generates "2025-01-15_002.floxlog", etc.
+// When segment rotates, callback generates "2025-01-15_002.lrvx", etc.
 ```
 
 **Important:** The `rotation_user_data` pointer must remain valid for the lifetime of the writer.

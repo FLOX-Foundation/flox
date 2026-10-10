@@ -47,14 +47,14 @@ cancel attempt; the fill itself fires normally.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    ex = flox.SimulatedExecutor()
+    ex = lrvx.SimulatedExecutor()
     ex.set_cancel_ack_latency(10_000_000, 2_000_000)   # 10 ms base, ±2 ms jitter
 
     # Or a distribution instead of base/jitter:
     ex.set_cancel_ack_latency_distribution(
-        flox.LatencyDistribution.lognormal(10_000_000, 0.4))
+        lrvx.LatencyDistribution.lognormal(10_000_000, 0.4))
 
     # Or a named venue profile (sets submit / cancel / replace together):
     ex.apply_latency_profile("binance_um_futures")
@@ -63,10 +63,10 @@ cancel attempt; the fill itself fires normally.
 === "Node.js"
 
     ```javascript
-    const ex = new flox.SimulatedExecutor();
+    const ex = new lrvx.SimulatedExecutor();
     ex.setCancelAckLatency(10_000_000, 2_000_000);
 
-    const dist = new flox.LatencyDistribution();
+    const dist = new lrvx.LatencyDistribution();
     dist.setLognormal(10_000_000, 0.4);
     ex.setCancelAckLatencyDistribution(dist);
 
@@ -76,11 +76,11 @@ cancel attempt; the fill itself fires normally.
 === "C++"
 
     ```cpp
-    flox::BacktestConfig cfg;
+    lrvx::BacktestConfig cfg;
     cfg.cancelAckLatencyNs = 10'000'000;
     cfg.cancelAckJitterNs = 2'000'000;
     cfg.cancelAckSeed = 42;
-    flox::BacktestRunner runner(cfg);
+    lrvx::BacktestRunner runner(cfg);
     ```
 
 ## Detect a lost-to-fill race from a strategy
@@ -88,9 +88,9 @@ cancel attempt; the fill itself fires normally.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    class CancelWatcher(flox.Strategy):
+    class CancelWatcher(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
             self.fills_lost = 0

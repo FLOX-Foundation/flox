@@ -15,25 +15,25 @@ import sys
 
 build_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'build', 'python')
 sys.path.insert(0, os.path.abspath(build_dir))
-# Do NOT also add the `python/` source tree to sys.path here. `flox_py`
+# Do NOT also add the `python/` source tree to sys.path here. `lrvx`
 # is a regular (non-namespace) package, so once import machinery commits
-# to a `flox_py` found under the source tree, it never falls back to the
-# one under build_dir for submodules -- and `python/flox_py/_flox_py/`
+# to a `lrvx` found under the source tree, it never falls back to the
+# one under build_dir for submodules -- and `python/lrvx/_lrvx/`
 # in the source tree holds only `.pyi` stubs, no compiled extension. The
 # previous second `insert(0, ...)` put the source tree ahead of
-# build_dir (each insert(0, ...) wins over the last), so `flox_py`
-# resolved to the source tree and `flox_py._flox_py` resolved to that
-# stub-only namespace package instead of the real `_flox_py*.so` sitting
+# build_dir (each insert(0, ...) wins over the last), so `lrvx`
+# resolved to the source tree and `lrvx._lrvx` resolved to that
+# stub-only namespace package instead of the real `_lrvx*.so` sitting
 # right next to it in build_dir -- every attribute lookup on `_core`
 # then failed with AttributeError. build_dir alone is already a
-# complete copy of the package (CMake copies every `flox_py/*.py` file
+# complete copy of the package (CMake copies every `lrvx/*.py` file
 # there alongside the compiled extension), so it is sufficient on its
 # own.
 
 import numpy as np
 
-import flox_py as flox
-from flox_py.dataset import build_dataset, _register_feature
+import lrvx
+from lrvx.dataset import build_dataset, _register_feature
 
 try:  # pragma: no cover - environment guard
     import pytest
@@ -43,11 +43,11 @@ except ImportError:  # running as a plain script
 # The dataset builder needs the indicator-graph binding. Skip (do not error)
 # when the built module predates it, so a stale local build stays green while
 # a fresh CI build runs the real assertions below.
-from flox_py import _flox_py as _core
+from lrvx import _lrvx as _core
 _HAS_GRAPH = hasattr(_core, "IndicatorGraph")
 if pytest is not None:
     pytestmark = pytest.mark.skipif(
-        not _HAS_GRAPH, reason="built flox_py has no IndicatorGraph (rebuild the binding)")
+        not _HAS_GRAPH, reason="built lrvx has no IndicatorGraph (rebuild the binding)")
 
 _passed = 0
 _failed = 0
@@ -105,7 +105,7 @@ def test_online_offline_parity():
     ds = build_dataset(bars=bars, features=["sma_20"], drop_warmup=False)
 
     # Stream the same bars through the same graph type, step by step.
-    g = flox.IndicatorGraph()
+    g = lrvx.IndicatorGraph()
     _register_feature(g, 0, "sma_20")
     streamed = []
     for i in range(len(bars["close"])):

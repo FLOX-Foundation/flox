@@ -53,9 +53,9 @@ confidence is a strong signal; below 0.3 the estimate is roughly
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
-    const est = new flox.LiveQueuePositionEstimator();
+    const est = new lrvx.LiveQueuePositionEstimator();
     est.setConfidenceHalfLifeNs(60_000_000_000);
     est.onOrderPlaced(symbol, 0, 50000.0, /*orderId=*/42, 0.5, 2.0, /*tsNs=*/0);
 
@@ -72,7 +72,7 @@ confidence is a strong signal; below 0.3 the estimate is roughly
 === "Codon"
 
     ```python
-    from flox.live_queue_position import LiveQueuePositionEstimator
+    from lrvx.live_queue_position import LiveQueuePositionEstimator
 
     est = LiveQueuePositionEstimator()
     est.set_confidence_half_life_ns(60_000_000_000)
@@ -85,23 +85,23 @@ confidence is a strong signal; below 0.3 the estimate is roughly
 === "QuickJS"
 
     ```javascript
-    const h = __flox_live_queue_position_create();
-    __flox_live_queue_position_on_order_placed(
+    const h = __lrvx_live_queue_position_create();
+    __lrvx_live_queue_position_on_order_placed(
         h, symbol, 0, 50000.0, 42n, 0.5, 2.0, 0n);
-    __flox_live_queue_position_on_trade(h, symbol, 50000.0, 1.0, 1000000000n);
-    const snap = __flox_live_queue_position_snapshot(h, 42n, 0n);
+    __lrvx_live_queue_position_on_trade(h, symbol, 50000.0, 1.0, 1000000000n);
+    const snap = __lrvx_live_queue_position_snapshot(h, 42n, 0n);
     ```
 
 === "C++"
 
     ```cpp
-    #include "flox/execution/live_queue_position_estimator.h"
-    flox::LiveQueuePositionEstimator est;
-    est.onOrderPlaced(symbol, flox::Side::BUY, flox::Price::fromDouble(50000.0),
-                      /*orderId=*/42, flox::Quantity::fromDouble(0.5),
-                      flox::Quantity::fromDouble(2.0), /*tsNs=*/0);
-    est.onTrade(symbol, flox::Price::fromDouble(50000.0),
-                flox::Quantity::fromDouble(1.0), 1'000'000'000LL);
+    #include "lrvx/execution/live_queue_position_estimator.h"
+    lrvx::LiveQueuePositionEstimator est;
+    est.onOrderPlaced(symbol, lrvx::Side::BUY, lrvx::Price::fromDouble(50000.0),
+                      /*orderId=*/42, lrvx::Quantity::fromDouble(0.5),
+                      lrvx::Quantity::fromDouble(2.0), /*tsNs=*/0);
+    est.onTrade(symbol, lrvx::Price::fromDouble(50000.0),
+                lrvx::Quantity::fromDouble(1.0), 1'000'000'000LL);
     auto snap = est.snapshot(/*orderId=*/42);  // std::optional<LiveQueueSnapshot>
     ```
 

@@ -1,4 +1,4 @@
-// Type-level test for flox/dex. `tsc --noEmit` checks lib/dex.d.ts compiles and that
+// Type-level test for lrvx/dex. `tsc --noEmit` checks lib/dex.d.ts compiles and that
 // the documented usage type-checks. No runtime; behaviour is in test/test_dex.js.
 
 import {

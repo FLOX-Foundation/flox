@@ -8,12 +8,12 @@ when the code it covers is wrong. This script breaks each piece of the
 fix one at a time, in node/src, and checks that the relevant Node test
 goes red -- and that an unmutated addon is green before and after.
 
-The whole addon is one translation unit (node/src/flox_node.cpp includes
+The whole addon is one translation unit (node/src/lrvx_node.cpp includes
 every header), so every mutation here rebuilds the same object file:
-node/build/CMakeFiles/flox_node.dir/src/flox_node.cpp.o. That object is
+node/build/CMakeFiles/lrvx_node.dir/src/lrvx_node.cpp.o. That object is
 deleted before every rebuild so nothing is served from cache, the
 cmake-js output has to contain "Building CXX object" naming that object
-or the run is refused, and node/build/Release/flox_node.node's mtime and
+or the run is refused, and node/build/Release/lrvx_node.node's mtime and
 size are printed before and after as a second, independent signal that a
 real rebuild happened.
 
@@ -31,7 +31,7 @@ Usage:
 
 Prerequisites (not done by this script):
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFLOX_BUILD_CAPI=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLRVX_BUILD_CAPI=ON
     cmake --build build
     cd node && npm install && npm run build
 """
@@ -52,11 +52,11 @@ NODE_DIR = REPO / "node"
 SRC_DIR = NODE_DIR / "src"
 TEST_DIR = NODE_DIR / "test"
 BUILD_DIR = NODE_DIR / "build"
-ADDON = BUILD_DIR / "Release" / "flox_node.node"
-# node/src/flox_node.cpp #includes every header under node/src -- there is
+ADDON = BUILD_DIR / "Release" / "lrvx_node.node"
+# node/src/lrvx_node.cpp #includes every header under node/src -- there is
 # exactly one translation unit for the whole addon, so every mutation here
 # recompiles this same object file.
-OBJECT = BUILD_DIR / "CMakeFiles" / "flox_node.dir" / "src" / "flox_node.cpp.o"
+OBJECT = BUILD_DIR / "CMakeFiles" / "lrvx_node.dir" / "src" / "lrvx_node.cpp.o"
 
 NPM = os.environ.get("NPM", "npm")
 BUILD_TIMEOUT = 300
@@ -206,7 +206,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="runbars-check-moved-after-c-call",
         why="strategy.h runBars: the length check still exists but is moved to after "
-            "flox_backtest_runner_run_bars() has already run over the mismatched "
+            "lrvx_backtest_runner_run_bars() has already run over the mismatched "
             "columns -- 'nothing was dispatched on a mismatch' no longer holds",
         file="strategy.h",
         old="""      if (!requireSameLength(info.Env(), "runBars",
@@ -223,8 +223,8 @@ MUTATIONS: list[Mutation] = [
                                   ? static_cast<uint64_t>(info[9].As<Napi::Number>().Int64Value())
                                   : 0;
       uint32_t n = static_cast<uint32_t>(startNs.ElementLength());
-      FloxBacktestStats s{};
-      int ok = flox_backtest_runner_run_bars(
+      LrvxBacktestStats s{};
+      int ok = lrvx_backtest_runner_run_bars(
           _handle,
           reinterpret_cast<const int64_t*>(startNs.Data()),
           reinterpret_cast<const int64_t*>(endNs.Data()),
@@ -240,8 +240,8 @@ MUTATIONS: list[Mutation] = [
                                   ? static_cast<uint64_t>(info[9].As<Napi::Number>().Int64Value())
                                   : 0;
       uint32_t n = static_cast<uint32_t>(startNs.ElementLength());
-      FloxBacktestStats s{};
-      int ok = flox_backtest_runner_run_bars(
+      LrvxBacktestStats s{};
+      int ok = lrvx_backtest_runner_run_bars(
           _handle,
           reinterpret_cast<const int64_t*>(startNs.Data()),
           reinterpret_cast<const int64_t*>(endNs.Data()),
@@ -270,9 +270,9 @@ MUTATIONS: list[Mutation] = [
             "wall-clock reading",
         file="live_queue_position.h",
         old="""    int64_t ts_ns = info.Length() > 6 ? toInt64Ns(info[6]) : 0;
-    flox_live_queue_position_on_order_placed(""",
+    lrvx_live_queue_position_on_order_placed(""",
         new="""    int64_t ts_ns = info.Length() > 6 ? info[6].As<Napi::Number>().Int64Value() : 0;
-    flox_live_queue_position_on_order_placed(""",
+    lrvx_live_queue_position_on_order_placed(""",
         test="test_ns_timestamp_round_trip.js",
     ),
     Mutation(
@@ -431,7 +431,7 @@ MUTATIONS: list[Mutation] = [
     # ── 19: Executor.capabilities() guard removed ───────────────────────────
     Mutation(
         name="capabilities-unguarded",
-        equivalent=True,  # nothing in the engine calls IOrderExecutor::capabilities(); the only entry point, flox_executor_get_capabilities, is exposed in neither Node nor Python, so the guard is unobservable until it is
+        equivalent=True,  # nothing in the engine calls IOrderExecutor::capabilities(); the only entry point, lrvx_executor_get_capabilities, is exposed in neither Node nor Python, so the guard is unobservable until it is
         why="hooks.h ExecutorHost::capabilitiesBridge: the try/catch around "
             "capabilities_fn.Call({}) is removed, so a throwing capabilities() would "
             "unwind out through the C function pointer the engine calls it by (same "
@@ -477,8 +477,8 @@ MUTATIONS: list[Mutation] = [
     {
       return env.Undefined();
     }
-    _pnl_host = std::make_unique<flox_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());""",
-        new="""    _pnl_host = std::make_unique<flox_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());""",
+    _pnl_host = std::make_unique<lrvx_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());""",
+        new="""    _pnl_host = std::make_unique<lrvx_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());""",
         test="test_single_hook_mode.js",
     ),
     Mutation(
@@ -491,8 +491,8 @@ MUTATIONS: list[Mutation] = [
     {
       return env.Undefined();
     }
-    _storage_host = std::make_unique<flox_node::StorageSinkHost>(env, info[0].As<Napi::Object>());""",
-        new="""    _storage_host = std::make_unique<flox_node::StorageSinkHost>(env, info[0].As<Napi::Object>());""",
+    _storage_host = std::make_unique<lrvx_node::StorageSinkHost>(env, info[0].As<Napi::Object>());""",
+        new="""    _storage_host = std::make_unique<lrvx_node::StorageSinkHost>(env, info[0].As<Napi::Object>());""",
         test="test_single_hook_mode.js",
     ),
     Mutation(
@@ -504,8 +504,8 @@ MUTATIONS: list[Mutation] = [
     {
       return env.Undefined();
     }
-    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
-        new="""    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+    _risk_host = std::make_unique<lrvx_node::RiskManagerHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+        new="""    _risk_host = std::make_unique<lrvx_node::RiskManagerHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
         test="test_single_hook_mode.js",
     ),
     Mutation(
@@ -517,8 +517,8 @@ MUTATIONS: list[Mutation] = [
     {
       return env.Undefined();
     }
-    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
-        new="""    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+    _kill_host = std::make_unique<lrvx_node::KillSwitchHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+        new="""    _kill_host = std::make_unique<lrvx_node::KillSwitchHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
         test="test_single_hook_mode.js",
     ),
     Mutation(
@@ -531,9 +531,9 @@ MUTATIONS: list[Mutation] = [
       return env.Undefined();
     }
     _validator_host =
-        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+        std::make_unique<lrvx_node::OrderValidatorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
         new="""    _validator_host =
-        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+        std::make_unique<lrvx_node::OrderValidatorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
         test="test_single_hook_mode.js",
     ),
     Mutation(
@@ -561,9 +561,9 @@ MUTATIONS: list[Mutation] = [
       return env.Undefined();
     }
     _executor_host =
-        std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+        std::make_unique<lrvx_node::ExecutorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
         new="""    _executor_host =
-        std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
+        std::make_unique<lrvx_node::ExecutorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);""",
         test="test_single_hook_mode.js",
     ),
 
@@ -582,11 +582,11 @@ MUTATIONS: list[Mutation] = [
       _risk_host.reset();
       if (_mode == Mode::Sync)
       {
-        flox_runner_set_risk_manager(_runner, nullptr);
+        lrvx_runner_set_risk_manager(_runner, nullptr);
       }
       else
       {
-        flox_live_engine_set_risk_manager(_engine, nullptr);
+        lrvx_live_engine_set_risk_manager(_engine, nullptr);
       }
       return env.Undefined();
     }
@@ -606,11 +606,11 @@ MUTATIONS: list[Mutation] = [
       _risk_host.reset();
       if (_mode == Mode::Sync)
       {
-        flox_runner_set_risk_manager(_runner, nullptr);
+        lrvx_runner_set_risk_manager(_runner, nullptr);
       }
       else
       {
-        flox_live_engine_set_risk_manager(_engine, nullptr);
+        lrvx_live_engine_set_risk_manager(_engine, nullptr);
       }
       return env.Undefined();
     }""",
@@ -630,7 +630,7 @@ MUTATIONS: list[Mutation] = [
             "node/test file references onPartiallyFilled, onRejected, onReplaced or "
             "onTrailingStopUpdated at all, so this is expected to survive",
         file="hooks.h",
-        old="""  static void onPartialBridge(void* ud, const FloxOrder* o, int64_t fill_qty)
+        old="""  static void onPartialBridge(void* ud, const LrvxOrder* o, int64_t fill_qty)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     if (self->on_partial_fn.IsEmpty())
@@ -638,7 +638,7 @@ MUTATIONS: list[Mutation] = [
       return;
     }
     self->on_partial_fn.Call({""",
-        new="""  static void onPartialBridge(void* ud, const FloxOrder* o, int64_t fill_qty)
+        new="""  static void onPartialBridge(void* ud, const LrvxOrder* o, int64_t fill_qty)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     return;
@@ -686,9 +686,9 @@ def rebuild() -> str:
     output = result.stdout + result.stderr
     if result.returncode != 0:
         raise SystemExit(f"rebuild failed:\n{output[-4000:]}")
-    if "Building CXX object" not in output or "flox_node.cpp.o" not in output:
+    if "Building CXX object" not in output or "lrvx_node.cpp.o" not in output:
         raise SystemExit(
-            "rebuild compiled nothing for flox_node.cpp.o -- the result would have been "
+            "rebuild compiled nothing for lrvx_node.cpp.o -- the result would have been "
             f"a stale addon, so the run is refused:\n{output[-2000:]}"
         )
     after = addon_stat()

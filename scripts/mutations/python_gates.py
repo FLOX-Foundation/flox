@@ -36,8 +36,8 @@ Usage:
 
 The build directory is expected to be configured already, the way CI does it:
 
-    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFLOX_BUILD_PYTHON=ON \\
-          -DFLOX_ENABLE_BACKTEST=ON -Dpybind11_DIR=<pybind11.get_cmake_dir()>
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLRVX_BUILD_PYTHON=ON \\
+          -DLRVX_ENABLE_BACKTEST=ON -Dpybind11_DIR=<pybind11.get_cmake_dir()>
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ _venv_python = REPO / ".venv" / "bin" / "python"
 PYTHON = str(_venv_python) if _venv_python.is_file() else sys.executable
 PYTHONPATH = str(BUILD / "python")
 
-TARGET = "_flox_py"
+TARGET = "_lrvx"
 
 HOOKS = "python/hook_bindings.h"
 STRATEGY = "python/strategy_bindings.h"
@@ -229,8 +229,8 @@ MUTATIONS: list[Mutation] = [
         why="the engine log call in reportCallbackError drops from Error to Info; the policy "
             "in callback_guard.h promises Error",
         file=GUARD,
-        old="flox::LogStream(flox::LogLevel::Error) << text;",
-        new="flox::LogStream(flox::LogLevel::Info) << text;",
+        old="lrvx::LogStream(lrvx::LogLevel::Error) << text;",
+        new="lrvx::LogStream(lrvx::LogLevel::Info) << text;",
         equivalent_reason="",
     ),
     # ── nine strategy bridges bypassing the dispatch helper, individually ──
@@ -334,11 +334,11 @@ MUTATIONS: list[Mutation] = [
     if (self->with_gil)
     {
       py::gil_scoped_acquire gil;
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
     else
     {
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
   }""",
         new="""  template <typename Fn>
@@ -347,11 +347,11 @@ MUTATIONS: list[Mutation] = [
     if (!self->with_gil)
     {
       py::gil_scoped_acquire gil;
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
     else
     {
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
   }""",
     ),
@@ -363,24 +363,24 @@ MUTATIONS: list[Mutation] = [
             "to drain it",
         file=STRATEGY,
         old="""    py::gil_scoped_release release;
-    flox_live_engine_publish_trade(_engine, symbol, price, qty,""",
-        new="    flox_live_engine_publish_trade(_engine, symbol, price, qty,",
+    lrvx_live_engine_publish_trade(_engine, symbol, price, qty,""",
+        new="    lrvx_live_engine_publish_trade(_engine, symbol, price, qty,",
     ),
     Mutation(
         name="publish-book-snapshot-holds-the-gil",
         why="PyLiveEngine::publish_book_snapshot no longer releases the GIL before publishing",
         file=STRATEGY,
         old="""    py::gil_scoped_release release;
-    flox_live_engine_publish_book_snapshot(_engine, symbol,""",
-        new="    flox_live_engine_publish_book_snapshot(_engine, symbol,",
+    lrvx_live_engine_publish_book_snapshot(_engine, symbol,""",
+        new="    lrvx_live_engine_publish_book_snapshot(_engine, symbol,",
     ),
     Mutation(
         name="publish-bar-holds-the-gil",
         why="PyLiveEngine::publish_bar no longer releases the GIL before publishing",
         file=STRATEGY,
         old="""    py::gil_scoped_release release;
-    flox_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,""",
-        new="    flox_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,",
+    lrvx_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,""",
+        new="    lrvx_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,",
     ),
     # ── the side SIGSEGV fix, undone piece by piece ──
     Mutation(
@@ -390,7 +390,7 @@ MUTATIONS: list[Mutation] = [
             "can still be called by a C++ thread -- after finalisation",
         file=STRATEGY,
         old="""  py::module_::import("atexit").attr("register")(
-      py::cpp_function(&flox_py::logCallbackTeardown));
+      py::cpp_function(&lrvx::logCallbackTeardown));
 """,
         new="",
     ),
@@ -452,7 +452,7 @@ MUTATIONS: list[Mutation] = [
             "KillSwitch a chance to allow and checks that the signal got through, so the "
             "allow half of the contract is unguarded on this bridge",
         file=HOOKS,
-        old="""inline uint8_t killCheckBridge(void* ud, const FloxSignal* sig)
+        old="""inline uint8_t killCheckBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyKillSwitch*>(ud);
   // Deny unless the callable says otherwise: a gate that raised, or
@@ -464,7 +464,7 @@ MUTATIONS: list[Mutation] = [
                  "KillSwitch.check");
   return result;
 }""",
-        new="""inline uint8_t killCheckBridge(void* ud, const FloxSignal* sig)
+        new="""inline uint8_t killCheckBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyKillSwitch*>(ud);
   uint8_t result = kGateDenied;
@@ -483,7 +483,7 @@ MUTATIONS: list[Mutation] = [
             "and nothing in python/tests ever checks that OrderValidator.validate() returning "
             "True lets an order through this bridge",
         file=HOOKS,
-        old="""inline uint8_t orderValidateBridge(void* ud, const FloxSignal* sig)
+        old="""inline uint8_t orderValidateBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyOrderValidator*>(ud);
   // Deny unless the callable says otherwise: a gate that raised, or
@@ -495,7 +495,7 @@ MUTATIONS: list[Mutation] = [
                  "OrderValidator.validate");
   return result;
 }""",
-        new="""inline uint8_t orderValidateBridge(void* ud, const FloxSignal* sig)
+        new="""inline uint8_t orderValidateBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyOrderValidator*>(ud);
   uint8_t result = kGateDenied;
@@ -524,11 +524,11 @@ MUTATIONS: list[Mutation] = [
             Edit(
                 file=GUARD,
                 old="""  const std::string text =
-      std::string("flox: ") + (source ? source : "a Python callback") + " raised: " + what;
+      std::string("lrvx: ") + (source ? source : "a Python callback") + " raised: " + what;
 
   if (g_reportingCallbackError)""",
                 new="""  const std::string text =
-      std::string("flox: ") + (source ? source : "a Python callback") + " raised: " + what;
+      std::string("lrvx: ") + (source ? source : "a Python callback") + " raised: " + what;
 
   // BUG: a source that has already reported once never reports again,
   // even on a later, distinct raise.
@@ -549,7 +549,7 @@ MUTATIONS: list[Mutation] = [
             "answered. No test in python/tests calls a gate a second time after it raised and "
             "checks that a later, non-raising call still gets a real answer",
         file=HOOKS,
-        old="""inline uint8_t riskAllowBridge(void* ud, const FloxSignal* sig)
+        old="""inline uint8_t riskAllowBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyRiskManager*>(ud);
   // Deny unless the callable says otherwise: a gate that raised, or
@@ -561,7 +561,7 @@ MUTATIONS: list[Mutation] = [
                  "RiskManager.allow");
   return result;
 }""",
-        new="""inline uint8_t riskAllowBridge(void* ud, const FloxSignal* sig)
+        new="""inline uint8_t riskAllowBridge(void* ud, const LrvxSignal* sig)
 {
   static bool everRaised = false;
   if (everRaised)
@@ -593,11 +593,11 @@ MUTATIONS: list[Mutation] = [
     if (self->with_gil)
     {
       py::gil_scoped_acquire gil;
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
     else
     {
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
   }""",
         new="""  template <typename Fn>
@@ -610,7 +610,7 @@ MUTATIONS: list[Mutation] = [
     }
     else
     {
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
   }""",
     ),

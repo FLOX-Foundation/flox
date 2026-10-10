@@ -1,6 +1,6 @@
 """Scaffolded templates must actually trade when run.
 
-test_flox_new_cli.py deliberately runs without the compiled extension, so it
+test_lrvx_new_cli.py deliberately runs without the compiled extension, so it
 asserts on file existence and placeholder substitution only. That left the
 generated code itself unverified, and two of the three templates shipped with
 an exit branch that could never fire:
@@ -30,15 +30,15 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PY_PKG = HERE.parent
 
-# Deliberately NOT putting PY_PKG on sys.path: the source tree's flox_py has
+# Deliberately NOT putting PY_PKG on sys.path: the source tree's lrvx has
 # no compiled extension, so importing it here would shadow the installed
 # package and skip every test in this file. PY_PKG is used as a filesystem
 # path only. The subprocesses below run from a temp dir and resolve the
-# installed flox_py, which is what a user has.
+# installed lrvx, which is what a user has.
 try:
-    import flox_py  # noqa: F401
+    import lrvx  # noqa: F401
 
-    flox_py.SymbolRegistry()
+    lrvx.SymbolRegistry()
     _HAVE_EXT = True
 except Exception:  # pragma: no cover - depends on the local build
     _HAVE_EXT = False
@@ -55,10 +55,10 @@ def _trade_count(stdout: str) -> int:
 def _subprocess_env() -> dict:
     """Absolutise PYTHONPATH before spawning with a different cwd.
 
-    CI provides flox_py via `PYTHONPATH=build/python`, a path relative to the
+    CI provides lrvx via `PYTHONPATH=build/python`, a path relative to the
     repo root. Every subprocess here runs with cwd set to a temp directory, so
     a relative entry resolves against that temp dir and the import fails with
-    ModuleNotFoundError. Locally this never showed up because flox_py is
+    ModuleNotFoundError. Locally this never showed up because lrvx is
     pip-installed at an absolute site-packages path.
     """
     env = dict(os.environ)
@@ -71,16 +71,16 @@ def _subprocess_env() -> dict:
 
 
 def _scaffold(tmp: str, name: str, template: str | None = None) -> Path:
-    argv = ["-m", "flox_py.cli", "new", name]
+    argv = ["-m", "lrvx.cli", "new", name]
     if template:
         argv += ["--template", template]
     r = subprocess.run([sys.executable, *argv], cwd=tmp, env=_subprocess_env(),
                        capture_output=True, text=True)
-    assert r.returncode == 0, f"flox new failed: {r.stderr}"
+    assert r.returncode == 0, f"lrvx new failed: {r.stderr}"
     return Path(tmp) / name
 
 
-@unittest.skipUnless(_HAVE_EXT, "needs the compiled flox_py extension")
+@unittest.skipUnless(_HAVE_EXT, "needs the compiled lrvx extension")
 class ResearchTemplateRuns(unittest.TestCase):
     def test_scaffolded_project_runs_and_trades(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,7 +109,7 @@ class ResearchTemplateRuns(unittest.TestCase):
             self.assertIn("<tr", html)
 
 
-@unittest.skipUnless(_HAVE_EXT, "needs the compiled flox_py extension")
+@unittest.skipUnless(_HAVE_EXT, "needs the compiled lrvx extension")
 class IndicatorLibraryTemplateRuns(unittest.TestCase):
     def test_strategy_example_trades(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -142,7 +142,7 @@ class EveryTemplateHasAReachableExit(unittest.TestCase):
 
     def test_no_template_gates_both_branches_on_is_flat(self) -> None:
         offenders = []
-        for path in (PY_PKG / "flox_py" / "templates").rglob("*"):
+        for path in (PY_PKG / "lrvx" / "templates").rglob("*"):
             if path.suffix not in {".py", ".ipynb", ".md"} or not path.is_file():
                 continue
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()

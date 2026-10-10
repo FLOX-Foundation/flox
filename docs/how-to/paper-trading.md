@@ -5,13 +5,13 @@
 ## Install
 
 ```bash
-pip install flox-py
+pip install lrvx
 ```
 
 If you also want to drive the broker off a live ccxt feed, add `[ccxt]`:
 
 ```bash
-pip install "flox-py[ccxt]"
+pip install "lrvx[ccxt]"
 ```
 
 The broker itself does not depend on ccxt; it is feed-agnostic.
@@ -19,10 +19,10 @@ The broker itself does not depend on ccxt; it is feed-agnostic.
 ## Quick start
 
 ```python
-import flox_py as flox
-from flox_py.paper import PaperBroker
+import lrvx
+from lrvx.paper import PaperBroker
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 sym = registry.add_symbol("paper", "BTCUSDT", tick_size=0.01)
 
 broker = PaperBroker(
@@ -31,7 +31,7 @@ broker = PaperBroker(
     default_slippage_params={"bps": 5.0},  # 5 bps against the taker
 )
 
-class MyStrategy(flox.Strategy):
+class MyStrategy(lrvx.Strategy):
     def on_trade(self, ctx, trade):
         if ctx.is_flat():
             self.market_buy(0.01)
@@ -102,15 +102,15 @@ Not routed (yet). These signal types fall through to the user's optional `on_sig
 - `CLOSE_POSITION`
 - `MODIFY`
 
-The gap is in the broker, not the simulator. `SimulatedExecutor.submit_order` already accepts `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, and `trailing_stop` with `trigger` / `trailing_offset` / `trailing_bps` kwargs — `PaperBroker._route_signal` just does not map those signal types onto it yet. `flox_py.bundle` shows the full mapping if you want to route them yourself; otherwise keep paper-mode strategies on market and limit.
+The gap is in the broker, not the simulator. `SimulatedExecutor.submit_order` already accepts `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, and `trailing_stop` with `trigger` / `trailing_offset` / `trailing_bps` kwargs — `PaperBroker._route_signal` just does not map those signal types onto it yet. `lrvx.bundle` shows the full mapping if you want to route them yourself; otherwise keep paper-mode strategies on market and limit.
 
 ## Hooking in ccxt for a live feed
 
 ```python
 import asyncio
 import ccxt.pro as ccxt
-from flox_py import SymbolRegistry
-from flox_py.paper import PaperBroker
+from lrvx import SymbolRegistry
+from lrvx.paper import PaperBroker
 
 async def main():
     registry = SymbolRegistry()
@@ -149,5 +149,5 @@ This is the minimal pattern. Production setups will add error handling around `w
 ## See also
 
 * [Backtest with realistic fills](backtest-realistic-fills.md). The same `SimulatedExecutor` powering paper mode runs the backtest fills.
-* [CCXT adapter](ccxt-adapter.md). The live order broker for the same flox pipeline; swap in `PaperBroker` to rehearse without sending live orders.
+* [CCXT adapter](ccxt-adapter.md). The live order broker for the same lrvx pipeline; swap in `PaperBroker` to rehearse without sending live orders.
 * [Record and replay tapes](tape-record.md). Recorded tapes can drive `PaperBroker` instead of a live feed for repeatable rehearsals.

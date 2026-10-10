@@ -1,6 +1,6 @@
 # RefCountable
 
-`RefCountable` is a low-overhead, intrusive reference counting base class. It enables manual control of object lifetime without dynamic memory management and is used as the foundation for pooled, shared objects in FLOX.
+`RefCountable` is a low-overhead, intrusive reference counting base class. It enables manual control of object lifetime without dynamic memory management and is used as the foundation for pooled, shared objects in lrvx.
 
 ```cpp
 class RefCountable {
@@ -39,8 +39,8 @@ public:
 
 ## Concept
 
-The concept lives in `flox::concepts`, not at namespace scope, so it does not collide with the
-`flox::RefCountable` class. Spell it `flox::concepts::RefCountable`.
+The concept lives in `lrvx::concepts`, not at namespace scope, so it does not collide with the
+`lrvx::RefCountable` class. Spell it `lrvx::concepts::RefCountable`.
 
 ```cpp
 namespace concepts

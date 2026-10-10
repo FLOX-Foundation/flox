@@ -11,7 +11,7 @@ entry fills, and the first child to fill cancels the other. Most
 modern derivatives venues (Bybit, OKX, Binance UM with "TP/SL on
 position") offer this as one API call.
 
-flox's `submitBracket` exposes the same surface in the simulator.
+lrvx's `submitBracket` exposes the same surface in the simulator.
 You can hand-wire the three legs via `OrderGroup` for more
 flexibility, but the bracket primitive is the right tool when you
 just want the standard pattern with no extra wiring.
@@ -27,9 +27,9 @@ A worked example (Python):
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    exec = flox.SimulatedExecutor()
+    exec = lrvx.SimulatedExecutor()
     exec.submit_bracket(bracket_id=1, symbol=1,
                          entry_side="buy", entry_type="limit",
                          entry_price=50000.0, quantity=0.1,
@@ -42,7 +42,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor } from "@flox-foundation/flox";
+    import { SimulatedExecutor } from "@lrvx/lrvx";
 
     const exec = new SimulatedExecutor();
     exec.submitBracket({
@@ -73,7 +73,7 @@ A worked example (Python):
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor
+    from lrvx.backtest import SimulatedExecutor
 
     exec = SimulatedExecutor()
     exec.submit_bracket(1, 1,
@@ -85,8 +85,8 @@ A worked example (Python):
 === "C"
 
     ```c
-    FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
-    flox_simulated_executor_submit_bracket(
+    LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
+    lrvx_simulated_executor_submit_bracket(
         exec, /*bracket_id=*/1, /*symbol=*/1,
         /*entry_side=*/0, /*entry_type=*/0, 50000.0, 0.1,
         /*tp_side=*/1,    /*tp_type=*/0,    51000.0,

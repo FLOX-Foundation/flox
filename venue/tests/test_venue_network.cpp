@@ -1,25 +1,25 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/control_api.h"
-#include "flox-venue/control_plane.h"
-#include "flox-venue/control_server.h"
-#include "flox-venue/market_data.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/rest_json.h"
-#include "flox-venue/sbe_order_entry_codec.h"
-#include "flox-venue/session.h"
-#include "flox-venue/tcp_gateway.h"
-#include "flox-venue/udp_multicast.h"
-#include "flox-venue/ws_gateway.h"
-#include "flox/util/crypto.h"
-#include "flox/util/websocket.h"
+#include "lrvx-venue/control_api.h"
+#include "lrvx-venue/control_plane.h"
+#include "lrvx-venue/control_server.h"
+#include "lrvx-venue/market_data.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/rest_json.h"
+#include "lrvx-venue/sbe_order_entry_codec.h"
+#include "lrvx-venue/session.h"
+#include "lrvx-venue/tcp_gateway.h"
+#include "lrvx-venue/udp_multicast.h"
+#include "lrvx-venue/ws_gateway.h"
+#include "lrvx/util/crypto.h"
+#include "lrvx/util/websocket.h"
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
@@ -40,8 +40,8 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -88,7 +88,7 @@ NewOrder mk(OrderId id, Side s, double p, double q, uint64_t acct = 1)
 void test_session()
 {
   std::printf("test_session\n");
-  flox::RateLimitPolicy limits;
+  lrvx::RateLimitPolicy limits;
   limits.addBucket("t", 1'000'000'000, 3);  // 3 actions / 1s window
   GatewaySession s(7, [](const uint8_t* p, size_t n)
                    { return SbeOrderEntryCodec::decode(p, n); }, limits);
@@ -125,7 +125,7 @@ void test_session_rate_limit_reject_echoes_client_order_id()
   constexpr uint64_t kClOrdId = 424242;
   constexpr OrderId kOrderId = 55;
 
-  flox::RateLimitPolicy limits;
+  lrvx::RateLimitPolicy limits;
   limits.addBucket("t", 1'000'000'000, 1);  // 1 action / 1s window
   GatewaySession s(7, [](const uint8_t* p, size_t n)
                    { return SbeOrderEntryCodec::decode(p, n); }, limits);
@@ -428,16 +428,16 @@ void test_logon()
                                       payload.size());
   const std::string sig = crypto::toHex(mac.data(), mac.size());
 
-  GatewaySession s(7, dec, flox::RateLimitPolicy::binance_um_futures(), secret);
+  GatewaySession s(7, dec, lrvx::RateLimitPolicy::binance_um_futures(), secret);
   CHECK(!s.authenticated());
   CHECK(s.logon(apiKey, ts, sig, 1002));  // within skew
   CHECK(s.authenticated());
 
-  GatewaySession s2(7, dec, flox::RateLimitPolicy::binance_um_futures(), secret);
+  GatewaySession s2(7, dec, lrvx::RateLimitPolicy::binance_um_futures(), secret);
   CHECK(!s2.logon(apiKey, ts, "deadbeef", 1002));  // bad signature
   CHECK(!s2.authenticated());
 
-  GatewaySession s3(7, dec, flox::RateLimitPolicy::binance_um_futures(), secret);
+  GatewaySession s3(7, dec, lrvx::RateLimitPolicy::binance_um_futures(), secret);
   CHECK(!s3.logon(apiKey, ts, sig, 2000));  // skew 1000s > 5s
 }
 

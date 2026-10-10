@@ -7,7 +7,7 @@ since: 0.5.7
 
 # E_INPUT_001 — Unknown compression type
 
-A compression name passed to a recorder / writer is not one FLOX
+A compression name passed to a recorder / writer is not one lrvx
 supports. Accepted values:
 
 | Value          | Effect |
@@ -24,11 +24,11 @@ accepted spellings:
 
 === "Python"
     ```python
-    import flox_py as flox
+    import lrvx
 
-    writer = flox.DataWriter("out", compression="lz4")        # or "none"
+    writer = lrvx.DataWriter("out", compression="lz4")        # or "none"
 
-    rec = flox.BinaryLogRecorderHook(
+    rec = lrvx.BinaryLogRecorderHook(
         "out",
         compression="lz4",
         exchange_name="bybit",
@@ -36,9 +36,9 @@ accepted spellings:
     )
     ```
 
-Node.js never raises this code. `new flox.DataWriter(dir, maxSegmentMb,
+Node.js never raises this code. `new lrvx.DataWriter(dir, maxSegmentMb,
 exchangeId)` takes no compression argument and always writes
-uncompressed; `new flox.BinaryLogRecorderHook(dir, maxSegmentMb,
+uncompressed; `new lrvx.BinaryLogRecorderHook(dir, maxSegmentMb,
 exchangeId, compression)` does take one, but rejects a bad value with a
 plain `TypeError` (`compression must be "none" or "lz4"`).
 
@@ -47,7 +47,7 @@ plain `TypeError` (`compression must be "none" or "lz4"`).
 - Typo: `"lz4hc"` / `"zstd"` / `"gzip"` — only `lz4` is currently
   built in. Adding more compressors is a separate task.
 - `"lz4"` is accepted by the argument check regardless of how the engine
-  was built. If it was configured with `-DFLOX_ENABLE_LZ4=OFF` (the
+  was built. If it was configured with `-DLRVX_ENABLE_LZ4=OFF` (the
   default is ON, with a vendored fallback), the compressor is compiled
   out and silently produces zero bytes instead of raising here.
 - The same code is also raised by `MergedTapeReader` for an empty tape

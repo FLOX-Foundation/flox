@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -14,19 +14,19 @@
  * parseOptionSymbol is a free function with external linkage defined in
  * bybit_exchange_connector.cpp and not declared in any header (the same
  * function the test calls directly); it is forward-declared here
- * exactly as the repro program did, and resolved from libflox-connectors.a
+ * exactly as the repro program did, and resolved from liblrvx-connectors.a
  * at link time.
  */
 
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/execution/bus/order_execution_bus.h>
-#include <flox/log/atomic_logger.h>
-#include <flox/util/base/time.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/bus/order_execution_bus.h>
+#include <lrvx/log/atomic_logger.h>
+#include <lrvx/util/base/time.h>
 
 #include <gtest/gtest.h>
 
@@ -36,19 +36,19 @@
 #include <string>
 #include <string_view>
 
-namespace flox
+namespace lrvx
 {
 std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
                                             std::string_view exchange = "bybit");
 }
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
 std::string tempLogDir()
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_bybit_option_test_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_bybit_option_test_logs";
   std::filesystem::create_directories(dir);
   return dir.string();
 }
@@ -93,15 +93,15 @@ TEST(BybitOptionSymbol, UsdtSuffixExactLengthDoesNotUB)
 }
 
 // Expiry must be in the wall-clock (unix, via fromUnixMs) domain, not the
-// steady-clock one FloxClock::now() returns. A steady-clock reading is
+// steady-clock one LrvxClock::now() returns. A steady-clock reading is
 // small (seconds to days since boot); a unix epoch in nanoseconds is
 // enormous by comparison, so comparing the parsed expiry against
-// FloxClock::now() and a known unix-epoch TimePoint distinguishes the two
+// LrvxClock::now() and a known unix-epoch TimePoint distinguishes the two
 // domains without needing to inspect raw counts.
 //
-// Deliberately does NOT build its "expected" value with flox's own
+// Deliberately does NOT build its "expected" value with lrvx's own
 // fromUnixMs()/now() helpers: both read the same process-global
-// unix_to_flox_offset_ns(), so comparing a fromUnixMs() result against
+// unix_to_lrvx_offset_ns(), so comparing a fromUnixMs() result against
 // another fromUnixMs() result (or against now(), which does not depend on
 // that offset at all) cannot tell a correctly-offset conversion apart from
 // an uninitialized one that happens to cancel out in the comparison. The

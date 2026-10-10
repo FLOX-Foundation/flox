@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.hurst_dfa`` / ``flox_py.rolling_hurst``.
+"""Tests for ``lrvx.hurst_dfa`` / ``lrvx.rolling_hurst``.
 
 Validates DFA-Hurst on three canonical series:
 - pure random walk (Hurst ≈ 0.5)
@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(build_dir))
 
 import numpy as np
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
 
 class HurstDfaTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class HurstDfaTests(unittest.TestCase):
     def test_random_walk_near_half(self):
         rng = np.random.default_rng(42)
         returns = rng.normal(0.0, 0.01, 5000)
-        h = flox.hurst_dfa(returns)
+        h = lrvx.hurst_dfa(returns)
         # Random walk → H ≈ 0.5 ± ~0.05 finite-sample noise
         self.assertGreater(h, 0.40)
         self.assertLess(h, 0.60)
@@ -38,7 +38,7 @@ class HurstDfaTests(unittest.TestCase):
         for i in range(1, 5000):
             x[i] = 0.6 * x[i - 1] + shocks[i]
         x *= 0.01
-        h = flox.hurst_dfa(x)
+        h = lrvx.hurst_dfa(x)
         # AR(1) with phi=+0.6 → strongly persistent
         self.assertGreater(h, 0.55)
 
@@ -50,12 +50,12 @@ class HurstDfaTests(unittest.TestCase):
         for i in range(1, 5000):
             x[i] = -0.6 * x[i - 1] + shocks[i]
         x *= 0.01
-        h = flox.hurst_dfa(x)
+        h = lrvx.hurst_dfa(x)
         # AR(1) with phi=-0.6 → strongly anti-persistent
         self.assertLess(h, 0.45)
 
     def test_returns_nan_on_short_input(self):
-        h = flox.hurst_dfa(np.zeros(10))
+        h = lrvx.hurst_dfa(np.zeros(10))
         self.assertTrue(math.isnan(h))
 
     def test_custom_scales(self):
@@ -63,7 +63,7 @@ class HurstDfaTests(unittest.TestCase):
         returns = rng.normal(0.0, 0.01, 5000)
         # Explicit subset of scales — should still return a finite value
         # in the same ballpark as defaults.
-        h = flox.hurst_dfa(returns, scales=np.array([10, 25, 50, 100, 250], dtype=np.int64))
+        h = lrvx.hurst_dfa(returns, scales=np.array([10, 25, 50, 100, 250], dtype=np.int64))
         self.assertTrue(math.isfinite(h))
         self.assertGreater(h, 0.30)
         self.assertLess(h, 0.70)
@@ -75,7 +75,7 @@ class RollingHurstTests(unittest.TestCase):
         rng = np.random.default_rng(123)
         prices = np.cumprod(1.0 + 0.001 * rng.normal(0, 1, 2000))
         window = 500
-        out = flox.rolling_hurst(prices, window=window)
+        out = lrvx.rolling_hurst(prices, window=window)
         self.assertEqual(out.shape[0], prices.shape[0])
         # First `window+1` outputs must be NaN — insufficient history.
         self.assertTrue(np.all(np.isnan(out[: window + 1])))
@@ -85,7 +85,7 @@ class RollingHurstTests(unittest.TestCase):
     def test_random_walk_rolling_near_half(self):
         rng = np.random.default_rng(99)
         prices = np.cumprod(1.0 + 0.001 * rng.normal(0, 1, 3000))
-        out = flox.rolling_hurst(prices, window=1080)
+        out = lrvx.rolling_hurst(prices, window=1080)
         finite = out[np.isfinite(out)]
         self.assertGreater(finite.size, 0)
         # Median rolling Hurst on a random walk should be close to 0.5.

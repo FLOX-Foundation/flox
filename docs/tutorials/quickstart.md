@@ -1,22 +1,22 @@
 # Quickstart
 
-Build FLOX and run the demo application in 5 minutes.
+Build lrvx and run the demo application in 5 minutes.
 
 ## 1. Clone and Build
 
 ```bash
-git clone https://github.com/FLOX-Foundation/flox.git
-cd flox
+git clone https://github.com/lrvx/lrvx.git
+cd lrvx
 
 mkdir build && cd build
-cmake .. -DFLOX_BUILD_DEMO=ON
+cmake .. -DLRVX_BUILD_DEMO=ON
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 ```
 
 ## 2. Run the Demo
 
 ```bash
-./demo/flox_demo
+./demo/lrvx_demo
 ```
 
 Logging is switched off for the duration of the run, so nothing
@@ -71,34 +71,34 @@ flowchart LR
 
 ## 4. Build Options
 
-The most common ones. `FLOX_ENABLE_*` gates capabilities of the core
-library, `FLOX_BUILD_*` gates optional artefacts.
+The most common ones. `LRVX_ENABLE_*` gates capabilities of the core
+library, `LRVX_BUILD_*` gates optional artefacts.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `FLOX_BUILD_DEMO` | OFF | Build the demo application |
-| `FLOX_BUILD_TESTS` | OFF | Build unit tests |
-| `FLOX_BUILD_BENCHMARKS` | OFF | Build performance benchmarks |
-| `FLOX_BUILD_PYTHON` | OFF | Build the `flox_py` pybind11 binding |
-| `FLOX_BUILD_CAPI` | OFF | Build `libflox_capi.so` (implies `FLOX_ENABLE_BACKTEST`) |
-| `FLOX_ENABLE_BACKTEST` | OFF | Build backtest module (simulated execution) |
-| `FLOX_ENABLE_LZ4` | ON | Enable LZ4 compression for replay |
-| `FLOX_ENABLE_CPU_AFFINITY` | OFF | Enable CPU pinning (requires libnuma) |
-| `FLOX_ENABLE_TRACY` | OFF | Enable Tracy profiler integration |
+| `LRVX_BUILD_DEMO` | OFF | Build the demo application |
+| `LRVX_BUILD_TESTS` | OFF | Build unit tests |
+| `LRVX_BUILD_BENCHMARKS` | OFF | Build performance benchmarks |
+| `LRVX_BUILD_PYTHON` | OFF | Build the `lrvx` pybind11 binding |
+| `LRVX_BUILD_CAPI` | OFF | Build `liblrvx_capi.so` (implies `LRVX_ENABLE_BACKTEST`) |
+| `LRVX_ENABLE_BACKTEST` | OFF | Build backtest module (simulated execution) |
+| `LRVX_ENABLE_LZ4` | ON | Enable LZ4 compression for replay |
+| `LRVX_ENABLE_CPU_AFFINITY` | OFF | Enable CPU pinning (requires libnuma) |
+| `LRVX_ENABLE_TRACY` | OFF | Enable Tracy profiler integration |
 
-The full set — `FLOX_BUILD_TOOLS`, `FLOX_BUILD_NODE`, `FLOX_BUILD_CODON`,
-`FLOX_BUILD_QUICKJS`, `FLOX_BUILD_CONNECTORS`, `FLOX_CONNECTORS`,
-`FLOX_NATIVE`, `FLOX_ENABLE_DEV_SETUP` — plus the deprecated
-`FLOX_ENABLE_*` artefact aliases is in
+The full set — `LRVX_BUILD_TOOLS`, `LRVX_BUILD_NODE`, `LRVX_BUILD_CODON`,
+`LRVX_BUILD_QUICKJS`, `LRVX_BUILD_CONNECTORS`, `LRVX_CONNECTORS`,
+`LRVX_NATIVE`, `LRVX_ENABLE_DEV_SETUP` — plus the deprecated
+`LRVX_ENABLE_*` artefact aliases is in
 [Build feature flags](../build/feature-flags.md).
 
 Example with multiple options:
 
 ```bash
 cmake .. \
-  -DFLOX_BUILD_DEMO=ON \
-  -DFLOX_BUILD_TESTS=ON \
-  -DFLOX_ENABLE_LZ4=ON \
+  -DLRVX_BUILD_DEMO=ON \
+  -DLRVX_BUILD_TESTS=ON \
+  -DLRVX_ENABLE_LZ4=ON \
   -DCMAKE_BUILD_TYPE=Release
 ```
 
@@ -107,7 +107,7 @@ cmake .. \
 Run the tests to verify everything works:
 
 ```bash
-cmake .. -DFLOX_BUILD_TESTS=ON
+cmake .. -DLRVX_BUILD_TESTS=ON
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 ctest --output-on-failure
 ```

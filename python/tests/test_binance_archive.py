@@ -1,20 +1,20 @@
-"""Tests for ``flox_py.archives.binance`` — Binance public aggTrades
-zip → floxlog converter.
+"""Tests for ``lrvx.archives.binance`` — Binance public aggTrades
+zip → lrvx converter.
 
 No network: a synthetic ``aggTrades.zip`` matching the exact column
 layout published on ``data.binance.vision`` is built in-memory and
-fed through the converter. The resulting `.floxlog` directory is
-read back via ``flox_py.DataReader`` and asserted trade-by-trade.
+fed through the converter. The resulting `.lrvx` directory is
+read back via ``lrvx.DataReader`` and asserted trade-by-trade.
 
 Covers:
 
-  * Single-day conversion via ``aggtrades_to_floxlog``.
+  * Single-day conversion via ``aggtrades_to_lrvx``.
   * Side mapping: ``is_buyer_maker=True`` → ``Side::SELL``.
   * Header-row autoskip (older daily files prepend a header).
   * Append + dedup: re-running the same day writes zero new trades.
   * ``metadata.json`` is produced with exchange / instrument_type /
     symbol entry / time range.
-  * CLI wiring: ``flox archive binance --csv ... --out ...``.
+  * CLI wiring: ``lrvx archive binance --csv ... --out ...``.
 
 Run from repo root:
     PYTHONPATH=build/python python3 python/tests/test_binance_archive.py
@@ -37,10 +37,10 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import cli  # noqa: E402
-from flox_py.archives import binance as bnc  # noqa: E402
+from lrvx import cli  # noqa: E402
+from lrvx.archives import binance as bnc  # noqa: E402
 
 
 # Synthetic rows mirroring the public archive layout. The third column
@@ -77,7 +77,7 @@ class SingleDayConvertTests(unittest.TestCase):
 
     def _convert(self, *, with_header: bool, append=True) -> bnc.ConvertStats:
         _build_zip(self.zip_path, with_header=with_header)
-        return bnc.aggtrades_to_floxlog(
+        return bnc.aggtrades_to_lrvx(
             self.zip_path,
             self.tape,
             symbol_id=7,
@@ -100,7 +100,7 @@ class SingleDayConvertTests(unittest.TestCase):
 
     def test_side_mapping(self) -> None:
         self._convert(with_header=False)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         # is_buyer_maker=True → SELL (1); False → BUY (0).
         sides = [int(t["side"]) for t in trades]
         self.assertEqual(sides, [1, 0, 1, 0])
@@ -110,14 +110,14 @@ class SingleDayConvertTests(unittest.TestCase):
         self.assertEqual(first.trades_written, 4)
         # Re-run the same day. Every row's agg_id is ≤ last_trade_id,
         # so nothing new lands in the tape.
-        second = bnc.aggtrades_to_floxlog(
+        second = bnc.aggtrades_to_lrvx(
             self.zip_path, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="um-futures",
             append=True,
         )
         self.assertEqual(second.trades_written, 0)
         self.assertEqual(second.rows_skipped, 4)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 4)
 
     def test_metadata_emitted(self) -> None:
@@ -150,11 +150,11 @@ class SingleDayConvertTests(unittest.TestCase):
         self.assertEqual(rc, 0, msg=buf.getvalue())
         out = buf.getvalue()
         self.assertIn("trades_written=4", out)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 4)
 
     def _assert_tape_matches(self) -> None:
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 4)
         # Trade IDs round-trip as agg_trade_id.
         self.assertEqual([int(t["trade_id"]) for t in trades],

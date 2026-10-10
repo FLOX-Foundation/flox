@@ -1,16 +1,16 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #include "demo/demo_connector.h"
 #include "demo/latency_collector.h"
-#include "flox/common.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx/common.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
 #include <chrono>
 #include <thread>
@@ -66,7 +66,7 @@ void DemoConnector::run()
       spikeActive = true;
       spikeSteps = 10;
       lastSpike = now;
-      FLOX_LOG("[demo] price spike starting");
+      LRVX_LOG("[demo] price spike starting");
     }
 
     if (spikeActive && spikeSteps > 0)
@@ -91,7 +91,7 @@ void DemoConnector::run()
     te.trade.isBuy = sideDist(_rng);
     te.trade.exchangeTsNs = nowUnixNanos();
     {
-      FLOX_PROFILE_SCOPE("TradeBusPublish");
+      LRVX_PROFILE_SCOPE("TradeBusPublish");
       MEASURE_LATENCY(LatencyCollector::BusPublish);
       _tradeBus.publish(te);
     }
@@ -106,7 +106,7 @@ void DemoConnector::run()
         if (!_poolExhaustionReported)
         {
           _poolExhaustionReported = true;
-          FLOX_LOG_WARN("[demo] book pool exhausted (capacity "
+          LRVX_LOG_WARN("[demo] book pool exhausted (capacity "
                         << _bookPool.capacity()
                         << "); book updates are being dropped. The pool must be larger than the "
                            "bus ring, otherwise it never gets its events back.");
@@ -128,7 +128,7 @@ void DemoConnector::run()
         }
 
         {
-          FLOX_PROFILE_SCOPE("BookBusPublish");
+          LRVX_PROFILE_SCOPE("BookBusPublish");
           MEASURE_LATENCY(LatencyCollector::BusPublish);
           _bookUpdateBus.publish(std::move(ev));
         }

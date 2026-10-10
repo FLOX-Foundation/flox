@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/mmap_bar_storage.h"
+#include "lrvx/backtest/mmap_bar_storage.h"
 
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,14 +24,14 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace flox
+namespace lrvx
 {
 
 MmapBarStorage::MmapBarStorage(const std::filesystem::path& symbolDir) : _symbolDir(symbolDir)
 {
   if (!std::filesystem::exists(symbolDir))
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_DATA_001",
         "Symbol bar data directory not found: '" + symbolDir.string() +
             "'. Run a recorder over the dataset first or check the data root.");
@@ -72,7 +72,7 @@ MmapBarStorage::MmapBarStorage(const std::filesystem::path& symbolDir) : _symbol
 
   if (_files.empty())
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_DATA_001",
         "No bar files (bars_*.bin) found in: '" + symbolDir.string() +
             "'. The directory exists but contains no time-based bar data.");
@@ -347,4 +347,4 @@ std::vector<TimeframeId> MmapBarStorage::timeframes() const
   return result;
 }
 
-}  // namespace flox
+}  // namespace lrvx

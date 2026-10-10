@@ -13,7 +13,7 @@ Set up trading across multiple exchanges with position aggregation and smart rou
 ## 1. Register Exchanges and Symbols
 
 ```cpp
-#include "flox/engine/symbol_registry.h"
+#include "lrvx/engine/symbol_registry.h"
 
 SymbolRegistry registry;
 
@@ -35,7 +35,7 @@ registry.mapEquivalentSymbols(btcSymbols);
 ## 2. Set Up Clock Synchronization
 
 ```cpp
-#include "flox/util/sync/exchange_clock_sync.h"
+#include "lrvx/util/sync/exchange_clock_sync.h"
 
 ExchangeClockSync<8> clockSync;
 
@@ -58,7 +58,7 @@ if (clockSync.hasReliableSync(binance)) {
 ## 3. Aggregate Order Books
 
 ```cpp
-#include "flox/book/composite_book_matrix.h"
+#include "lrvx/book/composite_book_matrix.h"
 
 CompositeBookMatrix<4> books;
 
@@ -85,7 +85,7 @@ if (books.hasArbitrageOpportunity(btcBinance)) {
 ## 4. Track Positions
 
 ```cpp
-#include "flox/position/aggregated_position_tracker.h"
+#include "lrvx/position/aggregated_position_tracker.h"
 
 AggregatedPositionTracker<8> positions;
 
@@ -110,7 +110,7 @@ double pnl = Price::fromRaw(pnlRaw).toDouble();  // Convert to readable value
 ## 5. Configure Order Routing
 
 ```cpp
-#include "flox/execution/order_router.h"
+#include "lrvx/execution/order_router.h"
 
 OrderRouter<4> router;
 
@@ -140,7 +140,7 @@ router.routeTo(binance, btcBinance, Side::BUY, price, quantity, orderId);
 ## 6. Track Split Orders
 
 ```cpp
-#include "flox/execution/split_order_tracker.h"
+#include "lrvx/execution/split_order_tracker.h"
 
 SplitOrderTracker tracker;
 

@@ -76,7 +76,7 @@ Usage:
     python3 scripts/check_doc_cpp_examples.py
     python3 scripts/check_doc_cpp_examples.py --quiet
     python3 scripts/check_doc_cpp_examples.py --list   # print extracted blocks, don't compile
-    FLOX_COMPILE_COMMANDS=/path/to/compile_commands.json python3 scripts/check_doc_cpp_examples.py
+    LRVX_COMPILE_COMMANDS=/path/to/compile_commands.json python3 scripts/check_doc_cpp_examples.py
 """
 from __future__ import annotations
 
@@ -100,16 +100,16 @@ DOCS_DIR = REPO_ROOT / "docs"
 # alternative (guessing per-snippet) is a maintenance trap that silently
 # stops checking the moment a page starts using one more class.
 _COMMON_INCLUDES = (
-    "flox/strategy/strategy.h",
-    "flox/strategy/signal.h",
-    "flox/strategy/abstract_signal_handler.h",
-    "flox/backtest/backtest_runner.h",
-    "flox/engine/symbol_registry.h",
-    "flox/aggregator/events/bar_event.h",
-    "flox/book/events/book_update_event.h",
-    "flox/book/events/trade_event.h",
-    "flox/execution/events/order_event.h",
-    "flox/execution/order.h",
+    "lrvx/strategy/strategy.h",
+    "lrvx/strategy/signal.h",
+    "lrvx/strategy/abstract_signal_handler.h",
+    "lrvx/backtest/backtest_runner.h",
+    "lrvx/engine/symbol_registry.h",
+    "lrvx/aggregator/events/bar_event.h",
+    "lrvx/book/events/book_update_event.h",
+    "lrvx/book/events/trade_event.h",
+    "lrvx/execution/events/order_event.h",
+    "lrvx/execution/order.h",
 )
 
 _FENCE_OPEN_RE = re.compile(r"^```cpp\s*$")
@@ -119,7 +119,7 @@ _FENCE_CLOSE_RE = re.compile(r"^```\s*$")
 # derived from Strategy (directly or via SignalStrategy) -- the "worked
 # example" shape, not a bare signature or field-list fragment.
 _CLASS_DEF_RE = re.compile(
-    r"\bclass\s+\w+\s*(?:final\s*)?:\s*(?:public\s+)?(?:flox::)?"
+    r"\bclass\s+\w+\s*(?:final\s*)?:\s*(?:public\s+)?(?:lrvx::)?"
     r"(Strategy|SignalStrategy)\b"
 )
 
@@ -208,7 +208,7 @@ def _wrap(block: CppBlock) -> str:
     if trailing:
         # Free statements after the class -- the "now wire it up" half of
         # a worked example -- only parse inside a function body.
-        body += f"\nstatic void flox_doc_example_entry()\n{{\n{trailing}\n}}\n"
+        body += f"\nstatic void lrvx_doc_example_entry()\n{{\n{trailing}\n}}\n"
     return (
         f"{includes}\n"
         "#include <optional>\n"
@@ -217,7 +217,7 @@ def _wrap(block: CppBlock) -> str:
         "#include <thread>\n"
         "#include <vector>\n"
         "#include <string>\n\n"
-        "using namespace flox;\n\n"
+        "using namespace lrvx;\n\n"
         f"{body}"
     )
 
@@ -231,15 +231,15 @@ def _wrap(block: CppBlock) -> str:
 # own convention) so a developer who already has one built gets instant
 # reuse instead of a second throwaway configure.
 _COMPILE_COMMANDS_CANDIDATES = (
-    "FLOX_COMPILE_COMMANDS",  # env var name, resolved below
+    "LRVX_COMPILE_COMMANDS",  # env var name, resolved below
 )
 _COMPILE_COMMANDS_DIRS = ("build", "build-audit")
 
-# A source file that is always part of the default `flox` library target
+# A source file that is always part of the default `lrvx` library target
 # regardless of which optional subsystems are enabled -- so a bare
 # `cmake -B <dir>` configure (no extra -D flags) is guaranteed to produce
 # a compile-command entry for it. Anything under `src/util/` fits: it has
-# no FLOX_ENABLE_*/FLOX_BUILD_* guard anywhere in the tree.
+# no LRVX_ENABLE_*/LRVX_BUILD_* guard anywhere in the tree.
 _REPRESENTATIVE_SOURCE = "src/log/atomic_logger.cpp"
 
 
@@ -281,7 +281,7 @@ def _parse_compile_commands_entry(entries: list, repo_root: Path) -> Optional[Li
 def _load_compile_flags() -> List[str]:
     """Compiler + flags (no -fsyntax-only yet) captured from the real
     build, in this order:
-      1. $FLOX_COMPILE_COMMANDS, if set, pointing at a compile_commands.json.
+      1. $LRVX_COMPILE_COMMANDS, if set, pointing at a compile_commands.json.
       2. build/compile_commands.json or build-audit/compile_commands.json,
          if either already exists (a developer's existing build tree).
       3. A throwaway `cmake -B <tmp>` configure (no build step -- CMake
@@ -292,7 +292,7 @@ def _load_compile_flags() -> List[str]:
     usable entry -- silently falling back to a guessed flag set is the
     exact failure mode this function exists to rule out.
     """
-    env_path = os.environ.get("FLOX_COMPILE_COMMANDS")
+    env_path = os.environ.get("LRVX_COMPILE_COMMANDS")
     search_paths: List[Path] = []
     if env_path:
         search_paths.append(Path(env_path))
@@ -312,7 +312,7 @@ def _load_compile_flags() -> List[str]:
     # No existing build tree -- configure a throwaway one. No -D flags:
     # the whole point is the project's own defaults, the same ones any
     # plain `cmake -B build` picks up.
-    cmake = os.environ.get("FLOX_CMAKE", "cmake")
+    cmake = os.environ.get("LRVX_CMAKE", "cmake")
     with tempfile.TemporaryDirectory() as td:
         proc = subprocess.run(
             [cmake, "-B", td, "-S", str(REPO_ROOT)],
@@ -338,7 +338,7 @@ def _load_compile_flags() -> List[str]:
             raise RuntimeError(
                 "check_doc_cpp_examples: compile_commands.json has no entry "
                 f"under src/ (looked for {_REPRESENTATIVE_SOURCE}) -- the "
-                "default `flox` target may have changed shape."
+                "default `lrvx` target may have changed shape."
             )
         return flags
 

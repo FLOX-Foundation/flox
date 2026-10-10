@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/bitget/bitget_exchange_connector.h"
-#include "flox-connectors/net/ix_websocket_client.h"
-#include "flox-connectors/util/safe_parse.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx-connectors/bitget/bitget_exchange_connector.h"
+#include "lrvx-connectors/net/ix_websocket_client.h"
+#include "lrvx-connectors/util/safe_parse.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
-#include <flox/log/log.h>
+#include <lrvx/log/log.h>
 
 #include <openssl/hmac.h>
 #include <zlib.h>
@@ -28,7 +28,7 @@
 
 #include <simdjson.h>
 
-namespace flox
+namespace lrvx
 {
 static constexpr auto BITGET_ORIGIN = "https://www.bitget.com";
 static constexpr auto BITGET_USER_AGENT =
@@ -551,7 +551,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
       {
         _logger->error(
             "[Bitget] Book pool exhausted, dropping orderbook update. Increase "
-            "FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
+            "LRVX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
             "enough.");
         return;
       }
@@ -764,7 +764,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
   }
   catch (const simdjson::simdjson_error& e)
   {
-    FLOX_LOG_ERROR(std::string("[Bitget] JSON parse error: ") + e.what() +
+    LRVX_LOG_ERROR(std::string("[Bitget] JSON parse error: ") + e.what() +
                    ", payload=" + std::string(payload));
     _logger->warn(std::string("[Bitget] json error: ") + e.what());
   }
@@ -965,7 +965,7 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
   }
   catch (const simdjson::simdjson_error& e)
   {
-    FLOX_LOG_ERROR(std::string("[Bitget] priv json error: ") + e.what());
+    LRVX_LOG_ERROR(std::string("[Bitget] priv json error: ") + e.what());
     _logger->warn(std::string("[Bitget] priv json error: ") + e.what());
   }
 }
@@ -1014,4 +1014,4 @@ bool BitgetConfig::isValid() const
   return true;
 }
 
-}  // namespace flox
+}  // namespace lrvx

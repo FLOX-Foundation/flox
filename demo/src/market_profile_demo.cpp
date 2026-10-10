@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -17,14 +17,14 @@
 // - Initial Balance - first hour of trading (periods A + B)
 // - Single Prints - prices visited only once (potential S/R)
 
-#include "flox/aggregator/custom/market_profile.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
+#include "lrvx/aggregator/custom/market_profile.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
 
 #include <iostream>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 TradeEvent makeTrade(SymbolId symbol, double price, double qty, uint64_t tsNs)
 {

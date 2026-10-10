@@ -7,9 +7,9 @@
 #include <pybind11/stl.h>
 
 #include "bindings_common.h"
-#include "flox/book/composite_book_matrix.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/common.h"
+#include "lrvx/book/composite_book_matrix.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/common.h"
 
 #include <memory>
 #include <memory_resource>
@@ -19,7 +19,7 @@ namespace py = pybind11;
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 class PyCompositeBookMatrix
 {

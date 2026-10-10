@@ -1,39 +1,39 @@
-# flox-py
+# lrvx
 
-Python bindings for [FLOX](https://github.com/FLOX-Foundation/flox) — an AI-native framework for building trading systems.
+Python bindings for [lrvx](https://github.com/lrvx/lrvx) — an AI-native framework for building trading systems.
 
 AI agents discover the surface and drive it end-to-end through an MCP control plane. One strategy class runs backtest, paper, and live.
 
 ## Install
 
 ```bash
-pip install flox-py
+pip install lrvx
 ```
 
 ## Scaffold a new project
 
 ```bash
-flox new my-strategy                                   # research scaffold (default)
-flox new my-bot --template=live                        # live trading via CcxtBroker
-flox new my-indicators --template=indicator-library    # publishable indicator package
-flox templates                                         # list templates
+lrvx new my-strategy                                   # research scaffold (default)
+lrvx new my-bot --template=live                        # live trading via CcxtBroker
+lrvx new my-indicators --template=indicator-library    # publishable indicator package
+lrvx templates                                         # list templates
 ```
 
-`flox new` ships with the wheel; see [`docs/how-to/flox-new.md`](https://flox-foundation.github.io/flox/how-to/flox-new/) for what each template lays down.
+`lrvx new` ships with the wheel; see [`docs/how-to/lrvx-new.md`](https://docs.lrvx.dev/how-to/lrvx-new/) for what each template lays down.
 
 ## Quick start
 
 ```python
-import flox_py as flox
+import lrvx
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-class SMACross(flox.Strategy):
+class SMACross(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
 
     def on_trade(self, ctx, trade):
         f = self.fast.update(trade.price)
@@ -48,7 +48,7 @@ class SMACross(flox.Strategy):
 def on_signal(sig):
     print(sig.side, sig.order_type, sig.quantity, sig.price)
 
-runner = flox.Runner(registry, on_signal)
+runner = lrvx.Runner(registry, on_signal)
 runner.add_strategy(SMACross([btc]))
 runner.start()
 # feed market data:
@@ -59,29 +59,29 @@ runner.stop()
 
 ## Run a paper engine in one command
 
-For tier-5/6 control (live order placement, position queries, kill switch over HTTP), `flox engine sim` boots a `Runner` + `SimulatedExecutor` + `ControlServer` + state-snapshot writer:
+For tier-5/6 control (live order placement, position queries, kill switch over HTTP), `lrvx engine sim` boots a `Runner` + `SimulatedExecutor` + `ControlServer` + state-snapshot writer:
 
 ```bash
-flox engine sim --strategy strategy.py --tape ./tape
+lrvx engine sim --strategy strategy.py --tape ./tape
 ```
 
-Prints the engine URL and a copy-pasteable `flox-mcp init --engine-url URL --token T` command for wiring into AI tools.
+Prints the engine URL and a copy-pasteable `lrvx-mcp init --overwrite --engine-url URL --token T` command for wiring into AI tools.
 
 ## AI companion
 
-`flox-mcp` is a Model Context Protocol server that gives coding agents (Claude Code, Cursor, Cline) grounded access to indicators, error codes, the C-API surface, and full-text doc search:
+`lrvx-mcp` is a Model Context Protocol server that gives coding agents (Claude Code, Cursor, Cline) grounded access to indicators, error codes, the C-API surface, and full-text doc search:
 
 ```bash
-pip install flox-mcp
-flox-mcp init           # writes ./.mcp.json for the current project
+pip install lrvx-mcp
+lrvx-mcp init           # writes ./.mcp.json for the current project
 ```
 
-See the [flox-mcp README](https://github.com/FLOX-Foundation/flox/tree/main/mcp) for the tool list.
+See the [lrvx-mcp README](https://github.com/lrvx/lrvx/tree/main/mcp) for the tool list.
 
 ## Symbol and SymbolRegistry
 
 ```python
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
 btc.id        # int, e.g. 1
@@ -96,10 +96,10 @@ print(btc) # Symbol(binance:BTCUSDT, id=1)
 
 ## Strategy
 
-Subclass `flox.Strategy` and override the callbacks you need.
+Subclass `lrvx.Strategy` and override the callbacks you need.
 
 ```python
-class MyStrategy(flox.Strategy):
+class MyStrategy(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)   # symbols: list[Symbol | int]
 
@@ -163,8 +163,8 @@ class MyStrategy(flox.Strategy):
 ## Runner
 
 ```python
-runner = flox.Runner(registry, on_signal)                  # synchronous
-runner = flox.Runner(registry, on_signal, threaded=True)   # Disruptor background thread
+runner = lrvx.Runner(registry, on_signal)                  # synchronous
+runner = lrvx.Runner(registry, on_signal, threaded=True)   # Disruptor background thread
 
 runner.add_strategy(strategy)
 runner.start()
@@ -186,17 +186,17 @@ The `on_signal` callback receives `Signal` objects:
 ## BacktestRunner
 
 ```python
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(MyStrategy([btc]))
 
 stats = bt.run_csv("data.csv")             # auto-detects symbol from registry
 stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
-stats = bt.run_tape("./tape")              # replay a recorded `.floxlog` directory
+stats = bt.run_tape("./tape")              # replay a recorded `.lrvx` directory
 
 equity = bt.equity_curve()   # numpy arrays: timestamp_ns, equity, drawdown_pct
 trades = bt.trades()         # numpy arrays: per-trade detail
 
-from flox_py.report import write_html
+from lrvx.report import write_html
 write_html("report.html", stats=stats, equity_curve=equity, trades=trades)
 ```
 
@@ -223,35 +223,35 @@ bt.set_pnl_tracker(my_pnl_tracker)          # IPnLTracker: .on_order_filled(orde
 ### Walk-forward and grid search
 
 ```python
-wf = flox.WalkForwardRunner(
+wf = lrvx.WalkForwardRunner(
     registry, fee_rate=0.0004, initial_capital=10_000,
     mode="anchored", train_size=180, test_size=30,
 )
 wf.set_strategy_factory(lambda fold_idx: MyStrategy([btc]))
 folds = wf.run_csv("data.csv", "BTCUSDT")
 
-grid = flox.GridSearch()
+grid = lrvx.GridSearch()
 grid.add_axis([5, 10, 20])    # fast period
 grid.add_axis([30, 50, 100])  # slow period
 def factory(params):
     fast, slow = params
-    bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+    bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
     bt.set_strategy(MyStrategy([btc]))  # configure with fast / slow as needed
     return bt.run_csv("data.csv", "BTCUSDT")
 grid.set_factory(factory)
 results = grid.run()    # list of {index, params, stats}
 ```
 
-Render a heatmap with `flox_py.report.heatmap_html(...)` /
+Render a heatmap with `lrvx.report.heatmap_html(...)` /
 `write_heatmap(...)`. Run a multiple-comparison-aware significance
-test with `flox.whites_reality_check(returns, num_bootstrap=10_000)`.
+test with `lrvx.whites_reality_check(returns, num_bootstrap=10_000)`.
 
 ### MLflow
 
 ```python
-from flox_py import mlflow as flox_mlflow
+from lrvx import mlflow as lrvx_mlflow
 
-flox_mlflow.log_backtest(
+lrvx_mlflow.log_backtest(
     stats, equity_curve=equity, trades=trades,
     params={"fast": 10, "slow": 30},
     run_name="sma-2025-01",
@@ -275,4 +275,4 @@ flox_mlflow.log_backtest(
 
 All compute-heavy operations release the GIL for true parallelism.
 
-Full API reference at [flox-foundation.github.io/flox/reference/python](https://flox-foundation.github.io/flox/reference/python/).
+Full API reference at [docs.lrvx.dev/reference/python](https://docs.lrvx.dev/reference/python/).

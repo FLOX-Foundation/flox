@@ -7,32 +7,32 @@
   - Runner(threaded=True): Disruptor-based, publish lock-free из отдельного потока
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 examples/python_backtest_vs_live.py
 """
 
 import os
 import time
-import flox_py as flox
+import lrvx
 
 DATA = os.path.join(os.path.dirname(__file__), "data", "btcusdt_1m.csv")
 
 # ── Символы ───────────────────────────────────────────────────────────
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 # btc — объект Symbol: print(btc) → Symbol(binance:BTCUSDT, id=1)
 # Прозрачно конвертируется в int везде где нужен id.
 
 # ── Одна стратегия — три режима ────────────────────────────────────────
 
-class SMAStrategy(flox.Strategy):
+class SMAStrategy(lrvx.Strategy):
     """SMA(10/30) crossover."""
 
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
         self.trade_count = 0
 
     def on_start(self):
@@ -60,7 +60,7 @@ print("── Backtest ───────────────────
 
 strat = SMAStrategy([btc])
 
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(strat)
 stats = bt.run_csv(DATA)
 
@@ -75,15 +75,15 @@ print(f"  Net PnL  : {stats['net_pnl']:.4f}")
 
 print("\n── Runner (live, sync) ───────────────────────────────────────────")
 
-signals_received: list[flox.Signal] = []
+signals_received: list[lrvx.Signal] = []
 
-def on_signal(sig: flox.Signal):
+def on_signal(sig: lrvx.Signal):
     signals_received.append(sig)
 
 prices = [50000 + i * 50 for i in range(40)]
 ts_ns = int(time.time()) * 1_000_000_000
 
-runner = flox.Runner(registry, on_signal)
+runner = lrvx.Runner(registry, on_signal)
 runner.add_strategy(SMAStrategy([btc]))
 runner.start()
 
@@ -103,7 +103,7 @@ print("\n── Runner (threaded=True) ─────────────�
 
 live_signals = []
 
-threaded_runner = flox.Runner(registry, lambda sig: live_signals.append(sig),
+threaded_runner = lrvx.Runner(registry, lambda sig: live_signals.append(sig),
                                threaded=True)
 threaded_runner.add_strategy(SMAStrategy([btc]))
 threaded_runner.start()

@@ -1,7 +1,7 @@
 // Multi-leg order group state machine, NAPI parity test.
 
-const flox = require('..');
-const { OrderGroupPolicy, OrderGroupState } = flox;
+const lrvx = require('..');
+const { OrderGroupPolicy, OrderGroupState } = lrvx;
 
 function check(label, ok) {
   if (!ok) { console.error('FAIL: ' + label); process.exit(1); }
@@ -15,7 +15,7 @@ check('OrderGroupPolicy exposes named constants',
 
 // --- BestEffort: nothing reverts; leg state reflects events as-is.
 {
-  const g = new flox.OrderGroup({ parentSignalId: 1, policy: OrderGroupPolicy.BestEffort });
+  const g = new lrvx.OrderGroup({ parentSignalId: 1, policy: OrderGroupPolicy.BestEffort });
   const a = g.addMarketLeg(1, 0, 0.1);  // BTC buy
   const b = g.addMarketLeg(2, 1, 2.0);  // ETH sell
   check('legCount = 2', g.legCount() === 2);
@@ -32,7 +32,7 @@ check('OrderGroupPolicy exposes named constants',
 
 // --- OneSided via string policy.
 {
-  const g = new flox.OrderGroup({ parentSignalId: 2, policy: 'OneSided' });
+  const g = new lrvx.OrderGroup({ parentSignalId: 2, policy: 'OneSided' });
   g.addLimitLeg(1, 0, 50000.0, 0.1);
   g.addLimitLeg(2, 1, 3000.0, 1.5);
   g.recordSubmit(0, 200);
@@ -47,7 +47,7 @@ check('OrderGroupPolicy exposes named constants',
 
 // --- AllOrNothing using the constant.
 {
-  const g = new flox.OrderGroup({ parentSignalId: 3, policy: OrderGroupPolicy.AllOrNothing });
+  const g = new lrvx.OrderGroup({ parentSignalId: 3, policy: OrderGroupPolicy.AllOrNothing });
   g.addMarketLeg(1, 0, 0.1);
   g.addMarketLeg(2, 1, 2.0);
   g.recordSubmit(0, 300);
@@ -67,14 +67,14 @@ check('OrderGroupPolicy exposes named constants',
 {
   let threw = false;
   try {
-    new flox.OrderGroup({ policy: 'Garbage' });
+    new lrvx.OrderGroup({ policy: 'Garbage' });
   } catch (e) { threw = true; }
   check('unknown policy string throws', threw);
 }
 
 // --- Group risk gate: basket over concentration cap is denied.
 {
-  const g = new flox.OrderGroup();
+  const g = new lrvx.OrderGroup();
   g.addMarketLeg(1, 0, 0.1);
   g.addMarketLeg(2, 1, 2.0);
   g.setRiskLimits({ maxConcentrationPct: 0.05 });
@@ -83,7 +83,7 @@ check('OrderGroupPolicy exposes named constants',
   check('risk gate names the rule', breach.rule === 'maxConcentrationPct');
 
   // Tiny basket OK.
-  const g2 = new flox.OrderGroup();
+  const g2 = new lrvx.OrderGroup();
   g2.addMarketLeg(1, 0, 0.001);
   g2.setRiskLimits({ maxConcentrationPct: 0.05 });
   check('risk gate allows small basket',
@@ -103,7 +103,7 @@ check('OrderGroupPolicy exposes named constants',
     };
   }
   const s = fakeStrat();
-  const g = new flox.OrderGroup({ policy: OrderGroupPolicy.AllOrNothing });
+  const g = new lrvx.OrderGroup({ policy: OrderGroupPolicy.AllOrNothing });
   g.addMarketLeg(1, 0, 0.1);
   g.addMarketLeg(2, 1, 2.0);
   g.recordSubmit(0, 100); g.recordSubmit(1, 101);
@@ -118,7 +118,7 @@ check('OrderGroupPolicy exposes named constants',
 
 // --- OneSided pair-latency budget: SubmitFollower / Wait / CancelLeader.
 {
-  const g = new flox.OrderGroup({ policy: OrderGroupPolicy.OneSided });
+  const g = new lrvx.OrderGroup({ policy: OrderGroupPolicy.OneSided });
   g.addLimitLeg(1, 0, 50000.0, 0.1);
   g.addLimitLeg(2, 1, 3000.0, 1.5);
   check('budget unset → wait',

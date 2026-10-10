@@ -8,7 +8,7 @@
 // have the identical pattern (extractTrades reads `n` from `timestamps`
 // alone; stat_bar_returns / stat_trade_pnl read `n` from `signal_long`
 // alone) and need the same check, so this lives in its own header
-// included ahead of all three in flox_node.cpp rather than duplicated or
+// included ahead of all three in lrvx_node.cpp rather than duplicated or
 // left order-dependent on which binding header happens to declare it.
 
 #pragma once
@@ -18,7 +18,7 @@
 #include <initializer_list>
 #include <string>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 // JS Numbers are float64 and lose precision past 2^53, which truncates
@@ -56,4 +56,4 @@ inline bool requireSameLength(Napi::Env env, const char* fnName,
   return true;
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

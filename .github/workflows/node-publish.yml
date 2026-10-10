@@ -1,4 +1,4 @@
-name: Publish flox-node
+name: Publish lrvx-node
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           EVENT: ${{ github.event_name }}
-          RELEASE_APP: "flox-release-bot[bot]"
+          RELEASE_APP: "lrvx-release-bot[bot]"
         run: |
           if [ "$EVENT" = "workflow_dispatch" ]; then
             if [ "$ACTOR" != "eeiaao" ]; then
@@ -95,9 +95,9 @@ jobs:
           cmake -B build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
-                -DFLOX_BUILD_TESTS=ON \
-                -DFLOX_ENABLE_BACKTEST=ON \
-                -DFLOX_ENABLE_LZ4=ON
+                -DLRVX_BUILD_TESTS=ON \
+                -DLRVX_ENABLE_BACKTEST=ON \
+                -DLRVX_ENABLE_LZ4=ON
 
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -136,18 +136,18 @@ jobs:
         working-directory: node
         run: npm install
 
-      - name: Build flox + capi
+      - name: Build lrvx + capi
         shell: bash
         run: |
-          # FLOX_NATIVE=OFF is mandatory on distribution paths: it defaults
+          # LRVX_NATIVE=OFF is mandatory on distribution paths: it defaults
           # ON and adds -march=native, which is baked into the archive that
           # gets statically linked into the published .node and faults with
           # SIGILL on any consumer CPU missing an instruction the runner had.
           # python-wheels does this via pyproject.toml; this path did not.
           cmake -B build \
-            -DFLOX_BUILD_CAPI=ON \
-            -DFLOX_ENABLE_BACKTEST=ON \
-            -DFLOX_NATIVE=OFF \
+            -DLRVX_BUILD_CAPI=ON \
+            -DLRVX_ENABLE_BACKTEST=ON \
+            -DLRVX_NATIVE=OFF \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
 
@@ -159,8 +159,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}
-          cp node/build/Release/flox_node.node \
-             node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/flox_node.node
+          cp node/build/Release/lrvx_node.node \
+             node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/lrvx_node.node
 
       - uses: actions/upload-artifact@v4
         with:
@@ -168,13 +168,13 @@ jobs:
           # Upload the parent directory, not the per-platform directory
           # and not the .node file inside it. A single-file `path` makes
           # upload-artifact drop the containing directory, so the
-          # artifact's root becomes a bare `flox_node.node` for every
+          # artifact's root becomes a bare `lrvx_node.node` for every
           # matrix leg; three artifacts shaped that way collide on the
           # exact same path once merge-multiple flattens them below.
           # `node/prebuilds` at this point holds exactly one
           # `<platform>-<arch>/` subdirectory, so uploading it keeps
           # that subdirectory in the artifact and each of the three
-          # artifacts gets a distinct root: `<platform>-<arch>/flox_node.node`.
+          # artifacts gets a distinct root: `<platform>-<arch>/lrvx_node.node`.
           path: node/prebuilds
 
   publish:
@@ -219,7 +219,7 @@ jobs:
         run: |
           set -euo pipefail
           npm pack
-          tarball="$(ls flox-foundation-flox-*.tgz)"
+          tarball="$(ls lrvx-lrvx-*.tgz)"
           check_dir="$(mktemp -d)"
           cp "$tarball" "$check_dir/"
           rm -f "$tarball"
@@ -227,8 +227,8 @@ jobs:
           npm init -y >/dev/null
           npm install "./$tarball"
           node -e "
-            const flox = require('@flox-foundation/flox');
-            const reg = new flox.SymbolRegistry();
+            const lrvx = require('@lrvx/lrvx');
+            const reg = new lrvx.SymbolRegistry();
             const sym = reg.addSymbol('bybit', 'BTCUSDT', 0.01);
             if (sym === undefined || sym === null) {
               throw new Error('native addon call returned nothing');

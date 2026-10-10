@@ -1,12 +1,12 @@
 """Tests for the MultiFeedClock primitive.
 
-`flox_py.MultiFeedClock` is bound from
-`include/flox/feed/multi_feed_clock.h` and is the same primitive every
+`lrvx.MultiFeedClock` is bound from
+`include/lrvx/feed/multi_feed_clock.h` and is the same primitive every
 binding (pybind11 / NAPI / QuickJS / Codon) reaches through the C ABI.
 """
 from __future__ import annotations
 
-import flox_py
+import lrvx
 
 
 BTC, ETH = 1, 2
@@ -14,8 +14,8 @@ SECOND_NS = 1_000_000_000
 
 
 def test_wait_for_all_fires_after_both_feeds() -> None:
-    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
-                                policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+    c = lrvx.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=lrvx.FeedClockPolicy.WAIT_FOR_ALL,
                                 timeout_ms=200)
     r1 = c.tick(SECOND_NS, BTC)
     assert r1["fired"] is False
@@ -32,15 +32,15 @@ def test_wait_for_all_fires_after_both_feeds() -> None:
 
 
 def test_fire_on_any_fires_every_tick() -> None:
-    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
-                                policy=flox_py.FeedClockPolicy.FIRE_ON_ANY)
+    c = lrvx.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=lrvx.FeedClockPolicy.FIRE_ON_ANY)
     assert c.tick(SECOND_NS, BTC)["fired"] is True
     assert c.tick(SECOND_NS + 1, ETH)["fired"] is True
 
 
 def test_leader_follower_requires_fresh_follower() -> None:
-    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
-                                policy=flox_py.FeedClockPolicy.LEADER_FOLLOWER,
+    c = lrvx.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=lrvx.FeedClockPolicy.LEADER_FOLLOWER,
                                 leader_symbol=BTC,
                                 staleness_budget_ms=200)
     assert c.tick(SECOND_NS, ETH)["fired"] is False
@@ -55,8 +55,8 @@ def test_wait_for_all_timeout_fallback_fires_before_any_full_fire() -> None:
     # indistinguishable from "never fired"). ETH never ticks here at all,
     # so WaitForAll's normal condition is never met -- only the timeout can
     # ever fire.
-    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
-                                policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+    c = lrvx.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=lrvx.FeedClockPolicy.WAIT_FOR_ALL,
                                 timeout_ms=200)
 
     fired_count = 0
@@ -73,8 +73,8 @@ def test_wait_for_all_timeout_fallback_survives_a_zero_timestamp_first_fire() ->
     # A related edge case: if the first full WaitForAll
     # fire happens to land exactly on ts_ns == 0 (a backtest replayed from
     # a zero-based clock), the old check disabled the timeout permanently.
-    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
-                                policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+    c = lrvx.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=lrvx.FeedClockPolicy.WAIT_FOR_ALL,
                                 timeout_ms=200)
 
     assert c.tick(0, BTC)["fired"] is False
@@ -93,8 +93,8 @@ def test_out_of_band_symbol_does_not_fire_or_affect_registered_state() -> None:
     # "updates the per-symbol last-seen timestamp". It never did -- the
     # implementation returns before touching any state for a symbol that
     # was not in the constructor's `symbols` list.
-    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
-                                policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+    c = lrvx.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=lrvx.FeedClockPolicy.WAIT_FOR_ALL,
                                 timeout_ms=200)
 
     UNREGISTERED = 99

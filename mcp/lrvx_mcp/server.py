@@ -1,0 +1,1521 @@
+"""MCP server entry. Wires the tools into an MCP server speaking stdio."""
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any, Tuple
+
+import mcp.server.stdio
+from mcp.server.lowlevel import Server
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
+
+from .tools import (
+    analytics,
+    capi,
+    control,
+    docs_search as docs_search_tool,
+    errors,
+    events,
+    examples,
+    indicators,
+    init_project as init_project_tool,
+    lookahead as lookahead_tool,
+    lookup,
+    overview,
+    venue as venue_tool,
+    positions,
+    record_data as record_data_tool,
+    runtime,
+    scaffold,
+    strategy,
+)
+
+log = logging.getLogger("lrvx-mcp")
+
+
+def build_server() -> Server:
+    """Construct the MCP server with all registered tools."""
+    server = Server("lrvx-mcp")
+
+    async def _list_tools(ctx: Any, params: PaginatedRequestParams | None) -> ListToolsResult:
+        return ListToolsResult(tools=[
+            Tool(
+                name="lrvx_venue_guide",
+                description=(
+                    "Use when the user wants to BUILD A MARKET rather than "
+                    "trade on one: simulate several agents/strategies against "
+                    "one shared order book, model market impact with reacting "
+                    "counterparties, or run a matching engine, clearing "
+                    "ledger, margin/liquidation, market-data feed or venue "
+                    "gateway. Returns a Markdown guide to the optional lrvx "
+                    "venue module (lrvx::venue): headers, order vocabulary, "
+                    "derivatives waterfall, the multi-agent demo, build flag, "
+                    "and verification posture. No arguments. Cheap; pure "
+                    "bundled text. NOT for an ordinary single-strategy "
+                    "backtest over historical data -- use run_backtest."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="lrvx_overview",
+                description=(
+                    "Call this FIRST when you don't know which lrvx MCP tool "
+                    "to use. Returns a Markdown narrative of the toolkit "
+                    "organised by category (discovery, building a backtest, "
+                    "live engine inspection, calibration), with canonical "
+                    "workflows for the most common tasks and a recent-"
+                    "additions section. No arguments. Cheap; pure bundled "
+                    "text. Cuts the AI-agent cycles spent rediscovering "
+                    "what the surface is on every fresh session."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="list_indicators",
+                description=(
+                    "List every indicator exposed by the lrvx Python binding "
+                    "with its class signature, batch function (if any), and "
+                    "shape (single-input scalar, OHLC tuple, multi-output, …). "
+                    "Use this when the user asks 'what indicators does lrvx "
+                    "support' or before suggesting an indicator name."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filter": {
+                            "type": "string",
+                            "description":
+                                "Optional substring filter; case-insensitive.",
+                        }
+                    },
+                },
+            ),
+            Tool(
+                name="lookup_error_code",
+                description=(
+                    "Resolve a lrvx error code (e.g. 'E_SYM_001') to its full "
+                    "Markdown documentation page — fix recipe, common causes, "
+                    "diagnostics. Use whenever a LrvxError is raised in user "
+                    "code; never guess at a fix from the message alone."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description":
+                                "Error code, e.g. 'E_SYM_001'. Case-sensitive.",
+                        }
+                    },
+                },
+            ),
+            Tool(
+                name="list_capi_functions",
+                description=(
+                    "Search the lrvx C-API surface from the committed ABI "
+                    "snapshot. Returns name + return type + parameter types "
+                    "for every exported `lrvx_*` function. Use when the user "
+                    "is writing FFI code (Codon, QuickJS, Rust cgo, ctypes) "
+                    "or asks 'what C symbols can I call'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filter": {
+                            "type": "string",
+                            "description":
+                                "Optional substring filter on function name.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description":
+                                "Max entries to return. Default 50.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="validate_strategy",
+                description=(
+                    "Static-analysis check on a Python lrvx strategy: AST "
+                    "parses, expected hooks present (on_trade / on_bar), no "
+                    "forbidden patterns (eval, exec, __import__ tricks). "
+                    "Use this before running user-authored strategy code. "
+                    "Does NOT execute the code."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description":
+                                "Python source for the strategy module/class.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="explain_event",
+                description=(
+                    "Describe the fields of a lrvx event struct. Accepts a "
+                    "type name ('LrvxTradeData', 'LrvxBookData', "
+                    "'LrvxBarData', 'LrvxSymbolContext', 'LrvxSignal') OR a "
+                    "raw event dict; returns each field's name, type, units, "
+                    "and human description. Use when the user asks 'what's "
+                    "in this event'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "type_name": {
+                            "type": "string",
+                            "description":
+                                "Event struct name. One of: LrvxTradeData, "
+                                "LrvxBookData, LrvxBarData, LrvxSymbolContext, "
+                                "LrvxSignal.",
+                        },
+                        "event": {
+                            "type": "object",
+                            "description":
+                                "Optional event dict to introspect. If "
+                                "type_name is omitted, the dict's shape is "
+                                "matched against known struct shapes.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="lookup_symbol",
+                description=(
+                    "Resolve a lrvx symbol across every surface (C++, C-API, "
+                    "Python, Node, Codon, QuickJS). Methods resolve too, "
+                    "reported as Owner.method. Returns the local name, kind, "
+                    "and signature for each binding that exports it. Use "
+                    "this whenever the user names a struct, function, or "
+                    "indicator and you need to know what it's called in "
+                    "*their* language — never guess at the cross-language "
+                    "spelling. Accepts any spelling the user knows "
+                    "('LrvxBarData', 'BarData', 'lrvx_indicator_ema', 'ema', "
+                    "'Ema'). Filter to one language with the `language` arg "
+                    "if the user is writing in a specific binding. "
+                    "When the symbol has hand-curated semantic gotchas "
+                    "(silent quantization, ordering preconditions, "
+                    "subscribed-vs-registry distinctions), they appear "
+                    "under a `## Gotchas` section in the response."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description":
+                                "Symbol name in any binding's spelling. "
+                                "Case-sensitive; common transformations "
+                                "(Lrvx prefix, lrvx_indicator_ prefix) are "
+                                "tried automatically.",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Optional binding filter. One of: capi, "
+                                "cpp, capi, python, node, codon, quickjs.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="list_bindings",
+                description=(
+                    "Enumerate the public exports of one lrvx binding "
+                    "surface (C-API / Python / Node / Codon / QuickJS). "
+                    "Use this when the user asks 'what does the {Python|"
+                    "Node|Codon} binding expose?' or when they want to "
+                    "browse a binding before picking a symbol. Substring "
+                    "filter is case-insensitive."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["language"],
+                    "properties": {
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Binding surface. One of: capi, python, "
+                                "cpp, capi, python, node, codon, quickjs.",
+                        },
+                        "filter": {
+                            "type": "string",
+                            "description":
+                                "Optional substring filter on symbol name.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description":
+                                "Max entries to return. Default 50.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_example",
+                description=(
+                    "Return canonical lrvx example code for a topic, "
+                    "filtered optionally by language. Use this when the "
+                    "user asks 'show me how to {backtest|connect to "
+                    "ccxt|wire an indicator}' BEFORE writing fresh code "
+                    "from memory — the bundled examples are CI-validated, "
+                    "your generated code is not. Topics: strategy, "
+                    "connector, indicator, event-handler, risk, backtest. "
+                    "Languages: python, node, codon, cpp."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["topic"],
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description":
+                                "Topic. One of: strategy, connector, "
+                                "indicator, event-handler, risk, backtest.",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Optional language filter. One of: python, "
+                                "node, codon, cpp.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="scaffold_strategy",
+                description=(
+                    "Return a starter lrvx strategy class that compiles "
+                    "and passes `validate_strategy`. Use this as the "
+                    "*first* thing you write when the user asks to "
+                    "'build a new strategy' — start from this canonical "
+                    "shell, then edit the indicator + signal logic, "
+                    "instead of writing the lrvx bookkeeping "
+                    "(constructor, hook names, signal builder) from "
+                    "memory. `language` is required — lrvx is polyglot "
+                    "and picking the binding for the user is wrong; "
+                    "ask which language they want first. Supported: "
+                    "python, node, codon, quickjs. Three kinds: "
+                    "bar-driven (TA on bar close), trade-driven "
+                    "(tick-by-tick), hybrid (both). The result includes "
+                    "a `Next steps` section with `docs_search` queries "
+                    "for the recording / backtest / layout follow-ups; "
+                    "follow them in order."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "language": {
+                            "type": "string",
+                            "enum": ["python", "node", "codon", "quickjs"],
+                            "description":
+                                "Target language. Required. lrvx is "
+                                "polyglot — ask the user which binding "
+                                "they want before calling this tool.",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description":
+                                "Strategy shape. One of: bar-driven, "
+                                "trade-driven, hybrid. Default: bar-driven.",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description":
+                                "Class name for the generated strategy. "
+                                "Must be a valid identifier. Default: "
+                                "MyStrategy.",
+                        },
+                    },
+                    "required": ["language"],
+                },
+            ),
+            Tool(
+                name="init_project",
+                description=(
+                    "Create a new lrvx project from a bundled template. "
+                    "Thin wrapper around the canonical `lrvx new` CLI — "
+                    "the CLI stays the source of truth, this tool only "
+                    "makes it discoverable from MCP. Use when the user "
+                    "asks 'set up a new lrvx project' / 'I want to "
+                    "scaffold a research notebook' / 'start a live "
+                    "trading bot'. Three templates ship with lrvx: "
+                    "`research` (notebook + sample data + main.py), "
+                    "`live` (CCXT broker + dry-run safety harness), "
+                    "`indicator-library` (standalone indicator package "
+                    "with tests). Result includes the CLI output and a "
+                    "Next steps section with `docs_search` queries."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["project_name", "template"],
+                    "properties": {
+                        "project_name": {
+                            "type": "string",
+                            "description":
+                                "Directory name for the new project. "
+                                "Created under `target_dir`. Special "
+                                "characters in the name become snake_case "
+                                "in the bundled `__PROJECT_SLUG__`.",
+                        },
+                        "template": {
+                            "type": "string",
+                            "enum": ["research", "live", "indicator-library"],
+                            "description":
+                                "Template to scaffold from. Required.",
+                        },
+                        "target_dir": {
+                            "type": "string",
+                            "description":
+                                "Parent directory the project is created "
+                                "under. Default: current working dir.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="record_data",
+                description=(
+                    "Capture market data into a `.lrvx` tape. Wraps "
+                    "the canonical recording paths — for `mode=live` "
+                    "shells out to the `lrvx tape record` CLI; for "
+                    "`mode=historical` shells out to "
+                    "`scripts/backfill_to_tape.py` which uses ccxt's "
+                    "`fetch_ohlcv` / `fetch_trades`. Use this when the "
+                    "user asks to 'record some BTC data' / 'pull a "
+                    "month of klines for backtest' / 'tape the last "
+                    "hour of trades'. The result is a `.lrvx` "
+                    "directory drivable by `BacktestRunner.run_tape`."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["mode", "exchange", "symbol", "out_path"],
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["historical", "live"],
+                            "description":
+                                "`historical` = ccxt backfill of past "
+                                "data. `live` = capture from now onwards "
+                                "via `lrvx tape record`.",
+                        },
+                        "exchange": {
+                            "type": "string",
+                            "description":
+                                "ccxt exchange id (bitget, binance, "
+                                "bybit, ...).",
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description":
+                                "Symbol in the exchange's spelling "
+                                "(BTC/USDT, BTCUSDT — both accepted).",
+                        },
+                        "out_path": {
+                            "type": "string",
+                            "description":
+                                "Output `.lrvx` directory (will be "
+                                "created if missing).",
+                        },
+                        "data_type": {
+                            "type": "string",
+                            "enum": ["klines", "trades"],
+                            "description":
+                                "Historical mode only. `klines` (1m bars "
+                                "by default) or `trades` (per-print). "
+                                "Trades have higher fidelity but are "
+                                "limited by what each exchange exposes.",
+                        },
+                        "from_dt": {
+                            "type": "string",
+                            "description":
+                                "Historical mode. Start datetime — ISO "
+                                "(2026-04-01) or unix-ms.",
+                        },
+                        "to_dt": {
+                            "type": "string",
+                            "description":
+                                "Historical mode. End datetime — ISO or "
+                                "unix-ms.",
+                        },
+                        "duration": {
+                            "type": "string",
+                            "description":
+                                "Live mode. Recording duration "
+                                "(`1h`, `30m`, `2d`). Omit for an open-"
+                                "ended recording (Ctrl+C to stop).",
+                        },
+                        "max_records": {
+                            "type": "integer",
+                            "description":
+                                "Historical mode. Refuse to start if "
+                                "estimated row count exceeds this. "
+                                "Default 1_000_000.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="run_backtest",
+                description=(
+                    "Run a Python lrvx strategy against a CSV dataset "
+                    "in a sandboxed subprocess (rlimits on CPU / memory "
+                    "/ output size + a wall-clock timeout). Use this "
+                    "when the user asks 'try this strategy on my data' "
+                    "or 'does this code actually work'. Treat as MVP "
+                    "sandbox: it caps resources but does NOT isolate "
+                    "the filesystem or network — never aim it at "
+                    "untrusted code outside a developer's own machine. "
+                    "Returns the backtest stats dict as JSON plus any "
+                    "stdout the strategy printed."
+                    "\n\nDispatch routing: the worker introspects the "
+                    "strategy class. If `on_bar` is overridden the "
+                    "dataset is dispatched as real `BarEvent`s through "
+                    "`run_bars` (CSV columns: "
+                    "ts,open,high,low,close,volume); otherwise the rows "
+                    "are synthesised into trades for `on_trade` via "
+                    "`run_csv`. A strategy that overrides neither hook "
+                    "fails loudly."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["strategy_code", "dataset_path"],
+                    "properties": {
+                        "strategy_code": {
+                            "type": "string",
+                            "description":
+                                "Python source defining a `lrvx.Strategy` "
+                                "subclass at module level. The worker also "
+                                "accepts a top-level `STRATEGY = MyStrategy` "
+                                "assignment as the entry point.",
+                        },
+                        "dataset_path": {
+                            "type": "string",
+                            "description":
+                                "Absolute path to a CSV dataset on disk. "
+                                "Capped at 64 MiB.",
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description":
+                                "Symbol name to register before the run. "
+                                "Default: BTCUSDT.",
+                        },
+                        "wall_timeout_s": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": runtime.MAX_WALL_TIMEOUT_S,
+                            "description":
+                                "Wall-clock timeout in seconds. Default 60, "
+                                f"capped at {runtime.MAX_WALL_TIMEOUT_S}.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="compute_indicator",
+                description=(
+                    "Run a single lrvx indicator over a list of floats "
+                    "and return the output. Use this to sanity-check "
+                    "an indicator's behaviour on a small price array "
+                    "BEFORE wiring it into a strategy — especially when "
+                    "the indicator has window / period / smoothing "
+                    "parameters whose effect isn't obvious from the "
+                    "name. Input is capped at 1 MiB. Requires the "
+                    "optional `lrvx` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["name", "data"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description":
+                                "Indicator name in lrvx — case "
+                                "either matches the class (`EMA`, "
+                                "`RSI`, `Bollinger`) or the function "
+                                "(`ema`, `rsi`, `vwap`).",
+                        },
+                        "data": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description":
+                                "Input series (e.g. close prices). "
+                                "Up to 125k samples.",
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="price_amm_swap",
+                description=(
+                    "Price a DEX swap against an AMM pool, exact to the "
+                    "wei, through lrvx's integer curves. Use this to quote "
+                    "a fill or measure price impact on a constant-product "
+                    "(Uniswap v2), Raydium CP (Solana), or Uniswap v3 "
+                    "concentrated-liquidity pool from its on-chain state. "
+                    "Amounts are decimal strings (native wei / lamports), "
+                    "so 256-bit values are lossless. Requires the optional "
+                    "`lrvx` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["venue", "pool", "amount_in"],
+                    "properties": {
+                        "venue": {
+                            "type": "string",
+                            "enum": ["constant_product", "raydium_cp", "uniswap_v3"],
+                            "description": "The pool's AMM type.",
+                        },
+                        "pool": {
+                            "type": "object",
+                            "description":
+                                "Pool parameters as decimal strings. "
+                                "constant_product: reserve0, reserve1, "
+                                "fee_num, fee_den. raydium_cp: reserve0, "
+                                "reserve1, trade_fee_rate. uniswap_v3: "
+                                "sqrt_price_x96, liquidity, fee_pips, "
+                                "ticks (optional [sqrtRatio, net] pairs).",
+                            "additionalProperties": True,
+                        },
+                        "amount_in": {
+                            "type": "string",
+                            "description": "Input amount, native wei (decimal string).",
+                        },
+                        "i": {"type": "integer", "description": "In-token index (default 0)."},
+                        "j": {"type": "integer", "description": "Out-token index (default 1)."},
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="route_amm_swap",
+                description=(
+                    "Best execution for a DEX swap across a set of AMM "
+                    "pools, exact to the wei. Give it the same notional and "
+                    "several venues (constant-product, Raydium CP, Uniswap "
+                    "v3) and it returns the venue that fills the most, the "
+                    "fill, and a per-venue comparison. Amounts are human "
+                    "'NUMBER SYMBOL' strings (e.g. '50000 USDC'); each pool "
+                    "carries its token symbols and decimals, so directions "
+                    "are by symbol and a mis-routed swap raises instead of "
+                    "returning a quiet zero. Requires the optional `lrvx` "
+                    "dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["venues", "amount"],
+                    "properties": {
+                        "venues": {
+                            "type": "array",
+                            "description":
+                                "Pool specs. Each: {venue, token0:{symbol,"
+                                "decimals}, token1:{symbol,decimals}, ... "
+                                "venue params}. constant_product/uniswap_v2: "
+                                "reserves (['1000 WETH','2000000 USDC']), fee, "
+                                "fee_den. raydium_cp: reserves, trade_fee. "
+                                "uniswap_v3: sqrt_price_x96, liquidity, fee, "
+                                "ticks.",
+                            "items": {"type": "object", "additionalProperties": True},
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Input amount as 'NUMBER SYMBOL', e.g. '50000 USDC'.",
+                        },
+                        "into": {
+                            "type": "string",
+                            "description": "Out-token symbol (optional; inferred otherwise).",
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="amm_price_impact",
+                description=(
+                    "The depth / slippage table for one AMM pool: the "
+                    "realized average price and price impact for each of a "
+                    "list of trade sizes, exact to the wei. Use this to "
+                    "reason about how large a trade a pool can absorb before "
+                    "quoting. Sizes are human 'NUMBER SYMBOL' strings. "
+                    "Requires the optional `lrvx` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["pool", "sizes"],
+                    "properties": {
+                        "pool": {
+                            "type": "object",
+                            "description":
+                                "A pool spec: {venue, token0:{symbol,decimals}, "
+                                "token1:{symbol,decimals}, ...venue params}.",
+                            "additionalProperties": True,
+                        },
+                        "sizes": {
+                            "type": "array",
+                            "description": "Trade sizes as 'NUMBER SYMBOL' strings.",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="replay_pool_tape",
+                description=(
+                    "Backtest a DEX position from a recorded pool history. "
+                    "Replays a list of swaps (or decoded Uniswap v2 Swap "
+                    "logs) through the exact curve and returns the price / "
+                    "reserves / LP-value / impermanent-loss / drift series "
+                    "over time. Use this to evaluate an LP position or a "
+                    "trading sequence against a real transcript. Requires "
+                    "the optional `lrvx` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["pool"],
+                    "properties": {
+                        "pool": {
+                            "type": "object",
+                            "description":
+                                "A pool spec: {venue, token0:{symbol,decimals}, "
+                                "token1:{symbol,decimals}, ...venue params} -- the "
+                                "replay's starting state.",
+                            "additionalProperties": True,
+                        },
+                        "swaps": {
+                            "type": "array",
+                            "description":
+                                "Swaps as [ts, 'NUMBER SYMBOL', into?] entries. "
+                                "Supply this or `evm_logs`.",
+                            "items": {"type": "array"},
+                        },
+                        "evm_logs": {
+                            "type": "array",
+                            "description":
+                                "Decoded Uniswap v2 Swap log dicts (data word order "
+                                "amount0In, amount1In, amount0Out, amount1Out). "
+                                "Supply this or `swaps`.",
+                            "items": {"type": "object", "additionalProperties": True},
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="suggest_indicator",
+                description=(
+                    "Recommend lrvx indicators for an English description "
+                    "of the user's intent ('trend filter', 'momentum "
+                    "oscillator', 'volatility band', 'mean revert', "
+                    "'regime test'). Use this when the user describes "
+                    "what they want without naming an indicator — the "
+                    "tool maps phrasing to a ranked shortlist of real "
+                    "lrvx indicators. Pure keyword heuristic; no LLM "
+                    "call. Always confirm shape with `list_indicators` "
+                    "after picking one."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["description"],
+                    "properties": {
+                        "description": {
+                            "type": "string",
+                            "description":
+                                "Free-text description of what kind of "
+                                "indicator the user wants.",
+                        },
+                        "k": {
+                            "type": "integer",
+                            "description":
+                                "How many candidates to return. Default 3.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="docs_search",
+                description=(
+                    "Top-k full-text search over the lrvx documentation "
+                    "(how-to guides, reference pages, tutorials, error "
+                    "codes, bindings overviews, explanations). Use this "
+                    "to ground answers about lrvx behavior, configuration, "
+                    "or APIs in the actual docs instead of relying on "
+                    "training data — call it whenever the user asks 'how "
+                    "do I X' / 'what does Y do' / 'where is Z documented'. "
+                    "The index is built from a strict allowlist; private "
+                    "tracker / strategy / author files are NEVER indexed."
+                    "\n\nQuery syntax: plain word lists are AND-matched "
+                    "(every token must appear). Wrap a phrase in double "
+                    "quotes for exact match: `\"walk forward\"`. FTS5 "
+                    "operators (OR, NEAR, *, parens) pass through."
+                    "\n\nCanonical workflow queries (run these instead of "
+                    "guessing the canonical path from training data):\n"
+                    "  • User wants to record market data → "
+                    "`docs_search('record tape')`. Covers live capture and "
+                    "the ccxt.fetch_ohlcv historical-backfill pattern.\n"
+                    "  • User asks 'how should I structure a lrvx project' "
+                    "→ `docs_search('project layout')`.\n"
+                    "  • User mentions an exchange / live data → "
+                    "`docs_search('ccxt')`.\n"
+                    "  • User wants to backtest a strategy on a recorded "
+                    "tape → `docs_search('backtest')`.\n"
+                    "  • User mentions strategy traces, signals, or "
+                    "`.lrvxrun` → `docs_search('lrvxrun')`."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description":
+                                "Free-text query. Plain word lists are "
+                                "AND-matched. Wrap a phrase in double "
+                                "quotes for exact match.",
+                        },
+                        "k": {
+                            "type": "integer",
+                            "description":
+                                "Number of results to return (1..25). "
+                                "Default 5.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_positions",
+                description=(
+                    "Read positions from a running lrvx engine via its "
+                    "runtime state snapshot. Use this when the user asks "
+                    "'what's in my positions' / 'show me the BTC position' "
+                    "/ 'is strategy X long or short'. Returns a JSON object "
+                    "{snapshot_age_ms, data:[{account, strategy, symbol_id, "
+                    "symbol_name, qty, avg_price, unrealized_pnl}, ...]}. "
+                    "Snapshot path is LRVX_RUNTIME_STATE env var or the "
+                    "passed `state_path`; the user app is responsible for "
+                    "writing the snapshot. When no engine has written a "
+                    "snapshot yet, returns "
+                    "{engine: 'not_running', data: [], hint: ...} instead "
+                    "of an error — that's a normal pre-engine state, not "
+                    "a problem to surface to the user. Read-only — never "
+                    "modifies state."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description": "Filter to one account.",
+                        },
+                        "strategy": {
+                            "type": "string",
+                            "description": "Filter to one strategy.",
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path (defaults to "
+                                "LRVX_RUNTIME_STATE or "
+                                "/tmp/lrvx-runtime-state.json).",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_open_orders",
+                description=(
+                    "Read in-flight orders from the runtime state snapshot. "
+                    "Use this for 'what orders are pending' / 'do I have "
+                    "anything sitting on Bybit'. Optional substring filter "
+                    "matches against symbol_name or strategy. Returns the "
+                    "engine_not_running idle response when no snapshot is "
+                    "present yet (no error). Read-only."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filter": {
+                            "type": "string",
+                            "description":
+                                "Case-insensitive substring matched "
+                                "against symbol_name or strategy.",
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_pnl",
+                description=(
+                    "Read PnL totals plus per-strategy breakdown from the "
+                    "runtime state snapshot. Use this for 'what's my PnL' / "
+                    "'how is strategy X doing today'. Returns realized + "
+                    "unrealized + fees per strategy. Returns the "
+                    "engine_not_running idle response when no snapshot is "
+                    "present yet (no error). Read-only."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "strategy": {
+                            "type": "string",
+                            "description":
+                                "Filter the per-strategy breakdown to "
+                                "one row; total still reflects the full "
+                                "snapshot.",
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_kill_switch",
+                description=(
+                    "Read kill-switch state from the runtime state snapshot. "
+                    "Returns {active, reason, since_ns}. Use this for 'is "
+                    "trading halted' / 'why was the kill switch tripped'. "
+                    "When no engine has written a snapshot, returns the "
+                    "idle response with active=false (there is no live "
+                    "trading to halt). Read-only — to flip the switch "
+                    "use set_kill_switch."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="place_order",
+                description=(
+                    "Place an order through the user's running lrvx engine. "
+                    "Talks HTTP to the local ControlServer the user app "
+                    "embeds; reads URL + bearer token from LRVX_CONTROL_URL "
+                    "and LRVX_CONTROL_TOKEN. Default dry_run=true; the "
+                    "server simulates acceptance without dispatching to the "
+                    "executor. live tier additionally requires an "
+                    "approve_token issued out of band by the operator. Use "
+                    "this for manual hedges or operator-driven order entry."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["account", "symbol", "side", "qty"],
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account to place against. paper-prefixed "
+                                "names are allowed in paper scope; live "
+                                "scope is required for any other.",
+                        },
+                        "symbol": {"type": "integer"},
+                        "side": {"type": "string", "enum": ["buy", "sell"]},
+                        "qty": {"type": "number"},
+                        "type": {
+                            "type": "string",
+                            "enum": ["market", "limit"],
+                            "description": "Default market.",
+                        },
+                        "price": {
+                            "type": "number",
+                            "description":
+                                "Required for limit orders; ignored for market.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description":
+                                "Free-text annotation recorded in the audit log.",
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description":
+                                "Default true. Set false to actually dispatch.",
+                        },
+                        "approve_token": {
+                            "type": "string",
+                            "description":
+                                "Required for live scope. One-shot token "
+                                "issued by ControlServer.issue_approval().",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="cancel_order",
+                description=(
+                    "Cancel one open order by id. Talks HTTP to the local "
+                    "ControlServer. Default dry_run=true. Useful for "
+                    "operator-driven cleanup or panic stop. account is "
+                    "required and gated the same way as place_order: paper "
+                    "scope may only target paper-prefixed accounts."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["account", "order_id"],
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account the order belongs to. paper-prefixed "
+                                "names are allowed in paper scope; live "
+                                "scope is required for any other.",
+                        },
+                        "order_id": {"type": "integer"},
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            Tool(
+                name="cancel_all",
+                description=(
+                    "Cancel every open order, optionally filtered by symbol. "
+                    "Default dry_run=true. The most common 'panic stop' "
+                    "primitive after set_kill_switch. account is required "
+                    "and gated the same way as place_order: paper scope may "
+                    "only target paper-prefixed accounts."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["account"],
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account whose orders to cancel. paper-prefixed "
+                                "names are allowed in paper scope; live "
+                                "scope is required for any other.",
+                        },
+                        "symbol": {
+                            "type": "integer",
+                            "description":
+                                "0 (default) cancels across all symbols.",
+                        },
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            Tool(
+                name="flatten_positions",
+                description=(
+                    "Close every open position with opposite-side market "
+                    "orders, optionally filtered by symbol. Default "
+                    "dry_run=true. Use for 'close everything' operator "
+                    "actions or end-of-day flatten. account is required and "
+                    "gated the same way as place_order: paper scope may "
+                    "only target paper-prefixed accounts, and rows the "
+                    "positions accessor tags with a different account are "
+                    "skipped."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["account"],
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account whose positions to flatten. paper-"
+                                "prefixed names are allowed in paper scope; "
+                                "live scope is required for any other.",
+                        },
+                        "symbol": {
+                            "type": "integer",
+                            "description":
+                                "Restrict to one symbol; omit to flatten all.",
+                        },
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            Tool(
+                name="set_kill_switch",
+                description=(
+                    "Set the engine's kill-switch state. active=true halts "
+                    "all trading; active=false resumes. Default dry_run=true; "
+                    "explicit dry_run=false applies the change. Use for "
+                    "emergency halt and for resuming after manual review. "
+                    "The kill switch is engine-level, not per-account, so "
+                    "only live scope may call this -- paper tokens are "
+                    "refused even with dry_run=false."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["active"],
+                    "properties": {
+                        "active": {"type": "boolean"},
+                        "reason": {
+                            "type": "string",
+                            "description":
+                                "Free-text annotation recorded in the audit log.",
+                        },
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            # ── Live analytics (read-only) ────────────────────────
+            Tool(
+                name="list_strategies",
+                description=(
+                    "List the strategies the running lrvx engine knows "
+                    "about, with name, status, and the symbols each one "
+                    "subscribes to. Read-only. Use when the user asks "
+                    "'what's running' / 'which strategies are active'."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_strategy_state",
+                description=(
+                    "Return one strategy's current state as a JSON dict — "
+                    "params, position view, last decisions. Read-only. Use "
+                    "when the user asks 'what does strategy X think right "
+                    "now' / 'show me state for ema-trend'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {"type": "string"},
+                    },
+                },
+            ),
+            Tool(
+                name="get_indicator_values",
+                description=(
+                    "Return the live values of indicators inside a strategy. "
+                    "Optional name filter narrows to one indicator. "
+                    "Read-only. Use for 'what's the EMA reading' / 'is the "
+                    "RSI overbought now'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["strategy"],
+                    "properties": {
+                        "strategy": {"type": "string"},
+                        "name": {
+                            "type": "string",
+                            "description": "Optional: filter to one indicator.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_event_log",
+                description=(
+                    "Query the engine event log (signals emitted, orders "
+                    "placed, fills received, risk checks). Filters AND-"
+                    "compose. Read-only. Use for 'what happened in the "
+                    "last 5 minutes' / 'show me all the signals from "
+                    "ema-trend'. Default limit 100."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "strategy": {"type": "string"},
+                        "type": {
+                            "type": "string",
+                            "description":
+                                "Event type filter (e.g. 'signal', "
+                                "'order', 'fill', 'risk_check').",
+                        },
+                        "from_ts_ns": {"type": "integer"},
+                        "to_ts_ns": {"type": "integer"},
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max records to return. Default 100.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="explain_decision",
+                description=(
+                    "Walk an event's causal-parent chain back toward the "
+                    "root. Returns the chain in order from the requested "
+                    "event to its root. Use when the user asks 'why did "
+                    "this fill happen' / 'trace the cause of order 42' — "
+                    "the chain shows which signal produced the order, "
+                    "which event triggered the signal, etc."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["event_id"],
+                    "properties": {
+                        "event_id": {"type": "string"},
+                        "max_depth": {
+                            "type": "integer",
+                            "description":
+                                "Stop walking after this many parents. Default 32.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="replay_window",
+                description=(
+                    "Run a sandbox replay over a time window. The engine "
+                    "side decides what 'replay' means: typical setups "
+                    "use the bundled tape primitives to drive a "
+                    "SimulatedExecutor over a tape slice. Read-only "
+                    "(sandbox-only mutations). Use for 'replay the last "
+                    "hour' / 'rerun this period in sandbox'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "from_ts_ns": {"type": "integer"},
+                        "to_ts_ns": {"type": "integer"},
+                        "strategy": {"type": "string"},
+                        "param_overrides": {
+                            "type": "object",
+                            "description":
+                                "Optional dict of strategy params to "
+                                "swap before the replay.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="whatif",
+                description=(
+                    "Counterfactual replay: same as replay_window plus "
+                    "a strategy-name filter and required param_overrides. "
+                    "Use for 'what if EMA period was 50 instead of 21' / "
+                    "'show me the PnL if I had used a wider stop'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["strategy", "param_overrides"],
+                    "properties": {
+                        "strategy": {"type": "string"},
+                        "param_overrides": {"type": "object"},
+                        "from_ts_ns": {"type": "integer"},
+                        "to_ts_ns": {"type": "integer"},
+                    },
+                },
+            ),
+            Tool(
+                name="validate_strategy_no_lookahead",
+                description=(
+                    "Static-analysis check for the most common backtest "
+                    "bug: lookahead bias. Walks the strategy code's AST "
+                    "and flags negative .shift(N), forward-index "
+                    "arithmetic like df.iloc[i+1], open-upper slices "
+                    "inside per-bar callbacks, and attribute names that "
+                    "look future-dated (next_*, future_*, lookahead_*). "
+                    "Heuristic, not a proof — false negatives are "
+                    "possible. Run before trusting any backtest result."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description":
+                                "Python source of the strategy module / class.",
+                        },
+                    },
+                },
+            ),
+        ])
+
+    def _dispatch_tool_sync(name: str, arguments: dict) -> Tuple[str, bool]:
+        """Runs every tool implementation. Synchronous and blocking by
+        design -- some tools shell out (record_data, run_backtest) or do
+        real CPU work (compute_indicator) -- so `_call_tool` below always
+        calls this through `asyncio.to_thread`, never directly on the
+        event loop. Returns (text, is_error); is_error is True whenever
+        the requested action did not happen, so a client branching on the
+        MCP `isError` flag sees an accurate signal instead of the `False`
+        every path used to return regardless of outcome."""
+        is_error = False
+        try:
+            if name == "lrvx_overview":
+                text = overview.lrvx_overview()
+            elif name == "lrvx_venue_guide":
+                text = venue_tool.lrvx_venue_guide()
+            elif name == "list_indicators":
+                text = indicators.list_indicators(filter=arguments.get("filter"))
+            elif name == "lookup_error_code":
+                text = errors.lookup_error_code(arguments["code"])
+            elif name == "list_capi_functions":
+                text = capi.list_capi_functions(
+                    filter=arguments.get("filter"),
+                    limit=arguments.get("limit", 50),
+                )
+            elif name == "validate_strategy":
+                text = strategy.validate_strategy(arguments["code"])
+            elif name == "explain_event":
+                text = events.explain_event(
+                    type_name=arguments.get("type_name"),
+                    event=arguments.get("event"),
+                )
+            elif name == "lookup_symbol":
+                text = lookup.lookup_symbol(
+                    name=arguments["name"],
+                    language=arguments.get("language"),
+                )
+            elif name == "list_bindings":
+                text = lookup.list_bindings(
+                    language=arguments["language"],
+                    filter=arguments.get("filter"),
+                    limit=arguments.get("limit", 50),
+                )
+            elif name == "get_example":
+                text = examples.get_example(
+                    topic=arguments["topic"],
+                    language=arguments.get("language"),
+                )
+            elif name == "scaffold_strategy":
+                text = scaffold.scaffold_strategy(
+                    language=arguments.get("language"),
+                    kind=arguments.get("kind", "bar-driven"),
+                    name=arguments.get("name", "MyStrategy"),
+                )
+            elif name == "init_project":
+                text = init_project_tool.init_project(
+                    project_name=arguments["project_name"],
+                    template=arguments["template"],
+                    target_dir=arguments.get("target_dir", "."),
+                )
+            elif name == "record_data":
+                text = record_data_tool.record_data(
+                    mode=arguments["mode"],
+                    exchange=arguments["exchange"],
+                    symbol=arguments["symbol"],
+                    out_path=arguments["out_path"],
+                    data_type=arguments.get("data_type", "klines"),
+                    from_dt=arguments.get("from_dt"),
+                    to_dt=arguments.get("to_dt"),
+                    duration=arguments.get("duration"),
+                    max_records=arguments.get("max_records", 1_000_000),
+                )
+            elif name == "docs_search":
+                text = docs_search_tool.docs_search(
+                    query=arguments["query"],
+                    k=arguments.get("k", 5),
+                )
+            elif name == "run_backtest":
+                text = runtime.run_backtest(
+                    strategy_code=arguments["strategy_code"],
+                    dataset_path=arguments["dataset_path"],
+                    symbol=arguments.get("symbol", "BTCUSDT"),
+                    wall_timeout_s=arguments.get(
+                        "wall_timeout_s", runtime.DEFAULT_WALL_TIMEOUT_S),
+                )
+            elif name == "compute_indicator":
+                # Strip protocol-meta keys before forwarding kwargs to
+                # the indicator constructor / function.
+                indicator_kwargs = {
+                    k: v for k, v in arguments.items()
+                    if k not in ("name", "data")
+                }
+                text = runtime.compute_indicator(
+                    name=arguments["name"],
+                    data=arguments["data"],
+                    **indicator_kwargs,
+                )
+            elif name == "price_amm_swap":
+                text = runtime.price_amm_swap(
+                    venue=arguments["venue"],
+                    pool=arguments["pool"],
+                    amount_in=arguments["amount_in"],
+                    i=arguments.get("i", 0),
+                    j=arguments.get("j", 1),
+                )
+            elif name == "route_amm_swap":
+                text = runtime.route_amm_swap(
+                    venues=arguments["venues"],
+                    amount=arguments["amount"],
+                    into=arguments.get("into"),
+                )
+            elif name == "amm_price_impact":
+                text = runtime.amm_price_impact(
+                    pool=arguments["pool"],
+                    sizes=arguments["sizes"],
+                )
+            elif name == "replay_pool_tape":
+                text = runtime.replay_pool_tape(
+                    pool=arguments["pool"],
+                    swaps=arguments.get("swaps"),
+                    evm_logs=arguments.get("evm_logs"),
+                )
+            elif name == "suggest_indicator":
+                text = runtime.suggest_indicator(
+                    description=arguments["description"],
+                    k=arguments.get("k", 3),
+                )
+            elif name == "get_positions":
+                text = positions.get_positions(
+                    account=arguments.get("account"),
+                    strategy=arguments.get("strategy"),
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "get_open_orders":
+                text = positions.get_open_orders(
+                    filter=arguments.get("filter"),
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "get_pnl":
+                text = positions.get_pnl(
+                    strategy=arguments.get("strategy"),
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "get_kill_switch":
+                text = positions.get_kill_switch(
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "place_order":
+                text, is_error = control.place_order(
+                    account=arguments["account"],
+                    symbol=int(arguments["symbol"]),
+                    side=arguments["side"],
+                    qty=float(arguments["qty"]),
+                    type=arguments.get("type", "market"),
+                    price=float(arguments.get("price", 0.0)),
+                    reason=arguments.get("reason", ""),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                    approve_token=arguments.get("approve_token"),
+                )
+            elif name == "cancel_order":
+                text, is_error = control.cancel_order(
+                    account=arguments["account"],
+                    order_id=int(arguments["order_id"]),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "cancel_all":
+                text, is_error = control.cancel_all(
+                    account=arguments["account"],
+                    symbol=int(arguments.get("symbol", 0)),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "flatten_positions":
+                text, is_error = control.flatten_positions(
+                    account=arguments["account"],
+                    symbol=arguments.get("symbol"),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "set_kill_switch":
+                text, is_error = control.set_kill_switch(
+                    active=bool(arguments["active"]),
+                    reason=arguments.get("reason", ""),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "list_strategies":
+                text = analytics.list_strategies()
+            elif name == "get_strategy_state":
+                text = analytics.get_strategy_state(
+                    name=arguments["name"],
+                )
+            elif name == "get_indicator_values":
+                text = analytics.get_indicator_values(
+                    strategy=arguments["strategy"],
+                    name=arguments.get("name"),
+                )
+            elif name == "get_event_log":
+                text = analytics.get_event_log(
+                    strategy=arguments.get("strategy"),
+                    type=arguments.get("type"),
+                    from_ts_ns=arguments.get("from_ts_ns"),
+                    to_ts_ns=arguments.get("to_ts_ns"),
+                    limit=int(arguments.get("limit", 100)),
+                )
+            elif name == "explain_decision":
+                text = analytics.explain_decision(
+                    event_id=arguments["event_id"],
+                    max_depth=int(arguments.get("max_depth", 32)),
+                )
+            elif name == "replay_window":
+                text = analytics.replay_window(
+                    from_ts_ns=arguments.get("from_ts_ns"),
+                    to_ts_ns=arguments.get("to_ts_ns"),
+                    strategy=arguments.get("strategy"),
+                    param_overrides=arguments.get("param_overrides"),
+                )
+            elif name == "whatif":
+                text = analytics.whatif(
+                    strategy=arguments["strategy"],
+                    param_overrides=arguments["param_overrides"],
+                    from_ts_ns=arguments.get("from_ts_ns"),
+                    to_ts_ns=arguments.get("to_ts_ns"),
+                )
+            elif name == "validate_strategy_no_lookahead":
+                text = lookahead_tool.validate_strategy_no_lookahead(
+                    arguments["code"],
+                )
+            else:
+                text = f"unknown tool: {name}"
+                is_error = True
+        except Exception as exc:  # surface real errors to the AI client
+            log.exception("tool %s failed", name)
+            text = f"lrvx-mcp error: {type(exc).__name__}: {exc}"
+            is_error = True
+
+        return text, is_error
+
+    async def _call_tool(ctx: Any, params: CallToolRequestParams) -> CallToolResult:
+        # _dispatch_tool_sync blocks (subprocess.run for record_data /
+        # run_backtest, CPU-bound work for compute_indicator, network I/O
+        # for the control-plane tools). Running it inline on this coroutine
+        # would stall the single-threaded asyncio event loop the whole MCP
+        # server runs on for the duration of that call, so every other
+        # concurrent request -- including ones with no long-running work of
+        # their own -- would stop making progress too. to_thread offloads
+        # it to a worker thread instead.
+        name = params.name
+        arguments = params.arguments or {}
+        text, is_error = await asyncio.to_thread(_dispatch_tool_sync, name, arguments)
+        return CallToolResult(
+            content=[TextContent(type="text", text=text)], isError=is_error
+        )
+
+    server.add_request_handler("tools/list", PaginatedRequestParams, _list_tools)
+    server.add_request_handler("tools/call", CallToolRequestParams, _call_tool)
+    return server
+
+
+async def _serve() -> None:
+    server = build_server()
+    async with mcp.server.stdio.stdio_server() as (read, write):
+        await server.run(read, write, server.create_initialization_options())
+
+
+def main() -> None:
+    """Console-script entry. Call from `lrvx-mcp` shim."""
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    asyncio.run(_serve())
+
+
+if __name__ == "__main__":
+    main()

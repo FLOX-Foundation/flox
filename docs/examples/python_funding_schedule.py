@@ -1,14 +1,14 @@
 """Apply perpetual funding to open positions during a backtest tick loop."""
-import flox_py as flox
+import lrvx
 
 HOUR = 3600 * 1_000_000_000
 
 # Canned 8-hour profile (Binance UM futures cadence).
-sched = flox.FundingSchedule.binance_um_futures()
+sched = lrvx.FundingSchedule.binance_um_futures()
 sched.set_constant_rate(0.0001)  # 0.01% per 8h
 
 # Or recorded tape from an archive:
-# sched = flox.FundingSchedule.tape([(t0, 0.00012), (t0 + 8*HOUR, -0.00005), ...])
+# sched = lrvx.FundingSchedule.tape([(t0, 0.00012), (t0 + 8*HOUR, -0.00005), ...])
 
 # Strategy tick loop:
 # - feed current per-symbol position + mark price

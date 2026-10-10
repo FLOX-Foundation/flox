@@ -65,7 +65,7 @@ Dummy fallback used on unsupported platforms or in tests:
 
 NUMA is considered available if either:
 
-1. The system links with `libnuma` and headers are present (`FLOX_NUMA_LIBRARY_LINKED`)
+1. The system links with `libnuma` and headers are present (`LRVX_NUMA_LIBRARY_LINKED`)
 2. `/sys/devices/system/node/` contains valid `node*` directories and `cpulist` files
 
 ## Factory Function

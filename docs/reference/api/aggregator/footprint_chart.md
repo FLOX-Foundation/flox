@@ -5,7 +5,7 @@ Footprint charts track bid and ask volume separately at each price level, enabli
 ## Overview
 
 ```cpp
-#include "flox/aggregator/custom/footprint_bar.h"
+#include "lrvx/aggregator/custom/footprint_bar.h"
 
 FootprintBar<64> footprint;
 footprint.setTickSize(Price::fromDouble(0.50));

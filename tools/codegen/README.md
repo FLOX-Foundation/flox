@@ -1,15 +1,15 @@
-# tools/codegen — IDL-driven code generation for the FLOX C API
+# tools/codegen — IDL-driven code generation for the lrvx C API
 
-Generates `flox_capi.h`, Codon `from C import` declarations, a Markdown
+Generates `lrvx_capi.h`, Codon `from C import` declarations, a Markdown
 C-API reference for AI agents, and the IR / binding-manifest snapshots
-that `flox-mcp` ships, all from a single annotated source of truth in
-`include/flox/capi/flox_capi_spec.hpp`.
+that `lrvx-mcp` ships, all from a single annotated source of truth in
+`include/lrvx/capi/lrvx_capi_spec.hpp`.
 
 Status: **full coverage** + three header emitters (`emit-capi`,
-`emit-codon`, `emit-llms`) plus `flox_codegen.manifest` for the
-flox-mcp data bundle. The spec covers ~340 functions, ~32 handles,
+`emit-codon`, `emit-llms`) plus `lrvx_codegen.manifest` for the
+lrvx-mcp data bundle. The spec covers ~340 functions, ~32 handles,
 ~41 structs, ~33 callback typedefs, and 2 enums in the live
-`flox_capi.h`. The CI gate enforces function, macro-constant, and
+`lrvx_capi.h`. The CI gate enforces function, macro-constant, and
 struct-field equivalence (`--require-full-coverage`; enums and unions
 are not yet compared) and committed-vs-fresh equality across all
 three golden artifacts and the bundled MCP data.
@@ -44,20 +44,20 @@ tools/codegen/
 ├── scripts/
 │   ├── check.sh                  # CI-equivalent local check
 │   └── regenerate.sh             # regenerate golden output
-├── flox_codegen/
+├── lrvx_codegen/
 │   ├── ir.py                     # IR dataclasses (Module, Function, ...)
 │   ├── extractor.py              # libclang AST → IR
-│   ├── emit_capi.py              # IR → flox_capi.h text
+│   ├── emit_capi.py              # IR → lrvx_capi.h text
 │   ├── emit_codon.py             # IR → Codon `from C import` block
 │   ├── emit_llms.py              # IR → Markdown reference
-│   ├── manifest.py               # IR → flox-mcp data bundles (JSON)
+│   ├── manifest.py               # IR → lrvx-mcp data bundles (JSON)
 │   ├── abi_snapshot.py           # extract / diff `.api/c-api.snapshot`
 │   ├── check_signatures.py       # diff two C headers (sigs only)
-│   └── cli.py                    # python -m flox_codegen.cli ...
+│   └── cli.py                    # python -m lrvx_codegen.cli ...
 ├── golden/
-│   ├── flox_capi.h               # committed C header
-│   ├── flox_capi.codon           # committed Codon FFI block
-│   └── flox_capi.md              # committed Markdown reference
+│   ├── lrvx_capi.h               # committed C header
+│   ├── lrvx_capi.codon           # committed Codon FFI block
+│   └── lrvx_capi.md              # committed Markdown reference
 ├── tests/
 │   ├── test_annotation_parser.py
 │   ├── test_extractor.py
@@ -68,40 +68,40 @@ tools/codegen/
 │   └── test_check_signatures.py
 └── .venv/                        # gitignored
 
-include/flox/capi/
-├── flox_export.h                 # FLOX_EXPORT(...) macro definition
-├── flox_capi_spec.hpp            # the IDL — annotated declarations
-├── flox_capi.h                   # the live hand-written C header (untouched for now)
+include/lrvx/capi/
+├── lrvx_export.h                 # LRVX_EXPORT(...) macro definition
+├── lrvx_capi_spec.hpp            # the IDL — annotated declarations
+├── lrvx_capi.h                   # the live hand-written C header (untouched for now)
 └── ...
 ```
 
 ## How a function flows from spec to generated header
 
-1. **Author** annotates a free function in `flox_capi_spec.hpp`:
+1. **Author** annotates a free function in `lrvx_capi_spec.hpp`:
 
    ```cpp
-   FLOX_EXPORT(group="indicator")
-   void flox_indicator_ema(const double* input, size_t len, size_t period,
+   LRVX_EXPORT(group="indicator")
+   void lrvx_indicator_ema(const double* input, size_t len, size_t period,
                            double* output);
    ```
 
 2. **Codegen** parses the spec via libclang; the `[[clang::annotate(...)]]`
    attribute injected by the macro carries the metadata into the AST.
-   `flox_codegen.extractor` collects every annotated declaration into an IR
+   `lrvx_codegen.extractor` collects every annotated declaration into an IR
    `Module`.
 
-3. **Emit** walks the IR and produces `golden/flox_capi.h`. Functions are
+3. **Emit** walks the IR and produces `golden/lrvx_capi.h`. Functions are
    grouped by their `group=` annotation; output ordering and formatting are
    deterministic.
 
-4. **Check** diffs the generated header against the live `flox_capi.h`
+4. **Check** diffs the generated header against the live `lrvx_capi.h`
    parsed by libclang. Mismatches in name/return-type/param-types fail CI;
    functions in the live header but not yet in the spec are reported as
    informational coverage gaps (the prototype legitimately covers a subset).
 
 ## Annotation vocabulary (initial)
 
-`FLOX_EXPORT(...)` accepts these keys (see `include/flox/capi/flox_export.h`
+`LRVX_EXPORT(...)` accepts these keys (see `include/lrvx/capi/lrvx_export.h`
 for the source-side reference):
 
 | key                    | meaning                                                      |
@@ -120,15 +120,15 @@ Unknown keys are kept on the IR for emitters to consume.
 
 ## Adding a new function to the slice
 
-1. Add an annotated declaration to `flox_capi_spec.hpp`.
+1. Add an annotated declaration to `lrvx_capi_spec.hpp`.
 2. Run `tools/codegen/scripts/regenerate.sh`.
-3. Commit `flox_capi_spec.hpp` and `tools/codegen/golden/flox_capi.h`
+3. Commit `lrvx_capi_spec.hpp` and `tools/codegen/golden/lrvx_capi.h`
    together. CI will reject drift between them.
 
 ## Adding a new emitter
 
 Each emitter consumes the same `ir.Module` and produces a single
-artifact. Drop a new file under `flox_codegen/`:
+artifact. Drop a new file under `lrvx_codegen/`:
 
 ```python
 # emit_pyi.py
@@ -144,10 +144,10 @@ def emit(module: ir.Module) -> str:
 Wire it in `cli.py` as a new subcommand. The IR is the contract —
 emitters don't know about libclang.
 
-`flox_codegen.manifest` is a slightly different shape: rather than
+`lrvx_codegen.manifest` is a slightly different shape: rather than
 emitting one text artifact, it produces JSON dicts (IR snapshot,
 binding manifest, examples index) that `scripts/sync_mcp_data.py`
-ships into the flox-mcp wheel.
+ships into the lrvx-mcp wheel.
 
 ## CI gate
 
@@ -155,12 +155,12 @@ ships into the flox-mcp wheel.
 every push and PR. Failure modes:
 
 - **Golden drift** — spec edited without regenerating one of
-  `golden/flox_capi.h`, `golden/flox_capi.codon`, or `golden/flox_capi.md`.
+  `golden/lrvx_capi.h`, `golden/lrvx_capi.codon`, or `golden/lrvx_capi.md`.
   Fix: run `regenerate.sh`, commit.
-- **Signature mismatch** — codegen output disagrees with live `flox_capi.h`
+- **Signature mismatch** — codegen output disagrees with live `lrvx_capi.h`
   on a function the spec covers (full coverage required). Fix: align spec
   or live header.
-- **ABI break** — a function was removed from the live `flox_capi.h` or
+- **ABI break** — a function was removed from the live `lrvx_capi.h` or
   its signature changed, and no commit on the PR carries `BREAKING:` in
   its message. Fix: include `BREAKING:` in a commit message and refresh
   `.api/c-api.snapshot` via `tools/codegen/scripts/regenerate.sh`.
@@ -171,14 +171,14 @@ every push and PR. Failure modes:
 `.api/c-api.snapshot` is a deterministic, human-readable serialization
 of the C API surface
 (`name|return_type|param_type_1|...`, sorted by name). CI re-derives a
-fresh snapshot from the current `flox_capi.h` and diffs against the
+fresh snapshot from the current `lrvx_capi.h` and diffs against the
 committed file:
 
 - **Added function** — non-breaking; logged and allowed.
 - **Removed or shape-changed function** — breaking; fails CI unless a
   commit on the PR carries `BREAKING:` at the start of its subject line.
 
-The intent is that an FFI consumer pinning a specific `flox_capi.h`
+The intent is that an FFI consumer pinning a specific `lrvx_capi.h`
 version can rely on every later release whose `BREAKING:` count hasn't
 ticked still being a drop-in replacement.
 

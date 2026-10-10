@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -22,12 +22,12 @@
  * integers in fixed point (the notional divides the rate's denominator), so no
  * rounding rule reaches the answers the double path returns.
  */
-#include "flox-venue/cross_margin.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/messages.h"
+#include "lrvx-venue/cross_margin.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/messages.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -38,9 +38,9 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {

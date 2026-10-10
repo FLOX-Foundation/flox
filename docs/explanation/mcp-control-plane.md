@@ -1,6 +1,6 @@
 # MCP control plane
 
-FLOX exposes a Model Context Protocol (MCP) server so AI agents can drive the engine the same way a human operator would. The point of this page is the design — why the surface looks the way it does. For the wiring guide, see [Control a running flox engine over MCP](../how-to/mcp-control-plane.md).
+lrvx exposes a Model Context Protocol (MCP) server so AI agents can drive the engine the same way a human operator would. The point of this page is the design — why the surface looks the way it does. For the wiring guide, see [Control a running lrvx engine over MCP](../how-to/mcp-control-plane.md).
 
 ## The shape of the surface
 
@@ -41,13 +41,13 @@ The audit log is what the design assumes you will actually read after the fact, 
 
 ## What this is not
 
-The control plane is not a chat UI. It is a server that speaks MCP. The client is whichever AI agent the operator runs — Claude Desktop, a custom agent, a script with the MCP SDK. FLOX does not ship an opinionated agent and does not want to.
+The control plane is not a chat UI. It is a server that speaks MCP. The client is whichever AI agent the operator runs — Claude Desktop, a custom agent, a script with the MCP SDK. lrvx does not ship an opinionated agent and does not want to.
 
 It is also not a magic risk layer. The kill switch, the position limits, the venue-availability hook — those are still in the engine. MCP gives the agent a way to ask the engine to do things; the engine still decides whether it will.
 
 ## See also
 
-- [Control a running flox engine over MCP](../how-to/mcp-control-plane.md) — wiring guide
+- [Control a running lrvx engine over MCP](../how-to/mcp-control-plane.md) — wiring guide
 - [MCP runtime inspection](../how-to/mcp-runtime-inspection.md) — read tools
 - [MCP live analytics](../how-to/mcp-live-analytics.md) — streaming reads
 - [Architecture overview](architecture.md) — where the control plane sits

@@ -21,7 +21,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
 NS = 1_000_000_000
 
@@ -30,7 +30,7 @@ class _Sim:
     """Tiny driver: seed trades with advancing timestamps."""
 
     def __init__(self) -> None:
-        self.sim = flox.SimulatedExecutor()
+        self.sim = lrvx.SimulatedExecutor()
         self._t = 0
 
     def trade(self, price: float, qty: float = 1.0, is_buy: bool = True) -> None:

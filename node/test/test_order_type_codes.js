@@ -2,8 +2,8 @@
 /**
  * node/test/test_order_type_codes.js — regression test:
  * `SimulatedExecutor.submitOrder` used to encode the order-type
- * string in the FLOX_SIGNAL_TYPE_* space (market=0, limit=1) and hand the
- * result to a C function that reads the flox::OrderType space (LIMIT=0,
+ * string in the LRVX_SIGNAL_TYPE_* space (market=0, limit=1) and hand the
+ * result to a C function that reads the lrvx::OrderType space (LIMIT=0,
  * MARKET=1). A "market" order was submitted as a LIMIT order and a "limit"
  * order was submitted as a MARKET order.
  *
@@ -18,7 +18,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -40,7 +40,7 @@ function throws(fn, needle, msg) {
 
 console.log('=== SimulatedExecutor.submitOrder order-type encoding ===');
 {
-  const exec = new flox.SimulatedExecutor();
+  const exec = new lrvx.SimulatedExecutor();
   const SYM = 1;
 
   // A market buy fills on the very first print, regardless of the price
@@ -63,22 +63,22 @@ console.log('=== SimulatedExecutor.submitOrder order-type encoding ===');
 
 console.log('=== submitOrder rejects an unrecognized order type ===');
 {
-  const exec = new flox.SimulatedExecutor();
+  const exec = new lrvx.SimulatedExecutor();
   throws(() => exec.submitOrder(1, 'buy', 100, 1.0, 'not_a_real_type', 1),
          'unknown order type', 'submitOrder throws instead of silently defaulting');
 }
 
 // orderToJs (Executor.submit → lower-case) and orderTypeName
 // (Strategy.onFill/onOrderUpdate → upper-case) decode the same
-// flox::OrderType space from two independently maintained call sites.
+// lrvx::OrderType space from two independently maintained call sites.
 // They must never disagree on a code both of them define. Each needs its
 // own BacktestRunner: a custom Executor bypasses the built-in simulated
 // fill loop, so onFill only fires when the default executor is left in
 // place.
 function makeMarketBuyRunner() {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   let fired = false;
   btr.setStrategy({
     symbols: [sym],
@@ -118,9 +118,9 @@ console.log('=== orderToJs (Executor.submit) decodes MARKET as "market" ===');
 
 console.log('=== orderTypeName (Strategy.onFill) decodes MARKET as "MARKET" ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   const fills = [];
   let fired = false;
   btr.setStrategy({

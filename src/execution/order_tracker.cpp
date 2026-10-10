@@ -1,8 +1,8 @@
-#include "flox/execution/order_tracker.h"
-#include "flox/log/log.h"
-#include "flox/util/performance/profile.h"
+#include "lrvx/execution/order_tracker.h"
+#include "lrvx/log/log.h"
+#include "lrvx/util/performance/profile.h"
 
-namespace flox
+namespace lrvx
 {
 
 OrderTracker::OrderTracker(size_t capacity) : _capacity(capacity)
@@ -43,13 +43,13 @@ void OrderTracker::pruneTerminalLocked()
 
 bool OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onSubmitted");
+  LRVX_PROFILE_SCOPE("OrderTracker::onSubmitted");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
   if (!_orders.contains(order.id) && !makeRoomLocked())
   {
-    FLOX_LOG_ERROR("[OrderTracker] Refusing orderId=" << order.id << ": tracker full at "
+    LRVX_LOG_ERROR("[OrderTracker] Refusing orderId=" << order.id << ": tracker full at "
                                                       << _capacity << " live orders.");
     return false;
   }
@@ -57,7 +57,7 @@ bool OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrde
   auto [it, inserted] = _orders.try_emplace(order.id);
   if (!inserted)
   {
-    FLOX_LOG_WARN("[OrderTracker] Duplicate orderId=" << order.id << ", ignoring insert.");
+    LRVX_LOG_WARN("[OrderTracker] Duplicate orderId=" << order.id << ", ignoring insert.");
     return false;
   }
 
@@ -74,21 +74,21 @@ bool OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrde
 
 bool OrderTracker::onFilled(OrderId id, Quantity fill)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onFilled");
+  LRVX_PROFILE_SCOPE("OrderTracker::onFilled");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
   auto it = _orders.find(id);
   if (it == _orders.end())
   {
-    FLOX_LOG_WARN("[OrderTracker] onFilled for unknown orderId=" << id);
+    LRVX_LOG_WARN("[OrderTracker] onFilled for unknown orderId=" << id);
     return false;
   }
 
   auto& state = it->second;
   if (state.isTerminal())
   {
-    FLOX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
+    LRVX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
     return false;
   }
 
@@ -108,14 +108,14 @@ bool OrderTracker::onFilled(OrderId id, Quantity fill)
 
 bool OrderTracker::onPendingCancel(OrderId id)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onPendingCancel");
+  LRVX_PROFILE_SCOPE("OrderTracker::onPendingCancel");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
   auto it = _orders.find(id);
   if (it == _orders.end())
   {
-    FLOX_LOG_WARN("[OrderTracker] onPendingCancel for unknown orderId=" << id);
+    LRVX_LOG_WARN("[OrderTracker] onPendingCancel for unknown orderId=" << id);
     return false;
   }
 
@@ -132,14 +132,14 @@ bool OrderTracker::onPendingCancel(OrderId id)
 
 bool OrderTracker::onCanceled(OrderId id)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onCanceled");
+  LRVX_PROFILE_SCOPE("OrderTracker::onCanceled");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
   auto it = _orders.find(id);
   if (it == _orders.end())
   {
-    FLOX_LOG_WARN("[OrderTracker] onCanceled for unknown orderId=" << id);
+    LRVX_LOG_WARN("[OrderTracker] onCanceled for unknown orderId=" << id);
     return false;
   }
 
@@ -156,14 +156,14 @@ bool OrderTracker::onCanceled(OrderId id)
 
 bool OrderTracker::onExpired(OrderId id)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onExpired");
+  LRVX_PROFILE_SCOPE("OrderTracker::onExpired");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
   auto it = _orders.find(id);
   if (it == _orders.end())
   {
-    FLOX_LOG_WARN("[OrderTracker] onExpired for unknown orderId=" << id);
+    LRVX_LOG_WARN("[OrderTracker] onExpired for unknown orderId=" << id);
     return false;
   }
 
@@ -180,14 +180,14 @@ bool OrderTracker::onExpired(OrderId id)
 
 bool OrderTracker::onRejected(OrderId id, std::string_view reason)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onRejected");
+  LRVX_PROFILE_SCOPE("OrderTracker::onRejected");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
   auto it = _orders.find(id);
   if (it == _orders.end())
   {
-    FLOX_LOG_WARN("[OrderTracker] onRejected for unknown orderId=" << id);
+    LRVX_LOG_WARN("[OrderTracker] onRejected for unknown orderId=" << id);
     return false;
   }
 
@@ -200,13 +200,13 @@ bool OrderTracker::onRejected(OrderId id, std::string_view reason)
   state.status = OrderEventStatus::REJECTED;
   state.lastUpdate = now();
 
-  FLOX_LOG_ERROR("[OrderTracker] Order " << id << " rejected: " << reason);
+  LRVX_LOG_ERROR("[OrderTracker] Order " << id << " rejected: " << reason);
   return true;
 }
 
 bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId)
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::onReplaced");
+  LRVX_PROFILE_SCOPE("OrderTracker::onReplaced");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
@@ -222,7 +222,7 @@ bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
   // makeRoomLocked() invalidates oldIt.
   if (!_orders.contains(newOrder.id) && !makeRoomLocked())
   {
-    FLOX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
+    LRVX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
                                                                    << _capacity << " live orders.");
     return false;
   }
@@ -230,7 +230,7 @@ bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
   auto [newIt, inserted] = _orders.try_emplace(newOrder.id);
   if (!inserted)
   {
-    FLOX_LOG_WARN("[OrderTracker] Duplicate orderId=" << newOrder.id << " on replace.");
+    LRVX_LOG_WARN("[OrderTracker] Duplicate orderId=" << newOrder.id << " on replace.");
     return false;
   }
 
@@ -247,7 +247,7 @@ bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
 
 std::optional<OrderState> OrderTracker::get(OrderId id) const
 {
-  FLOX_PROFILE_SCOPE("OrderTracker::get");
+  LRVX_PROFILE_SCOPE("OrderTracker::get");
 
   std::lock_guard<std::mutex> lock(_mutex);
 
@@ -309,4 +309,4 @@ void OrderTracker::pruneTerminal()
   pruneTerminalLocked();
 }
 
-}  // namespace flox
+}  // namespace lrvx

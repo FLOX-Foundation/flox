@@ -7,7 +7,7 @@ auto-refreshes the next slice from the hidden remainder as the
 visible portion fills. Other participants see a sequence of small
 fills and level refills, not one big resting order.
 
-flox ships `IcebergExecutor` for client-side slicing (each leg pays
+lrvx ships `IcebergExecutor` for client-side slicing (each leg pays
 a round-trip latency). The simulator also supports the venue's
 native iceberg primitive, with no per-refresh latency unless you
 configure one.
@@ -34,9 +34,9 @@ A worked example (Python):
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    exec = flox.SimulatedExecutor()
+    exec = lrvx.SimulatedExecutor()
     # 1ms refresh delay (most venues are instant; leave at 0 for those).
     exec.set_iceberg_refresh_latency(1_000_000)
     exec.submit_iceberg(order_id=1, side="buy", price=50000.0,
@@ -46,7 +46,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor } from "@flox-foundation/flox";
+    import { SimulatedExecutor } from "@lrvx/lrvx";
 
     const exec = new SimulatedExecutor();
     exec.setIcebergRefreshLatency(1_000_000);
@@ -64,7 +64,7 @@ A worked example (Python):
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor
+    from lrvx.backtest import SimulatedExecutor
 
     exec = SimulatedExecutor()
     exec.set_iceberg_refresh_latency(1_000_000)
@@ -74,9 +74,9 @@ A worked example (Python):
 === "C"
 
     ```c
-    FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
-    flox_simulated_executor_set_iceberg_refresh_latency(exec, 1000000);
-    flox_simulated_executor_submit_iceberg(exec, /*id=*/1, /*side=*/0,
+    LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
+    lrvx_simulated_executor_set_iceberg_refresh_latency(exec, 1000000);
+    lrvx_simulated_executor_submit_iceberg(exec, /*id=*/1, /*side=*/0,
                                            /*price=*/50000.0,
                                            /*total=*/20.0, /*visible=*/2.0,
                                            /*symbol=*/1);

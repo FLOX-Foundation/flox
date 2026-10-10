@@ -1,6 +1,6 @@
 # Common Types
 
-This header defines core types and enums used throughout the FLOX engine, including identifiers, numeric types (price, quantity), and domain-specific enums.
+This header defines core types and enums used throughout the lrvx engine, including identifiers, numeric types (price, quantity), and domain-specific enums.
 
 
 ## Enums

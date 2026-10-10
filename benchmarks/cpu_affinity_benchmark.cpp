@@ -1,8 +1,8 @@
 /*
- * Flox Engine - CPU Affinity Benchmarks
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine - CPU Affinity Benchmarks
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -18,8 +18,8 @@
  * dedicated hardware and can control the entire system's workload.
  */
 
-#include "flox/util/concurrency/thread_body.h"
-#include "flox/util/performance/cpu_affinity.h"
+#include "lrvx/util/concurrency/thread_body.h"
+#include "lrvx/util/performance/cpu_affinity.h"
 
 #include <benchmark/benchmark.h>
 #include <atomic>
@@ -28,7 +28,7 @@
 #include <thread>
 #include <vector>
 
-using namespace flox::performance;
+using namespace lrvx::performance;
 
 /**
  * @brief Benchmark basic CPU affinity operations
@@ -325,7 +325,7 @@ static void BM_MultiThreaded_WithAffinity(benchmark::State& state)
 
     for (int i = 0; i < numThreads; ++i)
     {
-      threads.push_back(flox::makeThread("bench.affinity.pinned", [&counter, i, numCores]()
+      threads.push_back(lrvx::makeThread("bench.affinity.pinned", [&counter, i, numCores]()
                                          {
                 auto threadCpuAffinity = createCpuAffinity();
                 threadCpuAffinity->pinToCore(i % numCores);
@@ -361,7 +361,7 @@ static void BM_MultiThreaded_WithoutAffinity(benchmark::State& state)
 
     for (int i = 0; i < numThreads; ++i)
     {
-      threads.push_back(flox::makeThread("bench.affinity.unpinned", [&counter]()
+      threads.push_back(lrvx::makeThread("bench.affinity.unpinned", [&counter]()
                                          {
                 for (int j = 0; j < 1000; ++j)
                 {

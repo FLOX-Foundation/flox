@@ -6,7 +6,7 @@ one no C++ binary compiles. Renko gap synthesis first (the case this module
 was written for), then the late-trade rule for time bars, which reaches this
 code through the same template and is otherwise untested from Python.
 
-`flox.aggregate_renko_bars` used to collapse a price gap spanning several
+`lrvx.aggregate_renko_bars` used to collapse a price gap spanning several
 brick sizes into a single zero-range bar, silently dropping every brick in
 between. This exercises the numpy batch-aggregation path (the one this
 module binds directly, independent of the C++ event-driven aggregator) with
@@ -36,7 +36,7 @@ for cand in ("build/python", "build-audit/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
 PRICE_SCALE = 1e8
 
@@ -48,7 +48,7 @@ class RenkoGapBricksTest(unittest.TestCase):
         qty = np.array([1.0, 1.0], dtype=np.float64)
         is_buy = np.array([1, 1], dtype=np.uint8)
 
-        bars = flox.aggregate_renko_bars(ts, px, qty, is_buy, brick_size=10.0)
+        bars = lrvx.aggregate_renko_bars(ts, px, qty, is_buy, brick_size=10.0)
 
         # doAggregate (python/aggregator_bindings.h) no longer flushes the
         # trailing, still-open bar for any policy -- see the batch bar-count
@@ -76,7 +76,7 @@ class RenkoGapBricksTest(unittest.TestCase):
         qty = np.array([1.0, 1.0], dtype=np.float64)
         is_buy = np.array([1, 1], dtype=np.uint8)
 
-        bars = flox.aggregate_renko_bars(ts, px, qty, is_buy, brick_size=10.0)
+        bars = lrvx.aggregate_renko_bars(ts, px, qty, is_buy, brick_size=10.0)
 
         # One closed brick (100 -> 110); no bar for the trailing open one
         # at 110 -> 114 (doAggregate never flushes it -- see the test above).
@@ -92,7 +92,7 @@ class TimeBarLateTradeTest(unittest.TestCase):
     boundaries happen to fall: the two trades that belong to the live bar
     carry the *same* timestamp (so they are in the same bucket whatever the
     alignment), the late one sits 5 whole intervals behind it and the closing
-    one 5 intervals ahead. Anything finer would be a coin flip -- flox_py maps
+    one 5 intervals ahead. Anything finer would be a coin flip -- lrvx maps
     unix nanoseconds onto an internal timebase whose origin is taken at import,
     so a bucket edge lands at an arbitrary offset inside the minute.
     """
@@ -108,7 +108,7 @@ class TimeBarLateTradeTest(unittest.TestCase):
         qty = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
         is_buy = np.array([1, 1, 1, 1], dtype=np.uint8)
 
-        bars = flox.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=self.INTERVAL_S)
+        bars = lrvx.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=self.INTERVAL_S)
 
         # One closed bar; the trailing one opened by the 900s trade is never
         # flushed, as for every other policy on this path.
@@ -130,7 +130,7 @@ class TimeBarLateTradeTest(unittest.TestCase):
         qty = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
         is_buy = np.array([1, 1, 1, 1], dtype=np.uint8)
 
-        bars = flox.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=self.INTERVAL_S)
+        bars = lrvx.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=self.INTERVAL_S)
 
         self.assertEqual(len(bars), 1)
         self.assertAlmostEqual(bars["close_raw"][0] / PRICE_SCALE, 103.0)

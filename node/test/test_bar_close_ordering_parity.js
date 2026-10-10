@@ -2,7 +2,7 @@
 // See python/tests/test_bar_close_ordering_parity.py — all four
 // bindings must produce the same dispatch sequence on the same input.
 
-const flox = require('..');
+const lrvx = require('..');
 
 function check(label, ok) {
   if (!ok) { console.error('FAIL: ' + label); process.exit(1); }
@@ -18,7 +18,7 @@ const H1_NS = H1 * NS;
 const M5_NS = M5 * NS;
 
 function drive(secondsInOrder) {
-  const r = new flox.BarDispatchRecorder();
+  const r = new lrvx.BarDispatchRecorder();
   for (const s of secondsInOrder) r.addTimeIntervalSeconds(s);
   r.onTrade(1, 100.0, 0.1, 0);
   r.onTrade(1, 101.0, 0.1, H4_NS);

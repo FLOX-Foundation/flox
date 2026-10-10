@@ -9,7 +9,7 @@ CI-runnable companion to
 No network — both fixtures are built in memory.
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_binance_book_archive.py
 """
 from __future__ import annotations
@@ -20,8 +20,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-import flox_py
-from flox_py.archives import binance
+import lrvx
+from lrvx.archives import binance
 
 
 _T1_ROWS = [
@@ -52,13 +52,13 @@ def _build_zip(dest: Path, rows) -> Path:
 
 
 def main() -> None:
-    workdir = Path(tempfile.mkdtemp(prefix="flox-binance-book-"))
+    workdir = Path(tempfile.mkdtemp(prefix="lrvx-binance-book-"))
     try:
         # bookTicker: 3 rows → 1 snapshot + 1 delta (one row unchanged).
         bt_zip = workdir / "BTCUSDT-bookTicker-2024-01-15.zip"
         _build_zip(bt_zip, _T1_ROWS)
         bt_tape = workdir / "tape-bt"
-        bt_stats = binance.t1_to_floxlog(
+        bt_stats = binance.t1_to_lrvx(
             bt_zip, bt_tape, symbol_id=1, symbol_name="BTCUSDT",
             market="um-futures",
         )
@@ -70,7 +70,7 @@ def main() -> None:
         d20_zip = workdir / "BTCUSDT-bookDepth-2024-01-15.zip"
         _build_zip(d20_zip, _D20_ROWS)
         d20_tape = workdir / "tape-d20"
-        d20_stats = binance.depth20_to_floxlog(
+        d20_stats = binance.depth20_to_lrvx(
             d20_zip, d20_tape, levels=20,
             symbol_id=1, symbol_name="BTCUSDT",
         )
@@ -78,7 +78,7 @@ def main() -> None:
               f"deltas={d20_stats.deltas_written}")
 
         for label, tape in (("t1", bt_tape), ("depth20", d20_tape)):
-            r = flox_py.DataReader(str(tape))
+            r = lrvx.DataReader(str(tape))
             headers, _ = r.read_book_updates()
             print(f"  {label}: {int(headers.size)} book events")
     finally:

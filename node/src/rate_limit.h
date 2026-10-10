@@ -1,6 +1,6 @@
 // node/src/rate_limit.h — Client-side RateLimitPolicy wrap.
 //
-// Thin NAPI wrap over the C ABI flox_rate_limit_policy_* surface.
+// Thin NAPI wrap over the C ABI lrvx_rate_limit_policy_* surface.
 // Build a policy with buckets + ban rule, then attach to a
 // SimulatedExecutor via executor.setRateLimitPolicy(policy).
 
@@ -10,9 +10,9 @@
 
 #include <vector>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
@@ -34,17 +34,17 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
 
   RateLimitPolicyWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<RateLimitPolicyWrap>(info),
-        _h(flox_rate_limit_policy_create())
+        _h(lrvx_rate_limit_policy_create())
   {
   }
   ~RateLimitPolicyWrap()
   {
     if (_h)
     {
-      flox_rate_limit_policy_destroy(_h);
+      lrvx_rate_limit_policy_destroy(_h);
     }
   }
-  FloxRateLimitPolicyHandle handle() const { return _h; }
+  LrvxRateLimitPolicyHandle handle() const { return _h; }
 
  private:
   void AddBucket(const Napi::CallbackInfo& info)
@@ -55,7 +55,7 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
     uint32_t sw = info.Length() > 3 ? info[3].As<Napi::Number>().Uint32Value() : 1;
     uint32_t cw = info.Length() > 4 ? info[4].As<Napi::Number>().Uint32Value() : 1;
     uint32_t rw = info.Length() > 5 ? info[5].As<Napi::Number>().Uint32Value() : 2;
-    flox_rate_limit_policy_add_bucket(_h, name.c_str(), window_ns, capacity, sw, cw, rw);
+    lrvx_rate_limit_policy_add_bucket(_h, name.c_str(), window_ns, capacity, sw, cw, rw);
   }
   void AddFamilyBucket(const Napi::CallbackInfo& info)
   {
@@ -81,12 +81,12 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
     int64_t window_ns = info[2].As<Napi::Number>().Int64Value();
     uint32_t capacity = info[3].As<Napi::Number>().Uint32Value();
     uint32_t qw = info.Length() > 4 ? info[4].As<Napi::Number>().Uint32Value() : 1;
-    flox_rate_limit_policy_add_bucket_family(_h, name.c_str(), window_ns, capacity,
+    lrvx_rate_limit_policy_add_bucket_family(_h, name.c_str(), window_ns, capacity,
                                              1, 1, 2, family, qw);
   }
   void SetBan(const Napi::CallbackInfo& info)
   {
-    flox_rate_limit_policy_set_ban(_h, info[0].As<Napi::Number>().Uint32Value(),
+    lrvx_rate_limit_policy_set_ban(_h, info[0].As<Napi::Number>().Uint32Value(),
                                    info[1].As<Napi::Number>().Int64Value());
   }
   void LoadProfile(const Napi::CallbackInfo& info)
@@ -95,7 +95,7 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
     // A typo used to be a silent no-op, leaving default rate limit policy
     // values in place -- a zero-fee or unthrottled backtest that
     // looks perfectly healthy.
-    if (flox_rate_limit_policy_load_profile(_h, name.c_str()) == 0)
+    if (lrvx_rate_limit_policy_load_profile(_h, name.c_str()) == 0)
     {
       Napi::Error::New(info.Env(), "unknown rate limit policy profile: " + name +
                                        ". known: binance_um_futures, bybit_linear, okx_swap, deribit")
@@ -105,19 +105,19 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
   Napi::Value BanUntilNs(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(flox_rate_limit_policy_ban_until_ns(_h)));
+                             static_cast<double>(lrvx_rate_limit_policy_ban_until_ns(_h)));
   }
   Napi::Value ConsecutiveRejects(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_rate_limit_policy_consecutive_rejects(_h));
+                             lrvx_rate_limit_policy_consecutive_rejects(_h));
   }
   Napi::Value BucketStates(const Napi::CallbackInfo& info)
   {
     int64_t now_ns = info[0].As<Napi::Number>().Int64Value();
-    uint32_t count = flox_rate_limit_policy_bucket_state(_h, now_ns, nullptr, 0);
+    uint32_t count = lrvx_rate_limit_policy_bucket_state(_h, now_ns, nullptr, 0);
     std::vector<int64_t> buf(count * 4, 0);
-    flox_rate_limit_policy_bucket_state(_h, now_ns, buf.data(), count);
+    lrvx_rate_limit_policy_bucket_state(_h, now_ns, buf.data(), count);
     Napi::Array out = Napi::Array::New(info.Env(), count);
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -131,7 +131,7 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
     return out;
   }
 
-  FloxRateLimitPolicyHandle _h;
+  LrvxRateLimitPolicyHandle _h;
 };
 
 inline void registerRateLimitPolicy(Napi::Env env, Napi::Object exports)
@@ -139,4 +139,4 @@ inline void registerRateLimitPolicy(Napi::Env env, Napi::Object exports)
   exports.Set("RateLimitPolicy", RateLimitPolicyWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

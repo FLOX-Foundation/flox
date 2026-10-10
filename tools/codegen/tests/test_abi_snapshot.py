@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flox_codegen import abi_snapshot, check_signatures
+from lrvx_codegen import abi_snapshot, check_signatures
 
 
 def _sig(name, ret, *params):
@@ -14,8 +14,8 @@ def _sig(name, ret, *params):
 
 def test_render_parse_round_trip():
     sigs = {
-        "flox_a": _sig("flox_a", "void", "int"),
-        "flox_b": _sig("flox_b", "double", "const double *", "size_t"),
+        "lrvx_a": _sig("lrvx_a", "void", "int"),
+        "lrvx_b": _sig("lrvx_b", "double", "const double *", "size_t"),
     }
     text = abi_snapshot.render(sigs)
     parsed = abi_snapshot.parse(text)
@@ -24,19 +24,19 @@ def test_render_parse_round_trip():
 
 def test_render_is_sorted():
     sigs = {
-        "flox_z": _sig("flox_z", "void"),
-        "flox_a": _sig("flox_a", "void"),
-        "flox_m": _sig("flox_m", "void"),
+        "lrvx_z": _sig("lrvx_z", "void"),
+        "lrvx_a": _sig("lrvx_a", "void"),
+        "lrvx_m": _sig("lrvx_m", "void"),
     }
     text = abi_snapshot.render(sigs)
     body = [l for l in text.splitlines() if l and not l.startswith("#")]
-    assert body == ["flox_a|void", "flox_m|void", "flox_z|void"]
+    assert body == ["lrvx_a|void", "lrvx_m|void", "lrvx_z|void"]
 
 
 def test_render_is_deterministic():
     sigs = {
-        "flox_b": _sig("flox_b", "void"),
-        "flox_a": _sig("flox_a", "void"),
+        "lrvx_b": _sig("lrvx_b", "void"),
+        "lrvx_a": _sig("lrvx_a", "void"),
     }
     a = abi_snapshot.render(sigs)
     b = abi_snapshot.render(sigs)
@@ -91,14 +91,14 @@ def test_parse_skips_blank_and_comment_lines():
 # header comment
 # another
 
-flox_a|void
+lrvx_a|void
 
 # trailing
-flox_b|int|double
+lrvx_b|int|double
 """
     parsed = abi_snapshot.parse(text)
-    assert set(parsed) == {"flox_a", "flox_b"}
-    assert parsed["flox_b"].param_types == ("double",)
+    assert set(parsed) == {"lrvx_a", "lrvx_b"}
+    assert parsed["lrvx_b"].param_types == ("double",)
 
 
 def test_parse_rejects_malformed():
@@ -110,10 +110,10 @@ def test_parse_rejects_malformed():
 def test_from_header_returns_funcsigs(tmp_path):
     h = tmp_path / "sample.h"
     h.write_text(
-        "#include <stdint.h>\nint32_t flox_x(int32_t y);\nvoid flox_y(double *out);\n"
+        "#include <stdint.h>\nint32_t lrvx_x(int32_t y);\nvoid lrvx_y(double *out);\n"
     )
     sigs = abi_snapshot.from_header(h)
-    assert set(sigs) == {"flox_x", "flox_y"}
+    assert set(sigs) == {"lrvx_x", "lrvx_y"}
     # We preserve typedef names (so `int32_t` stays `int32_t`) instead of
     # canonicalizing to platform-specific underlying types.
-    assert sigs["flox_x"].return_type == "int32_t"
+    assert sigs["lrvx_x"].return_type == "int32_t"

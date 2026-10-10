@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/ledger.h"
-#include "flox-venue/market_data.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/symbol_router.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/market_data.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/symbol_router.h"
 
-#include "flox/clearing/fee_schedule.h"
+#include "lrvx/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 #include <array>
@@ -24,8 +24,8 @@
 #include <memory>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -113,7 +113,7 @@ void test_soak()
                                  {
                                    metrics.observe(e);
                                    md->onEvent(e, engines[s] != nullptr ? engines[s]->engineTimeNs() : 0); });
-    flox::FeeSchedule fs;
+    lrvx::FeeSchedule fs;
     fs.addTier(0.0, -1.0, 2.0);  // maker rebate / taker fee -> venue nets fees
     eng.setFeeSchedule(fs);
     eng.setLedger(&led, VENUE);

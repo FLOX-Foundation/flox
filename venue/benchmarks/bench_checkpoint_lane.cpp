@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -17,9 +17,9 @@
  *
  * Usage: bench_venue_checkpoint_lane [shards] [checkpoints-per-shard]
  */
-#include "flox-venue/checkpoint_lane.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
+#include "lrvx-venue/checkpoint_lane.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
 
 #include <atomic>
 #include <chrono>
@@ -32,8 +32,8 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -92,7 +92,7 @@ struct Run
 Run measure(int shards, int perShard, bool useLane, int ordersPerSegment)
 {
   const std::string dir =
-      (std::filesystem::temp_directory_path() / "flox_bench_ckpt_lane").string();
+      (std::filesystem::temp_directory_path() / "lrvx_bench_ckpt_lane").string();
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
   std::filesystem::create_directories(dir, ec);

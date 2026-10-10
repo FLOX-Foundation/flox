@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -20,7 +20,7 @@
  * repeated marker a build failure, which is louder but cannot be shown to
  * fail. A test can be run red.
  */
-#include "flox-venue/engine/state_hash_tags.h"
+#include "lrvx-venue/engine/state_hash_tags.h"
 
 #include <gtest/gtest.h>
 
@@ -32,7 +32,7 @@
 namespace
 {
 
-namespace tags = flox::venue::hash_tags;
+namespace tags = lrvx::venue::hash_tags;
 
 // The markers by name, so a failure says which two sections collided rather
 // than printing a number twice. Kept in step with kAll by the size check

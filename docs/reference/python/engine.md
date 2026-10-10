@@ -5,9 +5,9 @@ The core backtest engine. Load OHLCV data once, build a signal set, then run. Ba
 ## Engine
 
 ```python
-import flox_py as flox
+import lrvx
 
-engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
+engine = lrvx.Engine(initial_capital=100_000, fee_rate=0.0001)
 ```
 
 | Parameter | Type | Default | Description |
@@ -28,7 +28,7 @@ engine.load_csv("./data/btcusdt_1h.csv")            # symbol -> "BTCUSDT"
 engine.load_csv("./data/eth.csv", symbol="ETHUSDT")
 ```
 
-Raises `FloxError(code="E_IO_001")` if the file cannot be opened.
+Raises `LrvxError(code="E_IO_001")` if the file cannot be opened.
 
 #### `load_ohlcv(data, symbol='')`
 
@@ -54,7 +54,7 @@ engine.load_ohlcv({
 | `close` | `float64[]` | Close prices |
 | `volume` | `float64[]` | Volume |
 
-A missing key raises `FloxError(code="E_KEY_001")`.
+A missing key raises `LrvxError(code="E_KEY_001")`.
 
 #### `load_df(df, symbol='')`
 
@@ -79,7 +79,7 @@ engine.resample("BTC_1M", "BTC_1H", "1h")
 | `target` | `str` | Name of the resampled symbol |
 | `interval` | `str` | Bucket size — number plus `s`, `m`, `h` or `d` |
 
-An unknown unit raises `FloxError(code="E_TIME_001")`.
+An unknown unit raises `LrvxError(code="E_TIME_001")`.
 
 ### Running
 
@@ -92,7 +92,7 @@ stats = engine.run(signals)
 print(stats.net_pnl, stats["sharpe_ratio"])
 ```
 
-Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
+Referencing an unregistered symbol name raises `LrvxError(code="E_SYM_001")`.
 
 ### Accessors
 
@@ -107,7 +107,7 @@ Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
 | `close(symbol='')` | `float64[]` | Close prices |
 | `volume(symbol='')` | `float64[]` | Volume |
 
-An empty `symbol` selects the first symbol loaded. Calling any accessor before loading data raises `FloxError(code="E_RUN_002")`.
+An empty `symbol` selects the first symbol loaded. Calling any accessor before loading data raises `LrvxError(code="E_RUN_002")`.
 
 ---
 
@@ -116,7 +116,7 @@ An empty `symbol` selects the first symbol loaded. Calling any accessor before l
 Accumulates the orders a backtest should submit. Timestamps are normalized the same way as bar timestamps; each signal fires on the first bar whose timestamp is at or past it.
 
 ```python
-signals = flox.SignalBuilder()
+signals = lrvx.SignalBuilder()
 signals.buy(ts_ns, 1.0)
 signals.limit_sell(ts_ns, 51_000.0, 1.0, "BTCUSDT")
 len(signals)
@@ -179,14 +179,14 @@ repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe_ratio=... dd=..
 
 ```python
 import numpy as np
-import flox_py as flox
+import lrvx
 
 n = 500
 rng = np.random.default_rng(42)
 ts = 1_700_000_000_000_000_000 + np.arange(n, dtype=np.int64) * 3_600_000_000_000
 close = 30_000.0 + np.cumsum(rng.normal(0.0, 25.0, n))
 
-engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
+engine = lrvx.Engine(initial_capital=100_000, fee_rate=0.0001)
 engine.load_ohlcv({
     "ts": ts,
     "open": close,
@@ -197,10 +197,10 @@ engine.load_ohlcv({
 }, symbol="BTCUSDT")
 
 closes = engine.close("BTCUSDT")
-fast = flox.ema(closes, 10)
-slow = flox.ema(closes, 30)
+fast = lrvx.ema(closes, 10)
+slow = lrvx.ema(closes, 30)
 
-signals = flox.SignalBuilder()
+signals = lrvx.SignalBuilder()
 for i in range(1, n):
     if fast[i] > slow[i] and fast[i - 1] <= slow[i - 1]:
         signals.buy(int(ts[i]), 1.0, "BTCUSDT")

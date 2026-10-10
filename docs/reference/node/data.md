@@ -7,7 +7,7 @@
 Writes trades to binary log segments.
 
 ```javascript
-const writer = new flox.DataWriter(outputDir, maxSegmentMb?, exchangeId?);
+const writer = new lrvx.DataWriter(outputDir, maxSegmentMb?, exchangeId?);
 writer.writeTrade(exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side);
 writer.flush();
 writer.close();
@@ -32,7 +32,7 @@ writer.close();
 Reads binary log segments.
 
 ```javascript
-const reader = new flox.DataReader(dataDir, fromNs?, toNs?);
+const reader = new lrvx.DataReader(dataDir, fromNs?, toNs?);
 const trades = reader.readTrades();
 const bbos = reader.readBBO();
 const events = reader.readBookUpdates();
@@ -81,12 +81,12 @@ rounds values past 2^53 (e.g. `1765615835519000000` becomes
 
 ## BinaryLogRecorderHook
 
-Built-in `.floxlog` recorder. Plug into a `Runner` via
+Built-in `.lrvx` recorder. Plug into a `Runner` via
 `runner.setMarketDataRecorder(hook)` and the engine drives `start` /
 `stop` for you.
 
 ```javascript
-const hook = new flox.BinaryLogRecorderHook(
+const hook = new lrvx.BinaryLogRecorderHook(
   outputDir, maxSegmentMb /*=256*/, exchangeId /*=0*/, compression /*"none"|"lz4"*/,
   exchangeName /*=""*/, instrumentType /*=""*/);
 hook.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
@@ -116,7 +116,7 @@ merge. `instrumentType` is stamped as `metadata.instrument_type` (`"spot"`,
 Splits a dataset into partitions for parallel backtesting.
 
 ```javascript
-const partitioner = new flox.Partitioner(dataDir);
+const partitioner = new lrvx.Partitioner(dataDir);
 const partitions = partitioner.byTime(numPartitions, warmupNs);
 ```
 

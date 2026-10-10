@@ -1,8 +1,8 @@
 # Connectors
 
-FLOX ships native exchange connectors as part of the same repo. They live under [`connectors/`](https://github.com/FLOX-Foundation/flox/tree/main/connectors) and build into a single `flox::connectors` static library that links against `flox::flox`.
+lrvx ships native exchange connectors as part of the same repo. They live under [`connectors/`](https://github.com/lrvx/lrvx/tree/main/connectors) and build into a single `lrvx::connectors` static library that links against `lrvx::lrvx`.
 
-The module is gated by `FLOX_BUILD_CONNECTORS` in CMake. It is **off** by default — backtest-only and research builds skip the dependency cost (OpenSSL, libcurl, zlib, plus ixwebsocket and simdjson via FetchContent at configure time).
+The module is gated by `LRVX_BUILD_CONNECTORS` in CMake. It is **off** by default — backtest-only and research builds skip the dependency cost (OpenSSL, libcurl, zlib, plus ixwebsocket and simdjson via FetchContent at configure time).
 
 ## Adapters in tree
 
@@ -15,7 +15,7 @@ The module is gated by `FLOX_BUILD_CONNECTORS` in CMake. It is **off** by defaul
 
 (No position query/stream is implemented in any connector yet — the earlier "Positions" column was aspirational.)
 
-Each adapter sits under `connectors/src/<venue>/` with public headers under `connectors/include/flox-connectors/<venue>/`. The header layout uses the `flox-connectors/` prefix so consumers' include sites are stable across the repo move.
+Each adapter sits under `connectors/src/<venue>/` with public headers under `connectors/include/lrvx-connectors/<venue>/`. The header layout uses the `lrvx-connectors/` prefix so consumers' include sites are stable across the repo move.
 
 ### Order-type and flag coverage
 
@@ -92,41 +92,41 @@ delivers a single frame ages out like one that stopped.
 ## Build
 
 ```bash
-cmake -B build -DFLOX_BUILD_CONNECTORS=ON
-cmake --build build --target flox-connectors
+cmake -B build -DLRVX_BUILD_CONNECTORS=ON
+cmake --build build --target lrvx-connectors
 ```
 
-The result is `build/connectors/libflox-connectors.a`. To link against another target:
+The result is `build/connectors/liblrvx-connectors.a`. To link against another target:
 
 ```cmake
-target_link_libraries(my_target PRIVATE flox::connectors)
+target_link_libraries(my_target PRIVATE lrvx::connectors)
 ```
 
-The Polymarket executor is a Rust FFI library. If `cargo` isn't on the path, the executor source is excluded from the build and a CMake warning surfaces instead of a configure error. Pass `-DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF` to silence the warning when Rust isn't desired.
+The Polymarket executor is a Rust FFI library. If `cargo` isn't on the path, the executor source is excluded from the build and a CMake warning surfaces instead of a configure error. Pass `-DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF` to silence the warning when Rust isn't desired.
 
 ## Why monorepo
 
-The connector code used to live in a separate `flox-connectors` repo, pulled in as a git submodule. Three reasons it moved:
+The connector code used to live in a separate `lrvx-connectors` repo, pulled in as a git submodule. Three reasons it moved:
 
 - Cross-repo changes (a new event type in core needing a new field on the connector side) cost two PRs with submodule pinning. For a one-contributor project, the overhead is pure friction.
-- AI agents reading FLOX without recursing into submodules saw zero connector code, which made the polyglot positioning weaker than it actually was.
+- AI agents reading lrvx without recursing into submodules saw zero connector code, which made the polyglot positioning weaker than it actually was.
 - Single dependency policy. `connectors/CMakeLists.txt` now uses the same `FetchContent` mechanism the parent uses for `lz4` and `tracy`, instead of bundling its own external/ submodule tree.
 
-The trade-off: every push that touches connectors runs the full flox CI. The `connectors-build` job stays minimal (no tests, no platform matrix beyond ubuntu) so the cost is bounded.
+The trade-off: every push that touches connectors runs the full lrvx CI. The `connectors-build` job stays minimal (no tests, no platform matrix beyond ubuntu) so the cost is bounded.
 
 ## Tests
 
 `connectors/tests/` holds two kinds of test:
 
-- `unit_test_*.cpp` are offline — no sockets, no exchange credentials. Order-serialization tests fake the transport (`ITransport`) or the client-provided injection point and assert on the exact request body a connector builds; protocol tests feed raw WebSocket frames straight into a connector's message handler. They build and register with `ctest` whenever `FLOX_BUILD_CONNECTORS=ON` and `FLOX_BUILD_TESTS=ON` — no extra flag — and run in the default CI matrix.
-- `integration_test_*.cpp` connect to real exchange WebSocket endpoints. Building them is gated by both `FLOX_BUILD_TESTS=ON` and `FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON`; running them via `ctest` requires the further `FLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON`. The default flox CI build skips them entirely.
+- `unit_test_*.cpp` are offline — no sockets, no exchange credentials. Order-serialization tests fake the transport (`ITransport`) or the client-provided injection point and assert on the exact request body a connector builds; protocol tests feed raw WebSocket frames straight into a connector's message handler. They build and register with `ctest` whenever `LRVX_BUILD_CONNECTORS=ON` and `LRVX_BUILD_TESTS=ON` — no extra flag — and run in the default CI matrix.
+- `integration_test_*.cpp` connect to real exchange WebSocket endpoints. Building them is gated by both `LRVX_BUILD_TESTS=ON` and `LRVX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON`; running them via `ctest` requires the further `LRVX_RUN_CONNECTOR_INTEGRATION_TESTS=ON`. The default lrvx CI build skips them entirely.
 
 To build the integration tests locally:
 
 ```bash
-cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
-                -DFLOX_BUILD_TESTS=ON \
-                -DFLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON
+cmake -B build -DLRVX_BUILD_CONNECTORS=ON \
+                -DLRVX_BUILD_TESTS=ON \
+                -DLRVX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON
 cmake --build build
 ```
 
@@ -139,12 +139,12 @@ pip install git+https://github.com/hyperliquid-dex/hyperliquid-python-sdk.git
 python3 connectors/utils/hl_signerd.py
 ```
 
-Out-of-process signing keeps the secret out of the trading binary's address space and avoids shipping a Rust crypto stack into every flox build.
+Out-of-process signing keeps the secret out of the trading binary's address space and avoids shipping a Rust crypto stack into every lrvx build.
 
 **Transport rule: the key travels over a Unix socket private to its owner, or it does not travel.** The signing request contains the raw private key in its body, so the transport *is* the access control:
 
 - The client speaks `AF_UNIX` only. There is no TCP fallback — loopback authenticates neither end, and any local process that binds the port first harvests the key.
-- The socket path is `FLOX_HL_SIGNER_SOCKET`, defaulting to `/dev/shm/hl_sign.sock`. Set it on any host without `/dev/shm` (macOS, for one) rather than expecting a fallback.
+- The socket path is `LRVX_HL_SIGNER_SOCKET`, defaulting to `/dev/shm/hl_sign.sock`. Set it on any host without `/dev/shm` (macOS, for one) rather than expecting a fallback.
 - Before a byte is written the client checks the path itself: it must be a socket (checked with `lstat`, so a symlink is refused rather than followed), owned by the calling user, with no group or other permission bits. The daemon creates it `0600` under a narrowed umask so it is private from the moment it exists, not from the moment a `chmod` lands.
 - The reply's length header comes from the peer, so it is a request for an allocation rather than a fact. A signature is a few hundred bytes; anything above 4 KiB is refused before memory is reserved.
 
@@ -154,8 +154,8 @@ With no daemon reachable, signing fails and returns no signature. It never falls
 
 The expected pattern for a new connector:
 
-1. Create `connectors/src/<venue>/` and `connectors/include/flox-connectors/<venue>/`.
-2. Implement the venue-specific subclasses of the connector / executor abstractions in `flox::IExchangeConnector` (`flox/connector/abstract_exchange_connector.h`) and `flox::IOrderExecutor` (`flox/execution/abstract_executor.h`) — both live directly in namespace `flox`.
+1. Create `connectors/src/<venue>/` and `connectors/include/lrvx-connectors/<venue>/`.
+2. Implement the venue-specific subclasses of the connector / executor abstractions in `lrvx::IExchangeConnector` (`lrvx/connector/abstract_exchange_connector.h`) and `lrvx::IOrderExecutor` (`lrvx/execution/abstract_executor.h`) — both live directly in namespace `lrvx`.
 3. The CMake glob in `connectors/CMakeLists.txt` picks up new `.cpp` files automatically — no CMakeLists edit needed.
 4. Add an integration test under `connectors/tests/integration_test_<venue>.cpp` (build-only by default).
 

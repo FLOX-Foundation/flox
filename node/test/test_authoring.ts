@@ -8,7 +8,7 @@
 declare const console: { log(...args: unknown[]): void; error(...args: unknown[]): void };
 declare const process: { exit(code: number): never };
 
-import * as flox from "..";
+import * as lrvx from "..";
 import { compile, onStart, onStop, onTrade, strategy, StrategyBase } from "../authoring/dist";
 
 let passed = 0;
@@ -24,13 +24,13 @@ function check(condition: unknown, msg: string): void {
   }
 }
 
-const registry = new flox.SymbolRegistry();
+const registry = new lrvx.SymbolRegistry();
 const symbolId: number = Number(registry.addSymbol("test", "BTCUSDT", 0.01));
 
 @strategy({ symbols: [symbolId] })
 class SmaCross extends StrategyBase {
-  private readonly fast = new flox.SMA(3);
-  private readonly slow = new flox.SMA(8);
+  private readonly fast = new lrvx.SMA(3);
+  private readonly slow = new lrvx.SMA(8);
   public starts = 0;
   public stops = 0;
   public seenTrades = 0;
@@ -46,7 +46,7 @@ class SmaCross extends StrategyBase {
   }
 
   @onTrade
-  onEveryTrade(ctx: flox.SymbolContext, t: flox.TradeData, emit: flox.EmitMethods): void {
+  onEveryTrade(ctx: lrvx.SymbolContext, t: lrvx.TradeData, emit: lrvx.EmitMethods): void {
     this.seenTrades += 1;
     const f = this.fast.update(t.price);
     const s = this.slow.update(t.price);
@@ -66,8 +66,8 @@ check(typeof strat.onStart === "function", "compile() wires @onStart");
 check(typeof strat.onStop === "function", "compile() wires @onStop");
 check(strat.onBar === undefined, "compile() omits handlers that were not decorated");
 
-const signals: flox.Signal[] = [];
-const runner = new flox.Runner(registry, (sig) => signals.push(sig), false);
+const signals: lrvx.Signal[] = [];
+const runner = new lrvx.Runner(registry, (sig) => signals.push(sig), false);
 runner.addStrategy(strat);
 runner.start();
 

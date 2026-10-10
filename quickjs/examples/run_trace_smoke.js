@@ -1,6 +1,6 @@
-// Round-trip smoke test for the .floxrun bindings under QuickJS.
+// Round-trip smoke test for the .lrvxrun bindings under QuickJS.
 
-var path = '/tmp/flox_run_qjs_smoke_' + Date.now();
+var path = '/tmp/lrvx_run_qjs_smoke_' + Date.now();
 
 function check(label, ok) {
   if (!ok) {
@@ -10,14 +10,14 @@ function check(label, ok) {
   console.log('ok: ' + label);
 }
 
-var rec = new flox.TraceRecorder({
+var rec = new lrvx.TraceRecorder({
   path: path,
   strategyId: 'qjs-smoke',
   strategyHash: 'sha256:test',
   runStartedNs: 1700000000000000000n,
 });
 rec.addTapeRef({
-  path: 'BTCUSDT.floxlog',
+  path: 'BTCUSDT.lrvx',
   contentHash: 'sha256:abc',
   firstEventNs: 1700000000000000000n,
   lastEventNs: 1700000000500000000n,
@@ -61,7 +61,7 @@ rec.writeFill({
 rec.setRunEndedNs(1700000000400000000n);
 rec.close();
 
-var reader = new flox.TraceReader(path);
+var reader = new lrvx.TraceReader(path);
 check('strategy id', reader.strategyId() === 'qjs-smoke');
 check('run ended', reader.runEndedNs() === 1700000000400000000n);
 

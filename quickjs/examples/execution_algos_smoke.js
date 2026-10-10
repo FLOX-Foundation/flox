@@ -1,4 +1,4 @@
-// Smoke test for execution algos exposed on the flox global.
+// Smoke test for execution algos exposed on the lrvx global.
 
 let passed = 0;
 let failed = 0;
@@ -9,7 +9,7 @@ function check(cond, msg) {
 
 // TWAP
 {
-    var algo = new flox.TWAPExecutor({
+    var algo = new lrvx.TWAPExecutor({
         targetQty: 100, side: 'buy', symbol: 1,
         durationNs: 10000, sliceCount: 5, startTimeNs: 0,
     });
@@ -24,7 +24,7 @@ function check(cond, msg) {
 
 // VWAP
 {
-    var algo = new flox.VWAPExecutor({
+    var algo = new lrvx.VWAPExecutor({
         targetQty: 100, side: 'buy', symbol: 1,
         volumeCurve: [[1000, 200], [2000, 300], [3000, 500]],
     });
@@ -37,7 +37,7 @@ function check(cond, msg) {
 
 // Iceberg
 {
-    var algo = new flox.IcebergExecutor({
+    var algo = new lrvx.IcebergExecutor({
         targetQty: 50, side: 'buy', symbol: 1,
         type: 'limit', limitPrice: 100, visibleQty: 10,
     });
@@ -51,7 +51,7 @@ function check(cond, msg) {
 
 // POV
 {
-    var algo = new flox.POVExecutor({
+    var algo = new lrvx.POVExecutor({
         targetQty: 100, side: 'buy', symbol: 1,
         participationRate: 0.10, minSliceQty: 1,
     });

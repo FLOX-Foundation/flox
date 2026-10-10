@@ -10,7 +10,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -27,10 +27,10 @@ function check(condition, msg) {
 // Helper — build a sync runner with a one-shot strategy that fires a
 // market buy on the first onTrade.
 function makeRunnerWithStrategy() {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
   const onSignalCalls = [];
-  const runner = new flox.Runner(reg, (sig) => onSignalCalls.push(sig), false);
+  const runner = new lrvx.Runner(reg, (sig) => onSignalCalls.push(sig), false);
 
   let fired = false;
   runner.addStrategy({
@@ -135,9 +135,9 @@ function testExecutor() {
 
 function testMarketDataRecorder() {
   console.log('testMarketDataRecorder');
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   runner.addStrategy({ symbols: [sym] });
 
   const trades = [];
@@ -169,9 +169,9 @@ function testMarketDataRecorder() {
 
 function testExecutionListenerBacktest() {
   console.log('testExecutionListenerBacktest');
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
 
   const fills = [];
   btr.addExecutionListener({
@@ -210,9 +210,9 @@ function testExecutionListenerBacktest() {
 
 function testExecutorBacktest() {
   console.log('testExecutorBacktest');
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
 
   const submits = [];
   btr.setExecutor({ submit(o) { submits.push(o); } });
@@ -245,10 +245,10 @@ function testExecutorBacktest() {
 
 function testLpSignalFields() {
   console.log('testLpSignalFields');
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'ETH-USDC', 0.01);
   const onSignalCalls = [];
-  const runner = new flox.Runner(reg, (sig) => onSignalCalls.push(sig), false);
+  const runner = new lrvx.Runner(reg, (sig) => onSignalCalls.push(sig), false);
 
   let fired = false;
   runner.addStrategy({
@@ -289,8 +289,8 @@ function testLogCallback() {
   console.log('testLogCallback');
   // Just exercise the wiring without expecting log output (the C ABI
   // doesn't have a public Node-driven log emitter for testing).
-  flox.setLogCallback((_lvl, _msg) => {});
-  flox.setLogCallback(null);
+  lrvx.setLogCallback((_lvl, _msg) => {});
+  lrvx.setLogCallback(null);
   check(true, `setLogCallback wires + detaches without crash`);
 }
 

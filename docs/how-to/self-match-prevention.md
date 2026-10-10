@@ -2,7 +2,7 @@
 
 When the same account has crossing orders on both sides of a price,
 real venues prevent the match — both to avoid fee-wash and to comply
-with regulatory wash-trade rules. flox simulator now applies one of
+with regulatory wash-trade rules. lrvx simulator now applies one of
 four STP modes at order submission.
 
 The simulator currently treats every order on one `SimulatedExecutor`
@@ -46,13 +46,13 @@ either reject or cancel.
 === "QuickJS"
 
     ```javascript
-    __flox_simulated_executor_set_stp_mode(exec, 1);  // 1 = CancelNewest
+    __lrvx_simulated_executor_set_stp_mode(exec, 1);  // 1 = CancelNewest
     ```
 
 === "C++"
 
     ```cpp
-    sim.setSTPMode(flox::STPMode::CancelNewest);
+    sim.setSTPMode(lrvx::STPMode::CancelNewest);
     ```
 
 ## Multi-account STP

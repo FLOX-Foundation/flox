@@ -1,9 +1,9 @@
 # Security Policy
 
 This repository is a read-only mirror of the venue core inside
-[FLOX-Foundation/flox](https://github.com/FLOX-Foundation/flox). Report
+[lrvx/lrvx](https://github.com/lrvx/lrvx). Report
 vulnerabilities privately through that repository's GitHub Security
-Advisories: https://github.com/FLOX-Foundation/flox/security/advisories/new
+Advisories: https://github.com/lrvx/lrvx/security/advisories/new
 
 Do not open a public issue here or on the source repository for a security
 report.

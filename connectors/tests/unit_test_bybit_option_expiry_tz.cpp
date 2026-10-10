@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -16,15 +16,15 @@
  *
  * parseOptionSymbol is a free function with external linkage defined in
  * bybit_exchange_connector.cpp and declared in no header; it is
- * forward-declared here and resolved from libflox-connectors.a at link
+ * forward-declared here and resolved from liblrvx-connectors.a at link
  * time, the same way unit_test_bybit_option_symbol.cpp does it.
  */
 
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
 
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/util/base/time.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/util/base/time.h>
 
 #include <gtest/gtest.h>
 
@@ -37,13 +37,13 @@
 #include <string>
 #include <string_view>
 
-namespace flox
+namespace lrvx
 {
 std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
                                             std::string_view exchange = "bybit");
 }
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

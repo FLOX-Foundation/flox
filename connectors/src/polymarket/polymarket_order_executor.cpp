@@ -1,16 +1,16 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/polymarket/polymarket_order_executor.h"
-#include "flox-connectors/polymarket/polymarket_ffi.h"
+#include "lrvx-connectors/polymarket/polymarket_order_executor.h"
+#include "lrvx-connectors/polymarket/polymarket_ffi.h"
 
-namespace flox
+namespace lrvx
 {
 
 const char* PolymarketOrderResult::errorMessage() const
@@ -120,7 +120,7 @@ PolymarketOrderResult PolymarketOrderExecutor::buy(const std::string& tokenId, V
   }
 
   // Convert Volume (8 decimals) to double for FFI
-  double usdc = static_cast<double>(usdcAmount.raw()) / static_cast<double>(FLOX_SCALE);
+  double usdc = static_cast<double>(usdcAmount.raw()) / static_cast<double>(LRVX_SCALE);
 
   ::PolymarketOrderResult ffiResult = polymarket_market_buy(tokenId.c_str(), usdc);
 
@@ -129,7 +129,7 @@ PolymarketOrderResult PolymarketOrderExecutor::buy(const std::string& tokenId, V
   result.errorCode = ffiResult.error_code;
   result.orderId = std::string(ffiResult.order_id);
 
-  // Convert raw i64 (6 decimals) to flox types (8 decimals)
+  // Convert raw i64 (6 decimals) to lrvx types (8 decimals)
   result.filledQty = Quantity::fromRaw(ffiResult.filled_qty_raw * SCALE_FACTOR);
   result.avgPrice = Price::fromRaw(ffiResult.avg_price_raw * SCALE_FACTOR);
 
@@ -147,7 +147,7 @@ PolymarketOrderResult PolymarketOrderExecutor::sell(const std::string& tokenId, 
   }
 
   // Convert Quantity (8 decimals) to double for FFI
-  double shares = static_cast<double>(size.raw()) / static_cast<double>(FLOX_SCALE);
+  double shares = static_cast<double>(size.raw()) / static_cast<double>(LRVX_SCALE);
 
   ::PolymarketOrderResult ffiResult = polymarket_market_sell(tokenId.c_str(), shares);
 
@@ -156,7 +156,7 @@ PolymarketOrderResult PolymarketOrderExecutor::sell(const std::string& tokenId, 
   result.errorCode = ffiResult.error_code;
   result.orderId = std::string(ffiResult.order_id);
 
-  // Convert raw i64 (6 decimals) to flox types (8 decimals)
+  // Convert raw i64 (6 decimals) to lrvx types (8 decimals)
   result.filledQty = Quantity::fromRaw(ffiResult.filled_qty_raw * SCALE_FACTOR);
   result.avgPrice = Price::fromRaw(ffiResult.avg_price_raw * SCALE_FACTOR);
 
@@ -175,8 +175,8 @@ PolymarketOrderResult PolymarketOrderExecutor::limitBuy(const std::string& token
   }
 
   // Convert Volume and Price (8 decimals) to double for FFI
-  double usdc = static_cast<double>(usdcAmount.raw()) / static_cast<double>(FLOX_SCALE);
-  double priceDouble = static_cast<double>(price.raw()) / static_cast<double>(FLOX_SCALE);
+  double usdc = static_cast<double>(usdcAmount.raw()) / static_cast<double>(LRVX_SCALE);
+  double priceDouble = static_cast<double>(price.raw()) / static_cast<double>(LRVX_SCALE);
 
   ::PolymarketOrderResult ffiResult = polymarket_limit_buy(tokenId.c_str(), priceDouble, usdc);
 
@@ -185,7 +185,7 @@ PolymarketOrderResult PolymarketOrderExecutor::limitBuy(const std::string& token
   result.errorCode = ffiResult.error_code;
   result.orderId = std::string(ffiResult.order_id);
 
-  // Convert raw i64 (6 decimals) to flox types (8 decimals)
+  // Convert raw i64 (6 decimals) to lrvx types (8 decimals)
   result.filledQty = Quantity::fromRaw(ffiResult.filled_qty_raw * SCALE_FACTOR);
   result.avgPrice = Price::fromRaw(ffiResult.avg_price_raw * SCALE_FACTOR);
 
@@ -204,8 +204,8 @@ PolymarketOrderResult PolymarketOrderExecutor::limitSell(const std::string& toke
   }
 
   // Convert Quantity and Price (8 decimals) to double for FFI
-  double shares = static_cast<double>(size.raw()) / static_cast<double>(FLOX_SCALE);
-  double priceDouble = static_cast<double>(price.raw()) / static_cast<double>(FLOX_SCALE);
+  double shares = static_cast<double>(size.raw()) / static_cast<double>(LRVX_SCALE);
+  double priceDouble = static_cast<double>(price.raw()) / static_cast<double>(LRVX_SCALE);
 
   ::PolymarketOrderResult ffiResult = polymarket_limit_sell(tokenId.c_str(), priceDouble, shares);
 
@@ -214,7 +214,7 @@ PolymarketOrderResult PolymarketOrderExecutor::limitSell(const std::string& toke
   result.errorCode = ffiResult.error_code;
   result.orderId = std::string(ffiResult.order_id);
 
-  // Convert raw i64 (6 decimals) to flox types (8 decimals)
+  // Convert raw i64 (6 decimals) to lrvx types (8 decimals)
   result.filledQty = Quantity::fromRaw(ffiResult.filled_qty_raw * SCALE_FACTOR);
   result.avgPrice = Price::fromRaw(ffiResult.avg_price_raw * SCALE_FACTOR);
 
@@ -275,4 +275,4 @@ Quantity PolymarketOrderExecutor::getTokenBalance(const std::string& tokenId)
   return Quantity::fromRaw(raw * SCALE_FACTOR);
 }
 
-}  // namespace flox
+}  // namespace lrvx

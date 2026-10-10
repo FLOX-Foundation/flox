@@ -7,7 +7,7 @@ since: 0.5.7
 
 # E_KEY_001 — Required key missing
 
-A dict / object passed to a FLOX API was missing a required key. The
+A dict / object passed to a lrvx API was missing a required key. The
 error message names the missing key.
 
 ## Where it fires

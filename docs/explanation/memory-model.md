@@ -3,7 +3,7 @@
 !!! info "Internals — for context only"
     This page explains how the C++ engine avoids heap allocation on the hot path. Bindings (Python, Node.js, Codon) inherit this behaviour automatically — there's no per-language API to manage pools. Read this if you care about the latency story; skip if you just want to ship a strategy.
 
-Zero-allocation event delivery in FLOX.
+Zero-allocation event delivery in lrvx.
 
 ## The Problem
 
@@ -22,9 +22,9 @@ Each allocation:
 - Fragments the heap
 - Increases cache misses
 
-## FLOX's Solution
+## lrvx's Solution
 
-FLOX eliminates allocations in the hot path through:
+lrvx eliminates allocations in the hot path through:
 
 1. **Pre-allocated ring buffers** — Events stored directly in `EventBus`
 2. **Object pools** — Reusable event objects for large events
@@ -46,7 +46,7 @@ No allocation happens — the event is copied into pre-allocated storage.
 
 ## Large Events: Object Pools
 
-For large events like `BookUpdateEvent` (contains vectors of bid/ask levels), FLOX uses pools:
+For large events like `BookUpdateEvent` (contains vectors of bid/ask levels), lrvx uses pools:
 
 ```cpp
 // Pool pre-allocates N objects at startup
@@ -177,7 +177,7 @@ Pool → Connector (acquire) → EventBus (publish) → Consumer (dispatch) → 
 
 ## PMR (Polymorphic Memory Resources)
 
-For events with variable-size data (like vectors), FLOX uses PMR:
+For events with variable-size data (like vectors), lrvx uses PMR:
 
 ```cpp
 // In Pool constructor
@@ -284,7 +284,7 @@ Signs your pool is too small:
 
 ## Memory Layout
 
-FLOX optimizes for cache efficiency:
+lrvx optimizes for cache efficiency:
 
 ```cpp
 // Cache-line aligned atomics

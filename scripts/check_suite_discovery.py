@@ -3,13 +3,13 @@
 
 C++ has this guarantee in two parts: ctest runs whatever is registered, and
 check_test_gating.py's reverse pass fails when a tests/*.cpp file is not
-named by any add_flox_test(...) or manual add_executable(...) call in
+named by any add_lrvx_test(...) or manual add_executable(...) call in
 tests/CMakeLists.txt. That guarantee is scoped to tests/ itself --
 venue/tests/ and connectors/tests/ use file(GLOB ...) instead of a name
 list, so nothing can be "forgotten" there by construction, but only once
 the surrounding CMakeLists.txt actually configures that directory in a CI
-job (connectors/tests/ was not configured in any workflow until FLOX_
-BUILD_TESTS was added alongside FLOX_BUILD_CONNECTORS -- a prior version of
+job (connectors/tests/ was not configured in any workflow until LRVX_
+BUILD_TESTS was added alongside LRVX_BUILD_CONNECTORS -- a prior version of
 this docstring's "twice over" claim did not hold for either half).
 
 Python, Node, and mcp/ had none of this. Because ci.yml listed test files

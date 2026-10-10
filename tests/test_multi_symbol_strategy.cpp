@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/position/position_tracker.h"
-#include "flox/strategy/strategy.h"
-#include "flox/strategy/symbol_context.h"
-#include "flox/strategy/symbol_state_map.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/position/position_tracker.h"
+#include "lrvx/strategy/strategy.h"
+#include "lrvx/strategy/symbol_context.h"
+#include "lrvx/strategy/symbol_state_map.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -24,7 +24,7 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -1256,7 +1256,7 @@ TEST(StrategyStateOwnership, SynchronousReentryForTheSameSymbolDoesNotDeadlock)
 
 // The per-symbol context table used to sit inside the strategy object by
 // value: 256 slots, each carrying a 512-level book, put the object at
-// roughly 2 MB in a release build and 4 MB with FLOX_SCALE_CHECKS on. Two
+// roughly 2 MB in a release build and 4 MB with LRVX_SCALE_CHECKS on. Two
 // of them in one frame overran a default 8 MB stack, and the overrun
 // landed in the constructor prologue.
 TEST(StrategyStateOwnership, StrategyObjectFitsOnTheStack)

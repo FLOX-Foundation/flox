@@ -4,10 +4,10 @@
 #include <random>
 #include <vector>
 
-#include "flox/indicator/autocorrelation.h"
-#include "flox/indicator/correlation.h"
+#include "lrvx/indicator/autocorrelation.h"
+#include "lrvx/indicator/correlation.h"
 
-using namespace flox::indicator;
+using namespace lrvx::indicator;
 
 TEST(AutoCorrelation, MatchesCorrelationOnPairedSeries)
 {

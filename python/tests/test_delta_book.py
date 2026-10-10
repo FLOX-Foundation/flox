@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.DeltaBookEncoder`` / ``DeltaBookReplayer``."""
+"""Tests for ``lrvx.DeltaBookEncoder`` / ``DeltaBookReplayer``."""
 from __future__ import annotations
 
 import sys
@@ -12,7 +12,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
 
 def _level(price: int, qty: int) -> dict:
@@ -26,7 +26,7 @@ def _normalize(side: list[dict]) -> list[tuple[int, int]]:
 
 class EncoderTests(unittest.TestCase):
     def test_first_event_is_snapshot(self) -> None:
-        enc = flox_py.DeltaBookEncoder(anchor_every=10)
+        enc = lrvx.DeltaBookEncoder(anchor_every=10)
         out = enc.encode(1,
                          [_level(10000, 10), _level(9999, 5)],
                          [_level(10001, 8)])
@@ -35,7 +35,7 @@ class EncoderTests(unittest.TestCase):
         self.assertEqual(len(out["asks"]), 1)
 
     def test_unchanged_snapshot_emits_empty_delta(self) -> None:
-        enc = flox_py.DeltaBookEncoder(anchor_every=100)
+        enc = lrvx.DeltaBookEncoder(anchor_every=100)
         bids = [_level(10000, 10)]
         asks = [_level(10001, 5)]
         enc.encode(1, bids, asks)
@@ -45,7 +45,7 @@ class EncoderTests(unittest.TestCase):
         self.assertEqual(out["asks"], [])
 
     def test_anchor_cadence(self) -> None:
-        enc = flox_py.DeltaBookEncoder(anchor_every=3)
+        enc = lrvx.DeltaBookEncoder(anchor_every=3)
         bids = [_level(10000, 10)]
         asks = [_level(10001, 5)]
         kinds = []
@@ -56,13 +56,13 @@ class EncoderTests(unittest.TestCase):
         self.assertEqual(kinds, [False, True, True, False, True])
 
     def test_anchor_every_zero_is_snapshot_only(self) -> None:
-        enc = flox_py.DeltaBookEncoder(anchor_every=0)
+        enc = lrvx.DeltaBookEncoder(anchor_every=0)
         for _ in range(3):
             out = enc.encode(1, [_level(100, 1)], [_level(101, 1)])
             self.assertFalse(out["is_delta"])
 
     def test_delta_records_changes_and_removals(self) -> None:
-        enc = flox_py.DeltaBookEncoder(anchor_every=100)
+        enc = lrvx.DeltaBookEncoder(anchor_every=100)
         enc.encode(1,
                    [_level(10000, 10), _level(9999, 5)],
                    [_level(10001, 8)])
@@ -78,8 +78,8 @@ class EncoderTests(unittest.TestCase):
 
 class ReplayerTests(unittest.TestCase):
     def test_replayer_reconstructs_snapshot_after_delta(self) -> None:
-        enc = flox_py.DeltaBookEncoder(anchor_every=100)
-        rep = flox_py.DeltaBookReplayer()
+        enc = lrvx.DeltaBookEncoder(anchor_every=100)
+        rep = lrvx.DeltaBookReplayer()
 
         sequences = [
             ([_level(10000, 10), _level(9999, 5)], [_level(10001, 8)]),
@@ -103,8 +103,8 @@ class ReplayerTests(unittest.TestCase):
         bids = [_level(10000 - i, 100 - i) for i in range(50)]
         asks = [_level(10001 + i, 100 - i) for i in range(50)]
 
-        delta_enc = flox_py.DeltaBookEncoder(anchor_every=20)
-        snap_enc = flox_py.DeltaBookEncoder(anchor_every=0)
+        delta_enc = lrvx.DeltaBookEncoder(anchor_every=20)
+        snap_enc = lrvx.DeltaBookEncoder(anchor_every=0)
 
         delta_levels = 0
         snap_levels = 0
@@ -130,7 +130,7 @@ class AnchorTests(unittest.TestCase):
     everything before the entry point, so the delta is refused instead."""
 
     def test_delta_before_any_anchor_is_refused(self) -> None:
-        rep = flox_py.DeltaBookReplayer()
+        rep = lrvx.DeltaBookReplayer()
 
         out = rep.apply(1, 7, [_level(10000, 5)], [_level(10001, 3)])
 
@@ -140,7 +140,7 @@ class AnchorTests(unittest.TestCase):
         self.assertFalse(rep.anchored(7))
 
     def test_anchor_recovers_after_refused_deltas(self) -> None:
-        rep = flox_py.DeltaBookReplayer()
+        rep = lrvx.DeltaBookReplayer()
         rep.apply(1, 7, [_level(10000, 5)], [_level(10001, 3)])
 
         out = rep.apply(0, 7, [_level(20000, 4)], [_level(20001, 6)])
@@ -153,7 +153,7 @@ class AnchorTests(unittest.TestCase):
         self.assertEqual(len(merged["bids"]), 2)
 
     def test_reset_drops_the_anchor(self) -> None:
-        rep = flox_py.DeltaBookReplayer()
+        rep = lrvx.DeltaBookReplayer()
         rep.apply(0, 3, [_level(10000, 5)], [_level(10001, 3)])
         self.assertTrue(rep.anchored(3))
 
@@ -166,7 +166,7 @@ class AnchorTests(unittest.TestCase):
         self.assertFalse(rep.anchored(3))
 
     def test_symbols_anchor_independently(self) -> None:
-        rep = flox_py.DeltaBookReplayer()
+        rep = lrvx.DeltaBookReplayer()
         rep.apply(0, 1, [_level(10000, 5)], [_level(10001, 3)])
 
         self.assertTrue(rep.apply(1, 1, [_level(9999, 2)], [])["anchored"])

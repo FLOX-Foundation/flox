@@ -8,12 +8,12 @@ FIFO/average-cost position tracking.
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `flox.POSITION_FIFO` | `0` | First-in first-out (default) |
-| `flox.POSITION_AVG_COST` | `1` | Average cost basis |
+| `lrvx.POSITION_FIFO` | `0` | First-in first-out (default) |
+| `lrvx.POSITION_AVG_COST` | `1` | Average cost basis |
 
 ```javascript
-const tracker = new flox.PositionTracker(flox.POSITION_FIFO);
-const tracker = new flox.PositionTracker(flox.POSITION_AVG_COST);
+const tracker = new lrvx.PositionTracker(lrvx.POSITION_FIFO);
+const tracker = new lrvx.PositionTracker(lrvx.POSITION_AVG_COST);
 ```
 
 | Method | Returns | Description |
@@ -31,7 +31,7 @@ const tracker = new flox.PositionTracker(flox.POSITION_AVG_COST);
 Tracks individual named positions (open/partial-close/close).
 
 ```javascript
-const tracker = new flox.PositionGroupTracker();
+const tracker = new lrvx.PositionGroupTracker();
 const posId = tracker.openPosition(orderId, symbol, 'buy', price, qty);
 tracker.closePosition(posId, exitPrice);
 ```
@@ -54,7 +54,7 @@ tracker.closePosition(posId, exitPrice);
 Tracks submitted/filled/canceled orders.
 
 ```javascript
-const tracker = new flox.OrderTracker();
+const tracker = new lrvx.OrderTracker();
 tracker.onSubmitted(orderId, symbol, 'buy', price, qty);
 tracker.onFilled(orderId, fillQty);
 ```

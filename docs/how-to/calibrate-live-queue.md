@@ -29,10 +29,10 @@ A worked example (Python):
 When you can pull ground truth from the venue:
 
 ```python
-import flox_py as flox
+import lrvx
 
-estimator = flox.LiveQueuePositionEstimator()
-cal = flox.LiveQueueCalibrator(estimator)
+estimator = lrvx.LiveQueuePositionEstimator()
+cal = lrvx.LiveQueueCalibrator(estimator)
 
 # (per observation)
 cal.record_sample(order_id=42,

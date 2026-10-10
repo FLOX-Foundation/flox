@@ -15,12 +15,12 @@ explicit ``trigger`` wins when both matter.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 
 
 def _executor():
     # The stack owns the executor, so the caller has to hold on to both.
-    stack = flox.VenueStack.binance_um_futures(account_id=1, equity=100_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=100_000.0)
     return stack, stack.executor()
 
 

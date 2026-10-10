@@ -1,25 +1,25 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/polymarket/polymarket_exchange_connector.h"
-#include "flox-connectors/net/ix_websocket_client.h"
-#include "flox-connectors/util/safe_parse.h"
+#include "lrvx-connectors/polymarket/polymarket_exchange_connector.h"
+#include "lrvx-connectors/net/ix_websocket_client.h"
+#include "lrvx-connectors/util/safe_parse.h"
 
-#include <flox/log/log.h>
-#include <flox/util/base/hash.h>
+#include <lrvx/log/log.h>
+#include <lrvx/util/base/hash.h>
 
 #include <simdjson.h>
 
 #include <algorithm>
 #include <sstream>
 
-namespace flox
+namespace lrvx
 {
 
 static constexpr auto POLYMARKET_ORIGIN = "https://polymarket.com";
@@ -591,4 +591,4 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
   }
 }
 
-}  // namespace flox
+}  // namespace lrvx

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,14 +15,14 @@
 // - Identify Point of Control (POC) and Value Area
 // - Trade pullbacks to POC with confirmation from delta
 
-#include "flox/aggregator/custom/volume_profile.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
+#include "lrvx/aggregator/custom/volume_profile.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
 
 #include <iostream>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 TradeEvent makeTrade(SymbolId symbol, double price, double qty, int sec, bool isBuy)
 {

@@ -10,24 +10,27 @@ documenting functions that never existed come from. This gate closes that
 hole by extracting API-looking references from Markdown and resolving each
 against the real binding surface:
 
-* **Python** — `flox.<Name>`, `flox_py.<Name>`, `from flox_py import X`,
+* **Python** — `lrvx.<Name>`, `lrvx.<Name>`, `from lrvx import X`,
   bare `Name(...)` calls that nothing in the snippet binds, and attribute
-  access on a variable whose class is known from `x = flox.<Class>(...)`.
-  Surface: `python/flox_py/_flox_py/__init__.pyi` (`__all__` + class/def
-  names), `python/flox_py/__init__.pyi`, and the pure-Python submodules
-  under `python/flox_py/`.
-* **Node** — `flox.<name>(`, `new flox.<Name>(` and destructured
-  `const { A, B } = require('@flox-foundation/flox')` inside
+  access on a variable whose class is known from `x = lrvx.<Class>(...)`.
+  Surface: `python/lrvx/_lrvx/__init__.pyi` (`__all__` + class/def
+  names), `python/lrvx/__init__.pyi`, and the pure-Python submodules
+  under `python/lrvx/`.
+* **Node** — `lrvx.<name>(`, `new lrvx.<Name>(` and destructured
+  `const { A, B } = require('@lrvx/lrvx')` inside
   ```javascript / ```js / ```ts blocks. Surface: exported names in
   `node/index.d.ts`.
-* **Codon** — `from flox.<mod> import X` inside Codon blocks. Surface:
-  `class X` / `def x` in `codon/flox/<mod>.codon`.
+* **Codon** — `from lrvx.<mod> import X` inside Codon blocks. Surface:
+  `class X` / `def x` in `codon/lrvx/<mod>.codon`.
 
-Blocks are classified by fence language, by the enclosing `=== "..."` tab
-label, and by page path. QuickJS blocks (embedded runtime, globals only, no
-`node/index.d.ts`) are not checked here.
+Blocks are classified by fence language and by the enclosing `=== "..."` tab
+label (```codon, or any block under a "Codon" tab, is Codon; ```python is
+Python), and by page path. Only a fence without a language falls back to the
+`from lrvx.<mod> import` path, for a module only one package has. QuickJS
+blocks (embedded runtime, globals only, no `node/index.d.ts`) are not
+checked here.
 
-Prose (inline code outside fences) is checked leniently: a `flox.X`
+Prose (inline code outside fences) is checked leniently: a `lrvx.X`
 reference in prose only fails when `X` exists in *no* binding surface.
 
 False positives are expected on prose that reads like an API call. Add the
@@ -54,9 +57,9 @@ from typing import Dict, List, Optional, Set, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = REPO_ROOT / "docs"
-PY_PKG_DIR = REPO_ROOT / "python" / "flox_py"
+PY_PKG_DIR = REPO_ROOT / "python" / "lrvx"
 NODE_DTS = REPO_ROOT / "node" / "index.d.ts"
-CODON_PKG_DIR = REPO_ROOT / "codon" / "flox"
+CODON_PKG_DIR = REPO_ROOT / "codon" / "lrvx"
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "doc_symbols_allow.txt"
 
 # Generated aggregates and the generated Python API index: their contents
@@ -72,8 +75,8 @@ PY_LANGS = {"python", "py", "python3"}
 JS_LANGS = {"js", "javascript", "node", "ts", "typescript", "jsx", "tsx"}
 CODON_LANGS = {"codon"}
 
-# The names docs use for the Python package.
-PY_ALIASES = {"flox", "flox_py"}
+# The name docs use for the Python package.
+PY_ALIASES = {"lrvx"}
 
 # Fences can be longer than three characters so a block can contain a fence
 # (the doc-gates page shows a ```python block inside a ````markdown one).
@@ -83,7 +86,7 @@ _INCLUDE_RE = re.compile(r'^\s*--8<--\s+".+?"\s*$')
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 _FILENAME_RE = re.compile(
     r"^[\w.*/-]+\.(?:c|h|cc|cpp|hpp|py|pyi|pyx|ts|js|mjs|cjs|json|toml|yaml"
-    r"|yml|md|txt|so|dylib|dll|codon|sh|csv|zip|floxlog|floxrun|def|in|lock"
+    r"|yml|md|txt|so|dylib|dll|codon|sh|csv|zip|lrvx|lrvxrun|def|in|lock"
     r"|cmake|cpython-\d+-\w+\.so)$"
 )
 
@@ -91,19 +94,19 @@ _ATTR_CHAIN_RE = re.compile(
     r"(?<![\w.])(?P<root>[A-Za-z_]\w*)\.(?P<rest>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)"
 )
 _PY_FROM_IMPORT_RE = re.compile(
-    r"^\s*from\s+(?P<mod>flox(?:_py)?(?:\.[\w.]+)?)\s+import\s+(?P<names>.+)$"
+    r"^\s*from\s+(?P<mod>lrvx(?:_py)?(?:\.[\w.]+)?)\s+import\s+(?P<names>.+)$"
 )
 _JS_DESTRUCTURE_RE = re.compile(
     r"(?:const|let|var)\s*\{(?P<names>[^}]*)\}\s*=\s*require\(\s*"
-    r"['\"]@flox-foundation/flox['\"]\s*\)(?!\s*\.)"
+    r"['\"]lrvx['\"]\s*\)(?!\s*\.)"
 )
-# `require('@flox-foundation/flox').composite` — the sub-namespace itself
+# `require('@lrvx/lrvx').composite` — the sub-namespace itself
 # has to be an export.
 _JS_NAMESPACE_RE = re.compile(
-    r"require\(\s*['\"]@flox-foundation/flox['\"]\s*\)\.(?P<name>\w+)"
+    r"require\(\s*['\"]lrvx['\"]\s*\)\.(?P<name>\w+)"
 )
-_JS_NEW_RE = re.compile(r"new\s+flox\.(?P<name>[A-Za-z_]\w*)")
-_JS_CALL_RE = re.compile(r"(?<![\w.])flox\.(?P<name>[A-Za-z_]\w*)")
+_JS_NEW_RE = re.compile(r"new\s+lrvx\.(?P<name>[A-Za-z_]\w*)")
+_JS_CALL_RE = re.compile(r"(?<![\w.])lrvx\.(?P<name>[A-Za-z_]\w*)")
 
 _BUILTINS = set(dir(builtins))
 # Names a doc snippet may use without the snippet binding them: stdlib and
@@ -197,7 +200,7 @@ def _string_list(node: ast.expr) -> Set[str]:
 def _load_python_surface(surface: Surface) -> None:
     root_names: Set[str] = set()
 
-    for pyi in (PY_PKG_DIR / "_flox_py" / "__init__.pyi",
+    for pyi in (PY_PKG_DIR / "_lrvx" / "__init__.pyi",
                 PY_PKG_DIR / "__init__.pyi"):
         if not pyi.exists():
             continue
@@ -226,7 +229,7 @@ def _load_python_surface(surface: Surface) -> None:
             dotted = ".".join(parts[:-1])
         else:
             dotted = ".".join(parts)[: -len(".py")]
-        if dotted.startswith("_flox_py"):
+        if dotted.startswith("_lrvx"):
             continue
         load_module(path, dotted)
         # Register the module itself as a member of its parent.
@@ -234,11 +237,11 @@ def _load_python_surface(surface: Surface) -> None:
             head, _, tail = dotted.rpartition(".")
             surface.py_modules.setdefault(head, set()).add(tail)
 
-    # The compiled extension is reachable both as `flox_py.<name>` and as
-    # `flox_py._flox_py.<name>`.
-    root_names.add("_flox_py")
+    # The compiled extension is reachable both as `lrvx.<name>` and as
+    # `lrvx._lrvx.<name>`.
+    root_names.add("_lrvx")
     surface.py_modules.setdefault("", set()).update(root_names)
-    surface.py_modules.setdefault("_flox_py", set()).update(root_names)
+    surface.py_modules.setdefault("_lrvx", set()).update(root_names)
 
 
 _TS_EXPORT_RE = re.compile(
@@ -258,8 +261,8 @@ def _load_node_surface(surface: Surface) -> None:
         if match and depth == 0:
             surface.node_exports.add(match.group("name"))
         elif match and depth > 0:
-            # `export ...` inside `declare namespace flox { ... }` is still
-            # reachable as `flox.<name>`.
+            # `export ...` inside `declare namespace lrvx { ... }` is still
+            # reachable as `lrvx.<name>`.
             surface.node_exports.add(match.group("name"))
         depth += line.count("{") - line.count("}")
         depth = max(depth, 0)
@@ -291,8 +294,8 @@ def _load_codon_surface(surface: Surface) -> None:
 def _codon_imported_names(line: str) -> Set[str]:
     """Names a `.codon` module re-exports.
 
-    Handles Codon's C-FFI form too: `from C import flox_registry_create()
-    -> cobj` binds `flox_registry_create`.
+    Handles Codon's C-FFI form too: `from C import lrvx_registry_create()
+    -> cobj` binds `lrvx_registry_create`.
     """
     match = re.match(r"^from\s+[\w.]+\s+import\s+(?P<names>.+)$", line)
     if not match:
@@ -345,18 +348,24 @@ def _classify(lang: str, tab: str, page: Path, body: str,
     if "quickjs" in label or (quickjs_page and "node" not in label):
         return "skip"
 
+    # The Python and the Codon package are both named `lrvx`, so an import
+    # path cannot tell their snippets apart. The fence language (and the
+    # content tab, which names the binding) decides.
     if lang in CODON_LANGS or "codon" in label:
         return "codon"
     if lang in PY_LANGS:
-        # Codon strategy snippets are tagged ```python. If the block imports
-        # from a Codon module path, treat it as Codon.
-        for match in re.finditer(r"^\s*from\s+flox\.(?P<mod>\w+)\s+import",
-                                 body, re.MULTILINE):
-            if match.group("mod") in surface.codon_modules:
-                return "codon"
         return "python"
     if lang in JS_LANGS:
         return "node"
+    if lang:
+        return "skip"
+    # No language: the import path decides, but only for a module that
+    # exists in one of the two packages and not the other.
+    mods = set(re.findall(r"^\s*from\s+lrvx\.(\w+)\s+import", body, re.MULTILINE))
+    if mods and all(m in surface.codon_modules and m not in surface.py_modules for m in mods):
+        return "codon"
+    if mods and all(m in surface.py_modules and m not in surface.codon_modules for m in mods):
+        return "python"
     return "skip"
 
 
@@ -417,7 +426,7 @@ class Violation:
 
 
 def _resolve_python_chain(surface: Surface, parts: List[str]) -> Optional[str]:
-    """Resolve `flox.<parts>`; return the first component that does not exist."""
+    """Resolve `lrvx.<parts>`; return the first component that does not exist."""
     module = ""
     for index, part in enumerate(parts):
         members = surface.py_modules.get(module, set())
@@ -441,10 +450,10 @@ def _check_python_block(block: Block, page: Path, surface: Surface,
     text = block.text
 
     aliases = set(PY_ALIASES)
-    for match in re.finditer(r"^\s*import\s+flox_py\s+as\s+(\w+)", text, re.MULTILINE):
+    for match in re.finditer(r"^\s*import\s+lrvx\s+as\s+(\w+)", text, re.MULTILINE):
         aliases.add(match.group(1))
 
-    # 1. `flox.<chain>` attribute paths.
+    # 1. `lrvx.<chain>` attribute paths.
     for lineno, line in enumerate(block.lines, block.start_line):
         for match in _ATTR_CHAIN_RE.finditer(line):
             if match.group("root") not in aliases:
@@ -453,11 +462,11 @@ def _check_python_block(block: Block, page: Path, surface: Surface,
             bad = _resolve_python_chain(surface, parts)
             if bad:
                 out.append(Violation(
-                    page, lineno, f"flox.{bad}",
+                    page, lineno, f"lrvx.{bad}",
                     f"`{match.group('root')}.{bad}` is not in the Python "
-                    f"surface (python/flox_py/**/__init__.pyi)"))
+                    f"surface (python/lrvx/**/__init__.pyi)"))
 
-    # 2. `from flox_py[.sub] import X`
+    # 2. `from lrvx[.sub] import X`
     for lineno, line in enumerate(block.lines, block.start_line):
         match = _PY_FROM_IMPORT_RE.match(line)
         if not match:
@@ -466,8 +475,8 @@ def _check_python_block(block: Block, page: Path, surface: Surface,
         sub = mod.split(".", 1)[1] if "." in mod else ""
         if sub and sub not in surface.py_modules:
             out.append(Violation(
-                page, lineno, f"flox.{sub}",
-                f"`{mod}` is not a module under python/flox_py/"))
+                page, lineno, f"lrvx.{sub}",
+                f"`{mod}` is not a module under python/lrvx/"))
             continue
         members = surface.py_modules.get(sub, set())
         for chunk in match.group("names").split("#")[0].split(","):
@@ -561,7 +570,7 @@ def _bound_names(tree: ast.AST) -> Set[str]:
 
 def _instance_types(tree: ast.AST, aliases: Set[str],
                     surface: Surface) -> Dict[str, str]:
-    """`x = flox.RSI(14)` -> {"x": "RSI"}; drop vars assigned twice."""
+    """`x = lrvx.RSI(14)` -> {"x": "RSI"}; drop vars assigned twice."""
     types: Dict[str, str] = {}
     rebound: Set[str] = set()
     for node in ast.walk(tree):
@@ -628,7 +637,7 @@ def _check_node_block(block: Block, page: Path, surface: Surface) -> List[Violat
             if name not in surface.node_exports:
                 out.append(Violation(
                     page, lineno, name,
-                    f"`require('@flox-foundation/flox').{name}` — "
+                    f"`require('@lrvx/lrvx').{name}` — "
                     f"node/index.d.ts declares no `{name}`"))
         for match in _JS_DESTRUCTURE_RE.finditer(line):
             for chunk in match.group("names").split(","):
@@ -637,23 +646,23 @@ def _check_node_block(block: Block, page: Path, surface: Surface) -> List[Violat
                     out.append(Violation(
                         page, lineno, name,
                         f"`{name}` is destructured from "
-                        f"'@flox-foundation/flox' but node/index.d.ts does "
+                        f"'lrvx' but node/index.d.ts does "
                         f"not export it"))
         seen: Set[str] = set()
         for match in list(_JS_NEW_RE.finditer(line)) + list(_JS_CALL_RE.finditer(line)):
             name = match.group("name")
             if name in seen:
-                continue  # `new flox.X` matches both patterns
+                continue  # `new lrvx.X` matches both patterns
             seen.add(name)
             if name not in surface.node_exports:
                 out.append(Violation(
                     page, lineno, name,
-                    f"`flox.{name}` is not exported by node/index.d.ts"))
+                    f"`lrvx.{name}` is not exported by node/index.d.ts"))
     return out
 
 
 _CODON_IMPORT_RE = re.compile(
-    r"^\s*from\s+flox\.(?P<mod>\w+)\s+import\s+(?P<names>.+)$"
+    r"^\s*from\s+lrvx\.(?P<mod>\w+)\s+import\s+(?P<names>.+)$"
 )
 
 
@@ -666,8 +675,8 @@ def _check_codon_block(block: Block, page: Path, surface: Surface) -> List[Viola
         mod = match.group("mod")
         if mod not in surface.codon_modules:
             out.append(Violation(
-                page, lineno, f"flox.{mod}",
-                f"`flox.{mod}` — no codon/flox/{mod}.codon"))
+                page, lineno, f"lrvx.{mod}",
+                f"`lrvx.{mod}` — no codon/lrvx/{mod}.codon"))
             continue
         members = surface.codon_modules[mod]
         for chunk in match.group("names").split("#")[0].split(","):
@@ -677,25 +686,25 @@ def _check_codon_block(block: Block, page: Path, surface: Surface) -> List[Viola
             if name not in members:
                 out.append(Violation(
                     page, lineno, name,
-                    f"`from flox.{mod} import {name}` — "
-                    f"codon/flox/{mod}.codon defines no {name}"))
+                    f"`from lrvx.{mod} import {name}` — "
+                    f"codon/lrvx/{mod}.codon defines no {name}"))
     return out
 
 
 def _check_prose(prose: List[Tuple[int, str]], page: Path,
                  surface: Surface) -> List[Violation]:
-    """Lenient: only flag `flox.X` in inline code that exists nowhere."""
+    """Lenient: only flag `lrvx.X` in inline code that exists nowhere."""
     out: List[Violation] = []
     rel = page.relative_to(REPO_ROOT).as_posix()
     if rel.startswith("docs/reference/quickjs/") or rel == "docs/bindings/javascript.md":
-        # `flox` there is the QuickJS global namespace, whose surface lives
-        # in quickjs/flox/*.js and is not modelled by this gate.
+        # `lrvx` there is the QuickJS global namespace, whose surface lives
+        # in quickjs/lrvx/*.js and is not modelled by this gate.
         return out
     known = surface.any_surface()
     for lineno, line in prose:
         for code in _INLINE_CODE_RE.findall(line):
             if _FILENAME_RE.match(code.strip()):
-                continue  # `flox.toml`, `flox.d.ts`, `flox.cpp`: not APIs
+                continue  # `lrvx.toml`, `lrvx.d.ts`, `lrvx.cpp`: not APIs
             for match in _ATTR_CHAIN_RE.finditer(code):
                 if match.group("root") not in PY_ALIASES:
                     continue
@@ -703,7 +712,7 @@ def _check_prose(prose: List[Tuple[int, str]], page: Path,
                 if head in known or head in surface.py_modules:
                     continue
                 out.append(Violation(
-                    page, lineno, f"flox.{head}",
+                    page, lineno, f"lrvx.{head}",
                     f"`{match.group('root')}.{head}` appears in no binding "
                     f"surface (Python / Node / Codon)"))
     return out
@@ -752,7 +761,7 @@ def main() -> int:
     surface = load_surface()
     if not surface.py_root:
         print("::error::empty Python surface — is "
-              "python/flox_py/_flox_py/__init__.pyi missing?", file=sys.stderr)
+              "python/lrvx/_lrvx/__init__.pyi missing?", file=sys.stderr)
         return 1
     if not surface.node_exports:
         print("::error::empty Node surface — is node/index.d.ts missing?",

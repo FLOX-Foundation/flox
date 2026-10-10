@@ -13,7 +13,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const flox = require('..');
+const lrvx = require('..');
 
 let _failed = 0;
 let _passed = 0;
@@ -33,20 +33,20 @@ function check(cond, msg)
 
 function mkTmpDir(label)
 {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `flox-mtr-${label}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `lrvx-mtr-${label}-`));
 }
 
-// Write one .floxlog tape via the runtime path: SymbolRegistry +
+// Write one .lrvx tape via the runtime path: SymbolRegistry +
 // Runner + BinaryLogRecorderHook. Mirrors the Python `_write_tape`
 // fixture so the test surface is identical across languages.
 function writeTape(outDir, exchange, symbolName, trades, exchangeId, books)
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol(exchange, symbolName, 0.01);
-  const hook = new flox.BinaryLogRecorderHook(
+  const hook = new lrvx.BinaryLogRecorderHook(
       outDir, 4, exchangeId, 'none', exchange, 'perpetual');
   hook.addSymbol(Number(sym), symbolName, '', '', 2, 6);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   runner.addStrategy({symbols: [sym]});
   runner.setMarketDataRecorder(hook);
   runner.start();
@@ -89,8 +89,8 @@ function testSingleTapeRoundTrip()
   }
   writeTape(tape, 'bybit', 'BTCUSDT', trades, 0);
 
-  const dr = new flox.DataReader(tape);
-  const mr = new flox.MergedTapeReader([tape]);
+  const dr = new lrvx.DataReader(tape);
+  const mr = new lrvx.MergedTapeReader([tape]);
   const single = dr.readTrades();
   const merged = mr.readTrades();
 
@@ -168,7 +168,7 @@ function testTwoTapesNonOverlapping()
   writeTape(t1, 'bybit', 'BTCUSDT', tradesA, 1);
   writeTape(t2, 'binance', 'ETHUSDT', tradesB, 2);
 
-  const mr = new flox.MergedTapeReader([t1, t2]);
+  const mr = new lrvx.MergedTapeReader([t1, t2]);
   const trades = mr.readTrades();
   check(trades.length === 8, `merged trade count is 8 (got ${trades.length})`);
 
@@ -234,7 +234,7 @@ function testCrossExchangeSameSymbol()
   writeTape(t1, 'bybit', 'BTCUSDT', tA, 1);
   writeTape(t2, 'binance', 'BTCUSDT', tB, 2);
 
-  const mr = new flox.MergedTapeReader([t1, t2]);
+  const mr = new lrvx.MergedTapeReader([t1, t2]);
   const tbl = mr.symbolTable();
   check(tbl.length === 2,
         `symbolTable has 2 entries (got ${tbl.length})`);
@@ -271,7 +271,7 @@ function testOverlappingBookStreamsRaise()
   let msg = '';
   try
   {
-    new flox.MergedTapeReader([t1, t2]);
+    new lrvx.MergedTapeReader([t1, t2]);
   }
   catch (e)
   {
@@ -309,7 +309,7 @@ function testReplayTimeOrderAcrossTapes()
   writeTape(t1, 'ex_a', 'FOO', tA, 1);
   writeTape(t2, 'ex_b', 'FOO', tB, 2);
 
-  const mr = new flox.MergedTapeReader([t1, t2]);
+  const mr = new lrvx.MergedTapeReader([t1, t2]);
   const trades = mr.readTrades();
   check(trades.length === 6, `total 6 trades (got ${trades.length})`);
 

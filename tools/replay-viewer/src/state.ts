@@ -1,16 +1,16 @@
 // Timeline state for the replay viewer.
 //
-// Holds parsed .floxlog and .floxrun events. Maintains a cursor in
+// Holds parsed .lrvx and .lrvxrun events. Maintains a cursor in
 // nanoseconds; each view subscribes and renders the slice up to the
 // cursor on tick. URL bookmarks store cursor + speed so a shared link
 // resumes at the same position.
 
-import type { FloxlogEvent, SymbolTable } from './parsers/floxlog.ts';
-import type { FloxrunData, Signal, OrderEvent, Fill } from './parsers/floxrun.ts';
+import type { LrvxEvent, SymbolTable } from './parsers/lrvx.ts';
+import type { LrvxrunData, Signal, OrderEvent, Fill } from './parsers/lrvxrun.ts';
 
 export interface ViewerState {
-  tape: FloxlogEvent[];
-  run: FloxrunData | null;
+  tape: LrvxEvent[];
+  run: LrvxrunData | null;
   // symbol_id -> { exchange, name } from metadata.json. Empty when the
   // loaded tape has no metadata file or the file omits symbol mappings.
   symbols: SymbolTable;
@@ -52,7 +52,7 @@ export class Store {
     for (const l of this.listeners) l(this.state);
   }
 
-  setTape(events: FloxlogEvent[]) {
+  setTape(events: LrvxEvent[]) {
     this.state.tape = events;
     this.recomputeRange();
     this.notify();
@@ -63,7 +63,7 @@ export class Store {
     this.notify();
   }
 
-  setRun(run: FloxrunData) {
+  setRun(run: LrvxrunData) {
     this.state.run = run;
     this.recomputeRange();
     this.notify();
@@ -137,7 +137,7 @@ export class Store {
 
 // Slices.
 
-export function tapeSlice(s: ViewerState): FloxlogEvent[] {
+export function tapeSlice(s: ViewerState): LrvxEvent[] {
   return s.tape.filter((e) => e.ts_ns <= s.cursor_ns);
 }
 

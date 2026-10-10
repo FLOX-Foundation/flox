@@ -1,12 +1,12 @@
-// flox/dex -- the symbol-aware comfort layer over the exact AMM curves, for Node.
+// lrvx/dex -- the symbol-aware comfort layer over the exact AMM curves, for Node.
 //
-// Mirrors python/flox_py/dex: Token / Amount / Pool venue classes / Quote / Router /
+// Mirrors python/lrvx/dex: Token / Amount / Pool venue classes / Quote / Router /
 // arb / Tape, the same object model and the same results to the wei. A thin layer over
 // the native ammCurve* / poolTape* handles -- wei math stays in the addon, this carries
 // the decimals and the token order so a mis-routed swap raises instead of returning a
 // quiet zero.
 //
-//   const { dex } = require('@flox-foundation/flox');
+//   const { dex } = require('@lrvx/lrvx');
 //   const weth = new dex.Token('WETH', 18), usdc = new dex.Token('USDC', 6);
 //   const pool = new dex.UniswapV2(weth, usdc,
 //                  { reserves: ['1000 WETH', '2000000 USDC'], fee: '0.30%' });
@@ -16,11 +16,11 @@
 const path = require('path');
 
 // Resolve the native addon the same way index.js does, so this module is
-// self-contained and usable as `require('@flox-foundation/flox/lib/dex')`.
+// self-contained and usable as `require('lrvx/lib/dex')`.
 function loadNative() {
   const key = `${process.platform}-${process.arch}`;
-  const prebuilt = path.join(__dirname, '..', 'prebuilds', key, 'flox_node.node');
-  const local = path.join(__dirname, '..', 'build', 'Release', 'flox_node.node');
+  const prebuilt = path.join(__dirname, '..', 'prebuilds', key, 'lrvx_node.node');
+  const local = path.join(__dirname, '..', 'build', 'Release', 'lrvx_node.node');
   try {
     return require(prebuilt);
   } catch (_) {

@@ -1,0 +1,25 @@
+# lrvx Codon Module
+# High-performance trading strategy framework compiled to native code.
+#
+# Usage:
+#   from lrvx.strategy import Strategy
+#   from lrvx.types import Price, Quantity
+#   from lrvx.indicators import ema, sma
+#   from lrvx.targets import future_return  # research-only labels
+
+# The C ABI handshake: importing lrvx.abi runs it, and a binding that
+# loaded against the wrong library exits before it can hand a strategy a
+# wrong number. Every module below that declares a `from C import` pulls
+# it in too, so importing a submodule directly runs it as well.
+from lrvx.abi import check_abi_version
+from lrvx.types import *
+from lrvx.context import *
+from lrvx.strategy import *
+from lrvx.indicators import *
+from lrvx.tools import *
+# Backtest helpers are opt-in to avoid coupling strategy builds to the
+# full backtest surface. Import explicitly:
+#   from lrvx.backtest import SimulatedExecutor, BacktestResult, BacktestStats
+#
+# Engine + SignalBuilder for batch backtesting from CSV:
+#   from lrvx.engine import Engine, SignalBuilder

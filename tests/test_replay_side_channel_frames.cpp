@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -18,12 +18,12 @@
 // update for another symbol, at another timestamp, wiping both sides of a book
 // nobody touched.
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/replay_connector.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/replay_connector.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -35,8 +35,8 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -58,7 +58,7 @@ class ReplaySideChannelTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _dir = std::filesystem::temp_directory_path() / "flox_replay_side_channel";
+    _dir = std::filesystem::temp_directory_path() / "lrvx_replay_side_channel";
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
   }
@@ -71,7 +71,7 @@ class ReplaySideChannelTest : public ::testing::Test
   {
     WriterConfig cfg{};
     cfg.output_dir = _dir;
-    cfg.output_filename = "tape.floxlog";
+    cfg.output_filename = "tape.lrvx";
     BinaryLogWriter writer(cfg);
 
     BookRecordHeader h{};

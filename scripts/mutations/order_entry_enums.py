@@ -44,10 +44,10 @@ BUILD_TIMEOUT = 900
 # has to report it, not this timeout.
 TEST_TIMEOUT = 120
 
-CODEC = "venue/include/flox-venue/sbe_order_entry_codec.h"
-CREDIT = "venue/include/flox-venue/engine/credit.h"
-VALIDATE = "venue/include/flox-venue/engine/validate.inl"
-SESSION = "venue/include/flox-venue/engine/session.inl"
+CODEC = "venue/include/lrvx-venue/sbe_order_entry_codec.h"
+CREDIT = "venue/include/lrvx-venue/engine/credit.h"
+VALIDATE = "venue/include/lrvx-venue/engine/validate.inl"
+SESSION = "venue/include/lrvx-venue/engine/session.inl"
 
 RANGE = "test_venue_wire_enum_range"
 FUZZ = "test_venue_parser_fuzz"

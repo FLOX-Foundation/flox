@@ -36,9 +36,9 @@ executor surfaces the replace event, the group needs three things:
 === "QuickJS"
 
     ```javascript
-    __flox_order_group_record_replace_accepted(handle, legIdx, 201n);
-    __flox_order_group_record_replace_rejected(handle, legIdx);
-    const idx = __flox_order_group_find_leg_by_order_id(handle, orderId);
+    __lrvx_order_group_record_replace_accepted(handle, legIdx, 201n);
+    __lrvx_order_group_record_replace_rejected(handle, legIdx);
+    const idx = __lrvx_order_group_find_leg_by_order_id(handle, orderId);
     ```
 
 === "Codon"

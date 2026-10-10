@@ -7,15 +7,15 @@
 #
 # Build:
 #   codon build -exe -o build/codon/codon_backtest_vs_live \
-#     -L build/src/capi -lflox_capi examples/codon_backtest_vs_live.codon
+#     -L build/src/capi -llrvx_capi examples/codon_backtest_vs_live.codon
 #
 # Run:
 #   DYLD_LIBRARY_PATH=build/src/capi:~/.local/lib/codon \
 #     ./build/codon/codon_backtest_vs_live
 
-from flox.indicators import SMA
-from flox.runner import Runner, BacktestRunner, Signal
-from flox.strategy import Strategy, SymbolContext, TradeData
+from lrvx.indicators import SMA
+from lrvx.runner import Runner, BacktestRunner, Signal
+from lrvx.strategy import Strategy, SymbolContext, TradeData
 
 
 class SMAStrategy(Strategy):
@@ -53,13 +53,13 @@ class SMAStrategy(Strategy):
 
 
 def main():
-    from C import flox_registry_create() -> cobj
-    from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+    from C import lrvx_registry_create() -> cobj
+    from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
 
     DATA = "docs/examples/data/btcusdt_1m.csv"
 
-    reg = flox_registry_create()
-    btc = flox_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
+    reg = lrvx_registry_create()
+    btc = lrvx_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
 
     signals_received: List[Signal] = []
 

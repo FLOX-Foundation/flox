@@ -42,7 +42,7 @@
 #   scripts/publish_mirror.sh [--push] [--remote URL] [--denylist FILE]
 #                             [--work DIR] [--list]
 #
-#   --remote   where to push; default git@github.com:FLOX-Foundation/venue-core.git.
+#   --remote   where to push; default git@github.com:lrvx/venue-core.git.
 #              A local bare repository path is the rehearsal the checklist asks for.
 #   --denylist patterns the cut must not contain, anywhere in its history.
 #   --work     scratch directory; default a fresh mktemp -d.
@@ -51,7 +51,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-remote="git@github.com:FLOX-Foundation/venue-core.git"
+remote="git@github.com:lrvx/venue-core.git"
 denylist=""
 work=""
 push=0
@@ -127,7 +127,7 @@ $other_refs"
 # mirror fast-forwarding: an overlay commit re-created on top of a
 # re-cut history is a different commit each time and never descends from
 # the one the mirror has, so the second publish was refused by the
-# mirror's own no-force-push rule. flox's main is squash-merged, so one
+# mirror's own no-force-push rule. lrvx's main is squash-merged, so one
 # mirror commit per merge into main loses nothing; a publish that covers
 # several merges (the workflow was off, say) squashes them into one, and
 # the message names the source commit either way.
@@ -161,19 +161,19 @@ fi
     if [ "$(git rev-parse FETCH_HEAD^{tree})" = "$tree" ]; then
       echo "$mirror_main" > "$work/nothing-to-publish"
     else
-      new="$(printf '%s\n\nMirrored from FLOX-Foundation/flox@%s by scripts/publish_mirror.sh.\nRead-only mirror of the venue core; contributions go to FLOX-Foundation/flox.\n' \
+      new="$(printf '%s\n\nMirrored from lrvx/lrvx@%s by scripts/publish_mirror.sh.\nRead-only mirror of the venue core; contributions go to lrvx/lrvx.\n' \
                "$source_subject" "$source_head" | git commit-tree "$tree" -p FETCH_HEAD)"
       git update-ref refs/heads/publish "$new"
     fi
   else
-    git commit --quiet --allow-empty -m "mirror: overlay for FLOX-Foundation/flox@${source_head:0:12}
+    git commit --quiet --allow-empty -m "mirror: overlay for lrvx/lrvx@${source_head:0:12}
 
-Read-only mirror of the venue core. Contributions go to FLOX-Foundation/flox."
+Read-only mirror of the venue core. Contributions go to lrvx/lrvx."
     git update-ref refs/heads/publish HEAD
   fi
 )
 if [ -f "$work/nothing-to-publish" ]; then
-  say "the mirror's tree already matches flox@${source_head:0:12}: nothing to publish"
+  say "the mirror's tree already matches lrvx@${source_head:0:12}: nothing to publish"
   exit 0
 fi
 cut_head="$(cd "$cut" && git rev-parse refs/heads/publish)"

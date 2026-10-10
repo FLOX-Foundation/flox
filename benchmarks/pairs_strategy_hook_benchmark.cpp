@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -18,13 +18,13 @@
 // per-event cost (not a synthetic spin).
 
 #include "demo/pairs_strategy.h"
-#include "flox/engine/symbol_registry.h"
+#include "lrvx/engine/symbol_registry.h"
 
 #include <benchmark/benchmark.h>
 #include <memory_resource>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

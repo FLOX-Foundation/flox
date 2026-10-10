@@ -2,7 +2,7 @@
 # Mirrors C++ SmaCrossoverStrategy from demo/src/backtest_demo.cpp.
 #
 # Compiles to native code via:
-#   codon build -exe -o sma_crossover -lflox_capi examples/sma_crossover.codon
+#   codon build -exe -o sma_crossover -llrvx_capi examples/sma_crossover.codon
 #
 # This file used to end at the class body. A Strategy subclass with no
 # module-level statement never realizes on_trade/on_start/on_stop --
@@ -12,20 +12,20 @@
 # full story of why that went unnoticed. The driver below feeds the
 # strategy the same 60-point price series verified against the real
 # quickjs/examples/sma_crossover.js (fast=10/slow=30/size=1.0, its fixed
-# parameters) through flox.runner.Runner, and checks the resulting
+# parameters) through lrvx.runner.Runner, and checks the resulting
 # trade_count and the emitted signals' side/quantity/symbol -- a call
 # count alone would still pass if a dispatch regression delivered garbage
 # payloads.
 
-from C import flox_registry_create() -> cobj
-from C import flox_registry_destroy(cobj)
-from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_destroy(cobj)
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
 
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import SMA
-from flox.runner import Runner, Signal
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData
+from lrvx.indicators import SMA
+from lrvx.runner import Runner, Signal
 
 
 class SmaCrossover(Strategy):
@@ -111,10 +111,10 @@ def close_to(a: float, b: float) -> bool:
 
 
 def run():
-    registry = flox_registry_create()
+    registry = lrvx_registry_create()
     exch = "Binance"
     name = "BTCUSDT"
-    sym = int(flox_registry_add_symbol(registry, exch.c_str(), name.c_str(), 0.01))
+    sym = int(lrvx_registry_add_symbol(registry, exch.c_str(), name.c_str(), 0.01))
 
     signals: List[Signal] = []
 
@@ -157,7 +157,7 @@ def run():
     check(strat.short_position == True,
           f"ends short after the downtrend (got {strat.short_position})")
 
-    flox_registry_destroy(registry)
+    lrvx_registry_destroy(registry)
 
     if failed != 0:
         raise ValueError(f"codon sma_crossover smoke: {failed} check(s) failed")

@@ -41,7 +41,7 @@ class Mutation:
 MUTATIONS = [
     Mutation(
         "clordid: the rotation moment is not restored",
-        "venue/include/flox-venue/engine/checkpoint_restore.inl",
+        "venue/include/lrvx-venue/engine/checkpoint_restore.inl",
         "clOrdIds_.restore(r->account, r->generation, r->ids, r->count, r->rotatedAtNs);",
         "clOrdIds_.restore(r->account, r->generation, r->ids, r->count, 0);",
         "test_venue_clordid_window",
@@ -49,7 +49,7 @@ MUTATIONS = [
     ),
     Mutation(
         "clordid: the rotation moment is not written",
-        "venue/include/flox-venue/engine/clordid_window.h",
+        "venue/include/lrvx-venue/engine/clordid_window.h",
         "        batch.rotatedAtNs = seen.rotatedAtNs;\n        for (uint64_t id : sortedIds(seen, g))",
         "        batch.rotatedAtNs = 0;\n        for (uint64_t id : sortedIds(seen, g))",
         "test_venue_clordid_window",
@@ -57,7 +57,7 @@ MUTATIONS = [
     ),
     Mutation(
         "clearing: a flat position record is corruption again",
-        "venue/include/flox-venue/engine/clearing.h",
+        "venue/include/lrvx-venue/engine/clearing.h",
         "    if (positions_.count(r.account) != 0)",
         "    if (r.qtyRaw == 0 || positions_.count(r.account) != 0)",
         "test_venue_position_correction",
@@ -65,7 +65,7 @@ MUTATIONS = [
     ),
     Mutation(
         "restore: a GTD conditional never reaches the expiry book",
-        "venue/include/flox-venue/engine/checkpoint_restore.inl",
+        "venue/include/lrvx-venue/engine/checkpoint_restore.inl",
         "    expiry_.set(r.order.id, r.order.expiryNs);",
         "    (void)r.order.expiryNs;",
         "test_venue_checkpoint",
@@ -73,7 +73,7 @@ MUTATIONS = [
     ),
     Mutation(
         "last look: the refused taker loses its reduce-only flag",
-        "venue/include/flox-venue/engine/last_look.h",
+        "venue/include/lrvx-venue/engine/last_look.h",
         "        rebuilt.reduceOnly = h.takerReduceOnly;",
         "        rebuilt.reduceOnly = false;",
         "test_venue_engine_last_look",
@@ -81,7 +81,7 @@ MUTATIONS = [
     ),
     Mutation(
         "last look: the hold's reference price leaves the digest",
-        "venue/include/flox-venue/engine/last_look.h",
+        "venue/include/lrvx-venue/engine/last_look.h",
         "        h = mix(h, static_cast<uint64_t>(x.refAtHoldRaw));",
         "        (void)x.refAtHoldRaw;",
         "test_venue_checkpoint",
@@ -89,7 +89,7 @@ MUTATIONS = [
     ),
     Mutation(
         "tags: the MMP fill windows collide with the closed marker again",
-        "venue/include/flox-venue/engine/state_hash_tags.h",
+        "venue/include/lrvx-venue/engine/state_hash_tags.h",
         "inline constexpr uint64_t kMmpFills = 0xB012;",
         "inline constexpr uint64_t kMmpFills = 0xB00A;",
         "test_venue_state_hash_tags",
@@ -97,7 +97,7 @@ MUTATIONS = [
     ),
     Mutation(
         "tags: the firm STP groups collide with funding again",
-        "venue/include/flox-venue/engine/state_hash_tags.h",
+        "venue/include/lrvx-venue/engine/state_hash_tags.h",
         "inline constexpr uint64_t kStpGroup = 0xB011;",
         "inline constexpr uint64_t kStpGroup = 0xB00B;",
         "test_venue_state_hash_tags",
@@ -105,7 +105,7 @@ MUTATIONS = [
     ),
     Mutation(
         "tags: the account caps collide with the delisted marker again",
-        "venue/include/flox-venue/engine/state_hash_tags.h",
+        "venue/include/lrvx-venue/engine/state_hash_tags.h",
         "inline constexpr uint64_t kAccountRiskLimits = 0xB010;",
         "inline constexpr uint64_t kAccountRiskLimits = 0xB00E;",
         "test_venue_state_hash_tags",

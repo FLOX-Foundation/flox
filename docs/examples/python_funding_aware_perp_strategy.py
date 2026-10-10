@@ -11,13 +11,13 @@ Demonstrates:
 - Each payment has sign based on (position_signed × rate)
 """
 
-import flox_py as flox
+import lrvx
 
 BTC = 1
 
 
 def main():
-    stack = flox.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
     acct = stack.account()
     funding = stack.funding()
 

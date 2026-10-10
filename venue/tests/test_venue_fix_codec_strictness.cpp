@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -23,7 +23,7 @@
  * Each group carries a control that passes on today's codec and must keep
  * passing: the strictness is an addition to the mapping, not a rewrite of it.
  */
-#include "flox-venue/fix_codec.h"
+#include "lrvx-venue/fix_codec.h"
 
 #include <gtest/gtest.h>
 
@@ -35,8 +35,8 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

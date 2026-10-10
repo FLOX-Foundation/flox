@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/order_queue_tracker.h"
+#include "lrvx/backtest/order_queue_tracker.h"
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

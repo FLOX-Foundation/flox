@@ -6,10 +6,10 @@
 #include <iostream>
 #include <sstream>
 
-namespace flox
+namespace lrvx
 {
 
-FloxJsEngine::FloxJsEngine(size_t memoryLimitBytes, size_t maxStackSizeBytes)
+LrvxJsEngine::LrvxJsEngine(size_t memoryLimitBytes, size_t maxStackSizeBytes)
     : _ownerThreadId(std::this_thread::get_id())
 {
   _rt = JS_NewRuntime();
@@ -21,15 +21,15 @@ FloxJsEngine::FloxJsEngine(size_t memoryLimitBytes, size_t maxStackSizeBytes)
   {
     JS_SetMaxStackSize(_rt, maxStackSizeBytes);
   }
-  JS_SetInterruptHandler(_rt, &FloxJsEngine::interruptHandlerTrampoline, this);
+  JS_SetInterruptHandler(_rt, &LrvxJsEngine::interruptHandlerTrampoline, this);
   _ctx = JS_NewContext(_rt);
 }
 
-FloxJsEngine::~FloxJsEngine()
+LrvxJsEngine::~LrvxJsEngine()
 {
   // Teardown must happen on the owner thread too: finalizers and JS_RunGC
   // are entries into the runtime like any other.
-  checkOwnerThread("~FloxJsEngine");
+  checkOwnerThread("~LrvxJsEngine");
   if (_ctx)
   {
     JS_FreeContext(_ctx);
@@ -40,35 +40,35 @@ FloxJsEngine::~FloxJsEngine()
   }
 }
 
-void FloxJsEngine::rebindOwnerThread()
+void LrvxJsEngine::rebindOwnerThread()
 {
   _ownerThreadId = std::this_thread::get_id();
 }
 
-bool FloxJsEngine::checkOwnerThread(const char* where) const
+bool LrvxJsEngine::checkOwnerThread(const char* where) const
 {
   if (std::this_thread::get_id() == _ownerThreadId)
   {
     return true;
   }
 #ifndef NDEBUG
-  std::cerr << "[flox-js] FATAL: " << where
+  std::cerr << "[lrvx-js] FATAL: " << where
             << " entered this JSRuntime from a thread that does not own it. "
                "A JSRuntime may only be used from one thread; see "
                "docs/bindings/javascript.md#threads."
             << std::endl;
-  assert(false && "FloxJsEngine entered from a non-owning thread");
+  assert(false && "LrvxJsEngine entered from a non-owning thread");
   return false;
 #else
-  std::cerr << "[flox-js] refusing " << where
+  std::cerr << "[lrvx-js] refusing " << where
             << ": called from a thread that does not own this JSRuntime" << std::endl;
   return false;
 #endif
 }
 
-bool FloxJsEngine::eval(const std::string& code, const std::string& filename)
+bool LrvxJsEngine::eval(const std::string& code, const std::string& filename)
 {
-  if (!checkOwnerThread("FloxJsEngine::eval"))
+  if (!checkOwnerThread("LrvxJsEngine::eval"))
   {
     return false;
   }
@@ -81,9 +81,9 @@ bool FloxJsEngine::eval(const std::string& code, const std::string& filename)
   return true;
 }
 
-bool FloxJsEngine::loadFile(const std::string& path)
+bool LrvxJsEngine::loadFile(const std::string& path)
 {
-  if (!checkOwnerThread("FloxJsEngine::loadFile"))
+  if (!checkOwnerThread("LrvxJsEngine::loadFile"))
   {
     return false;
   }
@@ -97,9 +97,9 @@ bool FloxJsEngine::loadFile(const std::string& path)
   return eval(buf.str(), path);
 }
 
-std::string FloxJsEngine::getErrorMessage()
+std::string LrvxJsEngine::getErrorMessage()
 {
-  if (!checkOwnerThread("FloxJsEngine::getErrorMessage"))
+  if (!checkOwnerThread("LrvxJsEngine::getErrorMessage"))
   {
     return "unknown error (wrong thread)";
   }
@@ -114,13 +114,13 @@ std::string FloxJsEngine::getErrorMessage()
     return "(no pending exception)";
   }
 
-  flox::JsCString msg(_ctx, exception);
+  lrvx::JsCString msg(_ctx, exception);
   std::string result = msg ? msg : "unknown error";
 
   JSValue stack = JS_GetPropertyStr(_ctx, exception, "stack");
   if (!JS_IsUndefined(stack) && !JS_IsException(stack))
   {
-    flox::JsCString stackStr(_ctx, stack);
+    lrvx::JsCString stackStr(_ctx, stack);
     if (stackStr)
     {
       result += "\n";
@@ -132,9 +132,9 @@ std::string FloxJsEngine::getErrorMessage()
   return result;
 }
 
-JSValue FloxJsEngine::getGlobalProperty(const char* name) const
+JSValue LrvxJsEngine::getGlobalProperty(const char* name) const
 {
-  if (!checkOwnerThread("FloxJsEngine::getGlobalProperty"))
+  if (!checkOwnerThread("LrvxJsEngine::getGlobalProperty"))
   {
     return JS_UNDEFINED;
   }
@@ -144,9 +144,9 @@ JSValue FloxJsEngine::getGlobalProperty(const char* name) const
   return val;
 }
 
-bool FloxJsEngine::setGlobalProperty(const char* name, JSValue val)
+bool LrvxJsEngine::setGlobalProperty(const char* name, JSValue val)
 {
-  if (!checkOwnerThread("FloxJsEngine::setGlobalProperty"))
+  if (!checkOwnerThread("LrvxJsEngine::setGlobalProperty"))
   {
     JS_FreeValue(_ctx, val);
     return false;
@@ -157,18 +157,18 @@ bool FloxJsEngine::setGlobalProperty(const char* name, JSValue val)
   return ret >= 0;
 }
 
-void FloxJsEngine::beginWork()
+void LrvxJsEngine::beginWork()
 {
   _workStarted = std::chrono::steady_clock::now();
   _workInProgress = _interruptBudget.count() > 0;
 }
 
-int FloxJsEngine::interruptHandlerTrampoline(JSRuntime*, void* opaque)
+int LrvxJsEngine::interruptHandlerTrampoline(JSRuntime*, void* opaque)
 {
-  return static_cast<FloxJsEngine*>(opaque)->handleInterrupt();
+  return static_cast<LrvxJsEngine*>(opaque)->handleInterrupt();
 }
 
-int FloxJsEngine::handleInterrupt()
+int LrvxJsEngine::handleInterrupt()
 {
   if (!_workInProgress)
   {
@@ -186,9 +186,9 @@ int FloxJsEngine::handleInterrupt()
   return 0;
 }
 
-int FloxJsEngine::pumpPendingJobs(int maxIterations)
+int LrvxJsEngine::pumpPendingJobs(int maxIterations)
 {
-  if (!checkOwnerThread("FloxJsEngine::pumpPendingJobs"))
+  if (!checkOwnerThread("LrvxJsEngine::pumpPendingJobs"))
   {
     return 0;
   }
@@ -202,7 +202,7 @@ int FloxJsEngine::pumpPendingJobs(int maxIterations)
       // The job threw. That exception is an unhandled promise rejection;
       // report it the same way a synchronous callback error is reported
       // and keep draining the rest of the queue.
-      std::cerr << "[flox-js] unhandled rejection: " << getErrorMessage() << std::endl;
+      std::cerr << "[lrvx-js] unhandled rejection: " << getErrorMessage() << std::endl;
     }
     else if (rc == 0)
     {
@@ -213,4 +213,4 @@ int FloxJsEngine::pumpPendingJobs(int maxIterations)
   return ran;
 }
 
-}  // namespace flox
+}  // namespace lrvx

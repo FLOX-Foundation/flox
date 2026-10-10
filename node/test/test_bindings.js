@@ -9,7 +9,7 @@
 const path = require('path');
 const fs   = require('fs');
 const os   = require('os');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -31,37 +31,37 @@ function approx(a, b, eps = 1e-6) {
 // ── Constants ─────────────────────────────────────────────────────────
 
 console.log('=== Constants ===');
-check(flox.POSITION_FIFO === 0, 'POSITION_FIFO === 0');
-check(flox.POSITION_AVG_COST === 1, 'POSITION_AVG_COST === 1');
-check(flox.SLIPPAGE_NONE === 0, 'SLIPPAGE_NONE === 0');
-check(flox.SLIPPAGE_FIXED_TICKS === 1, 'SLIPPAGE_FIXED_TICKS === 1');
-check(flox.SLIPPAGE_FIXED_BPS === 2, 'SLIPPAGE_FIXED_BPS === 2');
-check(flox.SLIPPAGE_VOLUME_IMPACT === 3, 'SLIPPAGE_VOLUME_IMPACT === 3');
-check(flox.QUEUE_NONE === 0, 'QUEUE_NONE === 0');
-check(flox.QUEUE_TOB === 1, 'QUEUE_TOB === 1');
-check(flox.QUEUE_FULL === 2, 'QUEUE_FULL === 2');
+check(lrvx.POSITION_FIFO === 0, 'POSITION_FIFO === 0');
+check(lrvx.POSITION_AVG_COST === 1, 'POSITION_AVG_COST === 1');
+check(lrvx.SLIPPAGE_NONE === 0, 'SLIPPAGE_NONE === 0');
+check(lrvx.SLIPPAGE_FIXED_TICKS === 1, 'SLIPPAGE_FIXED_TICKS === 1');
+check(lrvx.SLIPPAGE_FIXED_BPS === 2, 'SLIPPAGE_FIXED_BPS === 2');
+check(lrvx.SLIPPAGE_VOLUME_IMPACT === 3, 'SLIPPAGE_VOLUME_IMPACT === 3');
+check(lrvx.QUEUE_NONE === 0, 'QUEUE_NONE === 0');
+check(lrvx.QUEUE_TOB === 1, 'QUEUE_TOB === 1');
+check(lrvx.QUEUE_FULL === 2, 'QUEUE_FULL === 2');
 
 // ── Streaming indicators ──────────────────────────────────────────────
 
 console.log('=== Streaming indicators ===');
 
-const sma = new flox.SMA(3);
+const sma = new lrvx.SMA(3);
 sma.update(1.0); sma.update(2.0); sma.update(3.0);
 check(approx(sma.value, 2.0), 'SMA(3) of [1,2,3] == 2.0');
 sma.update(4.0);
 check(approx(sma.value, 3.0), 'SMA(3) shifts to [2,3,4] == 3.0');
 check(sma.ready === true, 'SMA.ready === true');
 
-const ema = new flox.EMA(3);
+const ema = new lrvx.EMA(3);
 for (let i = 1; i <= 10; i++) ema.update(i);
 check(ema.value > 0, 'EMA.value > 0 after 10 updates');
 check(ema.ready === true, 'EMA.ready === true');
 
-const rsi = new flox.RSI(14);
+const rsi = new lrvx.RSI(14);
 for (let i = 1; i <= 20; i++) rsi.update(i);
 check(rsi.value >= 0 && rsi.value <= 100, `RSI in [0,100], got ${rsi.value.toFixed(2)}`);
 
-const atr = new flox.ATR(14);
+const atr = new lrvx.ATR(14);
 for (let i = 0; i < 20; i++) atr.update(100 + i, 99 + i, 100 + i);
 check(atr.value > 0, 'ATR > 0');
 
@@ -70,11 +70,11 @@ check(atr.value > 0, 'ATR > 0');
 console.log('=== Batch indicators ===');
 
 const prices = new Float64Array([1, 2, 3, 4, 5, 6, 7]);
-const bSma = flox.sma(prices, 3);
+const bSma = lrvx.sma(prices, 3);
 check(approx(bSma[2], 2.0), 'batch sma[2] == 2.0');
 check(approx(bSma[6], 6.0), 'batch sma[6] == 6.0');
 
-const bEma = flox.ema(prices, 3);
+const bEma = lrvx.ema(prices, 3);
 check(bEma.length === prices.length, 'batch ema length matches input');
 check(bEma[6] > bEma[2], 'batch ema increases for ascending input');
 
@@ -83,19 +83,19 @@ check(bEma[6] > bEma[2], 'batch ema increases for ascending input');
 console.log('=== Targets ===');
 
 const tClose = new Float64Array([100.0, 101.0, 99.0, 105.0, 110.0]);
-const fr = flox.targets.future_return(tClose, 2);
+const fr = lrvx.targets.future_return(tClose, 2);
 check(approx(fr[0], 99.0 / 100.0 - 1.0), 'targets.future_return[0]');
 check(approx(fr[2], 110.0 / 99.0 - 1.0), 'targets.future_return[2]');
 check(Number.isNaN(fr[3]) && Number.isNaN(fr[4]), 'targets.future_return tail NaN');
 
 const constClose = new Float64Array(20).fill(100.0);
-const vol = flox.targets.future_ctc_volatility(constClose, 5);
+const vol = lrvx.targets.future_ctc_volatility(constClose, 5);
 check(approx(vol[0], 0.0), 'targets.future_ctc_volatility const-series == 0');
 check(Number.isNaN(vol[19]), 'targets.future_ctc_volatility tail NaN');
 
 const linear = new Float64Array(20);
 for (let i = 0; i < 20; ++i) linear[i] = 100.0 + 0.5 * i;
-const sl = flox.targets.future_linear_slope(linear, 4);
+const sl = lrvx.targets.future_linear_slope(linear, 4);
 check(approx(sl[0], 0.5), 'targets.future_linear_slope linear-series == 0.5');
 check(Number.isNaN(sl[19]), 'targets.future_linear_slope tail NaN');
 
@@ -121,14 +121,14 @@ const walk = new Float64Array(N);
 walk[0] = 0;
 for (let i = 1; i < N; ++i) walk[i] = walk[i - 1] + gen();
 
-const r = flox.adf(walk, 4, 'c');
+const r = lrvx.adf(walk, 4, 'c');
 check(r.usedLag <= 4, 'adf usedLag <= max_lag');
 check(r.pValue > 0.05, 'adf does not reject H0 for random walk');
 
 const gen2 = gaussian(7);
 const noise = new Float64Array(N);
 for (let i = 0; i < N; ++i) noise[i] = gen2() * 0.5;
-const r2 = flox.adf(noise, 4, 'c');
+const r2 = lrvx.adf(noise, 4, 'c');
 check(r2.testStat < r.testStat, 'stationary series produces lower testStat');
 check(r2.pValue < 0.05, 'adf rejects H0 for white noise');
 // ── AutoCorrelation ───────────────────────────────────────────────────
@@ -137,11 +137,11 @@ console.log('=== AutoCorrelation ===');
 
 const acLinear = new Float64Array(50);
 for (let i = 0; i < 50; ++i) acLinear[i] = 5.0 + 0.7 * i;
-const ac = flox.autocorrelation(acLinear, 10, 1);
+const ac = lrvx.autocorrelation(acLinear, 10, 1);
 check(Number.isNaN(ac[9]), 'autocorrelation warmup is NaN');
 check(approx(ac[10], 1.0), 'autocorrelation linear lag=1 == 1.0');
 
-const acStream = new flox.AutoCorrelation(10, 1);
+const acStream = new lrvx.AutoCorrelation(10, 1);
 let lastStreamed = undefined;
 for (let i = 0; i < acLinear.length; ++i) {
   lastStreamed = acStream.update(acLinear[i]);
@@ -156,11 +156,11 @@ console.log('=== IndicatorGraph (batch) ===');
 const ramp = new Float64Array(50);
 for (let i = 0; i < 50; ++i) ramp[i] = i;
 
-const g = new flox.IndicatorGraph();
+const g = new lrvx.IndicatorGraph();
 g.setBars(0, ramp);
 
-g.addNode('ema5', [], (graph, sym) => flox.ema(graph.close(sym), 5));
-g.addNode('sma5', [], (graph, sym) => flox.sma(graph.close(sym), 5));
+g.addNode('ema5', [], (graph, sym) => lrvx.ema(graph.close(sym), 5));
+g.addNode('sma5', [], (graph, sym) => lrvx.sma(graph.close(sym), 5));
 g.addNode('diff', ['ema5', 'sma5'], (graph, sym) => {
   const a = graph.get(sym, 'ema5');
   const b = graph.get(sym, 'sma5');
@@ -184,7 +184,7 @@ check(threw, 'graph require on unknown node throws');
 
 console.log('=== StreamingIndicatorGraph ===');
 
-const sg = new flox.StreamingIndicatorGraph();
+const sg = new lrvx.StreamingIndicatorGraph();
 sg.addNode('double_close', [], (graph, sym) => {
   const c = graph.close(sym);
   const out = new Float64Array(c.length);
@@ -199,7 +199,7 @@ check(Math.abs(sg.current(0, 'double_close') - 100.0) < 1e-9, 'streaming current
 check(sg.barCount(0) === 5, 'streaming barCount == 5');
 
 // Parity check.
-const bg2 = new flox.IndicatorGraph();
+const bg2 = new lrvx.IndicatorGraph();
 bg2.setBars(0, new Float64Array(closesS));
 bg2.addNode('double_close', [], (graph, sym) => {
   const c = graph.close(sym);
@@ -219,7 +219,7 @@ check(Number.isNaN(sg.current(0, 'double_close')), 'after reset current is NaN')
 
 console.log('=== PositionTracker ===');
 
-const pt = new flox.PositionTracker(flox.POSITION_FIFO);
+const pt = new lrvx.PositionTracker(lrvx.POSITION_FIFO);
 pt.onFill(0, 'buy', 50000.0, 1.0);
 check(approx(pt.position(0), 1.0), 'position == 1.0 after buy');
 check(approx(pt.avgEntryPrice(0), 50000.0), 'avgEntryPrice == 50000');
@@ -232,7 +232,7 @@ check(approx(pt.realizedPnl(0), 1000.0), 'realizedPnl == 1000');
 check(approx(pt.totalRealizedPnl(), 1000.0), 'totalRealizedPnl == 1000');
 
 // Multi-symbol
-const pt2 = new flox.PositionTracker(flox.POSITION_FIFO);
+const pt2 = new lrvx.PositionTracker(lrvx.POSITION_FIFO);
 pt2.onFill(0, 'buy', 100.0, 2.0);
 pt2.onFill(1, 'sell', 200.0, 3.0);
 check(approx(pt2.position(0), 2.0), 'symbol 0 position == 2.0');
@@ -242,7 +242,7 @@ check(approx(pt2.position(1), -3.0), 'symbol 1 position == -3.0');
 
 console.log('=== OrderTracker ===');
 
-const ot = new flox.OrderTracker();
+const ot = new lrvx.OrderTracker();
 check(ot.onSubmitted(1001, 0, 'buy', 50000.0, 1.0) === true, 'onSubmitted returns true');
 check(ot.isActive(1001) === true, 'order 1001 is active');
 check(ot.activeCount === 1, 'activeCount === 1');
@@ -266,7 +266,7 @@ console.log('=== Engine ===');
 
 const csvPath = path.join(__dirname, '..', '..', 'docs', 'examples', 'data', 'btcusdt_1m.csv');
 if (fs.existsSync(csvPath)) {
-  const engine = new flox.Engine();
+  const engine = new lrvx.Engine();
   engine.loadCsv(csvPath);
   const n = engine.barCount();
   check(n > 1000, `barCount ${n} > 1000`);
@@ -288,9 +288,9 @@ if (fs.existsSync(csvPath)) {
   // text into an int64, so this reading is exact in the store; handing it
   // back through a Float64Array rounded it to 1765615835519000064.
   const NS = 1765615835519000000n;
-  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flox-engine-ts-')), 'ns.csv');
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lrvx-engine-ts-')), 'ns.csv');
   fs.writeFileSync(tmp, `ts,open,high,low,close,volume\n${NS},100,101,99,100.5,10\n`);
-  const engine = new flox.Engine();
+  const engine = new lrvx.Engine();
   engine.loadCsv(tmp, 'NS');
   const ts = engine.ts('NS');
   check(ts instanceof BigInt64Array, `Engine.ts() is a BigInt64Array (got ${ts.constructor.name})`);
@@ -298,7 +298,7 @@ if (fs.existsSync(csvPath)) {
 
   // The read side is the write side's argument: SignalBuilder has to take
   // what Engine.ts() hands out.
-  const sigs = new flox.SignalBuilder();
+  const sigs = new lrvx.SignalBuilder();
   let sigErr = null;
   try { sigs.buy(ts[0], 1.0, 'NS'); } catch (e) { sigErr = e; }
   check(sigErr === null,
@@ -312,14 +312,14 @@ if (fs.existsSync(csvPath)) {
 console.log('=== BacktestRunner equityCurve / trades ===');
 
 const btCsv = path.join(__dirname, '..', '..',
-                        'python', 'flox_py', 'templates', 'research',
+                        'python', 'lrvx', 'templates', 'research',
                         'data', 'btcusdt_sample.csv');
 if (fs.existsSync(btCsv)) {
-  const reg2 = new flox.SymbolRegistry();
+  const reg2 = new lrvx.SymbolRegistry();
   const btc2 = reg2.addSymbol('exchange', 'BTCUSDT', 0.01);
 
-  const fast = new flox.SMA(10);
-  const slow = new flox.SMA(30);
+  const fast = new lrvx.SMA(10);
+  const slow = new lrvx.SMA(30);
 
   let lpFnsPresent = false;
   const strat = {
@@ -341,7 +341,7 @@ if (fs.existsSync(btCsv)) {
     },
   };
 
-  const bt = new flox.BacktestRunner(reg2, 0.0004, 10000);
+  const bt = new lrvx.BacktestRunner(reg2, 0.0004, 10000);
   bt.setStrategy(strat);
   const stats = bt.runCsv(btCsv, 'BTCUSDT');
   check(stats !== null && stats.totalTrades > 0,
@@ -365,14 +365,14 @@ if (fs.existsSync(btCsv)) {
   check(tr.pnl.length === stats.totalTrades,
         `trades length === totalTrades (${tr.pnl.length} vs ${stats.totalTrades})`);
 
-  const fresh = new flox.BacktestRunner(reg2, 0.0004, 10000);
+  const fresh = new lrvx.BacktestRunner(reg2, 0.0004, 10000);
   let threwFresh = false;
   try {
     fresh.equityCurve();
   } catch (e) {
     threwFresh = (e && e.code === 'E_RUN_002');
   }
-  check(threwFresh, 'equityCurve before run throws FloxError E_RUN_002');
+  check(threwFresh, 'equityCurve before run throws LrvxError E_RUN_002');
 } else {
   console.log(`  skip BacktestRunner accessors (CSV not found: ${btCsv})`);
 }
@@ -382,9 +382,9 @@ if (fs.existsSync(btCsv)) {
 console.log('=== BacktestRunner.runTape ===');
 
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   reg.addSymbol('exchange', 'BTCUSDT', 0.01);
-  const bt = new flox.BacktestRunner(reg, 0.0004, 10000);
+  const bt = new lrvx.BacktestRunner(reg, 0.0004, 10000);
   bt.setStrategy({
     symbols: [],
     onTrade(_ctx, _t, _emit) {},
@@ -394,7 +394,7 @@ console.log('=== BacktestRunner.runTape ===');
 
   // Missing-path case: per the existing runCsv pattern, the C ABI
   // returns null when the underlying call fails. (Some fail modes
-  // raise FloxError instead — accept either.)
+  // raise LrvxError instead — accept either.)
   let result = 'pending';
   try { result = bt.runTape('/__nonexistent_tape_path__'); }
   catch (_) { result = 'threw'; }
@@ -407,10 +407,10 @@ console.log('=== BacktestRunner.runTape ===');
 console.log('=== Strategy onFill / onOrderUpdate ===');
 
 if (fs.existsSync(btCsv)) {
-  const reg4 = new flox.SymbolRegistry();
+  const reg4 = new lrvx.SymbolRegistry();
   const btc4 = reg4.addSymbol('exchange', 'BTCUSDT', 0.01);
-  const fast = new flox.SMA(10);
-  const slow = new flox.SMA(30);
+  const fast = new lrvx.SMA(10);
+  const slow = new lrvx.SMA(30);
 
   const fills = [];
   const updates = [];
@@ -427,7 +427,7 @@ if (fs.existsSync(btCsv)) {
     onOrderUpdate(ctx, ev, _emit) { updates.push(ev); },
   };
 
-  const bt = new flox.BacktestRunner(reg4, 0.0004, 10000);
+  const bt = new lrvx.BacktestRunner(reg4, 0.0004, 10000);
   bt.setStrategy(strat);
   const stats = bt.runCsv(btCsv, 'BTCUSDT');
   check(stats !== null && stats.totalTrades > 0,
@@ -450,17 +450,17 @@ if (fs.existsSync(btCsv)) {
 console.log('=== WalkForwardRunner ===');
 
 const wfCsv = path.join(__dirname, '..', '..',
-                        'python', 'flox_py', 'templates', 'research',
+                        'python', 'lrvx', 'templates', 'research',
                         'data', 'btcusdt_sample.csv');
 if (fs.existsSync(wfCsv)) {
-  const reg3 = new flox.SymbolRegistry();
+  const reg3 = new lrvx.SymbolRegistry();
   const btc3 = reg3.addSymbol('exchange', 'BTCUSDT', 0.01);
-  const wfr = new flox.WalkForwardRunner(reg3, 0.0004, 10000, {
+  const wfr = new lrvx.WalkForwardRunner(reg3, 0.0004, 10000, {
     mode: 'anchored', testSize: 100, step: 100, minTrainSize: 100,
   });
   wfr.setStrategyFactory(() => {
-    const fast = new flox.SMA(10);
-    const slow = new flox.SMA(30);
+    const fast = new lrvx.SMA(10);
+    const slow = new lrvx.SMA(30);
     return {
       symbols: [Number(btc3)],
       onTrade(ctx, t, emit) {
@@ -483,11 +483,11 @@ if (fs.existsSync(wfCsv)) {
   check(folds[0].trainStats.totalTrades > 0,
         `fold 0 train produced trades (got ${folds[0].trainStats.totalTrades})`);
 
-  const wfr2 = new flox.WalkForwardRunner(reg3, 0.0004, 10000, {
+  const wfr2 = new lrvx.WalkForwardRunner(reg3, 0.0004, 10000, {
     mode: 'sliding', trainSize: 200, testSize: 100, step: 100,
   });
   wfr2.setStrategyFactory(() => {
-    const fast = new flox.SMA(10), slow = new flox.SMA(30);
+    const fast = new lrvx.SMA(10), slow = new lrvx.SMA(30);
     return {
       symbols: [Number(btc3)],
       onTrade(ctx, t, emit) {
@@ -511,7 +511,7 @@ if (fs.existsSync(wfCsv)) {
 console.log('=== GridSearch ===');
 
 {
-  const gs = new flox.GridSearch();
+  const gs = new lrvx.GridSearch();
   gs.addAxis([1, 2, 3]);
   gs.addAxis([10, 20]);
   check(gs.total() === 6, `grid total == 6 (got ${gs.total()})`);
@@ -538,10 +538,10 @@ console.log('=== GridSearch ===');
 
 // ── Heatmap renderer ──────────────────────────────────────────────────
 
-console.log('=== flox.report.heatmapHtml ===');
+console.log('=== lrvx.report.heatmapHtml ===');
 {
   const z = [[0.5, -0.3, 1.2], [0.8, 1.1, -1.4]];
-  const html = flox.report.heatmapHtml(z, {
+  const html = lrvx.report.heatmapHtml(z, {
     rowLabels: ['fast=5', 'fast=10'],
     colLabels: ['slow=20', 'slow=30', 'slow=50'],
     title: 'Sweep',
@@ -558,17 +558,17 @@ console.log('=== flox.report.heatmapHtml ===');
   check(!html.includes('<script src='), 'heatmap has no external scripts');
 
   let threwEmpty = false;
-  try { flox.report.heatmapHtml([]); } catch (e) { threwEmpty = true; }
+  try { lrvx.report.heatmapHtml([]); } catch (e) { threwEmpty = true; }
   check(threwEmpty, 'empty z raises');
 
   let threwUneven = false;
-  try { flox.report.heatmapHtml([[1, 2], [3]]); } catch (e) { threwUneven = true; }
+  try { lrvx.report.heatmapHtml([[1, 2], [3]]); } catch (e) { threwUneven = true; }
   check(threwUneven, 'uneven rows raise');
 }
 
 // ── White's reality check ─────────────────────────────────────────────
 
-console.log("=== flox.whitesRealityCheck ===");
+console.log("=== lrvx.whitesRealityCheck ===");
 {
   // (K, T) returns matrix flat in row-major order — one signal-bearing
   // strategy and the rest noise.
@@ -583,7 +583,7 @@ console.log("=== flox.whitesRealityCheck ===");
     }
   }
 
-  const out = flox.whitesRealityCheck(flat, K, T, 2000, 0.0);
+  const out = lrvx.whitesRealityCheck(flat, K, T, 2000, 0.0);
   check(typeof out.p_value === "number", `p_value is a number (${out.p_value})`);
   check(out.p_value >= 0 && out.p_value <= 1,
         `p_value in [0,1] (${out.p_value})`);
@@ -603,7 +603,7 @@ console.log("=== flox.whitesRealityCheck ===");
     const noise = new Float64Array(K * T);
     const ng = gaussian(noiseSeed);
     for (let i = 0; i < noise.length; ++i) noise[i] = ng() * 0.01;
-    const noiseOut = flox.whitesRealityCheck(noise, K, T, 1500, 0.0);
+    const noiseOut = lrvx.whitesRealityCheck(noise, K, T, 1500, 0.0);
     pSum += noiseOut.p_value;
     pRuns++;
   }
@@ -612,8 +612,8 @@ console.log("=== flox.whitesRealityCheck ===");
         `pure noise mean p-value > 0.20 across 5 seeds (got ${meanNoiseP.toFixed(3)})`);
 
   // Determinism — the C ABI uses a fixed seed (42 on the C++ side).
-  const a = flox.whitesRealityCheck(flat, K, T, 1000, 5.0);
-  const b = flox.whitesRealityCheck(flat, K, T, 1000, 5.0);
+  const a = lrvx.whitesRealityCheck(flat, K, T, 1000, 5.0);
+  const b = lrvx.whitesRealityCheck(flat, K, T, 1000, 5.0);
   check(a.p_value === b.p_value,
         `same inputs are deterministic (${a.p_value} vs ${b.p_value})`);
 }

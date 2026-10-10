@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,7 +10,7 @@
 // The engine's timebase, and the config fields nobody reads.
 //
 // fromUnixMs()/fromUnixNs() turn a venue's wall-clock stamp into a
-// FloxClock (steady_clock) TimePoint through unix_to_flox_offset_ns(), a
+// LrvxClock (steady_clock) TimePoint through unix_to_lrvx_offset_ns(), a
 // process-global atomic that starts at zero. At zero the conversion is not
 // approximately right, it is the exact bug the typed clocks were introduced
 // to stop: a unix epoch relabelled as a steady-clock reading, decades adrift.
@@ -23,11 +23,11 @@
 // no component has to remember it and none of them can disagree about when
 // it happened.
 
-#include "flox/connector/abstract_exchange_connector.h"
-#include "flox/engine/abstract_subsystem.h"
-#include "flox/engine/engine.h"
-#include "flox/engine/engine_config.h"
-#include "flox/util/base/time.h"
+#include "lrvx/connector/abstract_exchange_connector.h"
+#include "lrvx/engine/abstract_subsystem.h"
+#include "lrvx/engine/engine.h"
+#include "lrvx/engine/engine_config.h"
+#include "lrvx/util/base/time.h"
 
 #include <gtest/gtest.h>
 
@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -56,10 +56,10 @@ int64_t nowUnixMs()
 class OffsetGuard
 {
  public:
-  OffsetGuard() : _saved(unix_to_flox_offset_ns().load(std::memory_order_relaxed)) {}
-  ~OffsetGuard() { unix_to_flox_offset_ns().store(_saved, std::memory_order_relaxed); }
+  OffsetGuard() : _saved(unix_to_lrvx_offset_ns().load(std::memory_order_relaxed)) {}
+  ~OffsetGuard() { unix_to_lrvx_offset_ns().store(_saved, std::memory_order_relaxed); }
 
-  static void reset() { unix_to_flox_offset_ns().store(0, std::memory_order_relaxed); }
+  static void reset() { unix_to_lrvx_offset_ns().store(0, std::memory_order_relaxed); }
 
  private:
   int64_t _saved;
@@ -76,7 +76,7 @@ class OffsetWatchingConnector : public IExchangeConnector
   void start() override
   {
     started = true;
-    offsetAtStart = unix_to_flox_offset_ns().load(std::memory_order_relaxed);
+    offsetAtStart = unix_to_lrvx_offset_ns().load(std::memory_order_relaxed);
     mappedAtStart = fromUnixMs(nowUnixMs());
   }
 
@@ -91,7 +91,7 @@ class OffsetWatchingSubsystem : public ISubsystem
   void start() override
   {
     started = true;
-    offsetAtStart = unix_to_flox_offset_ns().load(std::memory_order_relaxed);
+    offsetAtStart = unix_to_lrvx_offset_ns().load(std::memory_order_relaxed);
   }
 
   bool started{false};
@@ -124,7 +124,7 @@ TEST(EngineTimebase, AnchoredMappingCarriesAKnownInstantBothWays)
   EXPECT_LT(std::llabs(driftMs), 1000);
 }
 
-TEST(EngineTimebase, StartAnchorsTheUnixToFloxMapping)
+TEST(EngineTimebase, StartAnchorsTheUnixToLrvxMapping)
 {
   OffsetGuard guard;
   OffsetGuard::reset();
@@ -133,8 +133,8 @@ TEST(EngineTimebase, StartAnchorsTheUnixToFloxMapping)
   Engine engine = makeEngine(cfg);
   engine.start();
 
-  EXPECT_NE(unix_to_flox_offset_ns().load(std::memory_order_relaxed), 0)
-      << "Engine::start() left unix_to_flox_offset_ns() at zero: every "
+  EXPECT_NE(unix_to_lrvx_offset_ns().load(std::memory_order_relaxed), 0)
+      << "Engine::start() left unix_to_lrvx_offset_ns() at zero: every "
          "fromUnixMs/fromUnixNs conversion in the process reinterprets a "
          "wall-clock epoch as a steady-clock reading";
 
@@ -143,7 +143,7 @@ TEST(EngineTimebase, StartAnchorsTheUnixToFloxMapping)
       std::chrono::duration_cast<std::chrono::milliseconds>(mapped - now()).count();
   EXPECT_LT(std::llabs(driftMs), 1000)
       << "a wall-clock instant of now(), mapped after Engine::start(), landed "
-      << driftMs << " ms from FloxClock::now()";
+      << driftMs << " ms from LrvxClock::now()";
 
   engine.stop();
 }
@@ -202,13 +202,13 @@ TEST(EngineTimebase, AConnectorNeedNotAnchorTheMappingItself)
   Engine engine = makeEngine(cfg);
   engine.start();
 
-  const int64_t anchored = unix_to_flox_offset_ns().load(std::memory_order_relaxed);
+  const int64_t anchored = unix_to_lrvx_offset_ns().load(std::memory_order_relaxed);
   ASSERT_NE(anchored, 0) << "the engine did not anchor the mapping at all";
 
   // What a connector's lazy ensureTimebaseMapped() does on first use.
   init_timebase_mapping();
 
-  EXPECT_EQ(unix_to_flox_offset_ns().load(std::memory_order_relaxed), anchored)
+  EXPECT_EQ(unix_to_lrvx_offset_ns().load(std::memory_order_relaxed), anchored)
       << "a second init_timebase_mapping() moved the offset after the engine "
          "had anchored it; a connector calling it on first use would shift "
          "the meaning of every timestamp converted before that moment";

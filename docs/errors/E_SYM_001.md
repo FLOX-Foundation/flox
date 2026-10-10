@@ -8,7 +8,7 @@ since: 0.1.0
 # E_SYM_001 — Symbol is not registered
 
 A request referenced a symbol name (e.g. `"BTCUSDT"`) that the engine's
-`SymbolRegistry` has never seen. FLOX requires every symbol to be
+`SymbolRegistry` has never seen. lrvx requires every symbol to be
 registered up-front so that strategies, indicators, and replay sources
 can map names to compact `uint32_t` IDs at hot-path latency.
 
@@ -18,7 +18,7 @@ can map names to compact `uint32_t` IDs at hot-path latency.
   the input doesn't appear in `add_symbol()` calls.
 - `SignalBuilder.market_buy(symbol="…")` and similar emitters.
 - Any C-API path that accepts a `const char* symbol` (e.g.
-  `flox_registry_get_symbol_id`).
+  `lrvx_registry_get_symbol_id`).
 
 ## How to fix
 
@@ -27,30 +27,30 @@ signals.
 
 === "Python"
     ```python
-    import flox_py as flox
+    import lrvx
 
-    eng = flox.Engine()
+    eng = lrvx.Engine()
     eng.add_symbol("BTCUSDT")           # ← register first
     eng.run_csv("BTCUSDT", "btc.csv")   # ← then reference it
     ```
 
 === "Node"
     ```js
-    const flox = require("@flox-foundation/flox");
-    const eng = new flox.Engine();
+    const lrvx = require("@lrvx/lrvx");
+    const eng = new lrvx.Engine();
     eng.addSymbol("BTCUSDT");
     ```
 
 === "C API"
     ```c
-    FloxRegistryHandle reg = flox_registry_create();
-    flox_registry_add_symbol(reg, "exchange", "BTCUSDT", /*tick_size=*/0.01);
+    LrvxRegistryHandle reg = lrvx_registry_create();
+    lrvx_registry_add_symbol(reg, "exchange", "BTCUSDT", /*tick_size=*/0.01);
     ```
 
 ## Common causes
 
 - **Typos** between `add_symbol()` and the symbol referenced later.
-  FLOX is case-sensitive; `"BTCUSDT"` and `"btcusdt"` are different
+  lrvx is case-sensitive; `"BTCUSDT"` and `"btcusdt"` are different
   symbols.
 - **Forgetting to register a symbol** that appears in the dataset but
   isn't part of the strategy's declared universe — register every symbol
@@ -60,13 +60,13 @@ signals.
 
 ## Diagnosing
 
-The `FloxError` exception carries the offending symbol name in its
+The `LrvxError` exception carries the offending symbol name in its
 `message` field. Print the registered set to compare:
 
 ```python
 try:
     eng.run_csv("BTCUSDT", "btc.csv")
-except flox.FloxError as e:
+except lrvx.LrvxError as e:
     print(f"{e.code}: {e.message}")
     print(f"registered: {sorted(eng.symbols())}")
 ```

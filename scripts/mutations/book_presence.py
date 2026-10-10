@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Mutation harness for the presence flags on FloxBookSnapshot.
+"""Mutation harness for the presence flags on LrvxBookSnapshot.
 
 `has_bid` and `has_ask` say whether a side of the book has a best level; the
 price fields cannot, because a book may be quoted at exactly zero. The flags
 are written in two places, `BridgeStrategy::toBookSnapshot` (the book event
-and the context handed to callbacks) and `flox_get_symbol_context` (the query
+and the context handed to callbacks) and `lrvx_get_symbol_context` (the query
 outside a callback), and the ABI number moved to 4 with the struct.
 
 Each mutation below breaks one of those writes, or the number, or the
@@ -13,9 +13,9 @@ context on the _opt accessors), rebuilds what reads it, and requires the
 tests to go red. A test that passes proves nothing on its own; what it has
 to do is fail when the code under it is wrong.
 
-Run from the repository root with a configured `build/` (FLOX_BUILD_CAPI=ON,
-FLOX_BUILD_TESTS=ON, FLOX_BUILD_QUICKJS=ON), a `build-py/` with
-FLOX_BUILD_PYTHON=ON, and the Node addon built with `npx cmake-js compile`
+Run from the repository root with a configured `build/` (LRVX_BUILD_CAPI=ON,
+LRVX_BUILD_TESTS=ON, LRVX_BUILD_QUICKJS=ON), a `build-py/` with
+LRVX_BUILD_PYTHON=ON, and the Node addon built with `npx cmake-js compile`
 under `node/`:
 
     python3 scripts/mutations/book_presence.py
@@ -33,14 +33,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 
-BRIDGE = "include/flox/capi/bridge_strategy.h"
-SHIM = "src/capi/flox_capi.cpp"
-HEADER = "include/flox/capi/flox_capi.h"
+BRIDGE = "include/lrvx/capi/bridge_strategy.h"
+SHIM = "src/capi/lrvx_capi.cpp"
+HEADER = "include/lrvx/capi/lrvx_capi.h"
 
 PY_BINDING = "python/strategy_bindings.h"
 NODE_BINDING = "node/src/strategy.h"
 QJS_BINDING = "src/quickjs/js_strategy.cpp"
-CODON_CONTEXT = "codon/flox/context.codon"
+CODON_CONTEXT = "codon/lrvx/context.codon"
 
 TARGETS = ["test_capi_book_snapshot", "test_capi_negative_book", "test_capi_infra"]
 
@@ -98,22 +98,22 @@ MUTATIONS = [
     (
         "header: the ABI number stays at 3 with the flags present",
         HEADER,
-        "#define FLOX_CAPI_ABI_VERSION 4\n",
-        "#define FLOX_CAPI_ABI_VERSION 3\n",
+        "#define LRVX_CAPI_ABI_VERSION 4\n",
+        "#define LRVX_CAPI_ABI_VERSION 3\n",
         ["test_capi_infra"],
     ),
     (
         "python: a bid at zero reads as no quote",
         PY_BINDING,
-        "  if (book.has_bid)\n  {\n    pc.best_bid = flox_price_to_double(book.bid_price_raw);\n",
-        "  if (book.has_bid && book.bid_price_raw != 0)\n  {\n    pc.best_bid = flox_price_to_double(book.bid_price_raw);\n",
+        "  if (book.has_bid)\n  {\n    pc.best_bid = lrvx_price_to_double(book.bid_price_raw);\n",
+        "  if (book.has_bid && book.bid_price_raw != 0)\n  {\n    pc.best_bid = lrvx_price_to_double(book.bid_price_raw);\n",
         [PY_TEST],
     ),
     (
         "python: the mid needs only a bid",
         PY_BINDING,
-        "  if (book.has_bid && book.has_ask)\n  {\n    pc.mid_price = flox_price_to_double(book.mid_raw);\n",
-        "  if (book.has_bid)\n  {\n    pc.mid_price = flox_price_to_double(book.mid_raw);\n",
+        "  if (book.has_bid && book.has_ask)\n  {\n    pc.mid_price = lrvx_price_to_double(book.mid_raw);\n",
+        "  if (book.has_bid)\n  {\n    pc.mid_price = lrvx_price_to_double(book.mid_raw);\n",
         [PY_TEST],
     ),
     (
@@ -154,15 +154,15 @@ MUTATIONS = [
     (
         "quickjs: a bid at zero reads as null",
         QJS_BINDING,
-        "                    snap->has_bid ? JS_NewFloat64(c, flox_price_to_double(snap->bid_price_raw))\n",
-        "                    (snap->has_bid && snap->bid_price_raw != 0) ? JS_NewFloat64(c, flox_price_to_double(snap->bid_price_raw))\n",
+        "                    snap->has_bid ? JS_NewFloat64(c, lrvx_price_to_double(snap->bid_price_raw))\n",
+        "                    (snap->has_bid && snap->bid_price_raw != 0) ? JS_NewFloat64(c, lrvx_price_to_double(snap->bid_price_raw))\n",
         [QJS_TEST],
     ),
     (
         "codon: the context goes back to the raw bid accessor",
         CODON_CONTEXT,
-        "        if flox_best_bid_raw_opt(self._handle, self.symbol_id, __ptr__(raw)) == u8(0):\n            return None\n",
-        "        if flox_best_bid_raw(self._handle, self.symbol_id) == i64(0):\n            return None\n",
+        "        if lrvx_best_bid_raw_opt(self._handle, self.symbol_id, __ptr__(raw)) == u8(0):\n            return None\n",
+        "        if lrvx_best_bid_raw(self._handle, self.symbol_id) == i64(0):\n            return None\n",
         [CODON_TEST],
     ),
     (
@@ -192,16 +192,16 @@ def rebuild(targets: list) -> tuple[bool, bool]:
             for o in glob.glob(str(BUILD / "**" / "CMakeFiles" / f"{t}.dir" / "**" / "*.o"), recursive=True):
                 os.remove(o)
         r = subprocess.run(
-            ["cmake", "--build", str(BUILD), "-j4", "--target", "flox_capi", *gtests],
+            ["cmake", "--build", str(BUILD), "-j4", "--target", "lrvx_capi", *gtests],
             cwd=REPO, capture_output=True, text=True, timeout=3600,
         )
         ok &= r.returncode == 0
         built |= "Building CXX" in r.stdout
     if "py" in kinds:
-        for o in glob.glob(str(REPO / "build-py" / "**" / "flox_py.cpp.o"), recursive=True):
+        for o in glob.glob(str(REPO / "build-py" / "**" / "lrvx.cpp.o"), recursive=True):
             os.remove(o)
         r = subprocess.run(
-            ["cmake", "--build", str(REPO / "build-py"), "-j4", "--target", "_flox_py"],
+            ["cmake", "--build", str(REPO / "build-py"), "-j4", "--target", "_lrvx"],
             cwd=REPO, capture_output=True, text=True, timeout=3600,
         )
         ok &= r.returncode == 0
@@ -221,7 +221,7 @@ def rebuild(targets: list) -> tuple[bool, bool]:
 
 def run(target) -> str:
     kind, name = as_pair(target)
-    env = dict(os.environ, FLOX_REPO_ROOT=str(REPO))
+    env = dict(os.environ, LRVX_REPO_ROOT=str(REPO))
     if kind == "gtest":
         exe = BUILD / "tests" / name
         if not exe.exists():

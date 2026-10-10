@@ -2,7 +2,7 @@
 """Audit quickjs/examples/*.js against what CI actually executes.
 
 quickjs/examples/merged_tape_smoke.js and quickjs/examples/run_trace_smoke.js
-shipped with their own commits (MergedTapeReader binding; the .floxrun
+shipped with their own commits (MergedTapeReader binding; the .lrvxrun
 trace format) and were never added to the "Verify QuickJS runner" step of
 .github/workflows/ci.yml. Nothing broke: a QuickJS example needs no build
 registration, so there is no compile-time signal comparable to a missing
@@ -16,7 +16,7 @@ the list CI runs must be tied together by a check, not by memory.
 Every `quickjs/examples/*.js` file must fall into exactly one of:
 
   1. Invoked directly by the "Verify QuickJS runner" step in
-     `.github/workflows/ci.yml` (the only place flox_js_runner is pointed
+     `.github/workflows/ci.yml` (the only place lrvx_js_runner is pointed
      at an example in CI today).
   2. Named in `EXCEPTIONS` below with a reason. An explicit, reasoned
      exception is acceptable; silently shipping an example that nothing
@@ -25,7 +25,7 @@ Every `quickjs/examples/*.js` file must fall into exactly one of:
 A file in neither is an orphan, and this script fails the build.
 
 Unlike the Codon examples, a QuickJS example is not compiled -- there is
-no CMake registration step to audit separately. flox_js_runner interprets
+no CMake registration step to audit separately. lrvx_js_runner interprets
 the .js file directly, so "invoked in CI" is the only signal there is.
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ def discover_examples() -> set[str]:
 
 
 def parse_runner_step(ci_text: str) -> set[str]:
-    """Extract stems invoked by `./build/src/quickjs/flox_js_runner
+    """Extract stems invoked by `./build/src/quickjs/lrvx_js_runner
     quickjs/examples/<stem>.js` lines inside the "Verify QuickJS runner"
     step."""
     step_m = re.search(
@@ -64,7 +64,7 @@ def parse_runner_step(ci_text: str) -> set[str]:
         return set()
     return set(
         re.findall(
-            r"flox_js_runner quickjs/examples/([\w.]+)\.js",
+            r"lrvx_js_runner quickjs/examples/([\w.]+)\.js",
             step_m.group(1),
         )
     )
@@ -116,7 +116,7 @@ def main() -> int:
         failures.append(
             f"quickjs/examples/{stem}.js exists but is never executed in "
             f'CI, and is not in EXCEPTIONS -- either add a '
-            f"`./build/src/quickjs/flox_js_runner "
+            f"`./build/src/quickjs/lrvx_js_runner "
             f'quickjs/examples/{stem}.js` line to the "{STEP_NAME}" step '
             f"of {CI_YML.relative_to(REPO_ROOT)}, or add a reasoned entry "
             f"to EXCEPTIONS in {Path(__file__).name}."

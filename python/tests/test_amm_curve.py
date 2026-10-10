@@ -12,12 +12,12 @@ import sys
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
 
 def main():
     # Constant product (Uniswap v2, 997/1000), reserves 1000 / 2000 (18 decimals).
-    cp = flox.AmmCurve.constant_product(1000 * 10**18, 2000 * 10**18, 997, 1000)
+    cp = lrvx.AmmCurve.constant_product(1000 * 10**18, 2000 * 10**18, 997, 1000)
     assert cp.token_count() == 2
     assert cp.amount_out(0, 1, 10**18) == 1992013962079806432, "constant-product to the wei"
     assert cp.balances()[0] == 1000 * 10**18
@@ -29,11 +29,11 @@ def main():
     assert clone.balances()[0] == 1000 * 10**18, "clone is independent"
 
     # Uniswap v3, the live USDC/WETH 0.05% snapshot, in range: 1000 USDC -> WETH.
-    v3 = flox.AmmCurve.uniswap_v3(1959100328691929984878240664321702, 2580696918646962643, 500)
+    v3 = lrvx.AmmCurve.uniswap_v3(1959100328691929984878240664321702, 2580696918646962643, 500)
     assert v3.amount_out(0, 1, 1000000000) == 611128907033491490, "v3 matches QuoterV2"
 
     # Raydium CP (Solana), 0.25% trade fee, no creator fee.
-    ray = flox.AmmCurve.raydium_cp(13831187668587, 13771991024747, 2500)
+    ray = lrvx.AmmCurve.raydium_cp(13831187668587, 13771991024747, 2500)
     assert ray.amount_out(0, 1, 1000000000) > 0
 
     # CLMM state read-back: v3 returns its exact sqrt price + liquidity, others None.

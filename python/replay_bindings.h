@@ -6,15 +6,15 @@
 #include <pybind11/pybind11.h>
 
 #include <pybind11/stl.h>
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
-#include "flox/common.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/binary_log_recorder_hook.h"
-#include "flox/replay/merged_tape_reader.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/recording_metadata.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_log_recorder_hook.h"
+#include "lrvx/replay/merged_tape_reader.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/recording_metadata.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 #include "tape_aggregator_bindings.h"
 
 #include <cstring>
@@ -27,15 +27,15 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
-// Thin pybind wrapper over flox::replay::BinaryLogRecorderHook. Lives in
-// flox_py namespace so strategy_bindings.h can take a shared_ptr to it in
+// Thin pybind wrapper over lrvx::replay::BinaryLogRecorderHook. Lives in
+// lrvx namespace so strategy_bindings.h can take a shared_ptr to it in
 // `runner.set_market_data_recorder(...)` overloads.
 class PyBinaryLogRecorderHook
 {
-  std::unique_ptr<flox::replay::BinaryLogRecorderHook> _hook;
+  std::unique_ptr<lrvx::replay::BinaryLogRecorderHook> _hook;
 
  public:
   PyBinaryLogRecorderHook(const std::string& outputDir, uint64_t maxSegmentMb,
@@ -43,40 +43,40 @@ class PyBinaryLogRecorderHook
                           const std::string& exchangeName,
                           const std::string& instrumentType)
   {
-    flox::replay::BinaryLogRecorderHookConfig cfg{};
+    lrvx::replay::BinaryLogRecorderHookConfig cfg{};
     cfg.output_dir = outputDir;
     cfg.max_segment_bytes = maxSegmentMb * (1024ull * 1024ull);
     cfg.exchange_id = exchangeId;
     if (compression == "none" || compression.empty())
     {
-      cfg.compression = flox::replay::CompressionType::None;
+      cfg.compression = lrvx::replay::CompressionType::None;
     }
     else if (compression == "lz4")
     {
-      cfg.compression = flox::replay::CompressionType::LZ4;
+      cfg.compression = lrvx::replay::CompressionType::LZ4;
     }
     else
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_INPUT_001",
           "Unknown compression: '" + compression + "'. Expected 'none' or 'lz4'.");
     }
     if (!exchangeName.empty() || !instrumentType.empty())
     {
-      flox::replay::RecordingMetadata meta{};
+      lrvx::replay::RecordingMetadata meta{};
       meta.exchange = exchangeName;
       meta.instrument_type = instrumentType;
       cfg.metadata = std::move(meta);
     }
-    _hook = std::make_unique<flox::replay::BinaryLogRecorderHook>(std::move(cfg));
+    _hook = std::make_unique<lrvx::replay::BinaryLogRecorderHook>(std::move(cfg));
   }
 
-  flox::replay::BinaryLogRecorderHook* raw() noexcept { return _hook.get(); }
+  lrvx::replay::BinaryLogRecorderHook* raw() noexcept { return _hook.get(); }
 
   void addSymbol(uint32_t symbolId, const std::string& name, const std::string& base,
                  const std::string& quote, int8_t pricePrecision, int8_t qtyPrecision)
   {
-    flox::replay::SymbolInfo info;
+    lrvx::replay::SymbolInfo info;
     info.symbol_id = symbolId;
     info.name = name;
     info.base_asset = base;
@@ -107,12 +107,12 @@ class PyBinaryLogRecorderHook
   std::string currentSegmentPath() const { return _hook->currentSegmentPath().string(); }
 };
 
-}  // namespace flox_py
+}  // namespace lrvx
 
 namespace
 {
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 // ─── Numpy-compatible trade struct ─────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ static_assert(sizeof(PyLevel) == 24);
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-inline PyTrade tradeRecordToPyTrade(const flox::replay::TradeRecord& tr)
+inline PyTrade tradeRecordToPyTrade(const lrvx::replay::TradeRecord& tr)
 {
   return {tr.exchange_ts_ns, tr.recv_ts_ns, tr.price_raw, tr.qty_raw, tr.trade_id, tr.symbol_id, tr.side, {}};
 }
@@ -260,7 +260,7 @@ inline WriterConfig makeWriterConfig(const std::string& outputDir, uint64_t maxS
   }
   else
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_INPUT_001",
         "Unknown compression type: '" + compression +
             "'. Expected 'none' or 'lz4'.");
@@ -637,7 +637,7 @@ class PyDataReader
   bool run(py::list py_aggregators, std::size_t n_threads,
            py::object progress_callback, uint32_t progress_interval_ms)
   {
-    auto raw = flox_py::collectAggregators(py_aggregators);
+    auto raw = lrvx::collectAggregators(py_aggregators);
     const bool has_callback = !progress_callback.is_none();
     if (has_callback)
     {
@@ -739,11 +739,11 @@ class PyDataWriter
   bool writeTrade(int64_t exchangeTsNs, int64_t recvTsNs, double price, double qty,
                   uint64_t tradeId, uint32_t symbolId, uint8_t side)
   {
-    flox::replay::TradeRecord tr{};
+    lrvx::replay::TradeRecord tr{};
     tr.exchange_ts_ns = exchangeTsNs;
     tr.recv_ts_ns = recvTsNs;
-    tr.price_raw = flox::Price::fromDouble(price).raw();
-    tr.qty_raw = flox::Quantity::fromDouble(qty).raw();
+    tr.price_raw = lrvx::Price::fromDouble(price).raw();
+    tr.qty_raw = lrvx::Quantity::fromDouble(qty).raw();
     tr.trade_id = tradeId;
     tr.symbol_id = symbolId;
     tr.side = side;
@@ -773,7 +773,7 @@ class PyDataWriter
         symbolIds.size() != static_cast<py::ssize_t>(n) ||
         sides.size() != static_cast<py::ssize_t>(n))
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_001",
           "All input arrays must have the same length.");
     }
@@ -791,11 +791,11 @@ class PyDataWriter
       py::gil_scoped_release release;
       for (size_t i = 0; i < n; ++i)
       {
-        flox::replay::TradeRecord tr{};
+        lrvx::replay::TradeRecord tr{};
         tr.exchange_ts_ns = ets[i];
         tr.recv_ts_ns = rts[i];
-        tr.price_raw = flox::Price::fromDouble(px[i]).raw();
-        tr.qty_raw = flox::Quantity::fromDouble(qt[i]).raw();
+        tr.price_raw = lrvx::Price::fromDouble(px[i]).raw();
+        tr.qty_raw = lrvx::Quantity::fromDouble(qt[i]).raw();
         tr.trade_id = tid[i];
         tr.symbol_id = sid[i];
         tr.side = sd[i];
@@ -830,7 +830,7 @@ class PyDataWriter
         openInterest.size() != static_cast<py::ssize_t>(n) ||
         symbolIds.size() != static_cast<py::ssize_t>(n))
     {
-      throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
+      throw lrvx::LrvxError("E_LEN_001", "All input arrays must have the same length.");
     }
 
     // Optional channels: pass None to record 0. Each must match length if
@@ -846,7 +846,7 @@ class PyDataWriter
       auto a = o.cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
       if (a.size() != static_cast<py::ssize_t>(n))
       {
-        throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
+        throw lrvx::LrvxError("E_LEN_001", "All input arrays must have the same length.");
       }
       return a;
     };
@@ -874,22 +874,22 @@ class PyDataWriter
       py::gil_scoped_release release;
       for (size_t i = 0; i < n; ++i)
       {
-        flox::replay::OptionQuoteRecord q{};
+        lrvx::replay::OptionQuoteRecord q{};
         q.exchange_ts_ns = ets[i];
         q.recv_ts_ns = rts[i];
-        q.mark_price_raw = flox::Price::fromDouble(mk[i]).raw();
-        q.index_price_raw = flox::Price::fromDouble(ix[i]).raw();
-        q.underlying_price_raw = un ? flox::Price::fromDouble(un[i]).raw() : 0;
-        q.iv_raw = static_cast<int64_t>(iv[i] * flox::replay::kIvScale);
-        q.open_interest_raw = flox::Quantity::fromDouble(oi[i]).raw();
-        q.bid_price_raw = bd ? flox::Price::fromDouble(bd[i]).raw() : 0;
-        q.ask_price_raw = ak ? flox::Price::fromDouble(ak[i]).raw() : 0;
-        q.bid_size_raw = bsz ? flox::Quantity::fromDouble(bsz[i]).raw() : 0;
-        q.ask_size_raw = asz ? flox::Quantity::fromDouble(asz[i]).raw() : 0;
-        q.bid_iv_raw = biv ? static_cast<int64_t>(biv[i] * flox::replay::kIvScale) : 0;
-        q.ask_iv_raw = aiv ? static_cast<int64_t>(aiv[i] * flox::replay::kIvScale) : 0;
+        q.mark_price_raw = lrvx::Price::fromDouble(mk[i]).raw();
+        q.index_price_raw = lrvx::Price::fromDouble(ix[i]).raw();
+        q.underlying_price_raw = un ? lrvx::Price::fromDouble(un[i]).raw() : 0;
+        q.iv_raw = static_cast<int64_t>(iv[i] * lrvx::replay::kIvScale);
+        q.open_interest_raw = lrvx::Quantity::fromDouble(oi[i]).raw();
+        q.bid_price_raw = bd ? lrvx::Price::fromDouble(bd[i]).raw() : 0;
+        q.ask_price_raw = ak ? lrvx::Price::fromDouble(ak[i]).raw() : 0;
+        q.bid_size_raw = bsz ? lrvx::Quantity::fromDouble(bsz[i]).raw() : 0;
+        q.ask_size_raw = asz ? lrvx::Quantity::fromDouble(asz[i]).raw() : 0;
+        q.bid_iv_raw = biv ? static_cast<int64_t>(biv[i] * lrvx::replay::kIvScale) : 0;
+        q.ask_iv_raw = aiv ? static_cast<int64_t>(aiv[i] * lrvx::replay::kIvScale) : 0;
         q.symbol_id = sid[i];
-        q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
+        q.instrument = static_cast<uint8_t>(lrvx::InstrumentType::Option);
         if (_writer.writeOptionQuote(q))
         {
           ++written;
@@ -921,8 +921,8 @@ class PyDataWriter
     header.type = isSnapshot ? 0 : 1;
 
     // PyLevel includes a `side` byte; copy into contiguous BookLevel.
-    std::vector<flox::replay::BookLevel> bid_levels;
-    std::vector<flox::replay::BookLevel> ask_levels;
+    std::vector<lrvx::replay::BookLevel> bid_levels;
+    std::vector<lrvx::replay::BookLevel> ask_levels;
     bid_levels.reserve(n_bids);
     ask_levels.reserve(n_asks);
     const auto* b = bids.data();
@@ -948,7 +948,7 @@ class PyDataWriter
     const auto n_events = static_cast<uint64_t>(headers.size());
     const auto* h = headers.data();
     const auto* lv = levels.data();
-    std::vector<flox::replay::BookLevel> scratch;
+    std::vector<lrvx::replay::BookLevel> scratch;
     uint64_t written = 0;
     {
       py::gil_scoped_release release;
@@ -973,8 +973,8 @@ class PyDataWriter
         rh.ask_count = fh.ask_count;
         rh.type = (fh.event_type == 2) ? 0 : 1;
 
-        std::span<const flox::replay::BookLevel> bid_span(scratch.data(), fh.bid_count);
-        std::span<const flox::replay::BookLevel> ask_span(scratch.data() + fh.bid_count, fh.ask_count);
+        std::span<const lrvx::replay::BookLevel> bid_span(scratch.data(), fh.bid_count);
+        std::span<const lrvx::replay::BookLevel> ask_span(scratch.data() + fh.bid_count, fh.ask_count);
         if (_writer.writeBook(rh, bid_span, ask_span))
         {
           ++written;
@@ -1010,13 +1010,13 @@ class PyDataWriter
 
 class PyMergedTapeReader
 {
-  flox::replay::MergedTapeReader _reader;
+  lrvx::replay::MergedTapeReader _reader;
 
-  static flox::replay::MergedTapeReaderConfig
+  static lrvx::replay::MergedTapeReaderConfig
   buildConfig(const std::vector<std::string>& paths, py::object from_ns,
               py::object to_ns, py::object symbols)
   {
-    flox::replay::MergedTapeReaderConfig cfg{};
+    lrvx::replay::MergedTapeReaderConfig cfg{};
     cfg.tape_dirs.reserve(paths.size());
     for (const auto& p : paths)
     {
@@ -1165,9 +1165,9 @@ class PyMergedTapeReader
   void streamEvents(py::object on_trade, py::object on_book)
   {
     _reader.streamEvents(
-        [&](uint32_t tape_index, const flox::replay::ReplayEvent& ev) -> bool
+        [&](uint32_t tape_index, const lrvx::replay::ReplayEvent& ev) -> bool
         {
-          if (ev.type == flox::replay::EventType::Trade)
+          if (ev.type == lrvx::replay::EventType::Trade)
           {
             if (on_trade.is_none())
             {
@@ -1186,14 +1186,14 @@ class PyMergedTapeReader
             }
             return true;
           }
-          if (ev.type == flox::replay::EventType::BookSnapshot ||
-              ev.type == flox::replay::EventType::BookDelta)
+          if (ev.type == lrvx::replay::EventType::BookSnapshot ||
+              ev.type == lrvx::replay::EventType::BookDelta)
           {
             if (on_book.is_none())
             {
               return true;
             }
-            const bool is_snap = ev.type == flox::replay::EventType::BookSnapshot;
+            const bool is_snap = ev.type == lrvx::replay::EventType::BookSnapshot;
             py::list bids;
             for (const auto& b : ev.bids)
             {
@@ -1226,7 +1226,7 @@ class PyMergedTapeReader
   // finalize() once at the end. GIL released around the whole walk.
   bool run(py::list py_aggregators)
   {
-    auto raw = flox_py::collectAggregators(py_aggregators);
+    auto raw = lrvx::collectAggregators(py_aggregators);
     bool ok;
     {
       py::gil_scoped_release release;
@@ -1254,11 +1254,11 @@ inline void bindReplay(py::module_& m)
                        bid_size_raw, ask_size_raw, bid_iv_raw, ask_iv_raw, open_interest_raw,
                        symbol_id, instrument);
 
-  // Fixed-point scales — match flox::Price/Quantity/Volume in flox/common.h.
+  // Fixed-point scales — match lrvx::Price/Quantity/Volume in lrvx/common.h.
   // Use these instead of hardcoding 1e8 in client code.
-  m.attr("PRICE_SCALE") = py::int_(flox::Price::Scale);
-  m.attr("QUANTITY_SCALE") = py::int_(flox::Quantity::Scale);
-  m.attr("VOLUME_SCALE") = py::int_(flox::Volume::Scale);
+  m.attr("PRICE_SCALE") = py::int_(lrvx::Price::Scale);
+  m.attr("QUANTITY_SCALE") = py::int_(lrvx::Quantity::Scale);
+  m.attr("VOLUME_SCALE") = py::int_(lrvx::Volume::Scale);
 
   // Vectorized raw → double converters. Operate on numpy int64 arrays of any
   // shape, including non-contiguous views (e.g. `bars["close_raw"]` taken from
@@ -1288,21 +1288,21 @@ inline void bindReplay(py::module_& m)
   m.def(
       "prices_to_double",
       [rawToDouble](py::array_t<int64_t> raw)
-      { return rawToDouble(raw, flox::Price::Scale); },
+      { return rawToDouble(raw, lrvx::Price::Scale); },
       "Convert raw int64 price array to float64 array (divides by PRICE_SCALE).",
       py::arg("raw"));
 
   m.def(
       "quantities_to_double",
       [rawToDouble](py::array_t<int64_t> raw)
-      { return rawToDouble(raw, flox::Quantity::Scale); },
+      { return rawToDouble(raw, lrvx::Quantity::Scale); },
       "Convert raw int64 quantity array to float64 array (divides by QUANTITY_SCALE).",
       py::arg("raw"));
 
   m.def(
       "volumes_to_double",
       [rawToDouble](py::array_t<int64_t> raw)
-      { return rawToDouble(raw, flox::Volume::Scale); },
+      { return rawToDouble(raw, lrvx::Volume::Scale); },
       "Convert raw int64 volume array to float64 array (divides by VOLUME_SCALE).",
       py::arg("raw"));
 
@@ -1311,10 +1311,10 @@ inline void bindReplay(py::module_& m)
       "inspect",
       [](const std::string& dataDir) -> py::dict
       {
-        flox::replay::DatasetSummary s;
+        lrvx::replay::DatasetSummary s;
         {
           py::gil_scoped_release release;
-          s = flox::replay::BinaryLogReader::inspect(dataDir);
+          s = lrvx::replay::BinaryLogReader::inspect(dataDir);
         }
 
         py::dict d;
@@ -1339,7 +1339,7 @@ inline void bindReplay(py::module_& m)
            "to segments without the Sorted flag (default 10s). An event that "
            "arrives past that window is dropped and counted in "
            "stats()['late_dropped'], with one warning logged per segment; set "
-           "`strict_ordering=True` to raise FloxError E_DATA_002 on the first "
+           "`strict_ordering=True` to raise LrvxError E_DATA_002 on the first "
            "such event instead. `to_ns` is inclusive for trade reads and "
            "exclusive for option-quote reads -- see read_option_quotes.",
            py::arg("data_dir"),
@@ -1463,10 +1463,10 @@ inline void bindReplay(py::module_& m)
       .def("current_segment_path", &PyDataWriter::currentSegmentPath,
            "Return the path of the current segment being written");
 
-  // BinaryLogRecorderHook — built-in `.floxlog` sink. Plug into a runner
+  // BinaryLogRecorderHook — built-in `.lrvx` sink. Plug into a runner
   // via `runner.set_market_data_recorder(hook)`; lifecycle (start/stop) is
   // driven automatically by the engine.
-  py::class_<flox_py::PyBinaryLogRecorderHook, std::shared_ptr<flox_py::PyBinaryLogRecorderHook>>(
+  py::class_<lrvx::PyBinaryLogRecorderHook, std::shared_ptr<lrvx::PyBinaryLogRecorderHook>>(
       m, "BinaryLogRecorderHook")
       .def(py::init<const std::string&, uint64_t, uint8_t, const std::string&,
                     const std::string&, const std::string&>(),
@@ -1481,25 +1481,25 @@ inline void bindReplay(py::module_& m)
            py::arg("compression") = "none",
            py::arg("exchange_name") = "",
            py::arg("instrument_type") = "")
-      .def("add_symbol", &flox_py::PyBinaryLogRecorderHook::addSymbol,
+      .def("add_symbol", &lrvx::PyBinaryLogRecorderHook::addSymbol,
            "Register a symbol for recording metadata",
            py::arg("symbol_id"), py::arg("name"),
            py::arg("base") = "", py::arg("quote") = "",
            py::arg("price_precision") = 8, py::arg("qty_precision") = 8)
-      .def("flush", &flox_py::PyBinaryLogRecorderHook::flush,
+      .def("flush", &lrvx::PyBinaryLogRecorderHook::flush,
            "Flush buffered data to disk")
-      .def("close", &flox_py::PyBinaryLogRecorderHook::close,
+      .def("close", &lrvx::PyBinaryLogRecorderHook::close,
            "Stop recording (idempotent; engine on_stop also calls this)")
-      .def("stats", &flox_py::PyBinaryLogRecorderHook::stats,
+      .def("stats", &lrvx::PyBinaryLogRecorderHook::stats,
            "Return recorder statistics as a dict")
-      .def("current_segment_path", &flox_py::PyBinaryLogRecorderHook::currentSegmentPath,
+      .def("current_segment_path", &lrvx::PyBinaryLogRecorderHook::currentSegmentPath,
            "Return the path of the segment currently being written");
 
   // MergedTapeReader — k-tape consumption primitive.
   py::class_<PyMergedTapeReader>(m, "MergedTapeReader")
       .def(py::init<const std::vector<std::string>&, py::object, py::object,
                     py::object>(),
-           "Open N `.floxlog` directories and expose a merged trade / book "
+           "Open N `.lrvx` directories and expose a merged trade / book "
            "stream. Symbols are rekeyed into a global id space, keyed by "
            "(metadata.exchange, name). Ties on exchange_ts_ns are broken by "
            "tape order in `paths`. read_trades / read_books are eager — "

@@ -6,7 +6,7 @@
 # fixtures live in build/.codon_tape_diff_test/ and are pre-created
 # by CI so this stays a pure consumer.
 
-from flox.tape_diff import diff_tapes
+from lrvx.tape_diff import diff_tapes
 
 # Bad path raises through C ABI returning NULL.
 threw = False

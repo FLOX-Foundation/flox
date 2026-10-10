@@ -3,7 +3,7 @@
 // running an engine; that path is exercised by the Python tests
 // against the same C++ binding.
 
-const flox = require('../');
+const lrvx = require('../');
 
 function check(label, ok) {
   if (!ok) { console.error('FAIL: ' + label); process.exit(1); }
@@ -13,5 +13,5 @@ function check(label, ok) {
 // The Strategy class is hosted; emitter handles are passed into
 // onTrade/onBar. Without an engine we don't get an emitter, so we
 // just verify the class is exported and constructable in some shape.
-check('Strategy export exists', typeof flox.Strategy !== 'undefined' || typeof flox.SignalBuilder !== 'undefined');
+check('Strategy export exists', typeof lrvx.Strategy !== 'undefined' || typeof lrvx.SignalBuilder !== 'undefined');
 console.log('node multi-tf-alignment smoke ok');

@@ -1,0 +1,266 @@
+/*
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
+ *
+ * Copyright (c) 2025 lrvx contributors
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
+#pragma once
+
+#include "lrvx/util/performance/profile.h"
+
+#include <atomic>
+#include <cassert>
+#include <cstddef>
+#include <functional>
+#include <optional>
+#include <type_traits>
+#include <utility>
+
+namespace lrvx
+{
+
+template <typename T, size_t Capacity>
+class SPSCQueue
+{
+  static_assert(Capacity > 1, "Capacity must be > 1");
+  static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of 2");
+  static_assert(std::is_nothrow_destructible_v<T>, "T must be nothrow destructible");
+  static_assert(std::is_nothrow_move_constructible_v<T>, "T must be nothrow move constructible");
+
+ public:
+  SPSCQueue() = default;
+
+  ~SPSCQueue()
+  {
+    LRVX_PROFILE_SCOPE("SPSCQueue::~SPSCQueue.drain");
+
+    while (!empty())
+    {
+      if (T* ptr = try_pop())
+      {
+        ptr->~T();
+      }
+    }
+  }
+
+  bool push(const T& item) noexcept
+  {
+    LRVX_PROFILE_SCOPE("SPSCQueue::push");
+
+    const size_t head = _head.load(std::memory_order_relaxed);
+    const size_t next = (head + 1) & MASK;
+
+    if (next == _tail.load(std::memory_order_acquire))
+    {
+      return false;
+    }
+
+    new (static_cast<void*>(&_buffer[head])) T(item);
+    _head.store(next, std::memory_order_release);
+    return true;
+  }
+
+  bool emplace(T&& item) noexcept
+  {
+    LRVX_PROFILE_SCOPE("SPSCQueue::emplace_move");
+
+    const size_t head = _head.load(std::memory_order_relaxed);
+    const size_t next = (head + 1) & MASK;
+
+    if (next == _tail.load(std::memory_order_acquire))
+    {
+      return false;
+    }
+
+    new (static_cast<void*>(&_buffer[head])) T(std::move(item));
+    _head.store(next, std::memory_order_release);
+    return true;
+  }
+
+  template <typename... Args>
+  bool try_emplace(Args&&... args)
+  {
+    LRVX_PROFILE_SCOPE("SPSCQueue::try_emplace");
+
+    const size_t head = _head.load(std::memory_order_relaxed);
+    const size_t next = (head + 1) & MASK;
+    if (next == _tail.load(std::memory_order_acquire))
+    {
+      return false;
+    }
+
+    void* ptr = static_cast<void*>(&_buffer[head]);
+    new (ptr) T(std::forward<Args>(args)...);
+
+    _head.store(next, std::memory_order_release);
+    return true;
+  }
+
+  bool pop(T& out) noexcept
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    if (tail == _head.load(std::memory_order_acquire))
+    {
+      return false;
+    }
+
+    LRVX_PROFILE_SCOPE("SPSCQueue::pop");
+
+    T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
+    out = std::move(*ptr);
+    ptr->~T();
+
+    const size_t next = (tail + 1) & MASK;
+    _tail.store(next, std::memory_order_release);
+    return true;
+  }
+
+  // Hands back a pointer into the ring and republishes the slot to the
+  // producer straight away, so the pointer is borrowed, not owned.
+  //
+  // The pointer stays valid until the consumer's next call that moves the
+  // tail -- pop, try_pop, try_pop_ref or clear. Up to that point the ring
+  // invariant protects it: one slot is always left empty, so a producer
+  // filling the queue stops one short of the slot just handed out. Take a
+  // second pointer without finishing with the first and that protection is
+  // gone -- the producer can construct a new element into the first slot, the
+  // stale pointer then reads the new element's value, and running `ptr->~T()`
+  // on it, which is how a popped element is meant to be destroyed, destroys
+  // an element still queued for delivery. To consume a batch, use
+  // read_segment / commit_read below: those hold the slots until the commit.
+  //
+  // Destroy the element through the returned pointer before the next pop.
+  [[nodiscard]] T* try_pop()
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    if (tail == _head.load(std::memory_order_acquire))
+    {
+      return nullptr;
+    }
+
+    LRVX_PROFILE_SCOPE("SPSCQueue::try_pop");
+
+    T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
+    const size_t next = (tail + 1) & MASK;
+    _tail.store(next, std::memory_order_release);
+
+    return ptr;
+  }
+
+  // Same borrowing rules as try_pop: valid until the consumer's next call
+  // that moves the tail.
+  [[nodiscard]] std::optional<std::reference_wrapper<T>> try_pop_ref()
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    if (tail == _head.load(std::memory_order_acquire))
+    {
+      return std::nullopt;
+    }
+
+    LRVX_PROFILE_SCOPE("SPSCQueue::try_pop_ref");
+
+    T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
+    const size_t next = (tail + 1) & MASK;
+    _tail.store(next, std::memory_order_release);
+
+    return std::ref(*ptr);
+  }
+
+  // --- segment API -----------------------------------------------------------
+  // Amortizes the ring protocol: one index publish per batch instead of one
+  // per item. Consumer: read_segment() -> process up to n items -> destroy
+  // them -> commit_read(k), k <= n. Producer: write_segment() -> placement-new
+  // up to n items into the segment -> commit_write(k), k <= n. Segments are
+  // contiguous; a wrapped queue takes two rounds. Unlike try_pop, the slot is
+  // republished to the producer only at commit, after the consumer is done
+  // with it.
+
+  [[nodiscard]] size_t read_segment(T*& out) noexcept
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    const size_t head = _head.load(std::memory_order_acquire);
+    if (head == tail)
+    {
+      return 0;
+    }
+    out = reinterpret_cast<T*>(&_buffer[tail]);
+    return head > tail ? head - tail : Capacity - tail;
+  }
+
+  void commit_read(size_t n) noexcept
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    _tail.store((tail + n) & MASK, std::memory_order_release);
+  }
+
+  [[nodiscard]] size_t write_segment(T*& out) noexcept
+  {
+    const size_t head = _head.load(std::memory_order_relaxed);
+    const size_t tail = _tail.load(std::memory_order_acquire);
+    const size_t free = (tail + Capacity - head - 1) & MASK;
+    if (free == 0)
+    {
+      return 0;
+    }
+    const size_t untilWrap = Capacity - head;
+    out = reinterpret_cast<T*>(&_buffer[head]);
+    return free < untilWrap ? free : untilWrap;
+  }
+
+  void commit_write(size_t n) noexcept
+  {
+    const size_t head = _head.load(std::memory_order_relaxed);
+    _head.store((head + n) & MASK, std::memory_order_release);
+  }
+
+  // ---------------------------------------------------------------------------
+
+  void clear() noexcept
+  {
+    LRVX_PROFILE_SCOPE("SPSCQueue::clear");
+
+    while (!empty())
+    {
+      const size_t tail = _tail.load(std::memory_order_relaxed);
+      T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
+      ptr->~T();
+      const size_t next = (tail + 1) & MASK;
+      _tail.store(next, std::memory_order_release);
+    }
+  }
+
+  bool empty() const noexcept
+  {
+    return _head.load(std::memory_order_acquire) == _tail.load(std::memory_order_acquire);
+  }
+
+  bool full() const noexcept
+  {
+    const size_t next = (_head.load(std::memory_order_acquire) + 1) & MASK;
+    return next == _tail.load(std::memory_order_acquire);
+  }
+
+  size_t size() const noexcept
+  {
+    const size_t head = _head.load(std::memory_order_acquire);
+    const size_t tail = _tail.load(std::memory_order_acquire);
+    return (head + Capacity - tail) & MASK;
+  }
+
+ private:
+  alignas(64) std::atomic<size_t> _head{0};
+  alignas(64) std::atomic<size_t> _tail{0};
+
+  static constexpr size_t MASK = Capacity - 1;
+
+  struct alignas(alignof(T)) Storage
+  {
+    std::byte data[sizeof(T)];
+  };
+  alignas(64) Storage _buffer[Capacity];
+};
+
+}  // namespace lrvx

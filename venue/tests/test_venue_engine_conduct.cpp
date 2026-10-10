@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -20,12 +20,12 @@
 // checkpoint and clOrdId-window tests) -- this file is about the decisions,
 // not about the plumbing.
 
-#include "flox-venue/engine/clordid_window.h"
-#include "flox-venue/engine/expiry.h"
-#include "flox-venue/engine/mmp.h"
-#include "flox-venue/engine/pegs.h"
-#include "flox-venue/engine/stp.h"
-#include "flox-venue/journal.h"
+#include "lrvx-venue/engine/clordid_window.h"
+#include "lrvx-venue/engine/expiry.h"
+#include "lrvx-venue/engine/mmp.h"
+#include "lrvx-venue/engine/pegs.h"
+#include "lrvx-venue/engine/stp.h"
+#include "lrvx-venue/journal.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -34,8 +34,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -51,7 +51,7 @@ SeqNanos at(int64_t ns) { return SeqNanos::fromRaw(ns); }
 class TempJournal
 {
  public:
-  explicit TempJournal(const std::string& stem) : path_(flox::venue::test::tmpPath(stem, ".bin")) {}
+  explicit TempJournal(const std::string& stem) : path_(lrvx::venue::test::tmpPath(stem, ".bin")) {}
 
   ~TempJournal() { std::remove(path_.c_str()); }
 

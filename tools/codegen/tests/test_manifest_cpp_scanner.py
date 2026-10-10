@@ -2,7 +2,7 @@
 `binding_manifest.json` -- independent of libclang."""
 from __future__ import annotations
 
-from flox_codegen.manifest import scan_cpp
+from lrvx_codegen.manifest import scan_cpp
 
 
 _HEADER_WITH_PRIVATE_NESTED_HELPERS = """\

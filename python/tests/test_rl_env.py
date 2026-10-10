@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.rl_env.FloxTradingEnv``."""
+"""Tests for ``lrvx.rl_env.LrvxTradingEnv``."""
 from __future__ import annotations
 
 import sys
@@ -13,7 +13,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import rl_env  # noqa: E402
+from lrvx import rl_env  # noqa: E402
 
 
 # A tiny synthetic tape: monotonic ramp so PnL signs are predictable.
@@ -30,39 +30,39 @@ _RAMP_TRADES: List[Tuple[int, float, float, int]] = [
 class ConstructionTests(unittest.TestCase):
     def test_empty_trades_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv(trades=[])
+            rl_env.LrvxTradingEnv(trades=[])
 
     def test_invalid_qty_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv(trades=_RAMP_TRADES, qty=0)
+            rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, qty=0)
 
     def test_invalid_window_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=0)
+            rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=0)
 
     def test_action_space_is_three_discrete(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES)
         self.assertEqual(env.action_space.n, 3)
         self.assertTrue(env.action_space.contains(0))
         self.assertTrue(env.action_space.contains(2))
         self.assertFalse(env.action_space.contains(3))
 
     def test_observation_space_shape(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=4)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=4)
         # window_size + position + unrealized = 6
         self.assertEqual(env.observation_space.shape, (6,))
 
 
 class ResetTests(unittest.TestCase):
     def test_reset_returns_obs_and_info(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=3)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=3)
         obs, info = env.reset()
         self.assertEqual(len(obs), 5)  # 3 prices + position + pnl
         self.assertEqual(info["step"], 0)
         self.assertEqual(info["position"], 0.0)
 
     def test_reset_clears_state_after_steps(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=2)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=2)
         env.reset()
         env.step(1)  # go long
         env.step(0)
@@ -76,7 +76,7 @@ class ResetTests(unittest.TestCase):
 
 class StepTests(unittest.TestCase):
     def test_hold_yields_zero_reward(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=2)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=2)
         env.reset()
         _, reward, terminated, truncated, info = env.step(0)
         self.assertAlmostEqual(reward, 0.0)
@@ -85,7 +85,7 @@ class StepTests(unittest.TestCase):
         self.assertFalse(truncated)
 
     def test_long_then_hold_in_uptrend_pays(self) -> None:
-        env = rl_env.FloxTradingEnv(
+        env = rl_env.LrvxTradingEnv(
             trades=_RAMP_TRADES, qty=1.0, window_size=2,
         )
         env.reset()
@@ -99,7 +99,7 @@ class StepTests(unittest.TestCase):
         self.assertGreater(r3, 0.0)
 
     def test_short_then_hold_in_uptrend_loses(self) -> None:
-        env = rl_env.FloxTradingEnv(
+        env = rl_env.LrvxTradingEnv(
             trades=_RAMP_TRADES, qty=1.0, window_size=2,
         )
         env.reset()
@@ -109,7 +109,7 @@ class StepTests(unittest.TestCase):
         self.assertLess(reward, 0.0)
 
     def test_truncated_when_tape_runs_out(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=2)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=2)
         env.reset()
         truncated = False
         for _ in range(len(_RAMP_TRADES)):
@@ -119,13 +119,13 @@ class StepTests(unittest.TestCase):
         self.assertTrue(truncated)
 
     def test_invalid_action_raises(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES)
         env.reset()
         with self.assertRaises(ValueError):
             env.step(5)
 
     def test_close_long_realizes_pnl(self) -> None:
-        env = rl_env.FloxTradingEnv(
+        env = rl_env.LrvxTradingEnv(
             trades=_RAMP_TRADES, qty=1.0, window_size=2,
         )
         env.reset()
@@ -145,7 +145,7 @@ class CustomRewardTests(unittest.TestCase):
             seen.append(dict(ctx))
             return 42.0
 
-        env = rl_env.FloxTradingEnv(
+        env = rl_env.LrvxTradingEnv(
             trades=_RAMP_TRADES, window_size=2, reward_fn=reward,
         )
         env.reset()
@@ -162,14 +162,14 @@ class FromTapeTests(unittest.TestCase):
     def setUp(self) -> None:
         import shutil
         import tempfile
-        import flox_py
-        from flox_py import tape
+        import lrvx
+        from lrvx import tape
 
         self.work = Path(tempfile.mkdtemp(prefix="rl-env-"))
-        registry = flox_py.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = int(registry.add_symbol("rl", "BTCUSDT", tick_size=0.01))
         recorder = tape.make_recorder_hook(self.work)
-        runner = flox_py.Runner(registry, on_signal=lambda _: None)
+        runner = lrvx.Runner(registry, on_signal=lambda _: None)
         runner.set_market_data_recorder(recorder)
         runner.start()
         for ts, price, qty, side in _RAMP_TRADES:
@@ -182,7 +182,7 @@ class FromTapeTests(unittest.TestCase):
         self._cleanup()
 
     def test_from_tape_loads_trades(self) -> None:
-        env = rl_env.FloxTradingEnv.from_tape(self.work, window_size=3)
+        env = rl_env.LrvxTradingEnv.from_tape(self.work, window_size=3)
         self.assertEqual(len(env.trades), len(_RAMP_TRADES))
         obs, _ = env.reset()
         self.assertEqual(len(obs), 5)
@@ -194,14 +194,14 @@ class FromVenueStackTests(unittest.TestCase):
     terminates the episode."""
 
     def _stack(self):
-        import flox_py
-        return flox_py.VenueStack.binance_um_futures(
+        import lrvx
+        return lrvx.VenueStack.binance_um_futures(
             account_id=1, equity=10_000.0
         )
 
     def test_returns_venueexecutor(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -210,7 +210,7 @@ class FromVenueStackTests(unittest.TestCase):
 
     def test_hold_only_does_not_submit_orders(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -221,7 +221,7 @@ class FromVenueStackTests(unittest.TestCase):
 
     def test_long_open_routes_through_executor(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -234,7 +234,7 @@ class FromVenueStackTests(unittest.TestCase):
         net reward by the expected delta. Buy 1 unit, then check the
         equity dropped by exactly the schedule's fee for that notional."""
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -257,7 +257,7 @@ class FromVenueStackTests(unittest.TestCase):
         """Reward should equal the change in account equity plus
         unrealized PnL between consecutive steps."""
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -272,7 +272,7 @@ class FromVenueStackTests(unittest.TestCase):
 
     def test_unrealized_pnl_visible_in_info(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -291,36 +291,36 @@ class ContinuousActionTests(unittest.TestCase):
     out-of-bounds clipping (warning, not exception)."""
 
     def _stack(self):
-        import flox_py
-        return flox_py.VenueStack.binance_um_futures(
+        import lrvx
+        return lrvx.VenueStack.binance_um_futures(
             account_id=1, equity=10_000.0
         )
 
     def test_default_action_mode_for_venue_stack_is_continuous(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
         )
         self.assertEqual(env.action_mode, "continuous")
         self.assertEqual(env.action_space.shape, (3,))
 
     def test_default_action_mode_for_from_tape_is_discrete(self) -> None:
-        env = rl_env.FloxTradingEnv.from_tape  # avoid actually loading
+        env = rl_env.LrvxTradingEnv.from_tape  # avoid actually loading
         # Construct directly without venue stack — should default
         # discrete.
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, qty=1.0)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, qty=1.0)
         self.assertEqual(env.action_mode, "discrete")
         self.assertEqual(env.action_space.n, 3)
 
     def test_action_mode_rejects_unknown(self) -> None:
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv(
+            rl_env.LrvxTradingEnv(
                 trades=_RAMP_TRADES, action_mode="quadratic"
             )
 
     def test_market_decode_when_offset_zero(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, tick_size=0.5,
         )
@@ -332,7 +332,7 @@ class ContinuousActionTests(unittest.TestCase):
 
     def test_limit_decode_when_offset_nonzero(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, tick_size=0.5,
         )
@@ -344,7 +344,7 @@ class ContinuousActionTests(unittest.TestCase):
     def test_out_of_bounds_clipped_with_warning(self) -> None:
         import warnings
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, max_price_offset_ticks=5,
         )
@@ -359,7 +359,7 @@ class ContinuousActionTests(unittest.TestCase):
 
     def test_continuous_action_must_be_length_three(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
         )
         env.reset()
@@ -368,7 +368,7 @@ class ContinuousActionTests(unittest.TestCase):
 
     def test_hold_via_zero_signed_qty(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
         )
         env.reset()
@@ -382,14 +382,14 @@ class OpenOrderObservationTests(unittest.TestCase):
     age, distance from latest price, queue position proxy."""
 
     def _stack(self):
-        import flox_py
-        return flox_py.VenueStack.binance_um_futures(
+        import lrvx
+        return lrvx.VenueStack.binance_um_futures(
             account_id=1, equity=10_000.0
         )
 
     def test_default_n_open_slots_in_venue_mode(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
         )
         # window_size + 2 + 4 * 4 = 2 + 2 + 16 = 20
@@ -397,13 +397,13 @@ class OpenOrderObservationTests(unittest.TestCase):
         self.assertEqual(env.observation_space.shape, (20,))
 
     def test_default_n_open_slots_in_bare_mode(self) -> None:
-        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=3)
+        env = rl_env.LrvxTradingEnv(trades=_RAMP_TRADES, window_size=3)
         self.assertEqual(env.n_open_slots, 0)
         self.assertEqual(env.observation_space.shape, (5,))
 
     def test_n_open_slots_explicit_override(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, window_size=2,
             symbol_id=1, n_open_slots=2,
         )
@@ -412,7 +412,7 @@ class OpenOrderObservationTests(unittest.TestCase):
 
     def test_resting_limit_appears_in_open_order_slots(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, tick_size=0.5,
             n_open_slots=2,
@@ -428,7 +428,7 @@ class OpenOrderObservationTests(unittest.TestCase):
 
     def test_market_order_not_recorded_as_open(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, n_open_slots=2,
         )
@@ -443,7 +443,7 @@ class OpenOrderObservationTests(unittest.TestCase):
         # Python, but we can assert the slot decreases when a fill on
         # the order id reduces qty_remaining.
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, tick_size=0.5,
             n_open_slots=2,
@@ -474,7 +474,7 @@ class OpenOrderObservationTests(unittest.TestCase):
             (4_000, 97.0, 1.0, 0),
         ]
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=descending, qty=1.0, max_position=1.0,
             window_size=2, symbol_id=1, tick_size=0.5,
             reject_penalty=10.0,
@@ -490,13 +490,13 @@ class OpenOrderObservationTests(unittest.TestCase):
 
 class ObservationBuilderTests(unittest.TestCase):
     """Standalone ObservationBuilder produces the same obs shape
-    and semantics as FloxTradingEnv so a trained policy sees the same
+    and semantics as LrvxTradingEnv so a trained policy sees the same
     observation in env, paper, and live."""
 
     def test_obs_shape_matches_env(self) -> None:
-        import flox_py
-        stack = flox_py.VenueStack.binance_um_futures(1, 10_000.0)
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        import lrvx
+        stack = lrvx.VenueStack.binance_um_futures(1, 10_000.0)
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
             window_size=4, symbol_id=1, n_open_slots=2, tick_size=0.5,
         )
@@ -585,7 +585,7 @@ class ActionDecoderTests(unittest.TestCase):
 
 class MakeRLPolicyTests(unittest.TestCase):
     def test_returns_strategy_subclass(self) -> None:
-        import flox_py
+        import lrvx
         builder = rl_env.ObservationBuilder(window_size=2)
         decoder = rl_env.ActionDecoder(max_position=1.0)
 
@@ -597,7 +597,7 @@ class MakeRLPolicyTests(unittest.TestCase):
             StubModel(), symbol_id=1,
             observation_builder=builder, action_decoder=decoder,
         )
-        self.assertIsInstance(policy, flox_py.Strategy)
+        self.assertIsInstance(policy, lrvx.Strategy)
 
 
 class WalkForwardRLTests(unittest.TestCase):
@@ -607,8 +607,8 @@ class WalkForwardRLTests(unittest.TestCase):
     NS_PER_DAY = 86_400 * 1_000_000_000
 
     def _stack_factory(self):
-        import flox_py
-        return lambda: flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+        import lrvx
+        return lambda: lrvx.VenueStack.binance_um_futures(1, 10_000.0)
 
     def _synthetic_tape(self, n_days: int = 20):
         trades = []
@@ -695,8 +695,8 @@ class WalkForwardRLTests(unittest.TestCase):
         model = StubModel()
         n_seen = 0
         for train_env, test_env in wf:
-            self.assertIsInstance(train_env, rl_env.FloxTradingEnv)
-            self.assertIsInstance(test_env, rl_env.FloxTradingEnv)
+            self.assertIsInstance(train_env, rl_env.LrvxTradingEnv)
+            self.assertIsInstance(test_env, rl_env.LrvxTradingEnv)
             wf.evaluate(model, test_env)
             n_seen += 1
         self.assertEqual(n_seen, 3)
@@ -711,12 +711,12 @@ class WalkForwardRLTests(unittest.TestCase):
     def test_fresh_stack_per_fold(self) -> None:
         # Each fold should construct a brand-new VenueStack; we count
         # factory invocations.
-        import flox_py
+        import lrvx
         count = {"n": 0}
 
         def factory():
             count["n"] += 1
-            return flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+            return lrvx.VenueStack.binance_um_futures(1, 10_000.0)
 
         wf = rl_env.WalkForwardRL(
             venue_stack_factory=factory,
@@ -739,8 +739,8 @@ class MultiSymbolTests(unittest.TestCase):
     """Dict observation and action spaces over multiple tapes."""
 
     def _stack(self):
-        import flox_py
-        return flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+        import lrvx
+        return lrvx.VenueStack.binance_um_futures(1, 10_000.0)
 
     def _two_tapes(self, n=10):
         btc = [(i * 100_000_000, 50_000.0 + i * 5.0, 1.0, i % 2) for i in range(n)]
@@ -749,7 +749,7 @@ class MultiSymbolTests(unittest.TestCase):
 
     def test_dict_spaces_when_tapes_passed(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )
@@ -763,28 +763,28 @@ class MultiSymbolTests(unittest.TestCase):
     def test_passing_both_tape_and_tapes_rejected(self) -> None:
         stack = self._stack()
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv.from_venue_stack(
+            rl_env.LrvxTradingEnv.from_venue_stack(
                 stack, tape=_RAMP_TRADES, tapes=self._two_tapes(), qty=0.01,
             )
 
     def test_empty_tape_dict_rejected(self) -> None:
         stack = self._stack()
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv.from_venue_stack(
+            rl_env.LrvxTradingEnv.from_venue_stack(
                 stack, tapes={1: [], 2: [(0, 100.0, 1.0, 0)]}, qty=0.01,
             )
 
     def test_discrete_action_mode_rejected_for_multi(self) -> None:
         stack = self._stack()
         with self.assertRaises(ValueError):
-            rl_env.FloxTradingEnv.from_venue_stack(
+            rl_env.LrvxTradingEnv.from_venue_stack(
                 stack, tapes=self._two_tapes(), qty=0.01,
                 action_mode="discrete",
             )
 
     def test_merged_events_sorted_by_ts(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )
@@ -796,7 +796,7 @@ class MultiSymbolTests(unittest.TestCase):
 
     def test_step_returns_dict_obs(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )
@@ -809,7 +809,7 @@ class MultiSymbolTests(unittest.TestCase):
 
     def test_account_obs_carries_three_values(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )
@@ -818,7 +818,7 @@ class MultiSymbolTests(unittest.TestCase):
 
     def test_per_symbol_positions_independent(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(20), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )
@@ -831,7 +831,7 @@ class MultiSymbolTests(unittest.TestCase):
 
     def test_non_dict_action_rejected(self) -> None:
         stack = self._stack()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )
@@ -842,7 +842,7 @@ class MultiSymbolTests(unittest.TestCase):
     def test_episode_truncates_when_merged_stream_exhausted(self) -> None:
         stack = self._stack()
         n = 6
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tapes=self._two_tapes(n), qty=0.01, max_position=0.02,
             window_size=4, tick_size=0.5,
         )

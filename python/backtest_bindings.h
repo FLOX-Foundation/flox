@@ -6,12 +6,12 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/backtest/backtest_config.h"
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/backtest/venue_availability.h"
-#include "flox/common.h"
+#include "lrvx/backtest/backtest_config.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/backtest/venue_availability.h"
+#include "lrvx/common.h"
 #include "order_type_bindings.h"
 
 #include <cstring>
@@ -24,7 +24,7 @@ namespace py = pybind11;
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 #pragma pack(push, 1)
 struct PyFill
@@ -421,9 +421,9 @@ class PySimulatedExecutor
   }
 
   void setTopPriorityShare(double share) { _executor.setTopPriorityShare(share); }
-  void setLmmOrders(const std::vector<flox::OrderId>& ids) { _executor.setLmmOrders(ids); }
+  void setLmmOrders(const std::vector<lrvx::OrderId>& ids) { _executor.setLmmOrders(ids); }
   void setLmmBonusMultiplier(double m) { _executor.setLmmBonusMultiplier(m); }
-  void setOrderPriorityMultiplier(flox::OrderId id, double m)
+  void setOrderPriorityMultiplier(lrvx::OrderId id, double m)
   {
     _executor.setOrderPriorityMultiplier(id, m);
   }
@@ -459,22 +459,22 @@ class PySimulatedExecutor
   }
   void setSTPMode(const std::string& mode)
   {
-    flox::STPMode m = flox::STPMode::None;
+    lrvx::STPMode m = lrvx::STPMode::None;
     if (mode == "cancel_newest")
     {
-      m = flox::STPMode::CancelNewest;
+      m = lrvx::STPMode::CancelNewest;
     }
     else if (mode == "cancel_oldest")
     {
-      m = flox::STPMode::CancelOldest;
+      m = lrvx::STPMode::CancelOldest;
     }
     else if (mode == "cancel_both")
     {
-      m = flox::STPMode::CancelBoth;
+      m = lrvx::STPMode::CancelBoth;
     }
     else if (mode == "decrement")
     {
-      m = flox::STPMode::Decrement;
+      m = lrvx::STPMode::Decrement;
     }
     _executor.setSTPMode(m);
   }
@@ -484,29 +484,29 @@ class PySimulatedExecutor
   }
   std::string fokMode() const
   {
-    return (_executor.fokMode() == flox::SimulatedExecutor::FokMode::SinglePrice)
+    return (_executor.fokMode() == lrvx::SimulatedExecutor::FokMode::SinglePrice)
                ? "single_price"
                : "any_price";
   }
-  void setSubmitAckLatencyDistribution(const flox::LatencyDistribution& d)
+  void setSubmitAckLatencyDistribution(const lrvx::LatencyDistribution& d)
   {
     _executor.setSubmitAckLatencyDistribution(d);
   }
-  void setCancelAckLatencyDistribution(const flox::LatencyDistribution& d)
+  void setCancelAckLatencyDistribution(const lrvx::LatencyDistribution& d)
   {
     _executor.setCancelAckLatencyDistribution(d);
   }
-  void setReplaceAckLatencyDistribution(const flox::LatencyDistribution& d)
+  void setReplaceAckLatencyDistribution(const lrvx::LatencyDistribution& d)
   {
     _executor.setReplaceAckLatencyDistribution(d);
   }
-  void setRateLimitPolicy(const flox::RateLimitPolicy& p)
+  void setRateLimitPolicy(const lrvx::RateLimitPolicy& p)
   {
     _executor.setRateLimitPolicy(p);
   }
   void clearRateLimitPolicy() { _executor.clearRateLimitPolicy(); }
 
-  void setVenueAvailability(flox::VenueAvailability* va)
+  void setVenueAvailability(lrvx::VenueAvailability* va)
   {
     _executor.setVenueAvailability(va);
   }
@@ -551,7 +551,7 @@ class PySimulatedExecutor
   // quietly becoming a market order.
   static OrderType parseOrderType(const std::string& s)
   {
-    return flox_py::parseOrderTypeStrict(s);
+    return lrvx::parseOrderTypeStrict(s);
   }
 
   SimulatedClock _clock;
@@ -675,21 +675,21 @@ class PyBacktestResult
 
 inline void bindBacktest(py::module_& m)
 {
-  py::class_<flox::LatencyDistribution>(m, "LatencyDistribution")
+  py::class_<lrvx::LatencyDistribution>(m, "LatencyDistribution")
       .def(py::init<>())
-      .def_static("constant", &flox::LatencyDistribution::constant, py::arg("ns"))
-      .def_static("uniform", &flox::LatencyDistribution::uniform,
+      .def_static("constant", &lrvx::LatencyDistribution::constant, py::arg("ns"))
+      .def_static("uniform", &lrvx::LatencyDistribution::uniform,
                   py::arg("lo_ns"), py::arg("hi_ns"))
-      .def_static("lognormal", &flox::LatencyDistribution::lognormal,
+      .def_static("lognormal", &lrvx::LatencyDistribution::lognormal,
                   py::arg("median_ns"), py::arg("sigma"))
-      .def_static("empirical", &flox::LatencyDistribution::empirical,
+      .def_static("empirical", &lrvx::LatencyDistribution::empirical,
                   py::arg("samples_ns"))
       .def("set_burst_correlation",
-           &flox::LatencyDistribution::setBurstCorrelation, py::arg("rho"))
+           &lrvx::LatencyDistribution::setBurstCorrelation, py::arg("rho"))
       .def_property("burst_correlation",
-                    &flox::LatencyDistribution::burstCorrelation,
-                    &flox::LatencyDistribution::setBurstCorrelation)
-      .def("median_ns", &flox::LatencyDistribution::medianNs);
+                    &lrvx::LatencyDistribution::burstCorrelation,
+                    &lrvx::LatencyDistribution::setBurstCorrelation)
+      .def("median_ns", &lrvx::LatencyDistribution::medianNs);
 
   PYBIND11_NUMPY_DTYPE(PyFill, order_id, symbol, side, is_maker, price_raw, quantity_raw,
                        timestamp_ns);
@@ -701,7 +701,7 @@ inline void bindBacktest(py::module_& m)
       .def(py::init<>())
       .def("submit_order", &PySimulatedExecutor::submitOrder,
            "Submit an order to the simulated exchange. type: one of "
-           "flox_py.ORDER_TYPE_NAMES (market|limit|stop_market|stop_limit|"
+           "lrvx.ORDER_TYPE_NAMES (market|limit|stop_market|stop_limit|"
            "tp_market|tp_limit|trailing_stop|iceberg); anything else raises "
            "ValueError. tif: gtc|ioc|fok|gtd|post_only. "
            "reduce_only: only reduce existing position. expires_at_ns: GTD deadline. "

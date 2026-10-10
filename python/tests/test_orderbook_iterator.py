@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.orderbook.OrderBookIterator`` and ``book_at``.
+"""Tests for ``lrvx.orderbook.OrderBookIterator`` and ``book_at``.
 
 Builds a synthetic tape with known book events (snapshot + deltas) at
 controlled timestamps, iterates with various bucket / level / symbol
@@ -24,9 +24,9 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import orderbook as ob  # noqa: E402
+from lrvx import orderbook as ob  # noqa: E402
 
 
 _LEVEL_DTYPE = np.dtype([
@@ -47,7 +47,7 @@ def _arr(items):
 def _write_book_tape(tape_dir: Path, events) -> Path:
     """events: list of (ts_ns, symbol_id, is_snapshot, [(p, q)] bids, [(p, q)] asks)."""
     tape_dir.mkdir(parents=True, exist_ok=True)
-    w = flox_py.DataWriter(str(tape_dir), max_segment_mb=4,
+    w = lrvx.DataWriter(str(tape_dir), max_segment_mb=4,
                            exchange_id=0, compression="none")
     try:
         for i, (ts, sym, is_snap, bids, asks) in enumerate(events):
@@ -114,7 +114,7 @@ class IteratorTests(unittest.TestCase):
             (_BASE_NS, 2, True, [(50.0, 1.0)], [(51.0, 1.0)]),
         ]
         # Append events for symbol 2 to the existing tape.
-        w = flox_py.DataWriter(str(self.tape), max_segment_mb=4,
+        w = lrvx.DataWriter(str(self.tape), max_segment_mb=4,
                                exchange_id=0, compression="none")
         try:
             for i, (ts, sym, is_snap, bids, asks) in enumerate(events):

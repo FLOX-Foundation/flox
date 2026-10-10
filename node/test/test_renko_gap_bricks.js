@@ -11,7 +11,7 @@
 // heap-buffer-overflow read; see node/src/aggregators.h.
 //
 // Node's aggregate*Bars functions go through the shared C ABI aggregator
-// (flox_aggregate_renko_bars). Python's pybind11 batch path
+// (lrvx_aggregate_renko_bars). Python's pybind11 batch path
 // (python/aggregator_bindings.h) used to disagree with it: Python flushed
 // the still-open trailing bar and Node never did, so Python's count ran
 // one higher than Node's on identical input. That gap is closed -- neither
@@ -24,7 +24,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 
@@ -45,7 +45,7 @@ check('aggregateRenkoBars synthesizes the bricks a 5.5-brick gap spans', () => {
   const qty = new Float64Array([1.0, 1.0]);
   const ib = new Uint8Array([1, 1]);
 
-  const bars = flox.aggregateRenkoBars(ts, px, qty, ib, 10.0);
+  const bars = lrvx.aggregateRenkoBars(ts, px, qty, ib, 10.0);
 
   // The real bar (100 -> 110, closed at the first boundary the gapping
   // trade crossed) plus 4 synthesized bricks -- 5 bars. No bar for the new
@@ -69,7 +69,7 @@ check('aggregateRenkoBars leaves an ordinary single-brick close alone', () => {
   const qty = new Float64Array([1.0, 1.0]);
   const ib = new Uint8Array([1, 1]);
 
-  const bars = flox.aggregateRenkoBars(ts, px, qty, ib, 10.0);
+  const bars = lrvx.aggregateRenkoBars(ts, px, qty, ib, 10.0);
 
   assert.strictEqual(bars.length, 1, 'one closed brick, no trailing bar for the open one at 110 -> 114');
   assert.strictEqual(bars[0].open, 100);

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -12,13 +12,13 @@
  * `reserved` must return to zero -- a stuck reservation is invisible to
  * conservation-of-total but shows up in that second check.
  */
-#include "flox-venue/collateral.h"
-#include "flox-venue/cross_margin.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/collateral.h"
+#include "lrvx-venue/cross_margin.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
 
-#include "flox/clearing/fee_schedule.h"
+#include "lrvx/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 #include <array>
@@ -30,8 +30,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -91,7 +91,7 @@ void test_spot_conservation()
   c.baseAsset = BASE;
   c.quoteAsset = QUOTE;
   MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, -1.0, 2.0);  // maker rebate, taker fee -> venue nets fees
   eng.setFeeSchedule(fs);
   eng.setLedger(&led, VENUE);
@@ -283,7 +283,7 @@ void test_spot_conservation_lastlook()
           }
         }
       });
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, -1.0, 2.0);
   eng.setFeeSchedule(fs);
   eng.setLedger(&led, VENUE);

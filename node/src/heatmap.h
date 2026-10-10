@@ -5,25 +5,25 @@
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <string>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
-// flox.report.heatmapHtml(z, opts?) → string
+// lrvx.report.heatmapHtml(z, opts?) → string
 // z is a 2D number[][]. opts: { rowLabels?, colLabels?, title?,
 //   xAxisName?, yAxisName?, metricName? }.
 inline Napi::Value heatmapHtml(const Napi::CallbackInfo& info)
 {
-  return tryFlox(info.Env(), [&]() -> Napi::Value
+  return tryLrvx(info.Env(), [&]() -> Napi::Value
                  {
     auto env = info.Env();
     if (info.Length() == 0 || !info[0].IsArray())
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_002",
           "heatmapHtml: first argument must be a 2D array of numbers.");
     }
@@ -31,13 +31,13 @@ inline Napi::Value heatmapHtml(const Napi::CallbackInfo& info)
     const uint32_t rows = outer.Length();
     if (rows == 0)
     {
-      throw flox::FloxError("E_LEN_002", "heatmapHtml: z is empty.");
+      throw lrvx::LrvxError("E_LEN_002", "heatmapHtml: z is empty.");
     }
     auto firstRow = outer.Get(uint32_t(0)).As<Napi::Array>();
     const uint32_t cols = firstRow.Length();
     if (cols == 0)
     {
-      throw flox::FloxError("E_LEN_002", "heatmapHtml: z rows are empty.");
+      throw lrvx::LrvxError("E_LEN_002", "heatmapHtml: z rows are empty.");
     }
     std::vector<double> z(rows * cols);
     for (uint32_t r = 0; r < rows; ++r)
@@ -45,7 +45,7 @@ inline Napi::Value heatmapHtml(const Napi::CallbackInfo& info)
       auto row = outer.Get(r).As<Napi::Array>();
       if (row.Length() != cols)
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_LEN_001",
             "heatmapHtml: all rows in z must have the same length.");
       }
@@ -107,7 +107,7 @@ inline Napi::Value heatmapHtml(const Napi::CallbackInfo& info)
     for (const auto& s : colLabels){ colLabelPtrs.push_back(s.c_str());
 }
 
-    FloxHeatmapData d{};
+    LrvxHeatmapData d{};
     d.z = z.data();
     d.rows = rows;
     d.cols = cols;
@@ -120,9 +120,9 @@ inline Napi::Value heatmapHtml(const Napi::CallbackInfo& info)
     d.y_axis_name = yAxis.c_str();
     d.metric_name = metric.c_str();
 
-    uint64_t total = flox_render_heatmap_html(&d, nullptr, 0);
+    uint64_t total = lrvx_render_heatmap_html(&d, nullptr, 0);
     std::string buf(total, '\0');
-    flox_render_heatmap_html(&d, buf.data(), total);
+    lrvx_render_heatmap_html(&d, buf.data(), total);
     return Napi::String::New(env, buf); });
 }
 
@@ -143,4 +143,4 @@ inline void registerHeatmap(Napi::Env env, Napi::Object exports)
              Napi::Function::New(env, &heatmapHtml, "heatmapHtml"));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

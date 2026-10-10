@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -17,14 +17,14 @@
  * machine ever built that branch.
  *
  * This file is compiled twice -- see tests/CMakeLists.txt -- once as the host
- * toolchain would build it and once with FLOX_FORCE_PORTABLE_INT128=1, which
+ * toolchain would build it and once with LRVX_FORCE_PORTABLE_INT128=1, which
  * compiles the native intermediate out. Both builds run the same assertions,
  * so the path MSVC takes is checked on macOS and Linux as well.
  */
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/nlevel_order_book.h"
-#include "flox/common.h"
-#include "flox/util/base/scale_check.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/nlevel_order_book.h"
+#include "lrvx/common.h"
+#include "lrvx/util/base/scale_check.h"
 
 #include <gtest/gtest.h>
 
@@ -39,13 +39,13 @@
 // that happens to produce the same numbers: with kPortablePath pinned to
 // native, every test below still passes, so nothing at runtime can tell the
 // two binaries apart. This is the one check that can.
-#if FLOX_FORCE_PORTABLE_INT128
-static_assert(flox::Price::kPortablePath, "FLOX_FORCE_PORTABLE_INT128 must select the software path");
+#if LRVX_FORCE_PORTABLE_INT128
+static_assert(lrvx::Price::kPortablePath, "LRVX_FORCE_PORTABLE_INT128 must select the software path");
 #elif defined(__SIZEOF_INT128__)
-static_assert(!flox::Price::kPortablePath, "a toolchain with __int128 must take the native path");
+static_assert(!lrvx::Price::kPortablePath, "a toolchain with __int128 must take the native path");
 #endif
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -128,10 +128,10 @@ TEST(DecimalPortable, PriceByPriceAgreesWithTheCrossTypeOperator)
 // back as a long book.
 
 // Two builds, two halves, same convention as tests/test_decimal.cpp: with
-// FLOX_SCALE_CHECKS on (any build without NDEBUG, CI's sanitizer jobs) the
+// LRVX_SCALE_CHECKS on (any build without NDEBUG, CI's sanitizer jobs) the
 // overflow trips the assert before saturation runs; with it off, saturation
 // is what runs and has to give the defined, non-wrapped answer.
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 
 TEST(DecimalOverflow, MinusEqualsTripsTheAssertWithScaleChecksOn)
 {
@@ -321,7 +321,7 @@ std::pair<Quantity, Volume> consumeOneHugeLevel(bool asks)
 }
 }  // namespace
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 
 TEST(OrderBookNotional, ADeepConsumeTripsTheAssertWithScaleChecksOn)
 {
@@ -418,7 +418,7 @@ TEST(DecimalPaths, EverySignCombinationAgrees)
       {
         continue;
       }
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
       // x * Scale / y past the int64 ceiling trips the overflow assert in a
       // checked build (6e12 / 1 does); that half of the policy has its own
       // tests above, and here it would only abort the comparison.

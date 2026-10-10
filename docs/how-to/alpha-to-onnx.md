@@ -1,17 +1,17 @@
 # From alpha to production: dataset, model, inference node
 
-A model trained on flox features runs in production against the same
+A model trained on lrvx features runs in production against the same
 features, computed by the same code. This page walks the whole loop: tape
 to dataset, dataset to model, model to a scoring node in C++.
 
-The C++ inference part needs a build with `-DFLOX_ENABLE_ONNX=ON`
+The C++ inference part needs a build with `-DLRVX_ENABLE_ONNX=ON`
 (ONNX Runtime).
 
 ## 1. Export a dataset
 
 ```python
-import flox_py
-from flox_py.dataset import build_dataset, to_arrow
+import lrvx
+from lrvx.dataset import build_dataset, to_arrow
 
 ds = build_dataset(
     data_dir="/data/tapes/bybit",      # binary-log tape directory
@@ -56,10 +56,10 @@ the score is coupled to the hot path:
 As a graph node, for backtest and replay:
 
 ```cpp
-#include "flox/ml/onnx_inference.h"
+#include "lrvx/ml/onnx_inference.h"
 
-auto model = std::make_shared<flox::ml::OnnxModel>("alpha.onnx");
-flox::ml::registerOnnxNode(graph, "alpha", {"sma_20", "rsi_14", "pvol_30"}, model);
+auto model = std::make_shared<lrvx::ml::OnnxModel>("alpha.onnx");
+lrvx::ml::registerOnnxNode(graph, "alpha", {"sma_20", "rsi_14", "pvol_30"}, model);
 const auto& alphaColumn = graph.require(symbol, "alpha");
 ```
 
@@ -69,8 +69,8 @@ construction rather than by a separate verification step.
 In-path with a budget:
 
 ```cpp
-flox::ml::OnnxModel hotModel("alpha.onnx");  // intra-op = 1, no thread pool
-flox::ml::BudgetedInference inference(hotModel, /*budgetNs=*/20'000);
+lrvx::ml::OnnxModel hotModel("alpha.onnx");  // intra-op = 1, no thread pool
+lrvx::ml::BudgetedInference inference(hotModel, /*budgetNs=*/20'000);
 const auto r = inference.run(featureRow);
 ```
 
@@ -80,7 +80,7 @@ budget overrun. `inference.histogram()` plugs into the latency contour.
 As a sidecar, for heavier models:
 
 ```cpp
-flox::ml::OnnxSidecar sidecar(std::make_unique<flox::ml::OnnxModel>("alpha.onnx"));
+lrvx::ml::OnnxSidecar sidecar(std::make_unique<lrvx::ml::OnnxModel>("alpha.onnx"));
 sidecar.submit(featureRow, nowNs);          // returns immediately
 const auto p = sidecar.latest();            // values + featureTsNs + seq
 ```

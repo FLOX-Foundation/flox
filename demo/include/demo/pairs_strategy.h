@@ -1,16 +1,16 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #pragma once
 
-#include "flox/engine/symbol_registry.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <cmath>
 #include <deque>
@@ -18,7 +18,7 @@
 namespace demo
 {
 
-using namespace flox;
+using namespace lrvx;
 
 struct PairsConfig
 {
@@ -50,7 +50,7 @@ class PairsStrategy : public Strategy
       return;
     }
 
-    auto spreadOpt = flox::spread(ctx(_leg1), ctx(_leg2));
+    auto spreadOpt = lrvx::spread(ctx(_leg1), ctx(_leg2));
     if (!spreadOpt)
     {
       return;

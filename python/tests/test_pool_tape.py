@@ -13,7 +13,7 @@ import sys
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
 
 def main():
@@ -21,12 +21,12 @@ def main():
 
     # Final reserves after the two swaps, from the exact curve (what the closing
     # checkpoint must match).
-    ref = flox.AmmCurve.constant_product(r0, r1, 997, 1000)
+    ref = lrvx.AmmCurve.constant_product(r0, r1, 997, 1000)
     ref.apply_swap(0, 1, 5 * 10**18)
     ref.apply_swap(1, 0, 3 * 10**18)
     f0, f1 = ref.balances()[0], ref.balances()[1]
 
-    tape = flox.PoolTape()
+    tape = lrvx.PoolTape()
     tape.descriptor_constant_product(997, 1000, 18, 18)
     tape.checkpoint(100, r0, r1)
     tape.swap(200, True, 5 * 10**18)   # base in
@@ -40,7 +40,7 @@ def main():
     assert curve.balances()[0] == f0 and curve.balances()[1] == f1, "reconstructed to the wei"
 
     # A mismatched closing checkpoint is caught as drift.
-    bad = flox.PoolTape()
+    bad = lrvx.PoolTape()
     bad.descriptor_constant_product(997, 1000, 18, 18)
     bad.checkpoint(100, r0, r1)
     bad.swap(200, True, 5 * 10**18)

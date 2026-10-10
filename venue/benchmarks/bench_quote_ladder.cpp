@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -25,9 +25,9 @@
  *
  * Usage: bench_venue_quote_ladder [updates]
  */
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
 
 #include <chrono>
 #include <cstdint>
@@ -37,8 +37,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -169,7 +169,7 @@ int main(int argc, char** argv)
 {
   const int updates = argc > 1 ? std::atoi(argv[1]) : 20000;
   const std::string path =
-      (std::filesystem::temp_directory_path() / "flox_bench_quote_ladder.bin").string();
+      (std::filesystem::temp_directory_path() / "lrvx_bench_quote_ladder.bin").string();
 
   std::printf("levels  journal-bytes/update            apply-ns/update\n");
   std::printf("        ladder  quotes  saved           ladder  quotes\n");

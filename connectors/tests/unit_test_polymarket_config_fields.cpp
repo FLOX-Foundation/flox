@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -19,14 +19,14 @@
  * expectation is the thing to rewrite -- into one that observes the use.
  */
 
-#include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
-#include "flox-connectors/polymarket/polymarket_config.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_exchange_connector.h"
+#include "lrvx-connectors/polymarket/polymarket_config.h"
 
 #include <gtest/gtest.h>
 
 #include <type_traits>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

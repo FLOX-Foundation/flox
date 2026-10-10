@@ -34,7 +34,7 @@ Usage:
 The build directory is expected to be configured already:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-          -DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON
+          -DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON
 """
 
 from __future__ import annotations
@@ -51,27 +51,27 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 BIN_DIR = BUILD / "tests"
-LIB = "flox"
+LIB = "lrvx"
 CMAKE = os.environ.get("CMAKE", shutil.which("cmake") or "/opt/homebrew/bin/cmake")
 BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 60
 
-TIME_H = "include/flox/util/base/time.h"
+TIME_H = "include/lrvx/util/base/time.h"
 ENGINE_CPP = "src/engine/engine.cpp"
-ENGINE_CONFIG_H = "include/flox/engine/engine_config.h"
-POOL_H = "include/flox/util/memory/pool.h"
-SOCKET_H = "include/flox/net/socket.h"
-ABSTRACT_LOGGER_H = "include/flox/log/abstract_logger.h"
-CONSOLE_LOGGER_H = "include/flox/log/console_logger.h"
-ATOMIC_LOGGER_H = "include/flox/log/atomic_logger.h"
+ENGINE_CONFIG_H = "include/lrvx/engine/engine_config.h"
+POOL_H = "include/lrvx/util/memory/pool.h"
+SOCKET_H = "include/lrvx/net/socket.h"
+ABSTRACT_LOGGER_H = "include/lrvx/log/abstract_logger.h"
+CONSOLE_LOGGER_H = "include/lrvx/log/console_logger.h"
+ATOMIC_LOGGER_H = "include/lrvx/log/atomic_logger.h"
 ATOMIC_LOGGER_CPP = "src/log/atomic_logger.cpp"
-LOG_H = "include/flox/log/log.h"
-LOG_STREAM_H = "include/flox/log/log_stream.h"
+LOG_H = "include/lrvx/log/log.h"
+LOG_STREAM_H = "include/lrvx/log/log_stream.h"
 LOG_STREAM_CPP = "src/log/log_stream.cpp"
-ABSTRACT_POSITION_MANAGER_H = "include/flox/position/abstract_position_manager.h"
-POSITION_TRACKER_H = "include/flox/position/position_tracker.h"
-MULTI_MODE_POSITION_TRACKER_H = "include/flox/position/multi_mode_position_tracker.h"
+ABSTRACT_POSITION_MANAGER_H = "include/lrvx/position/abstract_position_manager.h"
+POSITION_TRACKER_H = "include/lrvx/position/position_tracker.h"
+MULTI_MODE_POSITION_TRACKER_H = "include/lrvx/position/multi_mode_position_tracker.h"
 
 # Every related binary named in the task, plus the five acceptance ones. A
 # mutation that survives its primary targets is swept against all of these
@@ -158,7 +158,7 @@ MUTATIONS: list[Mutation] = [
                 old="""void Engine::start()
 {
   // First, before anything the engine owns runs. Every connector, aggregator
-  // and bar policy that turns a venue's wall-clock stamp into a FloxClock
+  // and bar policy that turns a venue's wall-clock stamp into a LrvxClock
   // TimePoint reads the process-global offset this establishes, and a
   // component started before it would convert its first messages through a
   // zero offset and the rest through the anchored one. Idempotent, so a
@@ -210,7 +210,7 @@ MUTATIONS: list[Mutation] = [
                 old="""void Engine::start()
 {
   // First, before anything the engine owns runs. Every connector, aggregator
-  // and bar policy that turns a venue's wall-clock stamp into a FloxClock
+  // and bar policy that turns a venue's wall-clock stamp into a LrvxClock
   // TimePoint reads the process-global offset this establishes, and a
   // component started before it would convert its first messages through a
   // zero offset and the rest through the anchored one. Idempotent, so a
@@ -249,10 +249,10 @@ MUTATIONS: list[Mutation] = [
             "moving the meaning of every timestamp converted before it",
         file=TIME_H,
         old="""  int64_t unanchored = 0;
-  unix_to_flox_offset_ns().compare_exchange_strong(unanchored, flox_ns - unix_ns,
+  unix_to_lrvx_offset_ns().compare_exchange_strong(unanchored, lrvx_ns - unix_ns,
                                                    std::memory_order_relaxed,
                                                    std::memory_order_relaxed);""",
-        new="""  unix_to_flox_offset_ns().store(flox_ns - unix_ns, std::memory_order_relaxed);""",
+        new="""  unix_to_lrvx_offset_ns().store(lrvx_ns - unix_ns, std::memory_order_relaxed);""",
         targets=TIMEBASE,
         gtest_filter="EngineTimebase.AConnectorNeedNotAnchorTheMappingItself",
     ),
@@ -264,11 +264,11 @@ MUTATIONS: list[Mutation] = [
             "told",
         file=TIME_H,
         old="""  int64_t unanchored = 0;
-  unix_to_flox_offset_ns().compare_exchange_strong(unanchored, flox_ns - unix_ns,""",
+  unix_to_lrvx_offset_ns().compare_exchange_strong(unanchored, lrvx_ns - unix_ns,""",
         new="""  int64_t unanchored = 1;
-  unix_to_flox_offset_ns().compare_exchange_strong(unanchored, flox_ns - unix_ns,""",
+  unix_to_lrvx_offset_ns().compare_exchange_strong(unanchored, lrvx_ns - unix_ns,""",
         targets=TIMEBASE,
-        gtest_filter="EngineTimebase.StartAnchorsTheUnixToFloxMapping",
+        gtest_filter="EngineTimebase.StartAnchorsTheUnixToLrvxMapping",
     ),
     Mutation(
         name="config-exchanges-field-resurrected-unread",
@@ -321,16 +321,16 @@ struct EngineConfig
         why="both sides of the anchor read system_clock, so the offset comes "
             "out near zero instead of the true wall-clock-to-steady-clock gap; "
             "fromUnixMs then hands an epoch-scale nanosecond count to a "
-            "FloxClock TimePoint as if it were a steady_clock reading -- the "
+            "LrvxClock TimePoint as if it were a steady_clock reading -- the "
             "original bug, reintroduced by anchoring against the wrong clock "
             "rather than by not anchoring at all",
         file=TIME_H,
-        old="""  const auto flox_ns = duration_cast<nanoseconds>(now().time_since_epoch()).count();
+        old="""  const auto lrvx_ns = duration_cast<nanoseconds>(now().time_since_epoch()).count();
   const auto unix_ns = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();""",
-        new="""  const auto flox_ns = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();
+        new="""  const auto lrvx_ns = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();
   const auto unix_ns = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();""",
         targets=TIMEBASE,
-        gtest_filter="EngineTimebase.StartAnchorsTheUnixToFloxMapping"
+        gtest_filter="EngineTimebase.StartAnchorsTheUnixToLrvxMapping"
                      ":EngineTimebase.AnchoredMappingCarriesAKnownInstantBothWays",
     ),
     # ----------------------------------------------------------------- pool
@@ -570,7 +570,7 @@ struct EngineConfig
     // a logger that cannot open its file is a reason to look at the console,
     // not a reason to discard what it was told. rotationFailures() stays the
     // machine-readable signal.
-    std::fprintf(stderr, "flox: [%s] %s: %s\\n", timebuf, levelStr, entry.message);
+    std::fprintf(stderr, "lrvx: [%s] %s: %s\\n", timebuf, levelStr, entry.message);
     return;
   }""",
         new="""  if (_file == nullptr)
@@ -584,7 +584,7 @@ struct EngineConfig
         name="consolelogger-minlevel-ignores-its-threshold",
         why="ConsoleLogger::minLevel() stops returning _minLevel and always "
             "answers Info -- the floor of the enum, the same answer a sink "
-            "with no threshold at all gives -- so FLOX_LOG_LEVEL never sees a "
+            "with no threshold at all gives -- so LRVX_LOG_LEVEL never sees a "
             "reason to filter and every line is built and formatted again "
             "regardless of what the logger was constructed with",
         file=CONSOLE_LOGGER_H,
@@ -594,24 +594,24 @@ struct EngineConfig
         gtest_filter="LogCost.AFilteredLevelDoesNotEvaluateTheMessage",
     ),
     Mutation(
-        name="flox-log-level-reads-the-threshold-after-building-the-stream",
+        name="lrvx-log-level-reads-the-threshold-after-building-the-stream",
         why="the macro builds and emits the LogStream unconditionally via the "
             "comma operator and only checks the threshold afterwards, on a "
             "result nothing branches on -- so the message is always formatted "
             "and always delivered, and the level read happens too late to "
             "matter",
         file=LOG_H,
-        old="""#define FLOX_LOG_LEVEL(lvl, ...)                                         \\
-  if (const ::flox::LogLevel floxLogLevel_ = (lvl);                      \\
-      !::flox::isLoggingEnabled() || floxLogLevel_ < ::flox::logLevel()) \\
+        old="""#define LRVX_LOG_LEVEL(lvl, ...)                                         \\
+  if (const ::lrvx::LogLevel lrvxLogLevel_ = (lvl);                      \\
+      !::lrvx::isLoggingEnabled() || lrvxLogLevel_ < ::lrvx::logLevel()) \\
     ;                                                                    \\
   else                                                                   \\
-    ::flox::LogStream(floxLogLevel_) << __VA_ARGS__""",
-        new="""#define FLOX_LOG_LEVEL(lvl, ...)                                                 \\
-  if (const ::flox::LogLevel floxLogLevel_ = (lvl); !::flox::isLoggingEnabled()) \\
+    ::lrvx::LogStream(lrvxLogLevel_) << __VA_ARGS__""",
+        new="""#define LRVX_LOG_LEVEL(lvl, ...)                                                 \\
+  if (const ::lrvx::LogLevel lrvxLogLevel_ = (lvl); !::lrvx::isLoggingEnabled()) \\
     ;                                                                            \\
-  else if ((::flox::LogStream(floxLogLevel_) << __VA_ARGS__,                     \\
-           floxLogLevel_ < ::flox::logLevel()))                                  \\
+  else if ((::lrvx::LogStream(lrvxLogLevel_) << __VA_ARGS__,                     \\
+           lrvxLogLevel_ < ::lrvx::logLevel()))                                  \\
     ;                                                                            \\
   else                                                                           \\
     ;""",
@@ -726,17 +726,17 @@ struct EngineConfig
             "than the blended cost basis getAverageEntryPrice() computes for "
             "the same state",
         file=MULTI_MODE_POSITION_TRACKER_H,
-        old="""  flox::PositionSnapshot positionSnapshot(SymbolId symbol) const override
+        old="""  lrvx::PositionSnapshot positionSnapshot(SymbolId symbol) const override
   {
     std::lock_guard<std::mutex> lock(_mutex);
     const auto snap = snapshotUnlocked(symbol);
-    return flox::PositionSnapshot{getPositionUnlocked(symbol), blendedEntry(snap)};
+    return lrvx::PositionSnapshot{getPositionUnlocked(symbol), blendedEntry(snap)};
   }""",
-        new="""  flox::PositionSnapshot positionSnapshot(SymbolId symbol) const override
+        new="""  lrvx::PositionSnapshot positionSnapshot(SymbolId symbol) const override
   {
     std::lock_guard<std::mutex> lock(_mutex);
     const auto snap = snapshotUnlocked(symbol);
-    return flox::PositionSnapshot{getPositionUnlocked(symbol), snap.longAvgEntry};
+    return lrvx::PositionSnapshot{getPositionUnlocked(symbol), snap.longAvgEntry};
   }""",
         # No named filter: nothing in the tree calls positionSnapshot() on a
         # MultiModePositionTracker directly (only PositionTracker gets there,
@@ -978,7 +978,7 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             f"  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            f"-DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON")
+            f"-DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON")
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
     if not selected:

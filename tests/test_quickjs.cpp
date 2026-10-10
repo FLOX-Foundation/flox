@@ -3,12 +3,12 @@
 #include "js_executor.h"
 #include "js_strategy.h"
 
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/capi/bridge_strategy.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/capi/bridge_strategy.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <chrono>
@@ -22,16 +22,16 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
-// A stand-in for the library's own flox_capi_abi_version, so a test can
-// construct the header/library skew registerFloxBindings refuses. One
+// A stand-in for the library's own lrvx_capi_abi_version, so a test can
+// construct the header/library skew registerLrvxBindings refuses. One
 // build tree has one version, and the refusal path is unreachable without
-// this; the executable's definition satisfies the reference libflox_capi
+// this; the executable's definition satisfies the reference liblrvx_capi
 // leaves undefined, including the one inside js_bindings.cpp.
 namespace
 {
-uint32_t g_reportedAbiVersion = FLOX_CAPI_ABI_VERSION;
+uint32_t g_reportedAbiVersion = LRVX_CAPI_ABI_VERSION;
 
 class ReportedAbiVersion
 {
@@ -50,7 +50,7 @@ class ReportedAbiVersion
 };
 }  // namespace
 
-extern "C" uint32_t flox_capi_abi_version(void)
+extern "C" uint32_t lrvx_capi_abi_version(void)
 {
   return g_reportedAbiVersion;
 }
@@ -61,13 +61,13 @@ extern "C" uint32_t flox_capi_abi_version(void)
 
 TEST(JsEngineTest, CreateAndEval)
 {
-  FloxJsEngine engine;
+  LrvxJsEngine engine;
   EXPECT_TRUE(engine.eval("var x = 1 + 2;"));
 }
 
 TEST(JsEngineTest, EvalError)
 {
-  FloxJsEngine engine;
+  LrvxJsEngine engine;
   EXPECT_FALSE(engine.eval("throw new Error('test error');"));
   auto msg = engine.getErrorMessage();
   EXPECT_TRUE(msg.find("test error") != std::string::npos);
@@ -75,7 +75,7 @@ TEST(JsEngineTest, EvalError)
 
 TEST(JsEngineTest, GlobalProperty)
 {
-  FloxJsEngine engine;
+  LrvxJsEngine engine;
   EXPECT_TRUE(engine.eval("var testVal = 42;"));
 
   JSValue val = engine.getGlobalProperty("testVal");
@@ -87,10 +87,10 @@ TEST(JsEngineTest, GlobalProperty)
 
 TEST(JsEngineTest, BindingsRegister)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
 
-  JSValue fn = engine.getGlobalProperty("__flox_emit_market_buy");
+  JSValue fn = engine.getGlobalProperty("__lrvx_emit_market_buy");
   EXPECT_TRUE(JS_IsFunction(engine.context(), fn));
   JS_FreeValue(engine.context(), fn);
 
@@ -102,7 +102,7 @@ TEST(JsEngineTest, BindingsRegister)
 
 TEST(JsEngineTest, SMA)
 {
-  FloxJsEngine engine;
+  LrvxJsEngine engine;
   EXPECT_TRUE(engine.eval(R"(
     class SMA {
       constructor(period) { this._period = period; this._count = 0; this._sum = 0; this._value = 0; this._buffer = []; this._index = 0; }
@@ -136,7 +136,7 @@ class TempJsFile
  public:
   TempJsFile(const std::string& content)
   {
-    _path = std::filesystem::temp_directory_path() / ("flox_test_" + std::to_string(counter_++) + ".js");
+    _path = std::filesystem::temp_directory_path() / ("lrvx_test_" + std::to_string(counter_++) + ".js");
     std::ofstream f(_path);
     f << content;
   }
@@ -154,24 +154,24 @@ int TempJsFile::counter_ = 0;
 TEST(JsIntegrationTest, TargetsBindings)
 {
   TempJsFile script(R"(
-    var fr = flox.targets.future_return([100.0, 101.0, 99.0, 105.0, 110.0], 2);
+    var fr = lrvx.targets.future_return([100.0, 101.0, 99.0, 105.0, 110.0], 2);
     var fr0 = fr[0];
     var fr2 = fr[2];
     var fr_tail_nan = isNaN(fr[3]) && isNaN(fr[4]);
 
     var constClose = [];
     for (var i = 0; i < 20; i++) constClose.push(100.0);
-    var vol = flox.targets.future_ctc_volatility(constClose, 5);
+    var vol = lrvx.targets.future_ctc_volatility(constClose, 5);
     var vol0 = vol[0];
 
     var lin = [];
     for (var i = 0; i < 20; i++) lin.push(100.0 + 0.5 * i);
-    var sl = flox.targets.future_linear_slope(lin, 4);
+    var sl = lrvx.targets.future_linear_slope(lin, 4);
     var sl0 = sl[0];
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   auto getNum = [&](const char* name)
   {
@@ -194,10 +194,10 @@ TEST(JsIntegrationTest, TargetsBindings)
 
 TEST(JsEngineTest, AdfBindingExposed)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
 
-  // Build a deterministic random walk and call __flox_indicator_adf.
+  // Build a deterministic random walk and call __lrvx_indicator_adf.
   EXPECT_TRUE(engine.eval(R"(
     var n = 200;
     var seed = 42;
@@ -209,7 +209,7 @@ TEST(JsEngineTest, AdfBindingExposed)
     }
     var walk = [0];
     for (var i = 1; i < n; ++i) walk.push(walk[i-1] + gauss());
-    var r = __flox_indicator_adf(walk, 4, "c");
+    var r = __lrvx_indicator_adf(walk, 4, "c");
     var test_stat = r.test_stat;
     var p_value = r.p_value;
     var used_lag = r.used_lag;
@@ -234,7 +234,7 @@ TEST(JsIntegrationTest, AutoCorrelationBindings)
     var linear = [];
     for (var i = 0; i < 50; ++i) linear.push(5.0 + 0.7 * i);
 
-    // Batch: AutoCorrelation.compute / __flox_indicator_autocorrelation.
+    // Batch: AutoCorrelation.compute / __lrvx_indicator_autocorrelation.
     var ac = AutoCorrelation.compute(linear, 10, 1);
     var batch_at_10 = ac[10];
     var warmup_nan = isNaN(ac[9]);
@@ -249,7 +249,7 @@ TEST(JsIntegrationTest, AutoCorrelationBindings)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   auto* ctx = jsStrat.engine().context();
 
@@ -274,7 +274,7 @@ TEST(JsIntegrationTest, IndicatorGraphBindings)
     var ramp = [];
     for (var i = 0; i < 50; ++i) ramp.push(i);
 
-    var g = new flox.IndicatorGraph();
+    var g = new lrvx.IndicatorGraph();
     g.setBars(0, ramp);
 
     g.addNode("ema5", [], function(graph, sym) {
@@ -306,7 +306,7 @@ TEST(JsIntegrationTest, IndicatorGraphBindings)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   auto* ctx = jsStrat.engine().context();
 
@@ -335,7 +335,7 @@ TEST(JsIntegrationTest, IndicatorGraphBindings)
 TEST(JsIntegrationTest, StreamingIndicatorGraph)
 {
   TempJsFile script(R"(
-    var sg = new flox.StreamingIndicatorGraph();
+    var sg = new lrvx.StreamingIndicatorGraph();
     sg.addNode("double_close", [], function(graph, sym) {
       var c = graph.close(sym);
       var out = [];
@@ -357,7 +357,7 @@ TEST(JsIntegrationTest, StreamingIndicatorGraph)
     var ok_counts = barCounts[0] === 1 && barCounts[4] === 5;
 
     // Parity: batch on same data should match.
-    var bg = new flox.IndicatorGraph();
+    var bg = new lrvx.IndicatorGraph();
     bg.setBars(0, new Float64Array(closes));
     bg.addNode("double_close", [], function(graph, sym) {
       var c = graph.close(sym);
@@ -377,7 +377,7 @@ TEST(JsIntegrationTest, StreamingIndicatorGraph)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto* ctx = jsStrat.engine().context();
 
   auto getBool = [&](const char* name)
@@ -411,11 +411,11 @@ TEST(JsIntegrationTest, LoadStrategyAndResolveSymbols)
         super({ exchange: "Binance", symbols: ["BTCUSDT", "ETHUSDT"] });
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(jsStrat.symbolIds().size(), 2u);
   // Symbols should have been registered in the registry
@@ -440,17 +440,17 @@ TEST(JsIntegrationTest, OnStartOnStopCalled)
       onStart() { startCalled = true; }
       onStop()  { stopCalled = true; }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   bridge->start();
   bridge->stop();
@@ -481,26 +481,26 @@ TEST(JsIntegrationTest, OnTradeReceivesCorrectData)
         tradeCount++;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   // Simulate a trade event through the C callback
-  FloxSymbolContext fctx{};
+  LrvxSymbolContext fctx{};
   fctx.symbol_id = symIds[0];
 
-  FloxTradeData ftrade{};
+  LrvxTradeData ftrade{};
   ftrade.symbol = symIds[0];
-  ftrade.price_raw = flox_price_from_double(50123.45);
-  ftrade.quantity_raw = flox_quantity_from_double(1.5);
+  ftrade.price_raw = lrvx_price_from_double(50123.45);
+  ftrade.quantity_raw = lrvx_quantity_from_double(1.5);
   ftrade.is_buy = 1;
   ftrade.exchange_ts_ns = 1000000000;
 
@@ -542,27 +542,27 @@ TEST(JsIntegrationTest, MultipleTrades)
       constructor() { super({ exchange: "Test", symbols: ["SYM1"] }); }
       onTrade(ctx, trade) { tradeCount++; }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   // Feed 100 trades
   for (int i = 0; i < 100; i++)
   {
-    FloxSymbolContext fctx{};
+    LrvxSymbolContext fctx{};
     fctx.symbol_id = symIds[0];
-    FloxTradeData ftrade{};
+    LrvxTradeData ftrade{};
     ftrade.symbol = symIds[0];
-    ftrade.price_raw = flox_price_from_double(100.0 + i);
-    ftrade.quantity_raw = flox_quantity_from_double(1.0);
+    ftrade.price_raw = lrvx_price_from_double(100.0 + i);
+    ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
     ftrade.is_buy = (i % 2 == 0) ? 1 : 0;
     callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
   }
@@ -582,11 +582,11 @@ TEST(JsIntegrationTest, QualifiedSymbolFormat)
         super({ symbols: ["Binance:BTCUSDT", "Bybit:ETHUSDT"] });
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(jsStrat.symbolIds().size(), 2u);
   auto btcId = registry.getSymbolId("Binance", "BTCUSDT");
@@ -601,20 +601,20 @@ TEST(JsIntegrationTest, NoExchangeThrows)
     class TestStrat extends Strategy {
       constructor() { super({ symbols: ["BTCUSDT"] }); }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  EXPECT_THROW(FloxJsStrategy(script.path(), registry), std::runtime_error);
+  EXPECT_THROW(LrvxJsStrategy(script.path(), registry), std::runtime_error);
 }
 
 TEST(JsIntegrationTest, NoRegisterOk)
 {
-  // Plain scripts without flox.register() are valid (standalone script use case)
+  // Plain scripts without lrvx.register() are valid (standalone script use case)
   TempJsFile script("var x = 1;");
 
   SymbolRegistry registry;
-  EXPECT_NO_THROW(FloxJsStrategy(script.path(), registry));
+  EXPECT_NO_THROW(LrvxJsStrategy(script.path(), registry));
 }
 
 // ============================================================
@@ -649,17 +649,17 @@ TEST(JsIntegrationTest, CompositeDslCrossover)
         rsiValue = rsi.isReady() ? rsi.value() : 0;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   const uint64_t M1_NS = 60ull * 1'000'000'000ull;
   // Climb from 100 → 110 over 8 bars so the fast EMA(3) ends well above
@@ -729,17 +729,17 @@ TEST(JsIntegrationTest, CompositeDslLogicalOps)
         notValue = notCross.isReady() ? notCross.value() : false;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   const uint64_t M1_NS = 60ull * 1'000'000'000ull;
   for (int i = 0; i < 8; ++i)
@@ -805,17 +805,17 @@ TEST(JsIntegrationTest, MultiFeedClockWaitForAll)
         staleAfter = r2.stalenessNs[1];
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
   bridge->start();
 
   auto* ctx = jsStrat.engine().context();
@@ -870,16 +870,16 @@ TEST(JsIntegrationTest, OrderGroupRiskGateDeniesOversizedBasket)
         deniedSmall = g2.precheckSubmission({ equity: 100000, marketRefPrices: [50000] }).denied;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
   bridge->start();
 
   auto* ctx = jsStrat.engine().context();
@@ -920,16 +920,16 @@ TEST(JsIntegrationTest, OrderGroupAutoDispatchFiresAndIsIdempotent)
         fired2 = g.autoDispatch(fakeStrat);
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
   bridge->start();
 
   auto* ctx = jsStrat.engine().context();
@@ -970,17 +970,17 @@ TEST(JsIntegrationTest, OrderGroupAllOrNothingReverts)
         actions = g.recommendedActions();
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
   bridge->start();
 
   auto* ctx = jsStrat.engine().context();
@@ -1036,17 +1036,17 @@ TEST(JsIntegrationTest, IndicatorGridCrossProduct)
         keysShape = ks.length + "/" + ks[0].symbol + ":" + ks[0].param;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   // Drive 5 M1 bars on BTC so the M1 EMA(3) is ready; H1 cells stay cold.
   const uint64_t M1_NS = 60ull * 1'000'000'000ull;
@@ -1113,17 +1113,17 @@ TEST(JsIntegrationTest, MultiTfHelpersExposeBarRing)
         thirdAllCloses = nbars.map(function(b){ return b.close; });
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   const uint64_t M5_NS = 5ull * 60 * 1'000'000'000ull;
   auto pushBar = [&](double open, double close, int64_t startNs)
@@ -1177,17 +1177,17 @@ TEST(JsIntegrationTest, MultiTfHelpersReturnNullBeforeAnyBar)
         beforeAnyBar = bar === null ? "null" : "non-null";
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   bridge->start();
 
@@ -1217,17 +1217,17 @@ TEST(JsIntegrationTest, MultiTfHelpersRingCapacityIsAdjustable)
         keptCount = bars.length;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   bridge->start();
 
@@ -1272,27 +1272,27 @@ TEST(JsIntegrationTest, JsExceptionInOnTradeDoesNotCrash)
         if (tradeCount === 2) throw new Error("intentional");
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   // Trade 1: OK, Trade 2: throws, Trade 3: should still work
   for (int i = 0; i < 3; i++)
   {
-    FloxSymbolContext fctx{};
+    LrvxSymbolContext fctx{};
     fctx.symbol_id = symIds[0];
-    FloxTradeData ftrade{};
+    LrvxTradeData ftrade{};
     ftrade.symbol = symIds[0];
-    ftrade.price_raw = flox_price_from_double(100.0);
-    ftrade.quantity_raw = flox_quantity_from_double(1.0);
+    ftrade.price_raw = lrvx_price_from_double(100.0);
+    ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
     ftrade.is_buy = 1;
     callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
   }
@@ -1307,7 +1307,7 @@ TEST(JsIntegrationTest, JsExceptionInOnTradeDoesNotCrash)
 // ============================================================
 // One JSRuntime, one dedicated thread. The live engine subscribes a
 // single strategy to three independently-threaded buses (trades, book
-// updates, bars); before FloxJsExecutor, that meant up to three threads
+// updates, bars); before LrvxJsExecutor, that meant up to three threads
 // entering the same non-reentrant QuickJS runtime concurrently. Reproduced
 // pre-fix at 10 events; these run at 10,000+ across two producer threads.
 // ============================================================
@@ -1322,10 +1322,10 @@ const char* const kCounterStrategyScript = R"(
       onTrade(ctx, trade) { tradeCount++; }
       onBookUpdate(ctx, book) { bookCount++; }
     }
-    flox.register(new CounterStrat());
+    lrvx.register(new CounterStrat());
   )";
 
-int32_t readGlobalInt32(FloxJsStrategy& strat, const char* name)
+int32_t readGlobalInt32(LrvxJsStrategy& strat, const char* name)
 {
   JSValue v = strat.engine().getGlobalProperty(name);
   int32_t out = 0;
@@ -1336,7 +1336,7 @@ int32_t readGlobalInt32(FloxJsStrategy& strat, const char* name)
 }  // namespace
 
 // t13: two producer threads (one trades, one book updates) hammer a single
-// FloxJsExecutor through the callbacks flox_live_engine_add_strategy would
+// LrvxJsExecutor through the callbacks lrvx_live_engine_add_strategy would
 // use. Manual threads rather than the real bus, so this isolates the
 // executor/queue design from the eventing subsystem's own behavior.
 TEST(JsExecutorThreadingTest, ManualProducerThreadsDoNotCorruptRuntime)
@@ -1347,7 +1347,7 @@ TEST(JsExecutorThreadingTest, ManualProducerThreadsDoNotCorruptRuntime)
   {
     TempJsFile script(kCounterStrategyScript);
     SymbolRegistry registry;
-    FloxJsExecutor executor(script.path(), registry);
+    LrvxJsExecutor executor(script.path(), registry);
     auto symIds = executor.symbolIds();
     ASSERT_FALSE(symIds.empty());
     auto callbacks = executor.getCallbacks();
@@ -1357,12 +1357,12 @@ TEST(JsExecutorThreadingTest, ManualProducerThreadsDoNotCorruptRuntime)
         {
           for (int i = 0; i < kPerThread; ++i)
           {
-            FloxSymbolContext fctx{};
+            LrvxSymbolContext fctx{};
             fctx.symbol_id = symIds[0];
-            FloxTradeData ftrade{};
+            LrvxTradeData ftrade{};
             ftrade.symbol = symIds[0];
-            ftrade.price_raw = flox_price_from_double(100.0 + i);
-            ftrade.quantity_raw = flox_quantity_from_double(1.0);
+            ftrade.price_raw = lrvx_price_from_double(100.0 + i);
+            ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
             callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
           }
         });
@@ -1371,9 +1371,9 @@ TEST(JsExecutorThreadingTest, ManualProducerThreadsDoNotCorruptRuntime)
         {
           for (int i = 0; i < kPerThread; ++i)
           {
-            FloxSymbolContext fctx{};
+            LrvxSymbolContext fctx{};
             fctx.symbol_id = symIds[0];
-            FloxBookData fbook{};
+            LrvxBookData fbook{};
             fbook.symbol = symIds[0];
             callbacks.on_book(callbacks.user_data, &fctx, &fbook);
           }
@@ -1390,15 +1390,15 @@ TEST(JsExecutorThreadingTest, ManualProducerThreadsDoNotCorruptRuntime)
   }
 }
 
-// Same scenario, but through the actual public C ABI: flox_live_engine_*,
-// exactly the path flox_live_engine_add_strategy documents. This is what
+// Same scenario, but through the actual public C ABI: lrvx_live_engine_*,
+// exactly the path lrvx_live_engine_add_strategy documents. This is what
 // broke in the audit's t13live reproduction (3/3 crashes, first crash at
 // 10 events); the JSRuntime itself must now survive 10,000 events
 // published from this thread while the live engine's three internal bus
 // threads dispatch them.
 //
-// Driving a real flox_live_engine this hard exercises more than the JS
-// runtime -- it also exercises flox::Strategy's per-symbol state, which
+// Driving a real lrvx_live_engine this hard exercises more than the JS
+// runtime -- it also exercises lrvx::Strategy's per-symbol state, which
 // every BridgeStrategy-based binding (Node, Python, Codon, QuickJS) reads
 // and writes from whatever bus thread happens to deliver an event for
 // that symbol. That state now has one owner: a symbol's context belongs
@@ -1418,26 +1418,26 @@ TEST(JsExecutorThreadingTest, LiveEngineThreeBusesDoNotCorruptRuntime)
 
   TempJsFile script(kCounterStrategyScript);
   SymbolRegistry registry;
-  FloxJsExecutor executor(script.path(), registry);
+  LrvxJsExecutor executor(script.path(), registry);
   auto symIds = executor.symbolIds();
   ASSERT_FALSE(symIds.empty());
 
-  FloxRegistryHandle regHandle = static_cast<FloxRegistryHandle>(&registry);
-  FloxStrategyHandle strat = flox_strategy_create(
+  LrvxRegistryHandle regHandle = static_cast<LrvxRegistryHandle>(&registry);
+  LrvxStrategyHandle strat = lrvx_strategy_create(
       1, symIds.data(), static_cast<uint32_t>(symIds.size()), regHandle, executor.getCallbacks());
   ASSERT_NE(strat, nullptr);
   executor.injectHandle(strat);
 
-  FloxLiveEngineHandle engine = flox_live_engine_create(regHandle);
+  LrvxLiveEngineHandle engine = lrvx_live_engine_create(regHandle);
   ASSERT_NE(engine, nullptr);
-  flox_live_engine_add_strategy(engine, strat, nullptr, nullptr);
-  flox_live_engine_start(engine);
+  lrvx_live_engine_add_strategy(engine, strat, nullptr, nullptr);
+  lrvx_live_engine_start(engine);
 
   for (int i = 0; i < kEventsPerKind; ++i)
   {
-    flox_live_engine_publish_trade(engine, symIds[0], 100.0 + i, 1.0, 1, 1000000000LL + i);
+    lrvx_live_engine_publish_trade(engine, symIds[0], 100.0 + i, 1.0, 1, 1000000000LL + i);
     double bidP = 99.0, bidQ = 1.0, askP = 101.0, askQ = 1.0;
-    flox_live_engine_publish_book_snapshot(engine, symIds[0], &bidP, &bidQ, 1, &askP, &askQ, 1,
+    lrvx_live_engine_publish_book_snapshot(engine, symIds[0], &bidP, &bidQ, 1, &askP, &askQ, 1,
                                            1000000000LL + i);
   }
 
@@ -1460,7 +1460,7 @@ TEST(JsExecutorThreadingTest, LiveEngineThreeBusesDoNotCorruptRuntime)
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
-  flox_live_engine_stop(engine);
+  lrvx_live_engine_stop(engine);
   executor.waitIdle();
 
   // Reaching here at all -- 10,000 events on 3 live bus threads -- is the
@@ -1470,8 +1470,8 @@ TEST(JsExecutorThreadingTest, LiveEngineThreeBusesDoNotCorruptRuntime)
   EXPECT_EQ(executor.getGlobalInt32("tradeCount"), kEventsPerKind);
   EXPECT_EQ(executor.getGlobalInt32("bookCount"), kEventsPerKind);
 
-  flox_live_engine_destroy(engine);
-  flox_strategy_destroy(strat);
+  lrvx_live_engine_destroy(engine);
+  lrvx_strategy_destroy(strat);
 }
 
 // Control: the same 10x the event volume (400,000), single-threaded, to
@@ -1481,26 +1481,26 @@ TEST(JsExecutorThreadingTest, SingleThreadedControlHandles400kEvents)
 {
   TempJsFile script(kCounterStrategyScript);
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   ASSERT_FALSE(symIds.empty());
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   constexpr int kTotal = 200000;
   for (int i = 0; i < kTotal; ++i)
   {
-    FloxSymbolContext fctx{};
+    LrvxSymbolContext fctx{};
     fctx.symbol_id = symIds[0];
-    FloxTradeData ftrade{};
+    LrvxTradeData ftrade{};
     ftrade.symbol = symIds[0];
-    ftrade.price_raw = flox_price_from_double(100.0);
-    ftrade.quantity_raw = flox_quantity_from_double(1.0);
+    ftrade.price_raw = lrvx_price_from_double(100.0);
+    ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
     callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
-    FloxBookData fbook{};
+    LrvxBookData fbook{};
     fbook.symbol = symIds[0];
     callbacks.on_book(callbacks.user_data, &fctx, &fbook);
   }
@@ -1511,7 +1511,7 @@ TEST(JsExecutorThreadingTest, SingleThreadedControlHandles400kEvents)
 
 // ============================================================
 // The microtask queue is now drained after every dispatch
-// (FloxJsStrategy::invokeMethod calls FloxJsEngine::pumpPendingJobs()).
+// (LrvxJsStrategy::invokeMethod calls LrvxJsEngine::pumpPendingJobs()).
 // Before this fix, JS_ExecutePendingJob was never called anywhere in this
 // engine: an `await` inside onTrade never resumed, the order was never
 // placed, and the unresolved job leaked ~1.6 KB per event until the heap
@@ -1531,24 +1531,24 @@ TEST(JsIntegrationTest, AsyncOnTradeResumesAfterAwait)
         orderId = this.limitBuy({ symbol: trade.symbol, price: 100.0, qty: 1.0 });
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
-  FloxSymbolContext fctx{};
+  LrvxSymbolContext fctx{};
   fctx.symbol_id = symIds[0];
-  FloxTradeData ftrade{};
+  LrvxTradeData ftrade{};
   ftrade.symbol = symIds[0];
-  ftrade.price_raw = flox_price_from_double(100.0);
-  ftrade.quantity_raw = flox_quantity_from_double(1.0);
+  ftrade.price_raw = lrvx_price_from_double(100.0);
+  ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
   callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
 
   JSValue resumed = jsStrat.engine().getGlobalProperty("resumed");
@@ -1572,27 +1572,27 @@ TEST(JsIntegrationTest, AsyncOnTradeManyEventsDoNotLeakQueuedJobs)
         completed++;
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   constexpr int kEvents = 2000;
   for (int i = 0; i < kEvents; ++i)
   {
-    FloxSymbolContext fctx{};
+    LrvxSymbolContext fctx{};
     fctx.symbol_id = symIds[0];
-    FloxTradeData ftrade{};
+    LrvxTradeData ftrade{};
     ftrade.symbol = symIds[0];
-    ftrade.price_raw = flox_price_from_double(100.0);
-    ftrade.quantity_raw = flox_quantity_from_double(1.0);
+    ftrade.price_raw = lrvx_price_from_double(100.0);
+    ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
     callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
   }
 
@@ -1628,24 +1628,24 @@ TEST(JsIntegrationTest, OrderPriceAndQuantityRejectNonFiniteInput)
         tryOrder.call(this, { symbol: trade.symbol, price: 100.5, qty: 2.0 });
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
-  FloxSymbolContext fctx{};
+  LrvxSymbolContext fctx{};
   fctx.symbol_id = symIds[0];
-  FloxTradeData ftrade{};
+  LrvxTradeData ftrade{};
   ftrade.symbol = symIds[0];
-  ftrade.price_raw = flox_price_from_double(100.0);
-  ftrade.quantity_raw = flox_quantity_from_double(1.0);
+  ftrade.price_raw = lrvx_price_from_double(100.0);
+  ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
   callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
 
   auto* ctx = jsStrat.engine().context();
@@ -1677,17 +1677,17 @@ TEST(JsIntegrationTest, OrderPriceAndQuantityRejectNonFiniteInput)
 
 TEST(JsIntegrationTest, GraphAddNodeWithSymbolNameThrowsInsteadOfCrashing)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
     var threw = false;
-    var g = __flox_graph_create();
+    var g = __lrvx_graph_create();
     try {
-      __flox_graph_add_node(g, Symbol('ema'), [], function() { return []; }, {});
+      __lrvx_graph_add_node(g, Symbol('ema'), [], function() { return []; }, {});
     } catch (e) {
       threw = true;
     }
-    __flox_graph_destroy(g);
+    __lrvx_graph_destroy(g);
   )"));
   JSValue threw = engine.getGlobalProperty("threw");
   EXPECT_TRUE(JS_ToBool(engine.context(), threw));
@@ -1703,12 +1703,12 @@ TEST(JsIntegrationTest, GraphAddNodeWithSymbolNameThrowsInsteadOfCrashing)
 
 TEST(JsIntegrationTest, AtrWithMismatchedArrayLengthsThrows)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
     var threw = false;
     try {
-      __flox_indicator_atr([10, 11, 12, 13, 14, 15, 16, 17, 18, 19], [], [], 3);
+      __lrvx_indicator_atr([10, 11, 12, 13, 14, 15, 16, 17, 18, 19], [], [], 3);
     } catch (e) {
       threw = true;
     }
@@ -1733,13 +1733,13 @@ TEST(JsIntegrationTest, FeedClockForgedHandleIsRejectedNotDereferenced)
   // the assertion here is that it does not touch the number 12345 as a
   // pointer. A read/write accessor on the same bogus handle is expected
   // to throw, since (unlike destroy) it has no sensible no-op result.
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
-    __flox_feed_clock_destroy(12345n);   // must not crash
+    __lrvx_feed_clock_destroy(12345n);   // must not crash
     var threw = false;
     try {
-      __flox_feed_clock_symbol_count(12345n);
+      __lrvx_feed_clock_symbol_count(12345n);
     } catch (e) {
       threw = true;
     }
@@ -1751,18 +1751,18 @@ TEST(JsIntegrationTest, FeedClockForgedHandleIsRejectedNotDereferenced)
 
 TEST(JsIntegrationTest, FeedClockDoubleDestroyAndDestroyThenUseAreSafe)
 {
-  // Bare FloxJsEngine only has the __flox_* globals (the class sugar in
-  // quickjs/flox/feed_clock.js is part of loadStdlib(), which only
-  // FloxJsStrategy runs) -- exercise the same lifecycle through them.
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  // Bare LrvxJsEngine only has the __lrvx_* globals (the class sugar in
+  // quickjs/lrvx/feed_clock.js is part of loadStdlib(), which only
+  // LrvxJsStrategy runs) -- exercise the same lifecycle through them.
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
-    var h = __flox_feed_clock_create([1], 1, 0, 1000, 1, 10);
-    __flox_feed_clock_destroy(h);
+    var h = __lrvx_feed_clock_create([1], 1, 0, 1000, 1, 10);
+    __lrvx_feed_clock_destroy(h);
     var threw = false;
     try {
-      __flox_feed_clock_destroy(h);           // second destroy: no-op, not SIGABRT
-      __flox_feed_clock_symbol_count(h);       // use-after-destroy: must throw
+      __lrvx_feed_clock_destroy(h);           // second destroy: no-op, not SIGABRT
+      __lrvx_feed_clock_symbol_count(h);       // use-after-destroy: must throw
     } catch (e) {
       threw = true;
     }
@@ -1778,12 +1778,12 @@ TEST(JsIntegrationTest, FeedClockCountMismatchedWithArrayIsRejected)
   // to size a std::vector directly with no relation to the array
   // actually passed -- the reproduction used count=4e9 against a
   // 1-element array. It must now be rejected instead of allocating.
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
     var threw = false;
     try {
-      __flox_feed_clock_create([1], 4000000000, 0, 1000, 1, 10);
+      __lrvx_feed_clock_create([1], 4000000000, 0, 1000, 1, 10);
     } catch (e) {
       threw = true;
     }
@@ -1797,7 +1797,7 @@ TEST(JsIntegrationTest, FeedClockCountMismatchedWithArrayIsRejected)
 // A count taken straight from JS used to size a plain
 // std::vector, bypassing the engine's own memory limit entirely (measured:
 // 11 GB RSS from one line before this fix). lastNClosedBars has the same
-// shape of bug (n straight into vector<FloxBar>(n)) and is capped the
+// shape of bug (n straight into vector<LrvxBar>(n)) and is capped the
 // same way.
 // ============================================================
 
@@ -1816,16 +1816,16 @@ TEST(JsIntegrationTest, LastNClosedBarsRejectsAbsurdCount)
         }
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
   callbacks.on_start(callbacks.user_data);
 
   JSValue threw = jsStrat.engine().getGlobalProperty("threw");
@@ -1843,16 +1843,16 @@ TEST(JsIntegrationTest, LastNClosedBarsRejectsAbsurdCount)
 
 TEST(JsIntegrationTest, IndicatorGraphWithoutDestroyIsReclaimedByGc)
 {
-  // Bare FloxJsEngine has no `flox` global (that sugar comes from
-  // loadStdlib(), which only FloxJsStrategy runs) -- drive the graph
-  // through the same __flox_graph_* globals the class wrapper itself
+  // Bare LrvxJsEngine has no `lrvx` global (that sugar comes from
+  // loadStdlib(), which only LrvxJsStrategy runs) -- drive the graph
+  // through the same __lrvx_graph_* globals the class wrapper itself
   // calls.
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
     for (var i = 0; i < 2000; i++) {
-      var g = __flox_graph_create();
-      __flox_graph_set_bars(g, 1, [1, 2, 3], null, null, null);
+      var g = __lrvx_graph_create();
+      __lrvx_graph_set_bars(g, 1, [1, 2, 3], null, null, null);
       // g is dropped here without destroy() -- the finalizer must free it,
       // where pre-fix it leaked ~2.6 KB per graph unconditionally.
     }
@@ -1873,7 +1873,7 @@ TEST(JsIntegrationTest, IndicatorGraphWithoutDestroyIsReclaimedByGc)
 // exact same missing-finalizer defect as IndicatorGraph above, just not
 // yet caught: an AddressSanitizer leak-detection run (CI only -- leak
 // detection does not run locally on this project's development platform,
-// see the note on floxJsHandleLiveCountForTesting()) found 912 bytes
+// see the note on lrvxJsHandleLiveCountForTesting()) found 912 bytes
 // leaked through OrderGroup specifically, but the underlying class is
 // shared by every handle type built on createHandleObject, and every one
 // of them leaked identically whenever a script dropped the wrapper
@@ -1884,7 +1884,7 @@ TEST(JsIntegrationTest, IndicatorGraphWithoutDestroyIsReclaimedByGc)
 // at creation and a shared finalizer that calls it.
 //
 // This test does not depend on a sanitizer to catch a regression here:
-// floxJsHandleLiveCountForTesting() is a live-object counter maintained
+// lrvxJsHandleLiveCountForTesting() is a live-object counter maintained
 // by createHandleObject/the finalizer/destroy() themselves, so it works
 // in a plain, unsanitized build -- which is the only kind of local build
 // this leak class can be checked in at all, since LeakSanitizer is not
@@ -1897,19 +1897,19 @@ TEST(JsIntegrationTest, IndicatorGraphWithoutDestroyIsReclaimedByGc)
 
 TEST(JsIntegrationTest, HandlesDroppedWithoutDestroyAreReclaimedNotLeaked)
 {
-  size_t before = floxJsHandleLiveCountForTesting();
+  size_t before = lrvxJsHandleLiveCountForTesting();
   {
-    FloxJsEngine engine;
-    registerFloxBindings(engine.context());
+    LrvxJsEngine engine;
+    registerLrvxBindings(engine.context());
     // A handful of distinct handle types sharing the generic class,
     // spanning different files' worth of createHandleObject call sites:
     // OrderGroup (the type the leak report actually named), a book, and
     // a simulated executor. None of these call .destroy().
     EXPECT_TRUE(engine.eval(R"(
       for (var i = 0; i < 50; i++) {
-        __flox_order_group_create();
-        __flox_book_create(0.01);
-        __flox_simulated_executor_create();
+        __lrvx_order_group_create();
+        __lrvx_book_create(0.01);
+        __lrvx_simulated_executor_create();
       }
       var done = true;
     )"));
@@ -1922,7 +1922,7 @@ TEST(JsIntegrationTest, HandlesDroppedWithoutDestroyAreReclaimedNotLeaked)
     // in for "the script ended and nothing was explicitly destroyed" --
     // exactly the reported scenario, not a contrived one.
   }
-  size_t after = floxJsHandleLiveCountForTesting();
+  size_t after = lrvxJsHandleLiveCountForTesting();
   EXPECT_EQ(after, before) << "150 handles (50 each of order group / book / "
                               "simulated executor) were dropped without "
                               "destroy() and without the engine's teardown "
@@ -1932,30 +1932,30 @@ TEST(JsIntegrationTest, HandlesDroppedWithoutDestroyAreReclaimedNotLeaked)
 
 TEST(JsIntegrationTest, ExplicitDestroyAlsoReclaimsAndIsIdempotent)
 {
-  size_t before = floxJsHandleLiveCountForTesting();
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  size_t before = lrvxJsHandleLiveCountForTesting();
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
-    var g = __flox_order_group_create();
-    __flox_order_group_destroy(g);
-    __flox_order_group_destroy(g);  // second destroy: no-op, not a double-free
+    var g = __lrvx_order_group_create();
+    __lrvx_order_group_destroy(g);
+    __lrvx_order_group_destroy(g);  // second destroy: no-op, not a double-free
   )"));
   // Explicit destroy() must release the live-count slot immediately, not
   // wait for the runtime to be torn down.
-  EXPECT_EQ(floxJsHandleLiveCountForTesting(), before);
+  EXPECT_EQ(lrvxJsHandleLiveCountForTesting(), before);
 }
 
 TEST(JsIntegrationTest, IndicatorGraphDoubleDestroyAndUseAfterDestroyAreSafe)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval(R"(
-    var g = __flox_graph_create();
-    __flox_graph_destroy(g);
-    __flox_graph_destroy(g);   // second destroy: no-op, not SIGABRT
+    var g = __lrvx_graph_create();
+    __lrvx_graph_destroy(g);
+    __lrvx_graph_destroy(g);   // second destroy: no-op, not SIGABRT
     var threw = false;
     try {
-      __flox_graph_set_bars(g, 1, [1], null, null, null);  // use-after-destroy
+      __lrvx_graph_set_bars(g, 1, [1], null, null, null);  // use-after-destroy
     } catch (e) {
       threw = true;
     }
@@ -1966,7 +1966,7 @@ TEST(JsIntegrationTest, IndicatorGraphDoubleDestroyAndUseAfterDestroyAreSafe)
 }
 
 // ============================================================
-// Dispatching into a script that never called flox.register()
+// Dispatching into a script that never called lrvx.register()
 // used to throw a TypeError from inside every single dispatcher and
 // silently accumulate a stale pending exception across events. It must
 // now no-op instead.
@@ -1976,12 +1976,12 @@ TEST(JsIntegrationTest, DispatchWithoutRegisterIsANoOpNotAnAccumulatingException
 {
   TempJsFile script("var x = 1;");
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   ASSERT_TRUE(jsStrat.symbolIds().empty());
 
-  FloxSymbolContext fctx{};
-  FloxTradeData ftrade{};
+  LrvxSymbolContext fctx{};
+  LrvxTradeData ftrade{};
   for (int i = 0; i < 3; ++i)
   {
     callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
@@ -2013,22 +2013,22 @@ TEST(JsIntegrationTest, InfiniteLoopInCallbackIsInterruptedNotHung)
         reached = true;  // never reached
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   jsStrat.engine().setInterruptBudget(std::chrono::milliseconds(200));
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   auto start = std::chrono::steady_clock::now();
-  FloxSymbolContext fctx{};
+  LrvxSymbolContext fctx{};
   fctx.symbol_id = symIds[0];
-  FloxTradeData ftrade{};
+  LrvxTradeData ftrade{};
   ftrade.symbol = symIds[0];
   callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
   auto elapsed = std::chrono::steady_clock::now() - start;
@@ -2057,7 +2057,7 @@ TEST(JsIntegrationTest, InfiniteLoopInCallbackIsInterruptedNotHung)
 
 namespace
 {
-bool jsThrowsOn(FloxJsEngine& engine, const std::string& expr)
+bool jsThrowsOn(LrvxJsEngine& engine, const std::string& expr)
 {
   std::string script = "threw = false; try { " + expr + "; } catch (e) { threw = true; }";
   if (!engine.eval(script))
@@ -2073,22 +2073,22 @@ bool jsThrowsOn(FloxJsEngine& engine, const std::string& expr)
 
 TEST(JsIntegrationTest, RequiredStringArgumentsRejectUnconvertibleValues)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   ASSERT_TRUE(engine.eval("var threw = false;"));
 
   // A Symbol: JS_ToCString refuses it outright.
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_segment_validate(Symbol('x'))"));
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dw_create(Symbol('x'))"));
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dr_create(Symbol('x'))"));
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_part_create(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_segment_validate(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_dw_create(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_dr_create(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_part_create(Symbol('x'))"));
 
   // An object whose toString throws: the conversion propagates that
   // exception rather than handing back a pointer.
   const std::string throwing = "{ toString: function() { throw new Error('nope'); } }";
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dw_create(" + throwing + ")"));
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dr_create(" + throwing + ")"));
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_tape_diff('/tmp/a', " + throwing + ")"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_dw_create(" + throwing + ")"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_dr_create(" + throwing + ")"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_tape_diff('/tmp/a', " + throwing + ")"));
 
   // The runtime survives all of it.
   EXPECT_TRUE(engine.eval("var alive = 1 + 1;"));
@@ -2096,16 +2096,16 @@ TEST(JsIntegrationTest, RequiredStringArgumentsRejectUnconvertibleValues)
 
 TEST(JsIntegrationTest, OptionalStringArgumentIsEitherAbsentOrConvertible)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   ASSERT_TRUE(engine.eval("var threw = false;"));
 
   // Absent: the binding falls back to its documented default.
   EXPECT_TRUE(engine.eval(R"(
     var series = [];
     for (var i = 0; i < 40; i++) { series.push(Math.sin(i / 3) * 10 + i * 0.01); }
-    var withDefault = __flox_indicator_adf(series, 4);
-    var withExplicit = __flox_indicator_adf(series, 4, 'c');
+    var withDefault = __lrvx_indicator_adf(series, 4);
+    var withExplicit = __lrvx_indicator_adf(series, 4, 'c');
   )"));
   JSValue a = engine.getGlobalProperty("withDefault");
   JSValue b = engine.getGlobalProperty("withExplicit");
@@ -2115,13 +2115,13 @@ TEST(JsIntegrationTest, OptionalStringArgumentIsEitherAbsentOrConvertible)
   JS_FreeValue(engine.context(), b);
 
   // Present but unconvertible: rejected, not silently defaulted.
-  EXPECT_TRUE(jsThrowsOn(engine, "__flox_indicator_adf(series, 4, Symbol('c'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__lrvx_indicator_adf(series, 4, Symbol('c'))"));
 }
 
 TEST(JsIntegrationTest, FallbackStringSitesSurviveUnconvertibleValues)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   // console.log formats whatever it is handed; a Symbol argument must not
   // reach a C string function as a null pointer.
   EXPECT_TRUE(engine.eval("console.log(Symbol('x'), 'and text');"));
@@ -2156,7 +2156,7 @@ TEST(JsIntegrationTest, NanosecondTimestampsKeepEventOrderAcrossFeeds)
         if (trade.symbol === "AAAUSDT") { feedA.push(row); } else { feedB.push(row); }
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
 
     // The merge a tape reader performs: take whichever head is not later
     // than the other. Ties go to feed B.
@@ -2175,23 +2175,23 @@ TEST(JsIntegrationTest, NanosecondTimestampsKeepEventOrderAcrossFeeds)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   ASSERT_EQ(symIds.size(), 2u);
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   // 100 ns apart, both inside one 256 ns double step.
   const int64_t tsA = 1757000000123456789LL;
   const int64_t tsB = tsA + 100;
 
-  FloxSymbolContext fctx{};
-  FloxTradeData ftrade{};
-  ftrade.price_raw = flox_price_from_double(100.0);
-  ftrade.quantity_raw = flox_quantity_from_double(1.0);
+  LrvxSymbolContext fctx{};
+  LrvxTradeData ftrade{};
+  ftrade.price_raw = lrvx_price_from_double(100.0);
+  ftrade.quantity_raw = lrvx_quantity_from_double(1.0);
   ftrade.is_buy = 1;
 
   fctx.symbol_id = symIds[0];
@@ -2237,8 +2237,8 @@ TEST(JsIntegrationTest, NanosecondTimestampsKeepEventOrderAcrossFeeds)
 // refusal pending as an exception for the next statement to trip on.
 TEST(JsIntegrationTest, ConsoleLogHandlesBigIntFieldsAndUnprintableValues)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
   EXPECT_TRUE(engine.eval("console.log({ timestampNs: 1757000000123456789n, price: 1.5 });"));
   EXPECT_TRUE(engine.eval("console.log(Symbol('x'), 'and text');"));
   // A pending exception left behind by either line would surface here.
@@ -2285,7 +2285,7 @@ TEST(JsIntegrationTest, CompositeBookDeltaOnOneSideLeavesTheOtherUntouched)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto* ctx = jsStrat.engine().context();
 
   auto priceOf = [&](const char* name)
@@ -2314,7 +2314,7 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto* ctx = jsStrat.engine().context();
 
   JSValue arb = jsStrat.engine().getGlobalProperty("arb");
@@ -2327,7 +2327,7 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
 // ============================================================
 //
 // The three strategy-side accessors used to come back through
-// flox_best_bid_raw and its two siblings, which spend the value 0 as their
+// lrvx_best_bid_raw and its two siblings, which spend the value 0 as their
 // "no quote" answer, and the bindings turned that into the JS number 0. A
 // strategy reading an empty book got a price of zero and sized against it.
 // They now go through the _opt trio and return null when there is no quote,
@@ -2336,7 +2336,7 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
 namespace
 {
 
-double readGlobalDouble(FloxJsStrategy& strat, const char* name)
+double readGlobalDouble(LrvxJsStrategy& strat, const char* name)
 {
   JSValue v = strat.engine().getGlobalProperty(name);
   double out = 0;
@@ -2410,18 +2410,18 @@ TEST(JsIntegrationTest, BestQuoteAccessorsAnswerNullForNoQuoteAndZeroForAPriceOf
         }
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   ASSERT_FALSE(symIds.empty());
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   const SymbolId sym = symIds[0];
   // 1: an update carrying no levels at all -- the venue saying the book is
@@ -2513,18 +2513,18 @@ TEST(JsIntegrationTest, ContextBookAndSnapshotAnswerNullForNoQuoteAndZeroForAPri
         }
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
   ASSERT_FALSE(symIds.empty());
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   const SymbolId sym = symIds[0];
   pushBook(*bridge, sym, {}, {});
@@ -2569,7 +2569,7 @@ TEST(JsIntegrationTest, ContextBookAndSnapshotAnswerNullForNoQuoteAndZeroForAPri
 // `Engine.loadCsv` divided the parsed timestamp down to milliseconds and
 // handed it over as a Number, while every aggregator emitted
 // `start_time_ns` as a BigInt. A script that read one bar from the CSV and
-// one from `flox.timeBars` was off by a factor of 1e6 in the best case and
+// one from `lrvx.timeBars` was off by a factor of 1e6 in the best case and
 // threw a TypeError the moment it subtracted one from the other -- JS
 // refuses to mix BigInt and Number in arithmetic. Milliseconds also drop
 // everything below the millisecond, which is the whole point of carrying a
@@ -2588,7 +2588,7 @@ class TempCsvFile
   explicit TempCsvFile(const std::string& content)
   {
     _path = std::filesystem::temp_directory_path() /
-            ("flox_test_bars_" + std::to_string(counter_++) + ".csv");
+            ("lrvx_test_bars_" + std::to_string(counter_++) + ".csv");
     std::ofstream f(_path);
     f << content;
   }
@@ -2622,7 +2622,7 @@ std::string withCsvPath(const std::string& path, const std::string& body)
 
 // Reads a global back as a string. A BigInt cannot be read through
 // JS_ToFloat64 without losing exactly the digits under test.
-std::string globalAsString(FloxJsStrategy& strat, const char* name)
+std::string globalAsString(LrvxJsStrategy& strat, const char* name)
 {
   auto* ctx = strat.engine().context();
   JSValue v = strat.engine().getGlobalProperty(name);
@@ -2641,7 +2641,7 @@ TEST(JsBarTimestampUnits, LoadCsvBarTimestampIsBigIntNanoseconds)
 {
   TempCsvFile csv(barCsvContent());
   TempJsFile script(withCsvPath(csv.path(), R"(
-    var bars = flox.loadCsv(CSV_PATH);
+    var bars = lrvx.loadCsv(CSV_PATH);
     var barCount = bars.length;
     var tsType = typeof bars[0].ts;
     var tsStr = String(bars[0].ts);
@@ -2649,7 +2649,7 @@ TEST(JsBarTimestampUnits, LoadCsvBarTimestampIsBigIntNanoseconds)
   )"));
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "barCount"), "2");
   EXPECT_EQ(globalAsString(jsStrat, "tsType"), "bigint")
@@ -2671,14 +2671,14 @@ TEST(JsBarTimestampUnits, AggregatorBarTimestampIsBigIntNanoseconds)
     var side = [0, 1, 0, 1];
     // Tick bars: the bar boundary is a trade count, so the interval
     // argument carries no unit of its own and cannot confuse the reading.
-    var aggBars = flox.tickBars(ts, px, qty, side, 2);
+    var aggBars = lrvx.tickBars(ts, px, qty, side, 2);
     var aggCount = aggBars.length;
     var aggTsType = aggCount > 0 ? typeof aggBars[0].ts : "";
     var aggTsStr = aggCount > 0 ? String(aggBars[0].ts) : "";
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   ASSERT_NE(globalAsString(jsStrat, "aggCount"), "0") << "the tape closes at least one tick bar";
   EXPECT_EQ(globalAsString(jsStrat, "aggTsType"), "bigint");
@@ -2693,8 +2693,8 @@ TEST(JsBarTimestampUnits, CsvAndAggregatorBarsMixWithoutTypeError)
 {
   TempCsvFile csv(barCsvContent());
   TempJsFile script(withCsvPath(csv.path(), R"(
-    var csvBars = flox.loadCsv(CSV_PATH);
-    var aggBars = flox.tickBars([1000000000, 61000000000, 121000000000, 181000000000],
+    var csvBars = lrvx.loadCsv(CSV_PATH);
+    var aggBars = lrvx.tickBars([1000000000, 61000000000, 121000000000, 181000000000],
                                 [100.0, 101.0, 102.0, 103.0],
                                 [1.0, 1.0, 1.0, 1.0],
                                 [0, 1, 0, 1],
@@ -2712,7 +2712,7 @@ TEST(JsBarTimestampUnits, CsvAndAggregatorBarsMixWithoutTypeError)
   )"));
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "mixError"), "")
       << "mixing a CSV bar with an aggregator bar must not throw";
@@ -2735,17 +2735,17 @@ TEST(JsBarTimestampUnits, OnBarBarTimestampIsBigIntNanoseconds)
         barTsStr = String(bar.startTimeNs);
       }
     }
-    flox.register(new TestStrat());
+    lrvx.register(new TestStrat());
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto callbacks = jsStrat.getCallbacks();
   auto symIds = jsStrat.symbolIds();
 
   auto bridge = std::make_unique<BridgeStrategy>(
       1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
-  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  jsStrat.injectHandle(static_cast<LrvxStrategyHandle>(bridge.get()));
 
   constexpr int64_t kStartNs = 1776606960123456789LL;
   const uint64_t M1_NS = 60ull * 1'000'000'000ull;
@@ -2796,7 +2796,7 @@ TEST(JsBarTimestampUnits, EngineRunAcceptsSignalsTimestampedFromBars)
   )"));
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "runError"), "");
   EXPECT_EQ(globalAsString(jsStrat, "barCount"), "2");
@@ -2805,11 +2805,11 @@ TEST(JsBarTimestampUnits, EngineRunAcceptsSignalsTimestampedFromBars)
   EXPECT_NE(globalAsString(jsStrat, "finalCapital"), "0");
 }
 
-// `flox.timeBars(ts, px, qty, sides, intervalNs)` documents its interval in
+// `lrvx.timeBars(ts, px, qty, sides, intervalNs)` documents its interval in
 // nanoseconds, but handed the argument straight to
-// flox_aggregate_time_bars(..., double interval_seconds), so a script
+// lrvx_aggregate_time_bars(..., double interval_seconds), so a script
 // following the docs asked for 60'000'000'000 seconds -- about 1900 years --
-// and got back an empty array, no error said why. flox.heikinBars took the
+// and got back an empty array, no error said why. lrvx.heikinBars took the
 // same argument through the same C entry point and was off by the same 1e9.
 // The other aggregators take a trade count, a volume or a price distance,
 // so they carry no unit to slip.
@@ -2825,7 +2825,7 @@ TEST(JsBarAggregatorUnits, TimeBarsIntervalIsNanoseconds)
     var side = [0, 0, 0, 0, 0, 0, 0];
     var MINUTE_NS = 60000000000;
 
-    var bars = flox.timeBars(ts, px, qty, side, MINUTE_NS);
+    var bars = lrvx.timeBars(ts, px, qty, side, MINUTE_NS);
     var barCount = bars.length;
     var firstTs = barCount > 0 ? String(bars[0].ts) : "";
     var secondTs = barCount > 1 ? String(bars[1].ts) : "";
@@ -2837,17 +2837,17 @@ TEST(JsBarAggregatorUnits, TimeBarsIntervalIsNanoseconds)
 
     // The same interval spelled as a BigInt, the way a script that took it
     // off a bar or an event would have it.
-    var bigIntBars = flox.timeBars(ts, px, qty, side, 60000000000n);
+    var bigIntBars = lrvx.timeBars(ts, px, qty, side, 60000000000n);
     var bigIntCount = bigIntBars.length;
     var bigIntFirstTs = bigIntCount > 0 ? String(bigIntBars[0].ts) : "";
 
-    var haBars = flox.heikinBars(ts, px, qty, side, MINUTE_NS);
+    var haBars = lrvx.heikinBars(ts, px, qty, side, MINUTE_NS);
     var haCount = haBars.length;
     var haFirstTs = haCount > 0 ? String(haBars[0].ts) : "";
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "barCount"), "2")
       << "two closed minute bars; an interval read as seconds closes none";
@@ -2934,7 +2934,7 @@ TEST(JsBarTimestampUnits, EngineRunAppliesASignalOnTheBarItIsTimestampedOn)
   )"));
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "totalTrades"), "1");
   // Bought at bar 1's close of 110, sold at bar 3's close of 160. One bar
@@ -2969,7 +2969,7 @@ TEST(JsBarTimestampUnits, EngineRunHoldsASignalOneNanosecondPastABarUntilTheNext
   )"));
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "totalTrades"), "1");
   // The buy slid to bar 2 and filled at 130; the sell still lands on bar 3
@@ -3000,7 +3000,7 @@ TEST(JsBarTimestampUnits, SignalBuilderNormalisesEveryTimestampToNanosecondBigIn
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "count"), "3");
   EXPECT_EQ(globalAsString(jsStrat, "types"), "bigint,bigint,bigint")
@@ -3035,7 +3035,7 @@ TEST(JsBarTimestampUnits, LoadCsvScalesSecondsMillisecondsAndMicrosecondsToNanos
   bind("NS", nanos);
 
   TempJsFile script(prologue + R"(
-    function firstTs(path) { return String(flox.loadCsv(path)[0].ts); }
+    function firstTs(path) { return String(lrvx.loadCsv(path)[0].ts); }
     var fromSeconds = firstTs(S);
     var fromMillis = firstTs(MS);
     var fromMicros = firstTs(US);
@@ -3043,7 +3043,7 @@ TEST(JsBarTimestampUnits, LoadCsvScalesSecondsMillisecondsAndMicrosecondsToNanos
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   const std::string expected = "1776606960000000000";
   EXPECT_EQ(globalAsString(jsStrat, "fromSeconds"), expected)
@@ -3069,7 +3069,7 @@ TEST(JsBarAggregatorUnits, TickBarsCloseOnTheTradeCountTheyAreGiven)
     var px  = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0];
     var qty = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
     var side = [0, 1, 0, 1, 0, 1, 0];
-    var bars = flox.tickBars(ts, px, qty, side, 3);
+    var bars = lrvx.tickBars(ts, px, qty, side, 3);
     var count = bars.length;
     var trades = bars.map(function(b) { return String(b.trades); }).join(",");
     var starts = bars.map(function(b) { return String(b.ts); }).join(",");
@@ -3078,7 +3078,7 @@ TEST(JsBarAggregatorUnits, TickBarsCloseOnTheTradeCountTheyAreGiven)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "count"), "2")
       << "seven trades, three to a bar: two bars close and the seventh opens a third";
@@ -3108,7 +3108,7 @@ TEST(JsBarAggregatorUnits, TimeBarsIntervalSurvivesADivisionThatDoesNotRoundBack
     var px  = [10.0, 11.0, 12.0, 13.0];
     var qty = [1.0, 1.0, 1.0, 1.0];
     var side = [0, 0, 0, 0];
-    var bars = flox.timeBars(ts, px, qty, side, I);
+    var bars = lrvx.timeBars(ts, px, qty, side, I);
     var count = bars.length;
     var starts = bars.map(function(b) { return String(b.ts); }).join(",");
     var trades = bars.map(function(b) { return String(b.trades); }).join(",");
@@ -3116,7 +3116,7 @@ TEST(JsBarAggregatorUnits, TimeBarsIntervalSurvivesADivisionThatDoesNotRoundBack
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "count"), "2");
   EXPECT_EQ(globalAsString(jsStrat, "starts"), "0,1000000007")
@@ -3130,14 +3130,14 @@ TEST(JsBarAggregatorUnits, TimeBarsIntervalSurvivesADivisionThatDoesNotRoundBack
 // The shipped example, checked on its numbers
 // ============================================================
 //
-// CI runs every quickjs/examples/*.js through flox_js_runner and looks at
+// CI runs every quickjs/examples/*.js through lrvx_js_runner and looks at
 // the exit code. An example that scales a bar timestamp the old way still
 // exits 0 -- it just backtests against the wrong clock, silently, which is
 // precisely the mistake a reader copies out of an example. This runs the
 // example's own source and reads the numbers it arrived at.
 TEST(JsBarTimestampUnits, BacktestSmaExampleComputesItsPublishedNumbers)
 {
-  const std::filesystem::path repoRoot{FLOX_REPO_ROOT};
+  const std::filesystem::path repoRoot{LRVX_REPO_ROOT};
   const std::filesystem::path examplePath = repoRoot / "quickjs" / "examples" / "backtest_sma.js";
   ASSERT_TRUE(std::filesystem::exists(examplePath)) << examplePath;
 
@@ -3172,7 +3172,7 @@ TEST(JsBarTimestampUnits, BacktestSmaExampleComputesItsPublishedNumbers)
   } cwd{repoRoot};
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
 
   EXPECT_EQ(globalAsString(jsStrat, "exBars"), "3000");
   EXPECT_EQ(globalAsString(jsStrat, "exFirstBarTs"), "1776606960000000000")
@@ -3363,7 +3363,7 @@ TEST(JsIntegrationTest, SimulatedExecutorDrivesTheBarPath)
     var bracketState = bracketEx.bracketState(7);
     var bracketFills = bracketEx.fillCount;
 
-    var bars = flox.timeBars([0, 30000000000, 61000000000, 91000000000, 121000000000],
+    var bars = lrvx.timeBars([0, 30000000000, 61000000000, 91000000000, 121000000000],
                              [100, 101, 102, 103, 104], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], 60);
     var barCount = bars.length;
     var hasCloseReason = barCount > 0 && ("closeReason" in bars[0]);
@@ -3375,7 +3375,7 @@ TEST(JsIntegrationTest, SimulatedExecutorDrivesTheBarPath)
   )");
 
   SymbolRegistry registry;
-  FloxJsStrategy jsStrat(script.path(), registry);
+  LrvxJsStrategy jsStrat(script.path(), registry);
   auto* ctx = jsStrat.engine().context();
 
   auto num = [&](const char* name)
@@ -3438,37 +3438,37 @@ TEST(JsIntegrationTest, SimulatedExecutorDrivesTheBarPath)
 // C ABI version handshake
 // ============================================================
 
-// flox_capi.h asks every caller to "compare FLOX_CAPI_ABI_VERSION against
-// flox_capi_abi_version() once at startup and refuse the mismatch". The
-// embedded engine registers its bindings once, at registerFloxBindings,
+// lrvx_capi.h asks every caller to "compare LRVX_CAPI_ABI_VERSION against
+// lrvx_capi_abi_version() once at startup and refuse the mismatch". The
+// embedded engine registers its bindings once, at registerLrvxBindings,
 // which is where that comparison belongs; what a script can observe is
 // the pair of numbers it compared. The refusal itself is pinned in
 // tests/test_capi_abi_check.cpp, which can force a wrong number.
 TEST(JsEngineTest, AbiVersionPairIsExposedAndAgrees)
 {
-  FloxJsEngine engine;
-  registerFloxBindings(engine.context());
+  LrvxJsEngine engine;
+  registerLrvxBindings(engine.context());
 
-  JSValue compiled = engine.getGlobalProperty("__FLOX_CAPI_ABI_VERSION");
+  JSValue compiled = engine.getGlobalProperty("__LRVX_CAPI_ABI_VERSION");
   EXPECT_TRUE(JS_IsNumber(compiled))
       << "the version the binding was compiled against is not exposed";
   JS_FreeValue(engine.context(), compiled);
 
-  JSValue fn = engine.getGlobalProperty("__flox_capi_abi_version");
+  JSValue fn = engine.getGlobalProperty("__lrvx_capi_abi_version");
   EXPECT_TRUE(JS_IsFunction(engine.context(), fn))
       << "the version the library reports is not exposed";
   JS_FreeValue(engine.context(), fn);
 
   ASSERT_TRUE(engine.eval(R"(
-    if (typeof __FLOX_CAPI_ABI_VERSION !== 'number') {
-      throw new Error('__FLOX_CAPI_ABI_VERSION missing');
+    if (typeof __LRVX_CAPI_ABI_VERSION !== 'number') {
+      throw new Error('__LRVX_CAPI_ABI_VERSION missing');
     }
-    if (typeof __flox_capi_abi_version !== 'function') {
-      throw new Error('__flox_capi_abi_version missing');
+    if (typeof __lrvx_capi_abi_version !== 'function') {
+      throw new Error('__lrvx_capi_abi_version missing');
     }
-    if (__flox_capi_abi_version() !== __FLOX_CAPI_ABI_VERSION) {
-      throw new Error('ABI skew: compiled against ' + __FLOX_CAPI_ABI_VERSION +
-                      ', library reports ' + __flox_capi_abi_version());
+    if (__lrvx_capi_abi_version() !== __LRVX_CAPI_ABI_VERSION) {
+      throw new Error('ABI skew: compiled against ' + __LRVX_CAPI_ABI_VERSION +
+                      ', library reports ' + __lrvx_capi_abi_version());
     }
   )")) << engine.getErrorMessage();
 }
@@ -3479,13 +3479,13 @@ TEST(JsEngineTest, AbiVersionPairIsExposedAndAgrees)
 // to compute the refusal and register everything anyway.
 TEST(JsEngineTest, AbiMismatchRegistersNothing)
 {
-  ReportedAbiVersion reported(FLOX_CAPI_ABI_VERSION + 7);
+  ReportedAbiVersion reported(LRVX_CAPI_ABI_VERSION + 7);
 
-  FloxJsEngine engine;
+  LrvxJsEngine engine;
   JSContext* ctx = engine.context();
-  EXPECT_FALSE(registerFloxBindings(ctx)) << "registration accepted a skewed library";
+  EXPECT_FALSE(registerLrvxBindings(ctx)) << "registration accepted a skewed library";
 
-  for (const char* name : {"__flox_emit_market_buy", "__flox_capi_abi_version", "console"})
+  for (const char* name : {"__lrvx_emit_market_buy", "__lrvx_capi_abi_version", "console"})
   {
     JSValue value = engine.getGlobalProperty(name);
     EXPECT_TRUE(JS_IsUndefined(value)) << name << " was registered despite the refusal";
@@ -3502,10 +3502,10 @@ TEST(JsEngineTest, AbiMismatchRegistersNothing)
   }
   JS_FreeValue(ctx, pending);
 
-  EXPECT_NE(message.find("built against version " + std::to_string(FLOX_CAPI_ABI_VERSION)),
+  EXPECT_NE(message.find("built against version " + std::to_string(LRVX_CAPI_ABI_VERSION)),
             std::string::npos)
       << message;
-  EXPECT_NE(message.find("reports version " + std::to_string(FLOX_CAPI_ABI_VERSION + 7)),
+  EXPECT_NE(message.find("reports version " + std::to_string(LRVX_CAPI_ABI_VERSION + 7)),
             std::string::npos)
       << message;
 }
@@ -3514,10 +3514,10 @@ TEST(JsEngineTest, AbiMismatchRegistersNothing)
 // a binding that refuses everything.
 TEST(JsEngineTest, MatchedAbiRegistersTheSurface)
 {
-  FloxJsEngine engine;
-  EXPECT_TRUE(registerFloxBindings(engine.context()));
+  LrvxJsEngine engine;
+  EXPECT_TRUE(registerLrvxBindings(engine.context()));
 
-  JSValue fn = engine.getGlobalProperty("__flox_emit_market_buy");
+  JSValue fn = engine.getGlobalProperty("__lrvx_emit_market_buy");
   EXPECT_TRUE(JS_IsFunction(engine.context(), fn));
   JS_FreeValue(engine.context(), fn);
 }

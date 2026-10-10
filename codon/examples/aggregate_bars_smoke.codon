@@ -1,11 +1,11 @@
-# Smoke test: the batch bar aggregators (flox.tools.aggregate_*_bars) that
+# Smoke test: the batch bar aggregators (lrvx.tools.aggregate_*_bars) that
 # used to have only a raw C import in Codon, with no wrapper to read the
-# FloxBar array back without hand-rolled pointer arithmetic at every call
+# LrvxBar array back without hand-rolled pointer arithmetic at every call
 # site. Exercises all six aggregators and checks the returned bars are
 # well-formed and reach the buffer-decode path correctly -- not the bar
 # policies' own boundary semantics (covered by the C++ test suite).
 
-from flox.tools import (
+from lrvx.tools import (
     aggregate_time_bars, aggregate_tick_bars, aggregate_volume_bars,
     aggregate_range_bars, aggregate_renko_bars, aggregate_heikin_ashi_bars,
     AggBar,
@@ -64,16 +64,16 @@ def run():
                       "heikin_ashi")
 
     # The specific case named in the finding: renko bricks decode with
-    # the same field values a direct FloxBar read would give.
+    # the same field values a direct LrvxBar read would give.
     if len(renko) > 0:
         first = renko[0]
         check(abs(first.open() - 100.0) < 1e-6,
               f"renko: first brick opens at the first trade price (got {first.open()})")
         check(first.trade_count > 0, f"renko: first brick has trade_count > 0")
 
-    # A gap wider than one brick makes flox_aggregate_renko_bars() report
+    # A gap wider than one brick makes lrvx_aggregate_renko_bars() report
     # more bars than there were input trades -- see the aggregate_renko_
-    # bars() comment in flox.tools. Two trades, a 5.5-brick gap: without
+    # bars() comment in lrvx.tools. Two trades, a 5.5-brick gap: without
     # the retry-with-a-bigger-buffer fix, _decode_agg_bars would be told
     # to read 5 bars out of a 2-bar buffer, walking off the end of it and
     # returning wrong/truncated data (the C++ side of the same bug is a

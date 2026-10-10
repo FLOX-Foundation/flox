@@ -1,6 +1,6 @@
 # Strategy
 
-Extend `Strategy` and call `flox.register` with an instance.
+Extend `Strategy` and call `lrvx.register` with an instance.
 
 ```javascript
 class MyStrategy extends Strategy {
@@ -15,7 +15,7 @@ class MyStrategy extends Strategy {
     onStop() { ... }
 }
 
-flox.register(new MyStrategy());
+lrvx.register(new MyStrategy());
 ```
 
 ### Constructor options

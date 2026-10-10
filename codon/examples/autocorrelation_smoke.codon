@@ -1,6 +1,6 @@
 # Smoke test: AutoCorrelation compiles + computes against the C API.
 
-from flox.indicators import autocorrelation, AutoCorrelation
+from lrvx.indicators import autocorrelation, AutoCorrelation
 
 
 def check(label: str, ok: bool):

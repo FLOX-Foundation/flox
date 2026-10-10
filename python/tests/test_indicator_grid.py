@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from flox_py.composite import TIME_BARS, grid
+from lrvx.composite import TIME_BARS, grid
 
 
 class StubStrategy:

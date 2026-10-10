@@ -6,7 +6,7 @@ CI-runnable companion to
 [Iterate the order book from a tape](../how-to/iterate-orderbook.md).
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_orderbook_iterator.py
 """
 from __future__ import annotations
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
-import flox_py
-from flox_py import orderbook as ob
+import lrvx
+from lrvx import orderbook as ob
 
 _LEVEL_DTYPE = np.dtype([
     ("price_raw", np.int64), ("qty_raw", np.int64), ("side", np.uint8),
@@ -33,11 +33,11 @@ def _arr(items):
 
 
 def main() -> None:
-    tmp = Path(tempfile.mkdtemp(prefix="flox-ob-iter-"))
+    tmp = Path(tempfile.mkdtemp(prefix="lrvx-ob-iter-"))
     try:
         tape = tmp / "tape"
         tape.mkdir()
-        w = flox_py.DataWriter(str(tape), max_segment_mb=4,
+        w = lrvx.DataWriter(str(tape), max_segment_mb=4,
                                exchange_id=0, compression="none")
         base = 1_700_000_000_000_000_000
         events = [

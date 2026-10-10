@@ -1,7 +1,7 @@
 # gitleaks configuration for this repository and for the venue-core mirror
 # cut out of it (scripts/publish_mirror.sh scans the cut history with this
 # file). Everything the default rules find is a finding unless listed here.
-title = "flox"
+title = "lrvx"
 
 [extend]
 useDefault = true

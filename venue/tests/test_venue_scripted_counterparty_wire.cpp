@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -19,15 +19,15 @@
  * engine, and a scripted maker on the other side. The client sends an order
  * and sees a fill or a reject depending on nothing but the maker's policy.
  */
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/fix_session.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/script/scripted_maker.h"
-#include "flox-venue/session_registry.h"
-#include "flox-venue/tcp_gateway.h"
-#include "flox/connector/fix/fix_initiator.h"
-#include "flox/connector/fix/fix_tcp_client.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/fix_session.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/script/scripted_maker.h"
+#include "lrvx-venue/session_registry.h"
+#include "lrvx-venue/tcp_gateway.h"
+#include "lrvx/connector/fix/fix_initiator.h"
+#include "lrvx/connector/fix/fix_tcp_client.h"
 
 #include <gtest/gtest.h>
 
@@ -38,9 +38,9 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using namespace flox::venue::script;
+using namespace lrvx;
+using namespace lrvx::venue;
+using namespace lrvx::venue::script;
 
 namespace
 {

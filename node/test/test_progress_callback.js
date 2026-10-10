@@ -12,7 +12,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const flox = require('..');
+const lrvx = require('..');
 
 let _failed = 0;
 let _passed = 0;
@@ -32,18 +32,18 @@ function check(cond, msg)
 
 function mkTmp()
 {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'flox-pcb-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'lrvx-pcb-'));
 }
 
 // Write a synthetic tape with N trades 1µs apart.
 function writeTape(outDir, n)
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTCUSDT', 0.01);
-  const hook = new flox.BinaryLogRecorderHook(
+  const hook = new lrvx.BinaryLogRecorderHook(
       outDir, 8, 0, 'none', 'test', 'perpetual');
   hook.addSymbol(Number(sym), 'BTCUSDT', '', '', 2, 6);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   runner.addStrategy({symbols: [sym]});
   runner.setMarketDataRecorder(hook);
   runner.start();
@@ -64,15 +64,15 @@ function main()
 
     // Positional n_threads still accepted (back-compat).
     {
-      const r = new flox.DataReader(dir);
-      const agg = new flox.OHLCBinAggregator(60_000_000_000n, false);
+      const r = new lrvx.DataReader(dir);
+      const agg = new lrvx.OHLCBinAggregator(60_000_000_000n, false);
       check(r.run([agg], 1) === true, 'positional nThreads still works');
     }
 
     // onProgress fires + returns true → run completes.
     {
-      const r = new flox.DataReader(dir);
-      const agg = new flox.OHLCBinAggregator(60_000_000_000n, false);
+      const r = new lrvx.DataReader(dir);
+      const agg = new lrvx.OHLCBinAggregator(60_000_000_000n, false);
       const calls = [];
       const ok = r.run([agg], {
         nThreads: 1,
@@ -88,8 +88,8 @@ function main()
 
     // onProgress returning false cancels.
     {
-      const r = new flox.DataReader(dir);
-      const agg = new flox.OHLCBinAggregator(60_000_000_000n, false);
+      const r = new lrvx.DataReader(dir);
+      const agg = new lrvx.OHLCBinAggregator(60_000_000_000n, false);
       let calls = 0;
       const ok = r.run([agg], {
         nThreads: 1,

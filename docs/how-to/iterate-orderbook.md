@@ -1,11 +1,11 @@
 # Iterate the order book from a tape
 
-`flox_py.orderbook` reconstructs the bid / ask ladder from a `.floxlog` tape's book event stream. Two surfaces sit on top of the same replay path:
+`lrvx.orderbook` reconstructs the bid / ask ladder from a `.lrvx` tape's book event stream. Two surfaces sit on top of the same replay path:
 
 - `OrderBookIterator` yields a `BookSnapshot` per bucket window, carrying the latest ladder state observed inside the window.
 - `book_at(tape_path, ts_ns=..., levels=...)` is a point query that walks the tape up to `ts_ns` and returns the latest ladder state at or before it.
 
-Both apply the standard floxlog book semantics: a snapshot event replaces the ladder, a delta event adds / changes / removes (qty=0) levels.
+Both apply the standard lrvx book semantics: a snapshot event replaces the ladder, a delta event adds / changes / removes (qty=0) levels.
 
 ## When to reach for this
 
@@ -63,4 +63,4 @@ If the tape carries a lot of trades but few book updates, iteration is even chea
 ## See also
 
 - [Import Binance book archives](import-binance-book-archive.md) for filling the tape with book events from the public archive.
-- [Aggregate tape events in a single pass](aggregate-tape-events.md) for the engine-side aggregator framework when the use case fits a streaming bucket reducer. `flox_py.BookSnapshotBinAggregator` is the C++ fast path for exactly this bucket-and-ladder shape — same bucket semantics, run it with `n_threads=1`. Prefer it for month-scale multi-symbol extraction; the wrappers here are for point queries and hours-scale windows.
+- [Aggregate tape events in a single pass](aggregate-tape-events.md) for the engine-side aggregator framework when the use case fits a streaming bucket reducer. `lrvx.BookSnapshotBinAggregator` is the C++ fast path for exactly this bucket-and-ladder shape — same bucket semantics, run it with `n_threads=1`. Prefer it for month-scale multi-symbol extraction; the wrappers here are for point queries and hours-scale windows.

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -14,7 +14,7 @@
 //   PyXxx           — Pythonic base class users subclass; virtual methods.
 //   PyXxxTrampoline — pybind11 trampoline for PYBIND11_OVERRIDE dispatch.
 //   xxxBridge*      — C-ABI callbacks that acquire the GIL, invoke virtual.
-//   PyXxxOwner      — RAII over FloxXxxHandle; non-copyable.
+//   PyXxxOwner      — RAII over LrvxXxxHandle; non-copyable.
 //
 // PyRunner / PyBacktestRunner own the Owner, holding both the C-ABI handle
 // and a shared_ptr to the Python object so it survives the engine's
@@ -27,17 +27,17 @@
 #include <pybind11/stl.h>
 
 #include "callback_guard.h"
-#include "flox/capi/flox_capi.h"
-#include "flox/capi/order_type_names.hpp"
-#include "flox/common.h"
-#include "flox/execution/abstract_execution_listener.h"
-#include "flox/execution/abstract_executor.h"
-#include "flox/execution/exchange_capabilities.h"
-#include "flox/execution/order.h"
-#include "flox/killswitch/abstract_killswitch.h"
-#include "flox/metrics/abstract_pnl_tracker.h"
-#include "flox/risk/abstract_risk_manager.h"
-#include "flox/validation/abstract_order_validator.h"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/capi/order_type_names.hpp"
+#include "lrvx/common.h"
+#include "lrvx/execution/abstract_execution_listener.h"
+#include "lrvx/execution/abstract_executor.h"
+#include "lrvx/execution/exchange_capabilities.h"
+#include "lrvx/execution/order.h"
+#include "lrvx/killswitch/abstract_killswitch.h"
+#include "lrvx/metrics/abstract_pnl_tracker.h"
+#include "lrvx/risk/abstract_risk_manager.h"
+#include "lrvx/validation/abstract_order_validator.h"
 #include "types_bindings.h"
 
 #include <memory>
@@ -47,7 +47,7 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 // ── Shared Py-side mirrors of C-ABI structs ─────────────────────────────
@@ -74,7 +74,7 @@ struct PyOrder
   int64_t exchange_ts_ns{0};
 };
 
-inline PyOrder pyOrderFromC(const FloxOrder* o)
+inline PyOrder pyOrderFromC(const LrvxOrder* o)
 {
   static constexpr const char* kTif[] = {"gtc", "ioc", "fok", "gtd", "post_only"};
   PyOrder po{};
@@ -84,7 +84,7 @@ inline PyOrder pyOrderFromC(const FloxOrder* o)
   po.strategy_id = o->strategy_id;
   po.order_tag = o->order_tag;
   po.side = o->side == 0 ? "buy" : "sell";
-  po.order_type = flox::capi::orderTypeNameLower(o->type);
+  po.order_type = lrvx::capi::orderTypeNameLower(o->type);
   po.time_in_force = o->time_in_force < 5 ? kTif[o->time_in_force] : "unknown";
   po.reduce_only = (o->flags & 0x01) != 0;
   po.close_position = (o->flags & 0x02) != 0;
@@ -99,16 +99,16 @@ inline PyOrder pyOrderFromC(const FloxOrder* o)
   return po;
 }
 
-inline FloxOrder cOrderFromPy(const PyOrder& po)
+inline LrvxOrder cOrderFromPy(const PyOrder& po)
 {
-  FloxOrder o{};
+  LrvxOrder o{};
   o.id = po.id;
   o.client_order_id = po.client_order_id;
   o.symbol = po.symbol;
   o.strategy_id = po.strategy_id;
   o.order_tag = po.order_tag;
   o.side = po.side == "buy" ? 0u : 1u;
-  flox::capi::orderTypeCodeFromName(po.order_type, &o.type);
+  lrvx::capi::orderTypeCodeFromName(po.order_type, &o.type);
   if (po.time_in_force == "gtc")
   {
     o.time_in_force = 0;
@@ -171,9 +171,9 @@ struct PyExchangeCapabilities
   bool close_position{false};
 };
 
-inline FloxExchangeCapabilities cCapsFromPy(const PyExchangeCapabilities& p)
+inline LrvxExchangeCapabilities cCapsFromPy(const PyExchangeCapabilities& p)
 {
-  FloxExchangeCapabilities c{};
+  LrvxExchangeCapabilities c{};
   c.supports_stop_market = p.stop_market ? 1 : 0;
   c.supports_stop_limit = p.stop_limit ? 1 : 0;
   c.supports_take_profit_market = p.take_profit_market ? 1 : 0;
@@ -191,7 +191,7 @@ inline FloxExchangeCapabilities cCapsFromPy(const PyExchangeCapabilities& p)
   return c;
 }
 
-inline PyExchangeCapabilities pyCapsFromC(const FloxExchangeCapabilities& c)
+inline PyExchangeCapabilities pyCapsFromC(const LrvxExchangeCapabilities& c)
 {
   PyExchangeCapabilities p{};
   p.stop_market = c.supports_stop_market != 0;
@@ -248,7 +248,7 @@ class PyPnLTrackerTrampoline : public PyPnLTracker
   }
 };
 
-inline void pnlOnSignalBridge(void* ud, const FloxSignal* sig)
+inline void pnlOnSignalBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyPnLTracker*>(ud);
   invokeUnderGil([&]
@@ -261,25 +261,25 @@ class PyPnLTrackerOwner
   explicit PyPnLTrackerOwner(std::shared_ptr<PyPnLTracker> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxPnLTrackerCallbacks cb{};
+    LrvxPnLTrackerCallbacks cb{};
     cb.on_signal = pnlOnSignalBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_pnl_tracker_create(cb);
+    _handle = lrvx_pnl_tracker_create(cb);
   }
   ~PyPnLTrackerOwner()
   {
     if (_handle)
     {
-      flox_pnl_tracker_destroy(_handle);
+      lrvx_pnl_tracker_destroy(_handle);
     }
   }
   PyPnLTrackerOwner(const PyPnLTrackerOwner&) = delete;
   PyPnLTrackerOwner& operator=(const PyPnLTrackerOwner&) = delete;
-  FloxPnLTrackerHandle handle() const noexcept { return _handle; }
+  LrvxPnLTrackerHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyPnLTracker> _delegate;
-  FloxPnLTrackerHandle _handle{nullptr};
+  LrvxPnLTrackerHandle _handle{nullptr};
 };
 
 // ── StorageSink hook ────────────────────────────────────────────────────
@@ -301,7 +301,7 @@ class PyStorageSinkTrampoline : public PyStorageSink
   }
 };
 
-inline void storageStoreBridge(void* ud, const FloxSignal* sig)
+inline void storageStoreBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyStorageSink*>(ud);
   invokeUnderGil([&]
@@ -314,25 +314,25 @@ class PyStorageSinkOwner
   explicit PyStorageSinkOwner(std::shared_ptr<PyStorageSink> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxStorageSinkCallbacks cb{};
+    LrvxStorageSinkCallbacks cb{};
     cb.store = storageStoreBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_storage_sink_create(cb);
+    _handle = lrvx_storage_sink_create(cb);
   }
   ~PyStorageSinkOwner()
   {
     if (_handle)
     {
-      flox_storage_sink_destroy(_handle);
+      lrvx_storage_sink_destroy(_handle);
     }
   }
   PyStorageSinkOwner(const PyStorageSinkOwner&) = delete;
   PyStorageSinkOwner& operator=(const PyStorageSinkOwner&) = delete;
-  FloxStorageSinkHandle handle() const noexcept { return _handle; }
+  LrvxStorageSinkHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyStorageSink> _delegate;
-  FloxStorageSinkHandle _handle{nullptr};
+  LrvxStorageSinkHandle _handle{nullptr};
 };
 
 // ── RiskManager hook ────────────────────────────────────────────────────
@@ -355,7 +355,7 @@ class PyRiskManagerTrampoline : public PyRiskManager
   }
 };
 
-inline uint8_t riskAllowBridge(void* ud, const FloxSignal* sig)
+inline uint8_t riskAllowBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyRiskManager*>(ud);
   // Deny unless the callable says otherwise: a gate that raised, or
@@ -374,25 +374,25 @@ class PyRiskManagerOwner
   explicit PyRiskManagerOwner(std::shared_ptr<PyRiskManager> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxRiskManagerCallbacks cb{};
+    LrvxRiskManagerCallbacks cb{};
     cb.allow = riskAllowBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_risk_manager_create(cb);
+    _handle = lrvx_risk_manager_create(cb);
   }
   ~PyRiskManagerOwner()
   {
     if (_handle)
     {
-      flox_risk_manager_destroy(_handle);
+      lrvx_risk_manager_destroy(_handle);
     }
   }
   PyRiskManagerOwner(const PyRiskManagerOwner&) = delete;
   PyRiskManagerOwner& operator=(const PyRiskManagerOwner&) = delete;
-  FloxRiskManagerHandle handle() const noexcept { return _handle; }
+  LrvxRiskManagerHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyRiskManager> _delegate;
-  FloxRiskManagerHandle _handle{nullptr};
+  LrvxRiskManagerHandle _handle{nullptr};
 };
 
 // ── KillSwitch hook ─────────────────────────────────────────────────────
@@ -415,7 +415,7 @@ class PyKillSwitchTrampoline : public PyKillSwitch
   }
 };
 
-inline uint8_t killCheckBridge(void* ud, const FloxSignal* sig)
+inline uint8_t killCheckBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyKillSwitch*>(ud);
   // Deny unless the callable says otherwise: a gate that raised, or
@@ -434,25 +434,25 @@ class PyKillSwitchOwner
   explicit PyKillSwitchOwner(std::shared_ptr<PyKillSwitch> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxKillSwitchCallbacks cb{};
+    LrvxKillSwitchCallbacks cb{};
     cb.check = killCheckBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_kill_switch_create(cb);
+    _handle = lrvx_kill_switch_create(cb);
   }
   ~PyKillSwitchOwner()
   {
     if (_handle)
     {
-      flox_kill_switch_destroy(_handle);
+      lrvx_kill_switch_destroy(_handle);
     }
   }
   PyKillSwitchOwner(const PyKillSwitchOwner&) = delete;
   PyKillSwitchOwner& operator=(const PyKillSwitchOwner&) = delete;
-  FloxKillSwitchHandle handle() const noexcept { return _handle; }
+  LrvxKillSwitchHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyKillSwitch> _delegate;
-  FloxKillSwitchHandle _handle{nullptr};
+  LrvxKillSwitchHandle _handle{nullptr};
 };
 
 // ── OrderValidator hook ─────────────────────────────────────────────────
@@ -474,7 +474,7 @@ class PyOrderValidatorTrampoline : public PyOrderValidator
   }
 };
 
-inline uint8_t orderValidateBridge(void* ud, const FloxSignal* sig)
+inline uint8_t orderValidateBridge(void* ud, const LrvxSignal* sig)
 {
   auto* py_obj = static_cast<PyOrderValidator*>(ud);
   // Deny unless the callable says otherwise: a gate that raised, or
@@ -493,25 +493,25 @@ class PyOrderValidatorOwner
   explicit PyOrderValidatorOwner(std::shared_ptr<PyOrderValidator> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxOrderValidatorCallbacks cb{};
+    LrvxOrderValidatorCallbacks cb{};
     cb.validate = orderValidateBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_order_validator_create(cb);
+    _handle = lrvx_order_validator_create(cb);
   }
   ~PyOrderValidatorOwner()
   {
     if (_handle)
     {
-      flox_order_validator_destroy(_handle);
+      lrvx_order_validator_destroy(_handle);
     }
   }
   PyOrderValidatorOwner(const PyOrderValidatorOwner&) = delete;
   PyOrderValidatorOwner& operator=(const PyOrderValidatorOwner&) = delete;
-  FloxOrderValidatorHandle handle() const noexcept { return _handle; }
+  LrvxOrderValidatorHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyOrderValidator> _delegate;
-  FloxOrderValidatorHandle _handle{nullptr};
+  LrvxOrderValidatorHandle _handle{nullptr};
 };
 
 // ── MarketDataRecorder hook ─────────────────────────────────────────────
@@ -555,7 +555,7 @@ class PyMarketDataRecorderHookTrampoline : public PyMarketDataRecorderHook
   }
 };
 
-inline void recOnTradeBridge(void* ud, const FloxTradeData* t)
+inline void recOnTradeBridge(void* ud, const LrvxTradeData* t)
 {
   auto* py_obj = static_cast<PyMarketDataRecorderHook*>(ud);
   invokeUnderGil([&]
@@ -570,8 +570,8 @@ inline void recOnTradeBridge(void* ud, const FloxTradeData* t)
 }
 
 inline void recOnBookBridge(void* ud, uint32_t symbol, uint8_t is_snap,
-                            const FloxBookLevel* bids, uint32_t n_bids,
-                            const FloxBookLevel* asks, uint32_t n_asks,
+                            const LrvxBookLevel* bids, uint32_t n_bids,
+                            const LrvxBookLevel* asks, uint32_t n_asks,
                             int64_t ts)
 {
   auto* py_obj = static_cast<PyMarketDataRecorderHook*>(ud);
@@ -610,28 +610,28 @@ class PyMarketDataRecorderHookOwner
   explicit PyMarketDataRecorderHookOwner(std::shared_ptr<PyMarketDataRecorderHook> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxMarketDataRecorderCallbacks cb{};
+    LrvxMarketDataRecorderCallbacks cb{};
     cb.on_trade = recOnTradeBridge;
     cb.on_book_update = recOnBookBridge;
     cb.on_start = recOnStartBridge;
     cb.on_stop = recOnStopBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_market_data_recorder_create(cb);
+    _handle = lrvx_market_data_recorder_create(cb);
   }
   ~PyMarketDataRecorderHookOwner()
   {
     if (_handle)
     {
-      flox_market_data_recorder_destroy(_handle);
+      lrvx_market_data_recorder_destroy(_handle);
     }
   }
   PyMarketDataRecorderHookOwner(const PyMarketDataRecorderHookOwner&) = delete;
   PyMarketDataRecorderHookOwner& operator=(const PyMarketDataRecorderHookOwner&) = delete;
-  FloxMarketDataRecorderHandle handle() const noexcept { return _handle; }
+  LrvxMarketDataRecorderHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyMarketDataRecorderHook> _delegate;
-  FloxMarketDataRecorderHandle _handle{nullptr};
+  LrvxMarketDataRecorderHandle _handle{nullptr};
 };
 
 // ── ReplaySource hook ───────────────────────────────────────────────────
@@ -682,11 +682,11 @@ class PyReplaySourceTrampoline : public PyReplaySource
 // pointers remain valid until the engine consumes them.
 struct PyReplaySourceBookBuffers
 {
-  std::vector<FloxBookLevel> bids;
-  std::vector<FloxBookLevel> asks;
+  std::vector<LrvxBookLevel> bids;
+  std::vector<LrvxBookLevel> asks;
 };
 
-inline uint8_t replayNextBridge(void* ud, FloxReplayEvent* out)
+inline uint8_t replayNextBridge(void* ud, LrvxReplayEvent* out)
 {
   // Bind the buffers to the Python object so they survive across calls.
   // This works because the engine consumes each event before calling
@@ -773,28 +773,28 @@ class PyReplaySourceOwner
   explicit PyReplaySourceOwner(std::shared_ptr<PyReplaySource> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxReplaySourceCallbacks cb{};
+    LrvxReplaySourceCallbacks cb{};
     cb.on_start = replayOnStartBridge;
     cb.on_stop = replayOnStopBridge;
     cb.seek_to = replaySeekBridge;
     cb.next = replayNextBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_replay_source_create(cb);
+    _handle = lrvx_replay_source_create(cb);
   }
   ~PyReplaySourceOwner()
   {
     if (_handle)
     {
-      flox_replay_source_destroy(_handle);
+      lrvx_replay_source_destroy(_handle);
     }
   }
   PyReplaySourceOwner(const PyReplaySourceOwner&) = delete;
   PyReplaySourceOwner& operator=(const PyReplaySourceOwner&) = delete;
-  FloxReplaySourceHandle handle() const noexcept { return _handle; }
+  LrvxReplaySourceHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyReplaySource> _delegate;
-  FloxReplaySourceHandle _handle{nullptr};
+  LrvxReplaySourceHandle _handle{nullptr};
 };
 
 // ── ExecutionListener hook ──────────────────────────────────────────────
@@ -873,7 +873,7 @@ class PyExecutionListenerTrampoline : public PyExecutionListener
 };
 
 #define _BRIDGE_ORDER_FN(NAME, METHOD)                        \
-  inline void NAME(void* ud, const FloxOrder* o)              \
+  inline void NAME(void* ud, const LrvxOrder* o)              \
   {                                                           \
     auto* py_obj = static_cast<PyExecutionListener*>(ud);     \
     invokeUnderGil([&] { py_obj->METHOD(pyOrderFromC(o)); }); \
@@ -889,28 +889,28 @@ _BRIDGE_ORDER_FN(execOnPendingTriggerBridge, on_pending_trigger)
 _BRIDGE_ORDER_FN(execOnTriggeredBridge, on_triggered)
 #undef _BRIDGE_ORDER_FN
 
-inline void execOnPartialFillBridge(void* ud, const FloxOrder* o, int64_t fill_qty_raw)
+inline void execOnPartialFillBridge(void* ud, const LrvxOrder* o, int64_t fill_qty_raw)
 {
   auto* py_obj = static_cast<PyExecutionListener*>(ud);
   invokeUnderGil([&]
                  { py_obj->on_partially_filled(pyOrderFromC(o), static_cast<double>(fill_qty_raw) / 1e8); });
 }
 
-inline void execOnRejectedBridge(void* ud, const FloxOrder* o, const char* reason)
+inline void execOnRejectedBridge(void* ud, const LrvxOrder* o, const char* reason)
 {
   auto* py_obj = static_cast<PyExecutionListener*>(ud);
   invokeUnderGil([&]
                  { py_obj->on_rejected(pyOrderFromC(o), reason ? std::string(reason) : std::string{}); });
 }
 
-inline void execOnReplacedBridge(void* ud, const FloxOrder* old_o, const FloxOrder* new_o)
+inline void execOnReplacedBridge(void* ud, const LrvxOrder* old_o, const LrvxOrder* new_o)
 {
   auto* py_obj = static_cast<PyExecutionListener*>(ud);
   invokeUnderGil([&]
                  { py_obj->on_replaced(pyOrderFromC(old_o), pyOrderFromC(new_o)); });
 }
 
-inline void execOnTrailingUpdateBridge(void* ud, const FloxOrder* o, int64_t new_trigger_raw)
+inline void execOnTrailingUpdateBridge(void* ud, const LrvxOrder* o, int64_t new_trigger_raw)
 {
   auto* py_obj = static_cast<PyExecutionListener*>(ud);
   invokeUnderGil([&]
@@ -924,7 +924,7 @@ class PyExecutionListenerOwner
   explicit PyExecutionListenerOwner(std::shared_ptr<PyExecutionListener> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxExecutionListenerCallbacks cb{};
+    LrvxExecutionListenerCallbacks cb{};
     cb.on_submitted = execOnSubmittedBridge;
     cb.on_accepted = execOnAcceptedBridge;
     cb.on_partially_filled = execOnPartialFillBridge;
@@ -938,22 +938,22 @@ class PyExecutionListenerOwner
     cb.on_triggered = execOnTriggeredBridge;
     cb.on_trailing_stop_updated = execOnTrailingUpdateBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_execution_listener_create(cb);
+    _handle = lrvx_execution_listener_create(cb);
   }
   ~PyExecutionListenerOwner()
   {
     if (_handle)
     {
-      flox_execution_listener_destroy(_handle);
+      lrvx_execution_listener_destroy(_handle);
     }
   }
   PyExecutionListenerOwner(const PyExecutionListenerOwner&) = delete;
   PyExecutionListenerOwner& operator=(const PyExecutionListenerOwner&) = delete;
-  FloxExecutionListenerHandle handle() const noexcept { return _handle; }
+  LrvxExecutionListenerHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyExecutionListener> _delegate;
-  FloxExecutionListenerHandle _handle{nullptr};
+  LrvxExecutionListenerHandle _handle{nullptr};
 };
 
 // ── Executor hook ───────────────────────────────────────────────────────
@@ -1004,7 +1004,7 @@ class PyExecutorTrampoline : public PyExecutor
   void on_stop() override { PYBIND11_OVERRIDE(void, PyExecutor, on_stop); }
 };
 
-inline void execSubmitBridge(void* ud, const FloxOrder* o)
+inline void execSubmitBridge(void* ud, const LrvxOrder* o)
 {
   auto* py_obj = static_cast<PyExecutor*>(ud);
   invokeUnderGil([&]
@@ -1022,19 +1022,19 @@ inline void execCancelAllBridge(void* ud, uint32_t s)
   invokeUnderGil([&]
                  { py_obj->cancel_all(s); });
 }
-inline void execReplaceBridge(void* ud, uint64_t old_id, const FloxOrder* o)
+inline void execReplaceBridge(void* ud, uint64_t old_id, const LrvxOrder* o)
 {
   auto* py_obj = static_cast<PyExecutor*>(ud);
   invokeUnderGil([&]
                  { py_obj->replace(old_id, pyOrderFromC(o)); });
 }
-inline void execSubmitOcoBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
+inline void execSubmitOcoBridge(void* ud, const LrvxOrder* a, const LrvxOrder* b)
 {
   auto* py_obj = static_cast<PyExecutor*>(ud);
   invokeUnderGil([&]
                  { py_obj->submit_oco(pyOrderFromC(a), pyOrderFromC(b)); });
 }
-inline void execCapsBridge(void* ud, FloxExchangeCapabilities* out)
+inline void execCapsBridge(void* ud, LrvxExchangeCapabilities* out)
 {
   auto* py_obj = static_cast<PyExecutor*>(ud);
   invokeUnderGil([&]
@@ -1059,7 +1059,7 @@ class PyExecutorOwner
   explicit PyExecutorOwner(std::shared_ptr<PyExecutor> delegate)
       : _delegate(std::move(delegate))
   {
-    FloxExecutorCallbacks cb{};
+    LrvxExecutorCallbacks cb{};
     cb.submit = execSubmitBridge;
     cb.cancel = execCancelBridge;
     cb.cancel_all = execCancelAllBridge;
@@ -1069,22 +1069,22 @@ class PyExecutorOwner
     cb.on_start = execorOnStartBridge;
     cb.on_stop = execorOnStopBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_executor_create(cb);
+    _handle = lrvx_executor_create(cb);
   }
   ~PyExecutorOwner()
   {
     if (_handle)
     {
-      flox_executor_destroy(_handle);
+      lrvx_executor_destroy(_handle);
     }
   }
   PyExecutorOwner(const PyExecutorOwner&) = delete;
   PyExecutorOwner& operator=(const PyExecutorOwner&) = delete;
-  FloxExecutorHandle handle() const noexcept { return _handle; }
+  LrvxExecutorHandle handle() const noexcept { return _handle; }
 
  private:
   std::shared_ptr<PyExecutor> _delegate;
-  FloxExecutorHandle _handle{nullptr};
+  LrvxExecutorHandle _handle{nullptr};
 };
 
 // ── Logger callback ─────────────────────────────────────────────────────
@@ -1116,7 +1116,7 @@ inline void loggerBridge(void* /*ud*/, int32_t level, const char* msg)
 // Registered with atexit at module init.
 inline void logCallbackTeardown()
 {
-  flox_set_log_callback(nullptr, nullptr);
+  lrvx_set_log_callback(nullptr, nullptr);
   globalLogCallback() = py::none();
 }
 
@@ -1124,101 +1124,101 @@ inline void setPythonLogCallback(py::object cb)
 {
   if (cb.is_none())
   {
-    flox_set_log_callback(nullptr, nullptr);
+    lrvx_set_log_callback(nullptr, nullptr);
     globalLogCallback() = py::none();
   }
   else
   {
     globalLogCallback() = std::move(cb);
-    flox_set_log_callback(loggerBridge, nullptr);
+    lrvx_set_log_callback(loggerBridge, nullptr);
   }
 }
 
 // ── Direct-C++ adapters for BacktestRunner ──────────────────────────────
 //
-// PyBacktestRunner currently wraps flox::BacktestRunner directly (no C-ABI
+// PyBacktestRunner currently wraps lrvx::BacktestRunner directly (no C-ABI
 // indirection). Its setExecutor / addExecutionListener methods take
-// flox::IOrderExecutor* and flox::IOrderExecutionListener* — so we bridge
+// lrvx::IOrderExecutor* and lrvx::IOrderExecutionListener* — so we bridge
 // the Pythonic delegate to those C++ interfaces here, mirroring the
 // CapiExecutor / CapiExecutionListener adapters that live in
-// src/capi/flox_capi.cpp.
+// src/capi/lrvx_capi.cpp.
 
 namespace cxx_adapters
 {
 
-inline flox::Order pyOrderToFlox(const PyOrder& po)
+inline lrvx::Order pyOrderToLrvx(const PyOrder& po)
 {
-  flox::Order o{};
+  lrvx::Order o{};
   o.id = po.id;
   o.clientOrderId = po.client_order_id;
   o.symbol = po.symbol;
   o.strategyId = po.strategy_id;
   o.orderTag = po.order_tag;
-  o.side = (po.side == "buy") ? flox::Side::BUY : flox::Side::SELL;
+  o.side = (po.side == "buy") ? lrvx::Side::BUY : lrvx::Side::SELL;
   if (po.order_type == "limit")
   {
-    o.type = flox::OrderType::LIMIT;
+    o.type = lrvx::OrderType::LIMIT;
   }
   else if (po.order_type == "market")
   {
-    o.type = flox::OrderType::MARKET;
+    o.type = lrvx::OrderType::MARKET;
   }
   else if (po.order_type == "stop_market")
   {
-    o.type = flox::OrderType::STOP_MARKET;
+    o.type = lrvx::OrderType::STOP_MARKET;
   }
   else if (po.order_type == "stop_limit")
   {
-    o.type = flox::OrderType::STOP_LIMIT;
+    o.type = lrvx::OrderType::STOP_LIMIT;
   }
   else if (po.order_type == "tp_market")
   {
-    o.type = flox::OrderType::TAKE_PROFIT_MARKET;
+    o.type = lrvx::OrderType::TAKE_PROFIT_MARKET;
   }
   else if (po.order_type == "tp_limit")
   {
-    o.type = flox::OrderType::TAKE_PROFIT_LIMIT;
+    o.type = lrvx::OrderType::TAKE_PROFIT_LIMIT;
   }
   else if (po.order_type == "trailing_stop")
   {
-    o.type = flox::OrderType::TRAILING_STOP;
+    o.type = lrvx::OrderType::TRAILING_STOP;
   }
   else if (po.order_type == "iceberg")
   {
-    o.type = flox::OrderType::ICEBERG;
+    o.type = lrvx::OrderType::ICEBERG;
   }
   if (po.time_in_force == "ioc")
   {
-    o.timeInForce = flox::TimeInForce::IOC;
+    o.timeInForce = lrvx::TimeInForce::IOC;
   }
   else if (po.time_in_force == "fok")
   {
-    o.timeInForce = flox::TimeInForce::FOK;
+    o.timeInForce = lrvx::TimeInForce::FOK;
   }
   else if (po.time_in_force == "gtd")
   {
-    o.timeInForce = flox::TimeInForce::GTD;
+    o.timeInForce = lrvx::TimeInForce::GTD;
   }
   else if (po.time_in_force == "post_only")
   {
-    o.timeInForce = flox::TimeInForce::POST_ONLY;
+    o.timeInForce = lrvx::TimeInForce::POST_ONLY;
   }
   else
   {
-    o.timeInForce = flox::TimeInForce::GTC;
+    o.timeInForce = lrvx::TimeInForce::GTC;
   }
   o.flags.reduceOnly = po.reduce_only ? 1 : 0;
   o.flags.closePosition = po.close_position ? 1 : 0;
   o.flags.postOnly = po.post_only ? 1 : 0;
-  o.price = flox::Price::fromDouble(po.price);
-  o.quantity = flox::Quantity::fromDouble(po.quantity);
-  o.filledQuantity = flox::Quantity::fromDouble(po.filled_quantity);
-  o.triggerPrice = flox::Price::fromDouble(po.trigger_price);
-  o.trailingOffset = flox::Price::fromDouble(po.trailing_offset);
+  o.price = lrvx::Price::fromDouble(po.price);
+  o.quantity = lrvx::Quantity::fromDouble(po.quantity);
+  o.filledQuantity = lrvx::Quantity::fromDouble(po.filled_quantity);
+  o.triggerPrice = lrvx::Price::fromDouble(po.trigger_price);
+  o.trailingOffset = lrvx::Price::fromDouble(po.trailing_offset);
   return o;
 }
 
-inline PyOrder floxOrderToPy(const flox::Order& o)
+inline PyOrder lrvxOrderToPy(const lrvx::Order& o)
 {
   PyOrder po{};
   po.id = o.id;
@@ -1226,49 +1226,49 @@ inline PyOrder floxOrderToPy(const flox::Order& o)
   po.symbol = o.symbol;
   po.strategy_id = o.strategyId;
   po.order_tag = o.orderTag;
-  po.side = (o.side == flox::Side::BUY) ? "buy" : "sell";
+  po.side = (o.side == lrvx::Side::BUY) ? "buy" : "sell";
   switch (o.type)
   {
-    case flox::OrderType::LIMIT:
+    case lrvx::OrderType::LIMIT:
       po.order_type = "limit";
       break;
-    case flox::OrderType::MARKET:
+    case lrvx::OrderType::MARKET:
       po.order_type = "market";
       break;
-    case flox::OrderType::STOP_MARKET:
+    case lrvx::OrderType::STOP_MARKET:
       po.order_type = "stop_market";
       break;
-    case flox::OrderType::STOP_LIMIT:
+    case lrvx::OrderType::STOP_LIMIT:
       po.order_type = "stop_limit";
       break;
-    case flox::OrderType::TAKE_PROFIT_MARKET:
+    case lrvx::OrderType::TAKE_PROFIT_MARKET:
       po.order_type = "tp_market";
       break;
-    case flox::OrderType::TAKE_PROFIT_LIMIT:
+    case lrvx::OrderType::TAKE_PROFIT_LIMIT:
       po.order_type = "tp_limit";
       break;
-    case flox::OrderType::TRAILING_STOP:
+    case lrvx::OrderType::TRAILING_STOP:
       po.order_type = "trailing_stop";
       break;
-    case flox::OrderType::ICEBERG:
+    case lrvx::OrderType::ICEBERG:
       po.order_type = "iceberg";
       break;
   }
   switch (o.timeInForce)
   {
-    case flox::TimeInForce::GTC:
+    case lrvx::TimeInForce::GTC:
       po.time_in_force = "gtc";
       break;
-    case flox::TimeInForce::IOC:
+    case lrvx::TimeInForce::IOC:
       po.time_in_force = "ioc";
       break;
-    case flox::TimeInForce::FOK:
+    case lrvx::TimeInForce::FOK:
       po.time_in_force = "fok";
       break;
-    case flox::TimeInForce::GTD:
+    case lrvx::TimeInForce::GTD:
       po.time_in_force = "gtd";
       break;
-    case flox::TimeInForce::POST_ONLY:
+    case lrvx::TimeInForce::POST_ONLY:
       po.time_in_force = "post_only";
       break;
   }
@@ -1283,7 +1283,7 @@ inline PyOrder floxOrderToPy(const flox::Order& o)
   return po;
 }
 
-class PyExecutorCxxAdapter : public flox::IOrderExecutor
+class PyExecutorCxxAdapter : public lrvx::IOrderExecutor
 {
  public:
   explicit PyExecutorCxxAdapter(std::shared_ptr<PyExecutor> delegate)
@@ -1300,34 +1300,34 @@ class PyExecutorCxxAdapter : public flox::IOrderExecutor
     invokeUnderGil([&]
                    { _delegate->on_stop(); });
   }
-  void submitOrder(const flox::Order& o) override
+  void submitOrder(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->submit(floxOrderToPy(o)); });
+                   { _delegate->submit(lrvxOrderToPy(o)); });
   }
-  void cancelOrder(flox::OrderId id) override
+  void cancelOrder(lrvx::OrderId id) override
   {
     invokeUnderGil([&]
                    { _delegate->cancel(static_cast<uint64_t>(id)); });
   }
-  void cancelAllOrders(flox::SymbolId sym) override
+  void cancelAllOrders(lrvx::SymbolId sym) override
   {
     invokeUnderGil([&]
                    { _delegate->cancel_all(static_cast<uint32_t>(sym)); });
   }
-  void replaceOrder(flox::OrderId old_id, const flox::Order& o) override
+  void replaceOrder(lrvx::OrderId old_id, const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->replace(static_cast<uint64_t>(old_id), floxOrderToPy(o)); });
+                   { _delegate->replace(static_cast<uint64_t>(old_id), lrvxOrderToPy(o)); });
   }
-  void submitOCO(const flox::OCOParams& p) override
+  void submitOCO(const lrvx::OCOParams& p) override
   {
     invokeUnderGil([&]
-                   { _delegate->submit_oco(floxOrderToPy(p.order1), floxOrderToPy(p.order2)); });
+                   { _delegate->submit_oco(lrvxOrderToPy(p.order1), lrvxOrderToPy(p.order2)); });
   }
-  flox::ExchangeCapabilities capabilities() const override
+  lrvx::ExchangeCapabilities capabilities() const override
   {
-    flox::ExchangeCapabilities out{};
+    lrvx::ExchangeCapabilities out{};
     invokeUnderGil([&]
                    {
       auto pc = _delegate->capabilities();
@@ -1352,74 +1352,74 @@ class PyExecutorCxxAdapter : public flox::IOrderExecutor
   std::shared_ptr<PyExecutor> _delegate;
 };
 
-class PyExecutionListenerCxxAdapter : public flox::IOrderExecutionListener
+class PyExecutionListenerCxxAdapter : public lrvx::IOrderExecutionListener
 {
  public:
-  PyExecutionListenerCxxAdapter(flox::SubscriberId id,
+  PyExecutionListenerCxxAdapter(lrvx::SubscriberId id,
                                 std::shared_ptr<PyExecutionListener> delegate)
-      : flox::IOrderExecutionListener(id), _delegate(std::move(delegate))
+      : lrvx::IOrderExecutionListener(id), _delegate(std::move(delegate))
   {
   }
-  void onOrderSubmitted(const flox::Order& o) override
+  void onOrderSubmitted(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_submitted(floxOrderToPy(o)); });
+                   { _delegate->on_submitted(lrvxOrderToPy(o)); });
   }
-  void onOrderAccepted(const flox::Order& o) override
+  void onOrderAccepted(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_accepted(floxOrderToPy(o)); });
+                   { _delegate->on_accepted(lrvxOrderToPy(o)); });
   }
-  void onOrderFilled(const flox::Order& o) override
+  void onOrderFilled(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_filled(floxOrderToPy(o)); });
+                   { _delegate->on_filled(lrvxOrderToPy(o)); });
   }
-  void onOrderPendingCancel(const flox::Order& o) override
+  void onOrderPendingCancel(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_pending_cancel(floxOrderToPy(o)); });
+                   { _delegate->on_pending_cancel(lrvxOrderToPy(o)); });
   }
-  void onOrderCanceled(const flox::Order& o) override
+  void onOrderCanceled(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_canceled(floxOrderToPy(o)); });
+                   { _delegate->on_canceled(lrvxOrderToPy(o)); });
   }
-  void onOrderExpired(const flox::Order& o) override
+  void onOrderExpired(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_expired(floxOrderToPy(o)); });
+                   { _delegate->on_expired(lrvxOrderToPy(o)); });
   }
-  void onOrderPendingTrigger(const flox::Order& o) override
+  void onOrderPendingTrigger(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_pending_trigger(floxOrderToPy(o)); });
+                   { _delegate->on_pending_trigger(lrvxOrderToPy(o)); });
   }
-  void onOrderTriggered(const flox::Order& o) override
+  void onOrderTriggered(const lrvx::Order& o) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_triggered(floxOrderToPy(o)); });
+                   { _delegate->on_triggered(lrvxOrderToPy(o)); });
   }
 
-  void onOrderPartiallyFilled(const flox::Order& o, flox::Quantity q) override
+  void onOrderPartiallyFilled(const lrvx::Order& o, lrvx::Quantity q) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_partially_filled(floxOrderToPy(o), q.toDouble()); });
+                   { _delegate->on_partially_filled(lrvxOrderToPy(o), q.toDouble()); });
   }
-  void onOrderRejected(const flox::Order& o, const std::string& reason) override
+  void onOrderRejected(const lrvx::Order& o, const std::string& reason) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_rejected(floxOrderToPy(o), reason); });
+                   { _delegate->on_rejected(lrvxOrderToPy(o), reason); });
   }
-  void onOrderReplaced(const flox::Order& a, const flox::Order& b) override
+  void onOrderReplaced(const lrvx::Order& a, const lrvx::Order& b) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_replaced(floxOrderToPy(a), floxOrderToPy(b)); });
+                   { _delegate->on_replaced(lrvxOrderToPy(a), lrvxOrderToPy(b)); });
   }
-  void onTrailingStopUpdated(const flox::Order& o, flox::Price t) override
+  void onTrailingStopUpdated(const lrvx::Order& o, lrvx::Price t) override
   {
     invokeUnderGil([&]
-                   { _delegate->on_trailing_stop_updated(floxOrderToPy(o), t.toDouble()); });
+                   { _delegate->on_trailing_stop_updated(lrvxOrderToPy(o), t.toDouble()); });
   }
 
  private:
@@ -1442,36 +1442,36 @@ class PyExecutionListenerCxxAdapter : public flox::IOrderExecutionListener
 // enums, so we re-emit a PySignal shape so existing user code keeps
 // working unchanged.
 
-inline PySignal pySignalFromOrder(const flox::Order& o)
+inline PySignal pySignalFromOrder(const lrvx::Order& o)
 {
   PySignal ps{};
   ps.order_id = o.id;
   ps.symbol = o.symbol;
-  ps.side = (o.side == flox::Side::BUY) ? "buy" : "sell";
+  ps.side = (o.side == lrvx::Side::BUY) ? "buy" : "sell";
   switch (o.type)
   {
-    case flox::OrderType::LIMIT:
+    case lrvx::OrderType::LIMIT:
       ps.order_type = "limit";
       break;
-    case flox::OrderType::MARKET:
+    case lrvx::OrderType::MARKET:
       ps.order_type = "market";
       break;
-    case flox::OrderType::STOP_MARKET:
+    case lrvx::OrderType::STOP_MARKET:
       ps.order_type = "stop_market";
       break;
-    case flox::OrderType::STOP_LIMIT:
+    case lrvx::OrderType::STOP_LIMIT:
       ps.order_type = "stop_limit";
       break;
-    case flox::OrderType::TAKE_PROFIT_MARKET:
+    case lrvx::OrderType::TAKE_PROFIT_MARKET:
       ps.order_type = "tp_market";
       break;
-    case flox::OrderType::TAKE_PROFIT_LIMIT:
+    case lrvx::OrderType::TAKE_PROFIT_LIMIT:
       ps.order_type = "tp_limit";
       break;
-    case flox::OrderType::TRAILING_STOP:
+    case lrvx::OrderType::TRAILING_STOP:
       ps.order_type = "trailing_stop";
       break;
-    case flox::OrderType::ICEBERG:
+    case lrvx::OrderType::ICEBERG:
       ps.order_type = "iceberg";
       break;
   }
@@ -1482,14 +1482,14 @@ inline PySignal pySignalFromOrder(const flox::Order& o)
   return ps;
 }
 
-class PyRiskManagerCxxAdapter : public flox::IRiskManager
+class PyRiskManagerCxxAdapter : public lrvx::IRiskManager
 {
  public:
   explicit PyRiskManagerCxxAdapter(std::shared_ptr<PyRiskManager> delegate)
       : _delegate(std::move(delegate))
   {
   }
-  bool allow(const flox::Order& order) const override
+  bool allow(const lrvx::Order& order) const override
   {
     // Same rule as the C-ABI bridge: no answer means deny.
     bool result = false;
@@ -1503,7 +1503,7 @@ class PyRiskManagerCxxAdapter : public flox::IRiskManager
   std::shared_ptr<PyRiskManager> _delegate;
 };
 
-class PyKillSwitchCxxAdapter : public flox::IKillSwitch
+class PyKillSwitchCxxAdapter : public lrvx::IKillSwitch
 {
  public:
   explicit PyKillSwitchCxxAdapter(std::shared_ptr<PyKillSwitch> delegate)
@@ -1513,7 +1513,7 @@ class PyKillSwitchCxxAdapter : public flox::IKillSwitch
   // Engine contract: check(order) may flip state; isTriggered() reads
   // it. The Python check() returns True=allow / False=halt, so we
   // store its inverse as `_triggered`.
-  void check(const flox::Order& order) override
+  void check(const lrvx::Order& order) override
   {
     // A check that raised did not clear trading, so it halts — and this
     // interface latches, so a broken kill switch stops the run rather
@@ -1541,7 +1541,7 @@ class PyKillSwitchCxxAdapter : public flox::IKillSwitch
   std::string _reason;
 };
 
-class PyOrderValidatorCxxAdapter : public flox::IOrderValidator
+class PyOrderValidatorCxxAdapter : public lrvx::IOrderValidator
 {
  public:
   explicit PyOrderValidatorCxxAdapter(std::shared_ptr<PyOrderValidator> delegate)
@@ -1551,7 +1551,7 @@ class PyOrderValidatorCxxAdapter : public flox::IOrderValidator
   // The Python validator returns True=valid / False=reject. We do not
   // expose a reason channel — bindings that want richer messaging
   // can raise via the engine's REJECTED order event.
-  bool validate(const flox::Order& order, std::string& /*reason*/) const override
+  bool validate(const lrvx::Order& order, std::string& /*reason*/) const override
   {
     // Same rule as the C-ABI bridge: no answer means reject.
     bool valid = false;
@@ -1565,14 +1565,14 @@ class PyOrderValidatorCxxAdapter : public flox::IOrderValidator
   std::shared_ptr<PyOrderValidator> _delegate;
 };
 
-class PyPnLTrackerCxxAdapter : public flox::IPnLTracker
+class PyPnLTrackerCxxAdapter : public lrvx::IPnLTracker
 {
  public:
   explicit PyPnLTrackerCxxAdapter(std::shared_ptr<PyPnLTracker> delegate)
       : _delegate(std::move(delegate))
   {
   }
-  void onOrderFilled(const flox::Order& order) override
+  void onOrderFilled(const lrvx::Order& order) override
   {
     invokeUnderGil([&]
                    { _delegate->on_signal(pySignalFromOrder(order)); });
@@ -1584,4 +1584,4 @@ class PyPnLTrackerCxxAdapter : public flox::IPnLTracker
 
 }  // namespace cxx_adapters
 
-}  // namespace flox_py
+}  // namespace lrvx

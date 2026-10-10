@@ -1,4 +1,4 @@
-# Your first FLOX backtest
+# Your first lrvx backtest
 
 This tutorial gets you from a clean Python environment to a backtest
 running on real BTC 1m data. Three commands.
@@ -11,19 +11,19 @@ running on real BTC 1m data. Three commands.
 ## 1. Install
 
 ```bash
-pip install flox-py
+pip install lrvx
 ```
 
-The wheel includes the compiled C++ engine and a `flox` console script.
+The wheel includes the compiled C++ engine and a `lrvx` console script.
 
 ## 2. Scaffold a project
 
 ```bash
-flox new my-strategy
+lrvx new my-strategy
 cd my-strategy
 ```
 
-`flox new` writes `main.py`, `main.ipynb`, `requirements.txt`, a
+`lrvx new` writes `main.py`, `main.ipynb`, `requirements.txt`, a
 README, and a `data/btcusdt_sample.csv` with 500 real BTC/USDT
 1-minute bars (`timestamp,open,high,low,close,volume`). The default
 template is `research`: a single-file SMA(10/30) crossover.
@@ -70,7 +70,7 @@ sanity check and a baseline; also useful as a reminder that
 `main.py` is one file. The class you edit:
 
 ```python
-class my_strategy_strategy(flox.Strategy):
+class my_strategy_strategy(lrvx.Strategy):
     def on_trade(self, ctx, trade):
         fv = self.fast.update(trade.price)
         sv = self.slow.update(trade.price)
@@ -93,13 +93,13 @@ MY_STRATEGY_DATA=/path/to/your/btcusdt_1h.csv python main.py
 
 ## Next steps
 
-- Go realistic: [`flox.VenueStack.binance_um_futures(...)`](../how-to/realistic-backtest.md)
+- Go realistic: [`lrvx.VenueStack.binance_um_futures(...)`](../how-to/realistic-backtest.md)
   wires fees, funding, liquidation, rate limits, and queue position
   in one call.
 - Promote to paper trading against a live feed:
   [Paper trading](../how-to/paper-trading.md).
 - Promote to live via ccxt:
-  [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+  [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md).
 - Replace the SMA crossover with your own indicators
   ([Indicator Graph](../how-to/indicator-graph.md)).
 - Parameter sweep via [Grid Search](../how-to/grid-search.md).

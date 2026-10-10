@@ -34,7 +34,7 @@ Usage:
 The build directory is expected to be configured already:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-          -DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON
+          -DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 BIN_DIR = BUILD / "tests"
-LIB = "flox"
+LIB = "lrvx"
 CMAKE = os.environ.get("CMAKE", shutil.which("cmake") or "/opt/homebrew/bin/cmake")
 BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 1800
@@ -59,7 +59,7 @@ TEST_TIMEOUT = 180
 
 EXEC_CPP = "src/backtest/simulated_executor.cpp"
 RUNNER_CPP = "src/backtest/backtest_runner.cpp"
-TRACKER_H = "include/flox/backtest/order_queue_tracker.h"
+TRACKER_H = "include/lrvx/backtest/order_queue_tracker.h"
 
 REALISM = "test_backtest_fill_realism"
 MODEL = "test_backtest_fill_model"
@@ -869,7 +869,7 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             f"  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            f"-DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON")
+            f"-DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON")
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
     if not selected:

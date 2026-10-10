@@ -51,8 +51,8 @@ exec.setSymbolSlippage(kBtcUsd,
 | Language | Entry point |
 |----------|-------------|
 | Python | `SimulatedExecutor.set_default_slippage(model, ticks, tick_size, bps, impact_coeff)` / `set_symbol_slippage(symbol, ...)` |
-| C API | `flox_simulated_executor_set_default_slippage(exec, model, ticks, tick_size, bps, impact)` |
+| C API | `lrvx_simulated_executor_set_default_slippage(exec, model, ticks, tick_size, bps, impact)` |
 | Codon | `SimulatedExecutor.set_default_slippage(model, ticks, tick_size, bps, impact_coeff)` |
 | JavaScript | `executor.setDefaultSlippage("fixed_bps", 0, 0, 5.0, 0)` |
 
-All bindings accept the same model values (`none`, `fixed_ticks`, `fixed_bps`, `volume_impact`) either as strings (Python, JS, Codon enum constants) or as the `FloxSlippageModel` enum in the C API. Pass `tick_size = 0.0` for `NONE` / `FIXED_BPS` / `VOLUME_IMPACT`; it is only meaningful for `FIXED_TICKS`.
+All bindings accept the same model values (`none`, `fixed_ticks`, `fixed_bps`, `volume_impact`) either as strings (Python, JS, Codon enum constants) or as the `LrvxSlippageModel` enum in the C API. Pass `tick_size = 0.0` for `NONE` / `FIXED_BPS` / `VOLUME_IMPACT`; it is only meaningful for `FIXED_TICKS`.

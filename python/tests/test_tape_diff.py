@@ -1,4 +1,4 @@
-"""Tests for ``flox tape diff`` and the underlying ``diff_tapes``."""
+"""Tests for ``lrvx tape diff`` and the underlying ``diff_tapes``."""
 from __future__ import annotations
 
 import shutil
@@ -14,9 +14,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import tape  # noqa: E402
+from lrvx import tape  # noqa: E402
 
 
 def _write_tape(out_dir: Path, trades) -> int:
@@ -24,10 +24,10 @@ def _write_tape(out_dir: Path, trades) -> int:
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = int(registry.add_symbol("diff", "BTCUSDT", tick_size=0.01))
     recorder = tape.make_recorder_hook(out_dir)
-    runner = flox.Runner(registry, on_signal=lambda _sig: None)
+    runner = lrvx.Runner(registry, on_signal=lambda _sig: None)
     runner.set_market_data_recorder(recorder)
     runner.start()
     n = 0

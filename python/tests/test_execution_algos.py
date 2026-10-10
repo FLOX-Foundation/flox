@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.execution_algos``."""
+"""Tests for ``lrvx.execution_algos``."""
 from __future__ import annotations
 
 import sys
@@ -13,7 +13,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import execution_algos as ea  # noqa: E402
+from lrvx import execution_algos as ea  # noqa: E402
 
 
 class _RecordingExecutor:

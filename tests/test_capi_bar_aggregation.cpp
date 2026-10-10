@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-// flox_aggregate_renko_bars() is the one bar-aggregation C function that can
+// lrvx_aggregate_renko_bars() is the one bar-aggregation C function that can
 // close more than one bar per input trade: a trade that gaps past several
 // brick widths closes the brick that was forming and also synthesizes the
 // bricks in between. Every binding that calls it (Node, QuickJS) used to
@@ -20,8 +20,8 @@
 // its buffer size knows to retry with more room instead of reading (or, as
 // in Node's case, walking off the end of) a buffer that was too small.
 
-#include "flox/aggregator/bar.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 
@@ -54,8 +54,8 @@ TEST(CapiBarAggregationTest, RenkoReportsTrueCountEvenWhenBufferIsTooSmall)
   GapTape tape;
   const auto n = static_cast<uint32_t>(tape.ts.size());
 
-  std::vector<FloxBar> bars(n);  // sized the way every non-Renko caller does
-  const uint32_t count = flox_aggregate_renko_bars(tape.ts.data(), tape.px.data(), tape.qty.data(),
+  std::vector<LrvxBar> bars(n);  // sized the way every non-Renko caller does
+  const uint32_t count = lrvx_aggregate_renko_bars(tape.ts.data(), tape.px.data(), tape.qty.data(),
                                                    tape.isBuy.data(), tape.ts.size(), 10.0, bars.data(), n);
 
   EXPECT_GT(count, n) << "the 5.5-brick gap should report more bars than there were trades (2)";
@@ -70,13 +70,13 @@ TEST(CapiBarAggregationTest, RenkoRetryWithReportedCountRecoversAllBars)
   GapTape tape;
   const auto n = static_cast<uint32_t>(tape.ts.size());
 
-  std::vector<FloxBar> firstPass(n);
-  uint32_t count = flox_aggregate_renko_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
+  std::vector<LrvxBar> firstPass(n);
+  uint32_t count = lrvx_aggregate_renko_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
                                              tape.ts.size(), 10.0, firstPass.data(), n);
   ASSERT_GT(count, n);
 
-  std::vector<FloxBar> bars(count);
-  const uint32_t recount = flox_aggregate_renko_bars(tape.ts.data(), tape.px.data(), tape.qty.data(),
+  std::vector<LrvxBar> bars(count);
+  const uint32_t recount = lrvx_aggregate_renko_bars(tape.ts.data(), tape.px.data(), tape.qty.data(),
                                                      tape.isBuy.data(), tape.ts.size(), 10.0, bars.data(), count);
 
   ASSERT_EQ(recount, count);
@@ -104,15 +104,15 @@ TEST(CapiBarAggregationTest, NonRenkoAggregatorsNeverExceedTradeCount)
 {
   GapTape tape;
   const auto n = static_cast<uint32_t>(tape.ts.size());
-  std::vector<FloxBar> bars(n);
+  std::vector<LrvxBar> bars(n);
 
-  EXPECT_LE(flox_aggregate_time_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
+  EXPECT_LE(lrvx_aggregate_time_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
                                      tape.ts.size(), 1.0, bars.data(), n),
             n);
-  EXPECT_LE(flox_aggregate_volume_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
+  EXPECT_LE(lrvx_aggregate_volume_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
                                        tape.ts.size(), 0.5, bars.data(), n),
             n);
-  EXPECT_LE(flox_aggregate_range_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
+  EXPECT_LE(lrvx_aggregate_range_bars(tape.ts.data(), tape.px.data(), tape.qty.data(), tape.isBuy.data(),
                                       tape.ts.size(), 10.0, bars.data(), n),
             n);
 }
@@ -128,8 +128,8 @@ TEST(CapiBarAggregationTest, RenkoBrickClosesAtTheBrickBoundary)
   const std::vector<double> qty{1.0, 1.0, 1.0};
   const std::vector<uint8_t> isBuy{1, 1, 1};
 
-  std::vector<FloxBar> bars(8);
-  const uint32_t count = flox_aggregate_renko_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
+  std::vector<LrvxBar> bars(8);
+  const uint32_t count = lrvx_aggregate_renko_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
                                                    ts.size(), 10.0, bars.data(), 8);
 
   ASSERT_EQ(count, 1u);
@@ -157,8 +157,8 @@ TEST(CapiBarAggregationTest, RenkoGapIsBounded)
   const std::vector<double> qty{1.0, 1.0};
   const std::vector<uint8_t> isBuy{1, 1};
 
-  std::vector<FloxBar> bars(4);
-  const uint32_t count = flox_aggregate_renko_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
+  std::vector<LrvxBar> bars(4);
+  const uint32_t count = lrvx_aggregate_renko_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
                                                    ts.size(), 0.01, bars.data(), 4);
 
   EXPECT_LE(count, 1024u) << "one trade produced " << count << " bricks";
@@ -170,7 +170,7 @@ TEST(CapiBarAggregationTest, RenkoGapIsBounded)
 // [0,60). Same tape as TimeBarLateTradeTest in test_bar_aggregator_semantics.
 //
 // The C entry points return bar values only -- there is no late-trade counter
-// in this ABI (FloxBar carries none and no flox_aggregate_* function reports
+// in this ABI (LrvxBar carries none and no lrvx_aggregate_* function reports
 // one) -- so the drop is asserted through the bar it would otherwise corrupt,
 // not through a count.
 TEST(CapiBarAggregationTest, TimeBarDropsATradeFromAClosedBucket)
@@ -180,8 +180,8 @@ TEST(CapiBarAggregationTest, TimeBarDropsATradeFromAClosedBucket)
   const std::vector<double> qty{1.0, 1.0, 1.0, 1.0};
   const std::vector<uint8_t> isBuy{1, 1, 1, 1};
 
-  std::vector<FloxBar> bars(8);
-  const uint32_t count = flox_aggregate_time_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
+  std::vector<LrvxBar> bars(8);
+  const uint32_t count = lrvx_aggregate_time_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
                                                   ts.size(), 60.0, bars.data(), 8);
 
   ASSERT_EQ(count, 1u);
@@ -203,8 +203,8 @@ TEST(CapiBarAggregationTest, TimeBarFoldsAnOutOfOrderTradeFromTheLiveBucket)
   const std::vector<double> qty{1.0, 1.0, 1.0, 1.0};
   const std::vector<uint8_t> isBuy{1, 1, 1, 1};
 
-  std::vector<FloxBar> bars(8);
-  const uint32_t count = flox_aggregate_time_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
+  std::vector<LrvxBar> bars(8);
+  const uint32_t count = lrvx_aggregate_time_bars(ts.data(), px.data(), qty.data(), isBuy.data(),
                                                   ts.size(), 60.0, bars.data(), 8);
 
   ASSERT_EQ(count, 1u);
@@ -213,10 +213,10 @@ TEST(CapiBarAggregationTest, TimeBarFoldsAnOutOfOrderTradeFromTheLiveBucket)
   EXPECT_EQ(bars[0].trade_count, 3u);
 }
 
-// FloxBarData::close_reason is documented in flox_capi.h as 0=Threshold,
+// LrvxBarData::close_reason is documented in lrvx_capi.h as 0=Threshold,
 // 1=Gap, 2=Forced, 3=Warmup, and the byte crosses the boundary twice: in
-// through flox_runner_on_bar, out through the on_bar callback, converted to
-// flox::BarCloseReason and back on the way. Renumbering the enumerator moves
+// through lrvx_runner_on_bar, out through the on_bar callback, converted to
+// lrvx::BarCloseReason and back on the way. Renumbering the enumerator moves
 // what a Gap bar looks like on the wire -- and on disk, where MmapBarWriter
 // writes the same byte -- without any symbolic comparison noticing.
 namespace
@@ -230,25 +230,25 @@ struct BarSeen
 
 struct RunnerCtx
 {
-  FloxRegistryHandle registry{nullptr};
-  FloxStrategyHandle strategy{nullptr};
-  FloxRunnerHandle runner{nullptr};
+  LrvxRegistryHandle registry{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
+  LrvxRunnerHandle runner{nullptr};
   uint32_t symbol{0};
 
   ~RunnerCtx()
   {
     if (runner != nullptr)
     {
-      flox_runner_stop(runner);
-      flox_runner_destroy(runner);
+      lrvx_runner_stop(runner);
+      lrvx_runner_destroy(runner);
     }
     if (strategy != nullptr)
     {
-      flox_strategy_destroy(strategy);
+      lrvx_strategy_destroy(strategy);
     }
     if (registry != nullptr)
     {
-      flox_registry_destroy(registry);
+      lrvx_registry_destroy(registry);
     }
   }
 };
@@ -260,13 +260,13 @@ TEST(CapiBarAggregationTest, GapCloseReasonCrossesTheAbiAsByteOne)
   BarSeen seen;
 
   RunnerCtx ctx;
-  ctx.registry = flox_registry_create();
+  ctx.registry = lrvx_registry_create();
   ASSERT_NE(ctx.registry, nullptr);
-  ctx.symbol = flox_registry_add_symbol(ctx.registry, "test", "BTC-USDT", 0.01);
+  ctx.symbol = lrvx_registry_add_symbol(ctx.registry, "test", "BTC-USDT", 0.01);
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.user_data = &seen;
-  cb.on_bar = +[](void* ud, const FloxSymbolContext*, const FloxBarData* bar)
+  cb.on_bar = +[](void* ud, const LrvxSymbolContext*, const LrvxBarData* bar)
   {
     auto* st = static_cast<BarSeen*>(ud);
     ++st->calls;
@@ -274,22 +274,22 @@ TEST(CapiBarAggregationTest, GapCloseReasonCrossesTheAbiAsByteOne)
   };
 
   uint32_t syms[] = {ctx.symbol};
-  ctx.strategy = flox_strategy_create(/*id=*/1, syms, 1, ctx.registry, cb);
+  ctx.strategy = lrvx_strategy_create(/*id=*/1, syms, 1, ctx.registry, cb);
   ASSERT_NE(ctx.strategy, nullptr);
 
-  ctx.runner = flox_runner_create(ctx.registry, nullptr, nullptr);
+  ctx.runner = lrvx_runner_create(ctx.registry, nullptr, nullptr);
   ASSERT_NE(ctx.runner, nullptr);
-  flox_runner_add_strategy(ctx.runner, ctx.strategy);
-  flox_runner_start(ctx.runner);
+  lrvx_runner_add_strategy(ctx.runner, ctx.strategy);
+  lrvx_runner_start(ctx.runner);
 
-  flox_runner_on_bar(ctx.runner, ctx.symbol, /*bar_type=*/3 /* Renko */,
+  lrvx_runner_on_bar(ctx.runner, ctx.symbol, /*bar_type=*/3 /* Renko */,
                      /*bar_type_param=*/10, /*open=*/100.0, /*high=*/1000.0, /*low=*/100.0,
                      /*close=*/1000.0, /*volume=*/0.0, /*buy_volume=*/0.0,
                      /*start_time_ns=*/1'000'000'000, /*end_time_ns=*/1'000'000'000,
-                     static_cast<uint8_t>(flox::BarCloseReason::Gap));
+                     static_cast<uint8_t>(lrvx::BarCloseReason::Gap));
 
   ASSERT_EQ(seen.calls, 1);
-  EXPECT_EQ(seen.closeReason, 1u) << "flox_capi.h documents Gap as close_reason 1";
-  EXPECT_NE(seen.closeReason, static_cast<uint8_t>(flox::BarCloseReason::Forced))
+  EXPECT_EQ(seen.closeReason, 1u) << "lrvx_capi.h documents Gap as close_reason 1";
+  EXPECT_NE(seen.closeReason, static_cast<uint8_t>(lrvx::BarCloseReason::Forced))
       << "a gap bar must not reach a binding wearing Forced's byte";
 }

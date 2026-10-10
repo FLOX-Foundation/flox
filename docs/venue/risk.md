@@ -187,8 +187,8 @@ incident. The breaker makes that failure mode explicit and observable.
 
 Two sources behind one settlement path:
 
-- **`FundingSchedule`** (`flox/backtest/`) replays a recorded rate tape.
-- **`FundingCalculator`** (`flox-venue/funding_rate.h`) computes the rate live:
+- **`FundingSchedule`** (`lrvx/backtest/`) replays a recorded rate tape.
+- **`FundingCalculator`** (`lrvx-venue/funding_rate.h`) computes the rate live:
   premium (mark vs index) plus a clamped interest component, capped.
 
 The live path is TWAP by default: sample the premium across the interval and

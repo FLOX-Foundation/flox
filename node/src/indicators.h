@@ -4,40 +4,40 @@
 #include <napi.h>
 
 #include "bindings_common.h"
-#include "flox/indicator/adx.h"
-#include "flox/indicator/atr.h"
-#include "flox/indicator/bollinger.h"
-#include "flox/indicator/cci.h"
-#include "flox/indicator/chop.h"
-#include "flox/indicator/cvd.h"
-#include "flox/indicator/dema.h"
-#include "flox/indicator/ema.h"
-#include "flox/indicator/kama.h"
-#include "flox/indicator/macd.h"
-#include "flox/indicator/obv.h"
-#include "flox/indicator/rma.h"
-#include "flox/indicator/rsi.h"
-#include "flox/indicator/slope.h"
-#include "flox/indicator/sma.h"
-#include "flox/indicator/stochastic.h"
-#include "flox/indicator/vwap.h"
+#include "lrvx/indicator/adx.h"
+#include "lrvx/indicator/atr.h"
+#include "lrvx/indicator/bollinger.h"
+#include "lrvx/indicator/cci.h"
+#include "lrvx/indicator/chop.h"
+#include "lrvx/indicator/cvd.h"
+#include "lrvx/indicator/dema.h"
+#include "lrvx/indicator/ema.h"
+#include "lrvx/indicator/kama.h"
+#include "lrvx/indicator/macd.h"
+#include "lrvx/indicator/obv.h"
+#include "lrvx/indicator/rma.h"
+#include "lrvx/indicator/rsi.h"
+#include "lrvx/indicator/slope.h"
+#include "lrvx/indicator/sma.h"
+#include "lrvx/indicator/stochastic.h"
+#include "lrvx/indicator/vwap.h"
 
-#include "flox/indicator/adf.h"
-#include "flox/indicator/autocorrelation.h"
-#include "flox/indicator/correlation.h"
-#include "flox/indicator/kurtosis.h"
-#include "flox/indicator/parkinson_vol.h"
-#include "flox/indicator/rogers_satchell_vol.h"
-#include "flox/indicator/rolling_zscore.h"
-#include "flox/indicator/shannon_entropy.h"
-#include "flox/indicator/skewness.h"
+#include "lrvx/indicator/adf.h"
+#include "lrvx/indicator/autocorrelation.h"
+#include "lrvx/indicator/correlation.h"
+#include "lrvx/indicator/kurtosis.h"
+#include "lrvx/indicator/parkinson_vol.h"
+#include "lrvx/indicator/rogers_satchell_vol.h"
+#include "lrvx/indicator/rolling_zscore.h"
+#include "lrvx/indicator/shannon_entropy.h"
+#include "lrvx/indicator/skewness.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <span>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 inline Napi::Float64Array vec2arr(Napi::Env env, const std::vector<double>& v)
@@ -61,7 +61,7 @@ inline std::span<const double> arr2span(Napi::Float64Array& a)
 // lengths before touching `.Data()` on anything but the first array.
 // requireSameLength itself now lives in bindings_common.h, included
 // above: aggregators.h and stats.h need the identical check for the
-// same reason and are included before this file in flox_node.cpp.
+// same reason and are included before this file in lrvx_node.cpp.
 
 // ── Batch: single-input indicators ──────────────────────────────────
 
@@ -79,7 +79,7 @@ Napi::Value batchSingle(const Napi::CallbackInfo& info, Indicator ind)
   inline Napi::Value batch_##name(const Napi::CallbackInfo& info) \
   {                                                               \
     size_t p = info[1].As<Napi::Number>().Uint32Value();          \
-    return batchSingle(info, flox::indicator::Ind(p));            \
+    return batchSingle(info, lrvx::indicator::Ind(p));            \
   }
 
 BATCH_SINGLE(sma, SMA)
@@ -95,7 +95,7 @@ inline Napi::Value batch_dema(const Napi::CallbackInfo& info)
 {
   auto in = info[0].As<Napi::Float64Array>();
   size_t p = info[1].As<Napi::Number>().Uint32Value();
-  auto r = flox::indicator::DEMA(p).compute(arr2span(in));
+  auto r = lrvx::indicator::DEMA(p).compute(arr2span(in));
   return vec2arr(info.Env(), r);
 }
 
@@ -103,7 +103,7 @@ inline Napi::Value batch_tema(const Napi::CallbackInfo& info)
 {
   auto in = info[0].As<Napi::Float64Array>();
   size_t p = info[1].As<Napi::Number>().Uint32Value();
-  auto r = flox::indicator::TEMA(p).compute(arr2span(in));
+  auto r = lrvx::indicator::TEMA(p).compute(arr2span(in));
   return vec2arr(info.Env(), r);
 }
 
@@ -120,7 +120,7 @@ inline Napi::Value batch_atr(const Napi::CallbackInfo& info)
     return info.Env().Undefined();
   }
   std::vector<double> out(n);
-  flox::indicator::ATR(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n}, {out.data(), n});
+  lrvx::indicator::ATR(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
 }
 
@@ -134,7 +134,7 @@ inline Napi::Value batch_adx(const Napi::CallbackInfo& info)
   {
     return info.Env().Undefined();
   }
-  auto r = flox::indicator::ADX(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
+  auto r = lrvx::indicator::ADX(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   auto o = Napi::Object::New(info.Env());
   o.Set("adx", vec2arr(info.Env(), r.adx));
   o.Set("plusDi", vec2arr(info.Env(), r.plus_di));
@@ -154,7 +154,7 @@ inline Napi::Value batch_stochastic(const Napi::CallbackInfo& info)
   {
     return info.Env().Undefined();
   }
-  auto r = flox::indicator::Stochastic(kp, dp).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
+  auto r = lrvx::indicator::Stochastic(kp, dp).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   auto o = Napi::Object::New(info.Env());
   o.Set("k", vec2arr(info.Env(), r.k));
   o.Set("d", vec2arr(info.Env(), r.d));
@@ -171,7 +171,7 @@ inline Napi::Value batch_cci(const Napi::CallbackInfo& info)
   {
     return info.Env().Undefined();
   }
-  auto r = flox::indicator::CCI(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
+  auto r = lrvx::indicator::CCI(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   return vec2arr(info.Env(), r);
 }
 
@@ -185,7 +185,7 @@ inline Napi::Value batch_chop(const Napi::CallbackInfo& info)
   {
     return info.Env().Undefined();
   }
-  auto r = flox::indicator::CHOP(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
+  auto r = lrvx::indicator::CHOP(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   return vec2arr(info.Env(), r);
 }
 
@@ -199,7 +199,7 @@ inline Napi::Value batch_macd(const Napi::CallbackInfo& info)
   size_t s = info[2].As<Napi::Number>().Uint32Value();
   size_t sg = info[3].As<Napi::Number>().Uint32Value();
   std::vector<double> line(n), sig(n), hist(n);
-  flox::indicator::MACD(f, s, sg).compute({in.Data(), n}, {line.data(), n}, {sig.data(), n},
+  lrvx::indicator::MACD(f, s, sg).compute({in.Data(), n}, {line.data(), n}, {sig.data(), n},
                                           {hist.data(), n});
   auto o = Napi::Object::New(info.Env());
   o.Set("line", vec2arr(info.Env(), line));
@@ -213,7 +213,7 @@ inline Napi::Value batch_bollinger(const Napi::CallbackInfo& info)
   auto in = info[0].As<Napi::Float64Array>();
   size_t n = in.ElementLength(), p = info[1].As<Napi::Number>().Uint32Value();
   double sd = info[2].As<Napi::Number>().DoubleValue();
-  auto r = flox::indicator::Bollinger(p, sd).compute({in.Data(), n});
+  auto r = lrvx::indicator::Bollinger(p, sd).compute({in.Data(), n});
   auto o = Napi::Object::New(info.Env());
   o.Set("upper", vec2arr(info.Env(), r.upper));
   o.Set("middle", vec2arr(info.Env(), r.middle));
@@ -231,7 +231,7 @@ inline Napi::Value batch_obv(const Napi::CallbackInfo& info)
     return info.Env().Undefined();
   }
   std::vector<double> out(n);
-  flox::indicator::OBV().compute({c.Data(), n}, {v.Data(), n}, {out.data(), n});
+  lrvx::indicator::OBV().compute({c.Data(), n}, {v.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
 }
 
@@ -244,7 +244,7 @@ inline Napi::Value batch_vwap(const Napi::CallbackInfo& info)
   {
     return info.Env().Undefined();
   }
-  auto r = flox::indicator::VWAP(w).compute({c.Data(), n}, {v.Data(), n});
+  auto r = lrvx::indicator::VWAP(w).compute({c.Data(), n}, {v.Data(), n});
   return vec2arr(info.Env(), r);
 }
 
@@ -261,7 +261,7 @@ inline Napi::Value batch_cvd(const Napi::CallbackInfo& info)
   {
     return info.Env().Undefined();
   }
-  auto r = flox::indicator::CVD().compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
+  auto r = lrvx::indicator::CVD().compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
                                           {c.Data(), n}, {v.Data(), n});
   return vec2arr(info.Env(), r);
 }
@@ -272,7 +272,7 @@ inline Napi::Value batch_skewness(const Napi::CallbackInfo& info)
 {
   auto in = info[0].As<Napi::Float64Array>();
   size_t p = info[1].As<Napi::Number>().Uint32Value();
-  auto r = flox::indicator::Skewness(p).compute(arr2span(in));
+  auto r = lrvx::indicator::Skewness(p).compute(arr2span(in));
   return vec2arr(info.Env(), r);
 }
 
@@ -280,7 +280,7 @@ inline Napi::Value batch_kurtosis(const Napi::CallbackInfo& info)
 {
   auto in = info[0].As<Napi::Float64Array>();
   size_t p = info[1].As<Napi::Number>().Uint32Value();
-  auto r = flox::indicator::Kurtosis(p).compute(arr2span(in));
+  auto r = lrvx::indicator::Kurtosis(p).compute(arr2span(in));
   return vec2arr(info.Env(), r);
 }
 
@@ -288,7 +288,7 @@ inline Napi::Value batch_rolling_zscore(const Napi::CallbackInfo& info)
 {
   auto in = info[0].As<Napi::Float64Array>();
   size_t p = info[1].As<Napi::Number>().Uint32Value();
-  auto r = flox::indicator::RollingZScore(p).compute(arr2span(in));
+  auto r = lrvx::indicator::RollingZScore(p).compute(arr2span(in));
   return vec2arr(info.Env(), r);
 }
 
@@ -297,7 +297,7 @@ inline Napi::Value batch_shannon_entropy(const Napi::CallbackInfo& info)
   auto in = info[0].As<Napi::Float64Array>();
   size_t p = info[1].As<Napi::Number>().Uint32Value();
   size_t bins = info[2].As<Napi::Number>().Uint32Value();
-  auto r = flox::indicator::ShannonEntropy(p, bins).compute(arr2span(in));
+  auto r = lrvx::indicator::ShannonEntropy(p, bins).compute(arr2span(in));
   return vec2arr(info.Env(), r);
 }
 
@@ -311,7 +311,7 @@ inline Napi::Value batch_parkinson_vol(const Napi::CallbackInfo& info)
     return info.Env().Undefined();
   }
   std::vector<double> out(n);
-  flox::indicator::ParkinsonVol(p).compute({h.Data(), n}, {l.Data(), n}, {out.data(), n});
+  lrvx::indicator::ParkinsonVol(p).compute({h.Data(), n}, {l.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
 }
 
@@ -328,7 +328,7 @@ inline Napi::Value batch_rogers_satchell_vol(const Napi::CallbackInfo& info)
     return info.Env().Undefined();
   }
   std::vector<double> out(n);
-  flox::indicator::RogersSatchellVol(p).compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
+  lrvx::indicator::RogersSatchellVol(p).compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
                                                 {c.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
 }
@@ -343,7 +343,7 @@ inline Napi::Value batch_correlation(const Napi::CallbackInfo& info)
     return info.Env().Undefined();
   }
   std::vector<double> out(n);
-  flox::indicator::Correlation(p).compute({x.Data(), n}, {y.Data(), n}, {out.data(), n});
+  lrvx::indicator::Correlation(p).compute({x.Data(), n}, {y.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
 }
 
@@ -357,8 +357,8 @@ inline Napi::Value batch_adf(const Napi::CallbackInfo& info)
   size_t maxLag = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 4u;
   std::string regression =
       info.Length() > 2 && info[2].IsString() ? info[2].As<Napi::String>().Utf8Value() : "c";
-  flox::indicator::AdfResult r =
-      flox::indicator::adf(std::span<const double>(in.Data(), n), maxLag, regression);
+  lrvx::indicator::AdfResult r =
+      lrvx::indicator::adf(std::span<const double>(in.Data(), n), maxLag, regression);
   auto o = Napi::Object::New(info.Env());
   o.Set("testStat", Napi::Number::New(info.Env(), r.test_stat));
   o.Set("pValue", Napi::Number::New(info.Env(), r.p_value));
@@ -373,7 +373,7 @@ inline Napi::Value batch_autocorrelation(const Napi::CallbackInfo& info)
   size_t window = info[1].As<Napi::Number>().Uint32Value();
   size_t lag = info[2].As<Napi::Number>().Uint32Value();
   std::vector<double> out(n);
-  flox::indicator::AutoCorrelation(window, lag)
+  lrvx::indicator::AutoCorrelation(window, lag)
       .compute(std::span<const double>(in.Data(), n), std::span<double>(out.data(), n));
   return vec2arr(info.Env(), out);
 }
@@ -415,7 +415,7 @@ inline Napi::Value optNum(Napi::Env env, double v)
         : Napi::ObjectWrap<Name##Wrap>(info), _ind(info[0].As<Napi::Number>().Uint32Value()) {}    \
                                                                                                    \
    private:                                                                                        \
-    flox::indicator::Name _ind;                                                                    \
+    lrvx::indicator::Name _ind;                                                                    \
     Napi::Value Compute(const Napi::CallbackInfo& info)                                            \
     {                                                                                              \
       auto in = info[0].As<Napi::Float64Array>();                                                  \
@@ -475,7 +475,7 @@ class KAMAWrap : public Napi::ObjectWrap<KAMAWrap>
   }
 
  private:
-  flox::indicator::KAMA _ind;
+  lrvx::indicator::KAMA _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto in = info[0].As<Napi::Float64Array>();
@@ -518,7 +518,7 @@ class ShannonEntropyWrap : public Napi::ObjectWrap<ShannonEntropyWrap>
   }
 
  private:
-  flox::indicator::ShannonEntropy _ind;
+  lrvx::indicator::ShannonEntropy _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto in = info[0].As<Napi::Float64Array>();
@@ -561,7 +561,7 @@ class AutoCorrelationWrap : public Napi::ObjectWrap<AutoCorrelationWrap>
   }
 
  private:
-  flox::indicator::AutoCorrelation _ind;
+  lrvx::indicator::AutoCorrelation _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto in = info[0].As<Napi::Float64Array>();
@@ -601,7 +601,7 @@ class AutoCorrelationWrap : public Napi::ObjectWrap<AutoCorrelationWrap>
         : Napi::ObjectWrap<Name##Wrap>(info), _ind(info[0].As<Napi::Number>().Uint32Value()) {}    \
                                                                                                    \
    private:                                                                                        \
-    flox::indicator::Name _ind;                                                                    \
+    lrvx::indicator::Name _ind;                                                                    \
     Napi::Value Compute(const Napi::CallbackInfo& info)                                            \
     {                                                                                              \
       auto h = info[0].As<Napi::Float64Array>();                                                   \
@@ -654,7 +654,7 @@ class ParkinsonVolWrap : public Napi::ObjectWrap<ParkinsonVolWrap>
   }
 
  private:
-  flox::indicator::ParkinsonVol _ind;
+  lrvx::indicator::ParkinsonVol _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto h = info[0].As<Napi::Float64Array>();
@@ -698,7 +698,7 @@ class RogersSatchellVolWrap : public Napi::ObjectWrap<RogersSatchellVolWrap>
   }
 
  private:
-  flox::indicator::RogersSatchellVol _ind;
+  lrvx::indicator::RogersSatchellVol _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto o = info[0].As<Napi::Float64Array>();
@@ -745,7 +745,7 @@ class CorrelationWrap : public Napi::ObjectWrap<CorrelationWrap>
   }
 
  private:
-  flox::indicator::Correlation _ind;
+  lrvx::indicator::Correlation _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto x = info[0].As<Napi::Float64Array>();
@@ -794,7 +794,7 @@ class MACDWrap : public Napi::ObjectWrap<MACDWrap>
   }
 
  private:
-  flox::indicator::MACD _ind;
+  lrvx::indicator::MACD _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto in = info[0].As<Napi::Float64Array>();
@@ -855,7 +855,7 @@ class BollingerWrap : public Napi::ObjectWrap<BollingerWrap>
   }
 
  private:
-  flox::indicator::Bollinger _ind;
+  lrvx::indicator::Bollinger _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto in = info[0].As<Napi::Float64Array>();
@@ -912,7 +912,7 @@ class StochasticWrap : public Napi::ObjectWrap<StochasticWrap>
   }
 
  private:
-  flox::indicator::Stochastic _ind;
+  lrvx::indicator::Stochastic _ind;
   Napi::Value Compute(const Napi::CallbackInfo& info)
   {
     auto h = info[0].As<Napi::Float64Array>();
@@ -951,9 +951,9 @@ inline Napi::Value list_indicators(const Napi::CallbackInfo& info)
 {
   auto arr = Napi::Array::New(info.Env());
   uint32_t i = 0;
-#define FLOX_INDICATOR(Cls, name, Kind, Args) arr.Set(i++, Napi::String::New(info.Env(), #Cls));
-#include "flox/indicator/registry.def"
-#undef FLOX_INDICATOR
+#define LRVX_INDICATOR(Cls, name, Kind, Args) arr.Set(i++, Napi::String::New(info.Env(), #Cls));
+#include "lrvx/indicator/registry.def"
+#undef LRVX_INDICATOR
   return arr;
 }
 
@@ -1022,4 +1022,4 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("list_indicators", Napi::Function::New(env, list_indicators));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

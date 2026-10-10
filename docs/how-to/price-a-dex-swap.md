@@ -1,13 +1,13 @@
 # Price a DEX swap
 
-`flox_py.dex` prices a swap against an AMM pool, exact to the wei, with a surface a
+`lrvx.dex` prices a swap against an AMM pool, exact to the wei, with a surface a
 quant can read: human amounts in and out, swap directions by token symbol, and pools
 that introspect. The exact integer curve does the math underneath; this layer carries
 the decimals and the token order so a mis-routed swap raises instead of returning a
 quiet zero.
 
 ```python
-from flox_py import dex
+from lrvx import dex
 
 weth = dex.Token("WETH", 18)
 usdc = dex.Token("USDC", 6)

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -24,13 +24,13 @@
  * Both surfaces are pinned here at the scale the money is kept in: eight
  * decimals, a dot, whatever the environment says.
  */
-#include "flox-venue/control_api.h"
-#include "flox-venue/control_plane.h"
-#include "flox-venue/fixed_point_text.h"
-#include "flox-venue/messages.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/prometheus.h"
-#include "flox-venue/symbol_config.h"
+#include "lrvx-venue/control_api.h"
+#include "lrvx-venue/control_plane.h"
+#include "lrvx-venue/fixed_point_text.h"
+#include "lrvx-venue/messages.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/prometheus.h"
+#include "lrvx-venue/symbol_config.h"
 
 #include <gtest/gtest.h>
 
@@ -38,8 +38,8 @@
 #include <cstdint>
 #include <string>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

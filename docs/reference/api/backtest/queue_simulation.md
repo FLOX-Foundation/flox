@@ -27,7 +27,7 @@ enum class QueueModel : uint8_t {
 | `PRO_RATA_WITH_PRIORITY` | ICE-style size-pro-rata with a priority multiplier. Every order at the level gets effective weight `remaining × priorityMultiplier`, distributed proportionally. The per-order multiplier defaults to 1.0; set it with `setOrderPriorityMultiplier`. |
 
 Only `NONE`, `TOB`, `FULL`, `PRO_RATA` and `PRO_RATA_WITH_FIFO` have C-API constants
-(`FloxQueueModel`); `TOP_PRO_LMM` and `PRO_RATA_WITH_PRIORITY` are C++ only.
+(`LrvxQueueModel`); `TOP_PRO_LMM` and `PRO_RATA_WITH_PRIORITY` are C++ only.
 
 ## Heuristics
 
@@ -74,7 +74,7 @@ Queue simulation requires trade quantities. Use the overload `onTrade(symbol, pr
 
 In Python: call `executor.on_trade_qty(symbol, price, quantity, is_buy)`.
 
-In C API: `flox_simulated_executor_on_trade_qty(executor, symbol, price, quantity, is_buy)`.
+In C API: `lrvx_simulated_executor_on_trade_qty(executor, symbol, price, quantity, is_buy)`.
 
 In JavaScript: `executor.onTradeQty(symbol, price, quantity, isBuy)`.
 

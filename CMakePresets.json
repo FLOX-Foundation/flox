@@ -14,9 +14,9 @@
       "binaryDir": "${sourceDir}/build-venue-lite",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "FLOX_VENUE_LITE": "ON",
-        "FLOX_BUILD_TESTS": "ON",
-        "FLOX_NATIVE": "OFF"
+        "LRVX_VENUE_LITE": "ON",
+        "LRVX_BUILD_TESTS": "ON",
+        "LRVX_NATIVE": "OFF"
       }
     },
     {
@@ -26,7 +26,7 @@
       "description": "venue-lite with the network perimeter off: the matching engine, its journal and its checkpoints, on a platform without POSIX sockets.",
       "binaryDir": "${sourceDir}/build-venue-lite-engine",
       "cacheVariables": {
-        "FLOX_VENUE_PERIMETER": "OFF"
+        "LRVX_VENUE_PERIMETER": "OFF"
       }
     }
   ],

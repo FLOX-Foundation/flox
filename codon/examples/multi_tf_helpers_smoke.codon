@@ -3,12 +3,12 @@
 # The same C ABI exports are exercised end-to-end through QuickJS in
 # tests/test_quickjs.cpp and through pybind11 in
 # python/tests/test_multi_tf_alignment.py. This smoke verifies the
-# Codon shim compiles, the byte-level FloxBar -> BarData conversion
-# round-trips, and the new methods on `flox.strategy.Strategy` resolve
+# Codon shim compiles, the byte-level LrvxBar -> BarData conversion
+# round-trips, and the new methods on `lrvx.strategy.Strategy` resolve
 # without surprise (a no-op handle returns 0 from
-# flox_strategy_get_bar_ring_capacity rather than crashing).
+# lrvx_strategy_get_bar_ring_capacity rather than crashing).
 
-from flox.strategy import _FLOXBAR_SIZE, _floxbar_to_bardata
+from lrvx.strategy import _LRVXBAR_SIZE, _lrvxbar_to_bardata
 
 
 def check(label: str, ok: bool):
@@ -18,7 +18,7 @@ def check(label: str, ok: bool):
     print("ok: " + label)
 
 
-def write_floxbar(buf: Ptr[byte], start_ns: int, end_ns: int,
+def write_lrvxbar(buf: Ptr[byte], start_ns: int, end_ns: int,
                    o: int, h: int, l: int, c: int,
                    v: int, bv: int, trade_count: int):
     Ptr[i64](buf + 0)[0] = i64(start_ns)
@@ -33,11 +33,11 @@ def write_floxbar(buf: Ptr[byte], start_ns: int, end_ns: int,
 
 
 def run():
-    check("FloxBar struct size matches C", _FLOXBAR_SIZE == 72)
+    check("LrvxBar struct size matches C", _LRVXBAR_SIZE == 72)
 
     SCALE = 100000000
-    buf = Ptr[byte](_FLOXBAR_SIZE)
-    write_floxbar(buf,
+    buf = Ptr[byte](_LRVXBAR_SIZE)
+    write_lrvxbar(buf,
                   start_ns=1700000000000000000,
                   end_ns=1700000000300000000,
                   o=int(100.0 * SCALE),
@@ -48,7 +48,7 @@ def run():
                   bv=int( 0.5 * SCALE),
                   trade_count=42)
 
-    bar = _floxbar_to_bardata(buf, 7, 0, 300000000000, "BTCUSDT")
+    bar = _lrvxbar_to_bardata(buf, 7, 0, 300000000000, "BTCUSDT")
     check("symbol round-trips", bar.symbol == 7)
     check("bar_type round-trips", bar.bar_type == 0)
     check("bar_type_param round-trips", bar.bar_type_param == 300000000000)
@@ -66,7 +66,7 @@ def run():
     # C++ test (tests/test_multi_tf_alignment.cpp), the QuickJS suite
     # (tests/test_quickjs.cpp) and pybind11
     # (python/tests/test_multi_tf_alignment.py). The Codon FFI now has
-    # `flox_strategy_create_p` (pointer variant for the callbacks
+    # `lrvx_strategy_create_p` (pointer variant for the callbacks
     # struct), so a separate codon smoke (codon_strategy_e2e_smoke)
     # exercises the full path.
 

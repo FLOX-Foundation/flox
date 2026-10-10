@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -18,11 +18,11 @@
  * sleep window itself -- and the other half of what such a driver needs: a
  * sleep bounded by its own cadence rather than by the set's 50 ms net.
  */
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
-#include "flox/util/concurrency/jthread.h"
-#include "flox/util/eventing/wake_set.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
+#include "lrvx/util/concurrency/jthread.h"
+#include "lrvx/util/eventing/wake_set.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -35,9 +35,9 @@
 #include <optional>
 #include <string>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 using namespace std::chrono;
 
 namespace

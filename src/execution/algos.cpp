@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/execution/algos.h"
+#include "lrvx/execution/algos.h"
 
 #include <algorithm>
 
-namespace flox::execution
+namespace lrvx::execution
 {
 
 namespace
@@ -235,4 +235,4 @@ void POVExecutor::step(int64_t now_ns)
   submit(slice, now_ns, _type, _limit_price);
 }
 
-}  // namespace flox::execution
+}  // namespace lrvx::execution

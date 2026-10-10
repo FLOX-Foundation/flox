@@ -9,8 +9,8 @@ Utilities for merging, splitting, exporting, validating, and partitioning binary
 Merge multiple segment files into one.
 
 ```python
-result = flox.merge(
-    input_paths=["seg1.flox", "seg2.flox"],
+result = lrvx.merge(
+    input_paths=["seg1.lrvx", "seg2.lrvx"],
     output_dir="./merged",
     output_name="combined",
     compression="lz4",
@@ -35,7 +35,7 @@ print(f"Merged {result['segments_merged']} segments, {result['events_written']} 
 Merge all segments in a directory (shorthand for `merge`).
 
 ```python
-result = flox.merge_dir("./raw_data", "./merged_data")
+result = lrvx.merge_dir("./raw_data", "./merged_data")
 ```
 
 ---
@@ -47,8 +47,8 @@ result = flox.merge_dir("./raw_data", "./merged_data")
 Split a segment file into multiple files.
 
 ```python
-result = flox.split(
-    input_path="large_file.flox",
+result = lrvx.split(
+    input_path="large_file.lrvx",
     output_dir="./split",
     mode="time",
     time_interval_ns=3600_000_000_000,  # 1 hour
@@ -80,8 +80,8 @@ result = flox.split(
 Export binary data to CSV, JSON, or JSONLines.
 
 ```python
-result = flox.export_data(
-    input_path="data.flox",
+result = lrvx.export_data(
+    input_path="data.lrvx",
     output_path="trades.csv",
     format="csv",
     symbols=[1, 2],
@@ -114,7 +114,7 @@ result = flox.export_data(
 Re-compress a segment file. Returns `True` on success.
 
 ```python
-ok = flox.recompress("uncompressed.flox", "compressed.flox", "lz4")
+ok = lrvx.recompress("uncompressed.lrvx", "compressed.lrvx", "lz4")
 ```
 
 ### `extract_symbols(input_path, output_path, symbols) -> int`
@@ -122,7 +122,7 @@ ok = flox.recompress("uncompressed.flox", "compressed.flox", "lz4")
 Extract specific symbols to a new file. Returns event count.
 
 ```python
-count = flox.extract_symbols("all_data.flox", "btc_only.flox", [1])
+count = lrvx.extract_symbols("all_data.lrvx", "btc_only.lrvx", [1])
 ```
 
 ### `extract_time_range(input_path, output_path, from_ns, to_ns) -> int`
@@ -130,7 +130,7 @@ count = flox.extract_symbols("all_data.flox", "btc_only.flox", [1])
 Extract a time range to a new file. Returns event count.
 
 ```python
-count = flox.extract_time_range("data.flox", "morning.flox",
+count = lrvx.extract_time_range("data.lrvx", "morning.lrvx",
                                  from_ns=start, to_ns=end)
 ```
 
@@ -143,7 +143,7 @@ count = flox.extract_time_range("data.flox", "morning.flox",
 Validate a single segment file.
 
 ```python
-result = flox.validate("data.flox")
+result = lrvx.validate("data.lrvx")
 if not result['valid']:
     for issue in result['issues']:
         print(f"[{issue['severity']}] {issue['message']}")
@@ -173,7 +173,7 @@ if not result['valid']:
 Validate all segments in a directory.
 
 ```python
-result = flox.validate_dataset("./data")
+result = lrvx.validate_dataset("./data")
 print(f"{result['valid_segments']}/{result['total_segments']} valid")
 ```
 
@@ -184,7 +184,7 @@ print(f"{result['valid_segments']}/{result['total_segments']} valid")
 Partition datasets for parallel processing or walk-forward backtesting.
 
 ```python
-part = flox.Partitioner(data_dir="./data")
+part = lrvx.Partitioner(data_dir="./data")
 ```
 
 ### Methods

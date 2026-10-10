@@ -1,11 +1,11 @@
 # Python API Reference
 
-Complete reference for the `flox_py` Python module. All classes and functions are available directly from `import flox_py`.
+Complete reference for the `lrvx` Python module. All classes and functions are available directly from `import lrvx`.
 
 ## Installation
 
 ```bash
-pip install flox-py
+pip install lrvx
 ```
 
 Or install from source — from the repository root, where `pyproject.toml`
@@ -18,7 +18,7 @@ pip install .
 Or build the extension in-tree with CMake directly:
 
 ```bash
-cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DLRVX_BUILD_PYTHON=ON -DLRVX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 

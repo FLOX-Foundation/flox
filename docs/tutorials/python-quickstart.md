@@ -7,15 +7,15 @@
 ## 1. Install
 
 ```bash
-pip install flox-py
+pip install lrvx
 ```
 
 ## 2. First indicator
 
 ```python
-import flox_py as flox
+import lrvx
 
-ema = flox.EMA(20)
+ema = lrvx.EMA(20)
 
 prices = [100 + i * 0.1 for i in range(50)]
 for price in prices:
@@ -29,16 +29,16 @@ All streaming indicators return `None` during warmup and a float once ready. Che
 ## 3. First strategy
 
 ```python
-import flox_py as flox
+import lrvx
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-class SMACross(flox.Strategy):
+class SMACross(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
 
     def on_trade(self, ctx, trade):
         f = self.fast.update(trade.price)
@@ -53,7 +53,7 @@ class SMACross(flox.Strategy):
 def on_signal(sig):
     print(sig.side, sig.order_type, sig.quantity)
 
-runner = flox.Runner(registry, on_signal)
+runner = lrvx.Runner(registry, on_signal)
 runner.add_strategy(SMACross([btc]))
 runner.start()
 
@@ -66,7 +66,7 @@ runner.stop()
 ## 4. Backtest
 
 ```python
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMACross([btc]))
 
 stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
@@ -83,7 +83,7 @@ a decision about real capital.
 ## 5. Venue physics
 
 ```python
-stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
 acct = stack.account()
 liq = stack.liquidation()
 fees = stack.fees()
@@ -96,7 +96,7 @@ ranking, the 30d VIP fee schedule (bound to the account), the
 funding settlement schedule, the venue-specific rate-limit policy,
 and the venue-availability hook. Other factories: `bybit_linear`,
 `okx_swap`, `deribit`. For custom venues see
-[`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
+[`lrvx.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
 
 `VenueStack` is a standalone simulation: you can drive its
 subsystems directly, as above, or call
@@ -113,7 +113,7 @@ Full pattern: [Realistic backtest in one call](../how-to/realistic-backtest.md#a
 ## Building from source
 
 Two ways to get here: you need the current `main` branch before a release
-is published, or `pip install flox-py` found no wheel for your platform and
+is published, or `pip install lrvx` found no wheel for your platform and
 interpreter and fell back to the source distribution. Both compile the C++
 core on your machine and need the same things.
 
@@ -127,8 +127,8 @@ core on your machine and need the same things.
   lz4 itself, which needs git and network access.
 
 ```bash
-git clone https://github.com/FLOX-Foundation/flox.git
-cd flox
+git clone https://github.com/lrvx/lrvx.git
+cd lrvx
 pip install .
 ```
 
@@ -138,12 +138,12 @@ links sit there. `scikit-build-core` handles the cmake build internally,
 and the module installs into your environment the same way as the PyPI
 package.
 
-The published source distribution (`flox_py-<version>.tar.gz`) carries
+The published source distribution (`lrvx-<version>.tar.gz`) carries
 those same sources, so the fallback path works the same way without a
 clone:
 
 ```bash
-pip install --no-binary flox-py flox-py
+pip install --no-binary lrvx lrvx
 ```
 
 Expect minutes, not seconds — this compiles the core library and the
@@ -157,7 +157,7 @@ binding.
   venue stack with fees, funding, liquidation, rate limits.
 - [Paper trading](../how-to/paper-trading.md) — same strategy class
   against a live feed, simulated fills.
-- [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) —
+- [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md) —
   promote to live.
 - [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md) —
   visualize what your strategy did.

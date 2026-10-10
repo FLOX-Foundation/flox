@@ -7,7 +7,7 @@ and use fixed-point arithmetic (scale 1e8) internally.
 
 Fixed-point price with 8 decimal places.
 
-```python
+```codon
 p = Price.from_double(42000.50)
 print(p.to_double())   # 42000.5
 print(p.raw())          # 4200050000000
@@ -30,7 +30,7 @@ Supports comparison operators: `==`, `<`, `>`, `<=`, `>=` and arithmetic: `+`, `
 
 Fixed-point quantity with 8 decimal places. Same API as `Price`.
 
-```python
+```codon
 q = Quantity.from_double(1.5)
 print(q.to_double())  # 1.5
 ```
@@ -65,7 +65,7 @@ equivalents in the Python and Node bindings.
 | `symbol` | `int` | Symbol ID |
 | `symbol_name` | `str` | Symbol name, resolved from the registry |
 | `side` | `str` | `"buy"` or `"sell"` |
-| `order_type` | `int` | C++ `flox::OrderType` code, not the signal-type code |
+| `order_type` | `int` | C++ `lrvx::OrderType` code, not the signal-type code |
 | `status` | `int` | Order status code |
 | `fill_qty` | `float` | Quantity filled by this event |
 | `fill_price` | `float` | Price this event filled at |
@@ -111,8 +111,8 @@ equivalents in the Python and Node bindings.
 
 Per-symbol state passed to `Strategy.on_trade()` and `Strategy.on_book_update()`. Also accessible via `Strategy.ctx(symbol)`.
 
-```python
-from flox.context import SymbolContext
+```codon
+from lrvx.context import SymbolContext
 
 def on_trade(self, ctx: SymbolContext, trade: TradeData):
     if ctx.is_flat() and trade.price.to_double() > ctx.best_ask():

@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/log/atomic_logger.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx/log/atomic_logger.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <sstream>
 
-namespace flox
+namespace lrvx
 {
 
 namespace fs = std::filesystem;
@@ -67,7 +67,7 @@ AtomicLogger::AtomicLogger(AtomicLoggerOptions opts)
 
   rotate();
   _flushThread = makeThread(
-      "flox.log.flush", [this]
+      "lrvx.log.flush", [this]
       { flushLoop(); },
       [this]
       {
@@ -374,7 +374,7 @@ void AtomicLogger::rotate()
     if (_rotationFailures.fetch_add(1, std::memory_order_release) == 0)
     {
       const std::string reason = ec ? ec.message() : std::string("cannot open the file");
-      std::fprintf(stderr, "flox: WARN log rotation failed for '%s': %s; log output goes to stderr\n",
+      std::fprintf(stderr, "lrvx: WARN log rotation failed for '%s': %s; log output goes to stderr\n",
                    path.c_str(), reason.c_str());
     }
   }
@@ -396,7 +396,7 @@ void AtomicLogger::writeToOutput(const LogEntry& entry)
     // a logger that cannot open its file is a reason to look at the console,
     // not a reason to discard what it was told. rotationFailures() stays the
     // machine-readable signal.
-    std::fprintf(stderr, "flox: [%s] %s: %s\n", timebuf, levelStr, entry.message);
+    std::fprintf(stderr, "lrvx: [%s] %s: %s\n", timebuf, levelStr, entry.message);
     return;
   }
 
@@ -430,4 +430,4 @@ void AtomicLogger::formatTimestamp(std::chrono::system_clock::time_point ts, cha
                 static_cast<int>(ms.count()));
 }
 
-}  // namespace flox
+}  // namespace lrvx

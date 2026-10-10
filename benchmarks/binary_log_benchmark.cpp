@@ -1,22 +1,22 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/ops/index_builder.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/ops/index_builder.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <benchmark/benchmark.h>
 #include <filesystem>
 #include <random>
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 static std::filesystem::path g_test_dir;
 
@@ -24,7 +24,7 @@ static void SetupTestDir()
 {
   if (g_test_dir.empty())
   {
-    g_test_dir = std::filesystem::temp_directory_path() / "flox_bench_log";
+    g_test_dir = std::filesystem::temp_directory_path() / "lrvx_bench_log";
     std::filesystem::remove_all(g_test_dir);
     std::filesystem::create_directories(g_test_dir);
   }
@@ -496,7 +496,7 @@ static void BM_IndexBuild(benchmark::State& state)
     // Find segment file
     for (const auto& entry : std::filesystem::directory_iterator(dir))
     {
-      if (entry.path().extension() == ".floxlog")
+      if (entry.path().extension() == ".lrvx")
       {
         segment_path = entry.path();
         break;

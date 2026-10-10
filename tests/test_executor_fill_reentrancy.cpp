@@ -1,22 +1,22 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/backtest_config.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
+#include "lrvx/backtest/backtest_config.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
 
 #include <gtest/gtest.h>
 
 #include <cstddef>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

@@ -1,6 +1,6 @@
 # Choose a matching model: FIFO, pro-rata, hybrid
 
-flox's queue simulator decides how an incoming trade at a price level
+lrvx's queue simulator decides how an incoming trade at a price level
 gets distributed across resting limit orders. The default is `none`,
 which skips queue modelling entirely; `tob` and `full` are the FIFO
 models, where the order at the front of the queue eats first. Real
@@ -63,9 +63,9 @@ orders submitted after the call.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    exec = flox.SimulatedExecutor()
+    exec = lrvx.SimulatedExecutor()
 
     # Pure pro-rata.
     exec.set_queue_model("pro_rata", depth=4)
@@ -78,7 +78,7 @@ orders submitted after the call.
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor } from "@flox-foundation/flox";
+    import { SimulatedExecutor } from "@lrvx/lrvx";
 
     const exec = new SimulatedExecutor();
 
@@ -101,10 +101,10 @@ orders submitted after the call.
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor
+    from lrvx.backtest import SimulatedExecutor
 
-    # flox.backtest names only QUEUE_NONE / QUEUE_TOB / QUEUE_FULL. The
-    # pro-rata models are the remaining FloxQueueModel values from the C
+    # lrvx.backtest names only QUEUE_NONE / QUEUE_TOB / QUEUE_FULL. The
+    # pro-rata models are the remaining LrvxQueueModel values from the C
     # ABI, passed as plain ints.
     PRO_RATA = 3
     PRO_RATA_WITH_FIFO = 4
@@ -118,10 +118,10 @@ orders submitted after the call.
 === "C"
 
     ```c
-    FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
-    flox_simulated_executor_set_queue_model(exec, FLOX_QUEUE_PRO_RATA, 4);
-    flox_simulated_executor_set_queue_model(exec, FLOX_QUEUE_PRO_RATA_WITH_FIFO, 4);
-    flox_simulated_executor_set_queue_fifo_top_n(exec, 3);
+    LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
+    lrvx_simulated_executor_set_queue_model(exec, LRVX_QUEUE_PRO_RATA, 4);
+    lrvx_simulated_executor_set_queue_model(exec, LRVX_QUEUE_PRO_RATA_WITH_FIFO, 4);
+    lrvx_simulated_executor_set_queue_fifo_top_n(exec, 3);
     ```
 
 A worked example (Python):

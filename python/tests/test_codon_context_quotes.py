@@ -15,18 +15,18 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONTEXT = REPO_ROOT / "codon" / "flox" / "context.codon"
-STRATEGY = REPO_ROOT / "codon" / "flox" / "strategy.codon"
+CONTEXT = REPO_ROOT / "codon" / "lrvx" / "context.codon"
+STRATEGY = REPO_ROOT / "codon" / "lrvx" / "strategy.codon"
 PAIRS = REPO_ROOT / "codon" / "examples" / "pairs_strategy.codon"
 
 
 def test_the_context_imports_the_optional_accessors_and_not_the_raw_ones() -> None:
     source = CONTEXT.read_text()
-    for name in ("flox_best_bid_raw_opt", "flox_best_ask_raw_opt", "flox_mid_price_raw_opt"):
+    for name in ("lrvx_best_bid_raw_opt", "lrvx_best_ask_raw_opt", "lrvx_mid_price_raw_opt"):
         assert re.search(rf"^from C import {name}\(cobj, u32, Ptr\[i64\]\) -> u8$", source, re.M), (
             f"context.codon does not declare {name} with the (handle, symbol, price_out) -> flag shape"
         )
-    for name in ("flox_best_bid_raw", "flox_best_ask_raw", "flox_mid_price_raw"):
+    for name in ("lrvx_best_bid_raw", "lrvx_best_ask_raw", "lrvx_mid_price_raw"):
         assert not re.search(rf"\b{name}\(", source), (
             f"context.codon still calls {name}, which folds an empty side into a price of 0"
         )
@@ -35,9 +35,9 @@ def test_the_context_imports_the_optional_accessors_and_not_the_raw_ones() -> No
 def test_the_quote_accessors_are_optional_and_answer_none_on_a_clear_flag() -> None:
     source = CONTEXT.read_text()
     for method, c_name in (
-        ("best_bid", "flox_best_bid_raw_opt"),
-        ("best_ask", "flox_best_ask_raw_opt"),
-        ("mid_price", "flox_mid_price_raw_opt"),
+        ("best_bid", "lrvx_best_bid_raw_opt"),
+        ("best_ask", "lrvx_best_ask_raw_opt"),
+        ("mid_price", "lrvx_mid_price_raw_opt"),
     ):
         body = re.search(
             rf"    def {method}\(self\) -> Optional\[float\]:\n(.*?)(?=\n    def )", source, re.S

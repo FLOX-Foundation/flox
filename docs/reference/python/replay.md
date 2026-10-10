@@ -1,13 +1,13 @@
 # Replay
 
-Read, write, and record market data in Flox binary format. Supports LZ4 compression, time-range filtering, and symbol filtering.
+Read, write, and record market data in lrvx binary format. Supports LZ4 compression, time-range filtering, and symbol filtering.
 
 ## inspect()
 
 Quick summary of a data directory without loading all data.
 
 ```python
-info = flox.inspect(data_dir="./data")
+info = lrvx.inspect(data_dir="./data")
 print(f"Events: {info['total_events']}, Duration: {info['duration_seconds']:.0f}s")
 ```
 
@@ -30,7 +30,7 @@ print(f"Events: {info['total_events']}, Duration: {info['duration_seconds']:.0f}
 Read trades and book updates from binary log files.
 
 ```python
-reader = flox.DataReader(
+reader = lrvx.DataReader(
     data_dir="./data",
     from_ns=None,             # start timestamp filter
     to_ns=None,               # end timestamp filter
@@ -39,7 +39,7 @@ reader = flox.DataReader(
 )
 ```
 
-`reorder_window_ns` controls the bounded reorder buffer used by `run()` and `streamForEach` on segments without the `Sorted` flag. Events arriving more than `reorder_window_ns` past the watermark raise `FloxError(code="E_DATA_002")`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#out-of-order-tapes-and-the-reorder-buffer) for details.
+`reorder_window_ns` controls the bounded reorder buffer used by `run()` and `streamForEach` on segments without the `Sorted` flag. Events arriving more than `reorder_window_ns` past the watermark raise `LrvxError(code="E_DATA_002")`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#out-of-order-tapes-and-the-reorder-buffer) for details.
 
 ### Methods
 
@@ -273,7 +273,7 @@ Mixed scales: `mark_price_raw`, `index_price_raw`, `underlying_price_raw`,
 Write trade data to binary log files.
 
 ```python
-writer = flox.DataWriter(
+writer = lrvx.DataWriter(
     output_dir="./output",
     max_segment_mb=256,
     exchange_id=0,
@@ -378,12 +378,12 @@ Path of the current segment being written.
 
 ## BinaryLogRecorderHook
 
-Built-in `.floxlog` recorder. Plug into a `Runner` via
+Built-in `.lrvx` recorder. Plug into a `Runner` via
 `runner.set_market_data_recorder(hook)`. Lifecycle is driven by the
 engine; both trades and book updates are captured.
 
 ```python
-hook = flox.BinaryLogRecorderHook(
+hook = lrvx.BinaryLogRecorderHook(
     "./recordings",
     max_segment_mb=256,
     exchange_id=0,

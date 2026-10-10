@@ -6,11 +6,11 @@ The fix under test spans five pieces:
   * CurlTransport performs REST requests off the calling thread, with
     millisecond timeouts and NOSIGNAL, through a bounded handoff queue whose
     overflow answers onError (connectors/src/net/curl_transport.cpp,
-    connectors/include/flox-connectors/net/curl_transport.h);
+    connectors/include/lrvx-connectors/net/curl_transport.h);
   * ActiveRateLimitPolicy::gate(orderId, action, onRejected) replaces
     tryAcquire: a token sends inline, REJECT/CALLBACK answer onRejected, and
     WAIT defers onto the policy's own sender thread, re-checking the bucket
-    after every sleep (connectors/include/flox-connectors/execution/executor_policies.h);
+    after every sleep (connectors/include/lrvx-connectors/execution/executor_policies.h);
   * every send path of the Hyperliquid and Bitget executors goes through that
     gate, and a refusal is published as REJECTED_RATE_LIMIT;
   * Bitget formats trigger and limit prices at the instrument's own precision
@@ -53,8 +53,8 @@ Usage:
 The build directory is expected to be configured already:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-          -DFLOX_BUILD_CONNECTORS=ON -DFLOX_BUILD_TESTS=ON \\
-          -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DFLOX_NATIVE=OFF
+          -DLRVX_BUILD_CONNECTORS=ON -DLRVX_BUILD_TESTS=ON \\
+          -DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DLRVX_NATIVE=OFF
 
 The timing binaries (unit_test_curl_transport_timeout,
 unit_test_rate_limit_wait_policy) bind loopback listeners and assert on
@@ -83,12 +83,12 @@ BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 240
 
 TRANSPORT_CPP = "connectors/src/net/curl_transport.cpp"
-TRANSPORT_H = "connectors/include/flox-connectors/net/curl_transport.h"
-POLICIES_H = "connectors/include/flox-connectors/execution/executor_policies.h"
+TRANSPORT_H = "connectors/include/lrvx-connectors/net/curl_transport.h"
+POLICIES_H = "connectors/include/lrvx-connectors/execution/executor_policies.h"
 HL_CPP = "connectors/src/hyperliquid/hyperliquid_order_executor.cpp"
 BITGET_CPP = "connectors/src/bitget/bitget_order_executor.cpp"
 BYBIT_CONNECTOR_CPP = "connectors/src/bybit/bybit_exchange_connector.cpp"
-DECIMAL_H = "include/flox/util/base/decimal.h"
+DECIMAL_H = "include/lrvx/util/base/decimal.h"
 
 # The six acceptance binaries, plus the two the Decimal::toString change is
 # answerable to.
@@ -103,7 +103,7 @@ DECIMAL_T = "test_decimal"
 
 ACCEPTANCE = [CURL_T, WAIT_T, BITGET_RL_T, HL_RL_T, BITGET_PRICE_T, BYBIT_EXPIRY_T]
 
-# Every offline connector binary links flox-connectors, so every one of them
+# Every offline connector binary links lrvx-connectors, so every one of them
 # links the changed executors, the transport and the limiter. The sweep runs
 # all of them plus the two Decimal binaries.
 SWEEP = ACCEPTANCE + [
@@ -131,7 +131,7 @@ SWEEP = ACCEPTANCE + [
 # Object files are deleted by dependency, but only inside the target
 # directories the upcoming build will actually repopulate, so the tree is
 # never left with objects nobody is going to rebuild.
-LIB_TARGET_DIRS = ["flox.dir", "flox-connectors.dir"]
+LIB_TARGET_DIRS = ["lrvx.dir", "lrvx-connectors.dir"]
 
 
 @dataclass
@@ -419,9 +419,9 @@ MUTATIONS: list[Mutation] = [
         binary=WAIT_T,
         test="RateLimitWaitPolicy.DeferralQueueIsBoundedAndOverflowIsRefused",
         file=POLICIES_H,
-        old="        FLOX_LOG_WARN(\"[RateLimit] Deferral queue full, rejecting orderId=\" << orderId);\n"
+        old="        LRVX_LOG_WARN(\"[RateLimit] Deferral queue full, rejecting orderId=\" << orderId);\n"
             "        onRejected();\n        return;",
-        new="        FLOX_LOG_WARN(\"[RateLimit] Deferral queue full, dropping orderId=\" << orderId);\n"
+        new="        LRVX_LOG_WARN(\"[RateLimit] Deferral queue full, dropping orderId=\" << orderId);\n"
             "        return;",
     ),
     Mutation(
@@ -535,7 +535,7 @@ MUTATIONS: list[Mutation] = [
         test="HyperliquidRateLimitReject.RejectedCancelIsReported",
         file=HL_CPP,
         old="  auto target = _orderTracker->get(localId);\n  if (!target)\n  {\n"
-            "    FLOX_LOG_ERROR(\"[HL] cancelOrder: no orderState for localId \" << localId);\n"
+            "    LRVX_LOG_ERROR(\"[HL] cancelOrder: no orderState for localId \" << localId);\n"
             "    return;\n  }\n\n  Order local = target->localOrder;",
         new="  // BUG: the rejection is built before the tracker entry is resolved.\n"
             "  Order local;\n  local.id = localId;",
@@ -586,7 +586,7 @@ MUTATIONS: list[Mutation] = [
         file=BITGET_CPP,
         old="  _policies.rateLimit.gate(\n      kNoOrderId,\n      [this, symbol, leverage]\n      {\n"
             "        sendSetLeverage(symbol, leverage);\n      },\n      [symbol]\n      {\n"
-            "        FLOX_LOG_WARN(\"[BitgetOE] setLeverage for \" << symbol\n"
+            "        LRVX_LOG_WARN(\"[BitgetOE] setLeverage for \" << symbol\n"
             "                                                    << \" refused by the client-side rate limit\");\n"
             "      });",
         new="  sendSetLeverage(symbol, leverage);",
@@ -629,7 +629,7 @@ MUTATIONS: list[Mutation] = [
             "      [this, symbol, exchangeOrderId, newTriggerPrice, qty]\n      {\n"
             "        sendModifyPosTpsl(symbol, exchangeOrderId, newTriggerPrice, qty);\n      },\n"
             "      [exchangeOrderId]\n      {\n"
-            "        FLOX_LOG_WARN(\"[BitgetOE] modifyPosTpsl for \"\n"
+            "        LRVX_LOG_WARN(\"[BitgetOE] modifyPosTpsl for \"\n"
             "                      << exchangeOrderId\n"
             "                      << \" refused by the client-side rate limit: the stop \"\n"
             "                         \"stays where the venue last accepted it\");\n      });",
@@ -1228,8 +1228,8 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            "-DFLOX_BUILD_CONNECTORS=ON -DFLOX_BUILD_TESTS=ON "
-            "-DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DFLOX_NATIVE=OFF"
+            "-DLRVX_BUILD_CONNECTORS=ON -DLRVX_BUILD_TESTS=ON "
+            "-DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DLRVX_NATIVE=OFF"
         )
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]

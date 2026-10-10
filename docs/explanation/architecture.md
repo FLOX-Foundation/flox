@@ -1,6 +1,6 @@
 # Architecture Overview
 
-How FLOX components fit together. The diagrams below describe the runtime engine — the same architecture you get from every binding (Python, Node.js, Codon, C++). Bindings are thin wrappers; the engine layout is identical.
+How lrvx components fit together. The diagrams below describe the runtime engine — the same architecture you get from every binding (Python, Node.js, Codon, C++). Bindings are thin wrappers; the engine layout is identical.
 
 ## System Layers
 
@@ -156,7 +156,7 @@ public:
 Connectors:
 
 - Parse exchange-specific wire protocols
-- Convert to FLOX event types
+- Convert to lrvx event types
 - Publish to event buses
 - Run their own network threads
 
@@ -223,7 +223,7 @@ Benefits:
 
 ## Type System
 
-FLOX uses strong types to prevent unit confusion:
+lrvx uses strong types to prevent unit confusion:
 
 | Type | Underlying | Purpose |
 |------|------------|---------|
@@ -266,7 +266,7 @@ flowchart TB
 
 ## CPU Affinity (Optional)
 
-With `FLOX_ENABLE_CPU_AFFINITY=ON`:
+With `LRVX_ENABLE_CPU_AFFINITY=ON`:
 
 `EventBus` is a class template, so `ComponentType` is reached through
 a concrete alias — `BookUpdateBus`, `TradeBus`, `OrderExecutionBus`:
@@ -276,7 +276,7 @@ bus.setupOptimalConfiguration(BookUpdateBus::ComponentType::MARKET_DATA);
 ```
 
 `setupOptimalConfiguration` is only compiled when
-`FLOX_CPU_AFFINITY_ENABLED` is set; the convenience wrappers in
+`LRVX_CPU_AFFINITY_ENABLED` is set; the convenience wrappers in
 `book_update_bus.h` (`createOptimalBookUpdateBus`,
 `configureBookUpdateBusForPerformance`) compile to a no-op otherwise.
 `ComponentType` values: `MARKET_DATA`, `EXECUTION`, `STRATEGY`,
@@ -296,7 +296,7 @@ Backtesting reuses the same `Engine`, the same buses, and the same strategy clas
 
 ```mermaid
 flowchart LR
-    DATA[Tape / CSV / floxlog] --> EXE
+    DATA[Tape / CSV / lrvx] --> EXE
     subgraph stack["VenueStack (one call)"]
         EXE[SimulatedExecutor]
         ACC[Cross-margin Account]
@@ -314,7 +314,7 @@ flowchart LR
     EXE --> AVAIL
 ```
 
-`flox.VenueStack.binance_um_futures(...)` (and the other factories) wires the whole stack in one call. The strategy class doesn't know the difference between this and a live exchange. See [Realistic backtest in one call](../how-to/realistic-backtest.md) and [Cross-margin accounts](../how-to/cross-margin.md).
+`lrvx.VenueStack.binance_um_futures(...)` (and the other factories) wires the whole stack in one call. The strategy class doesn't know the difference between this and a live exchange. See [Realistic backtest in one call](../how-to/realistic-backtest.md) and [Cross-margin accounts](../how-to/cross-margin.md).
 
 The bare `BacktestRunner` skips everything except a flat fee — useful for indicator sanity checks, not for capital decisions.
 
@@ -331,15 +331,15 @@ flowchart LR
     BR -->|live| CCXT[CcxtBroker<br/>ccxt.pro -> exchange]
 ```
 
-`PaperBroker` runs the same `SimulatedExecutor` used in the realistic backtest, but on a live feed. `CcxtBroker` routes the same signals through a real exchange. Switching execution paths is a constructor change, not a code rewrite. See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+`PaperBroker` runs the same `SimulatedExecutor` used in the realistic backtest, but on a live feed. `CcxtBroker` routes the same signals through a real exchange. Switching execution paths is a constructor change, not a code rewrite. See [Paper trading](../how-to/paper-trading.md) and [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md).
 
 ## MCP control plane
 
-FLOX ships an MCP server that exposes the engine to AI agents under scoped tokens. Read tokens see strategy state, decision logs, and event history. Paper tokens can also place orders against a `PaperBroker`. Live tokens can route real orders, but each one passes through an out-of-band approval step and is written to the audit log.
+lrvx ships an MCP server that exposes the engine to AI agents under scoped tokens. Read tokens see strategy state, decision logs, and event history. Paper tokens can also place orders against a `PaperBroker`. Live tokens can route real orders, but each one passes through an out-of-band approval step and is written to the audit log.
 
 ```mermaid
 flowchart LR
-    AI[AI agent] -->|MCP, scoped token| SRV[FLOX MCP server]
+    AI[AI agent] -->|MCP, scoped token| SRV[lrvx MCP server]
     SRV -->|read| STATE[Strategy state<br/>decisions, events]
     SRV -->|paper / live| BR{Broker}
     SRV -->|live order| OOB[Out-of-band approval]

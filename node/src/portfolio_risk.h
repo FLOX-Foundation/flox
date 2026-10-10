@@ -1,6 +1,6 @@
 // node/src/portfolio_risk.h -- Portfolio risk aggregator wrap.
 //
-// Wraps a FloxPortfolioRiskHandle through the C ABI. The constructor
+// Wraps a LrvxPortfolioRiskHandle through the C ABI. The constructor
 // takes a rules object plus optional initialEquity. update() takes
 // (name, fields) where fields is a partial object — present keys
 // drive the C ABI field_mask. Returns a JS object matching the
@@ -11,13 +11,13 @@
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 namespace detail_pr
@@ -38,7 +38,7 @@ inline void readOptDouble(const Napi::Object& opts, const char* key,
   }
 }
 
-inline Napi::Object breachToJs(Napi::Env env, const FloxBreach& b)
+inline Napi::Object breachToJs(Napi::Env env, const LrvxBreach& b)
 {
   Napi::Object o = Napi::Object::New(env);
   o.Set("rule", Napi::String::New(env, b.rule ? b.rule : ""));
@@ -71,7 +71,7 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
   PortfolioRiskWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<PortfolioRiskWrap>(info)
   {
-    FloxPortfolioRiskRules rules{};
+    LrvxPortfolioRiskRules rules{};
     double initial_equity = 0.0;
     if (info.Length() > 0 && info[0].IsObject())
     {
@@ -93,7 +93,7 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
         initial_equity = opts.Get("initialEquity").As<Napi::Number>().DoubleValue();
       }
     }
-    _h = flox_portfolio_risk_create(&rules, initial_equity);
+    _h = lrvx_portfolio_risk_create(&rules, initial_equity);
     if (!_h)
     {
       auto err = Napi::Error::New(
@@ -101,7 +101,7 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
           "PortfolioRiskAggregator: failed to construct. A maxDrawdownPct rule "
           "needs a positive initialEquity to measure against.");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
-      err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
+      err.Value().Set("name", Napi::String::New(info.Env(), "LrvxError"));
       throw err;
     }
   }
@@ -109,7 +109,7 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
   {
     if (_h)
     {
-      flox_portfolio_risk_destroy(_h);
+      lrvx_portfolio_risk_destroy(_h);
     }
   }
 
@@ -122,7 +122,7 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
     }
     std::string name = info[0].As<Napi::String>().Utf8Value();
     auto fields = info[1].As<Napi::Object>();
-    FloxStrategyAccountFields f{};
+    LrvxStrategyAccountFields f{};
     uint8_t mask = 0;
     auto putDouble = [&](const char* js_key, uint8_t bit, double& out)
     {
@@ -146,18 +146,18 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
     putDouble("grossExposure", 1u << 3, f.gross_exposure);
     putDouble("netExposure", 1u << 4, f.net_exposure);
     putUint64("tradeCount", 1u << 5, f.trade_count);
-    flox_portfolio_risk_update(_h, name.c_str(), &f, mask);
+    lrvx_portfolio_risk_update(_h, name.c_str(), &f, mask);
   }
 
   void Remove(const Napi::CallbackInfo& info)
   {
     std::string name = info[0].As<Napi::String>().Utf8Value();
-    flox_portfolio_risk_remove(_h, name.c_str());
+    lrvx_portfolio_risk_remove(_h, name.c_str());
   }
 
   void ResetKillSwitch(const Napi::CallbackInfo&)
   {
-    flox_portfolio_risk_reset_kill_switch(_h);
+    lrvx_portfolio_risk_reset_kill_switch(_h);
   }
 
   Napi::Value CheckOrder(const Napi::CallbackInfo& info)
@@ -165,8 +165,8 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
     std::string strategy = info[0].As<Napi::String>().Utf8Value();
     double notional = info[1].As<Napi::Number>().DoubleValue();
     std::string side = info[2].As<Napi::String>().Utf8Value();
-    FloxBreach b{};
-    if (!flox_portfolio_risk_check_order(_h, strategy.c_str(), notional,
+    LrvxBreach b{};
+    if (!lrvx_portfolio_risk_check_order(_h, strategy.c_str(), notional,
                                          side.c_str(), &b))
     {
       return info.Env().Null();
@@ -178,55 +178,55 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
   {
     auto env = info.Env();
     Napi::Object out = Napi::Object::New(env);
-    out.Set("totalDailyPnl", Napi::Number::New(env, flox_portfolio_risk_total_daily_pnl(_h)));
+    out.Set("totalDailyPnl", Napi::Number::New(env, lrvx_portfolio_risk_total_daily_pnl(_h)));
     out.Set("totalGrossExposure",
-            Napi::Number::New(env, flox_portfolio_risk_total_gross_exposure(_h)));
+            Napi::Number::New(env, lrvx_portfolio_risk_total_gross_exposure(_h)));
     out.Set("currentEquity",
-            Napi::Number::New(env, flox_portfolio_risk_current_equity(_h)));
+            Napi::Number::New(env, lrvx_portfolio_risk_current_equity(_h)));
     out.Set("drawdownPct",
-            Napi::Number::New(env, flox_portfolio_risk_drawdown_pct(_h)));
+            Napi::Number::New(env, lrvx_portfolio_risk_drawdown_pct(_h)));
     out.Set("killSwitchActive",
-            Napi::Boolean::New(env, flox_portfolio_risk_kill_switch_active(_h) != 0));
+            Napi::Boolean::New(env, lrvx_portfolio_risk_kill_switch_active(_h) != 0));
 
-    const uint64_t bn = flox_portfolio_risk_breach_count(_h);
+    const uint64_t bn = lrvx_portfolio_risk_breach_count(_h);
     Napi::Array breaches = Napi::Array::New(env, static_cast<size_t>(bn));
     for (uint64_t i = 0; i < bn; ++i)
     {
-      FloxBreach b{};
-      if (flox_portfolio_risk_breach_at(_h, i, &b))
+      LrvxBreach b{};
+      if (lrvx_portfolio_risk_breach_at(_h, i, &b))
       {
         breaches.Set(static_cast<uint32_t>(i), detail_pr::breachToJs(env, b));
       }
     }
     out.Set("breaches", breaches);
     out.Set("accountCount",
-            Napi::Number::New(env, static_cast<double>(flox_portfolio_risk_account_count(_h))));
+            Napi::Number::New(env, static_cast<double>(lrvx_portfolio_risk_account_count(_h))));
     return out;
   }
 
   Napi::Value TotalDailyPnl(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_portfolio_risk_total_daily_pnl(_h));
+    return Napi::Number::New(info.Env(), lrvx_portfolio_risk_total_daily_pnl(_h));
   }
   Napi::Value TotalGrossExposure(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_portfolio_risk_total_gross_exposure(_h));
+    return Napi::Number::New(info.Env(), lrvx_portfolio_risk_total_gross_exposure(_h));
   }
   Napi::Value CurrentEquity(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_portfolio_risk_current_equity(_h));
+    return Napi::Number::New(info.Env(), lrvx_portfolio_risk_current_equity(_h));
   }
   Napi::Value DrawdownPct(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_portfolio_risk_drawdown_pct(_h));
+    return Napi::Number::New(info.Env(), lrvx_portfolio_risk_drawdown_pct(_h));
   }
   Napi::Value KillSwitchActive(const Napi::CallbackInfo& info)
   {
     return Napi::Boolean::New(info.Env(),
-                              flox_portfolio_risk_kill_switch_active(_h) != 0);
+                              lrvx_portfolio_risk_kill_switch_active(_h) != 0);
   }
 
-  FloxPortfolioRiskHandle _h{nullptr};
+  LrvxPortfolioRiskHandle _h{nullptr};
 };
 
 inline void registerPortfolioRisk(Napi::Env env, Napi::Object exports)
@@ -234,4 +234,4 @@ inline void registerPortfolioRisk(Napi::Env env, Napi::Object exports)
   exports.Set("PortfolioRiskAggregator", PortfolioRiskWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

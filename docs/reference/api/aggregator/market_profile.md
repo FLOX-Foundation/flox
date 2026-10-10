@@ -5,7 +5,7 @@ Market Profile tracks price activity across time periods using TPO (Time Price O
 ## Overview
 
 ```cpp
-#include "flox/aggregator/custom/market_profile.h"
+#include "lrvx/aggregator/custom/market_profile.h"
 
 MarketProfile<256, 26> profile;  // 256 price levels, 26 periods (A-Z)
 profile.setTickSize(Price::fromDouble(1.0));

@@ -12,9 +12,9 @@
 
 #include <string>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
@@ -86,13 +86,13 @@ class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
         info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
     const double equity =
         info.Length() > 2 ? info[2].As<Napi::Number>().DoubleValue() : 0.0;
-    _h = flox_venue_stack_create(venueCode, accountId, equity);
+    _h = lrvx_venue_stack_create(venueCode, accountId, equity);
   }
   ~VenueStackWrap()
   {
     if (_h)
     {
-      flox_venue_stack_destroy(_h);
+      lrvx_venue_stack_destroy(_h);
     }
   }
 
@@ -163,67 +163,67 @@ class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
 
   Napi::Value VenueName(const Napi::CallbackInfo& info)
   {
-    const char* name = flox_venue_stack_venue_name(_h);
+    const char* name = lrvx_venue_stack_venue_name(_h);
     return Napi::String::New(info.Env(), name ? name : "");
   }
-  FloxAccountHandle acct() { return flox_venue_stack_account(_h); }
-  FloxLiquidationEngineHandle liq() { return flox_venue_stack_liquidation(_h); }
-  FloxFeeScheduleHandle fees() { return flox_venue_stack_fees(_h); }
+  LrvxAccountHandle acct() { return lrvx_venue_stack_account(_h); }
+  LrvxLiquidationEngineHandle liq() { return lrvx_venue_stack_liquidation(_h); }
+  LrvxFeeScheduleHandle fees() { return lrvx_venue_stack_fees(_h); }
 
   Napi::Value AccountId(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(flox_account_id(acct())));
+                             static_cast<double>(lrvx_account_id(acct())));
   }
   Napi::Value AccountEquity(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_account_equity(acct()));
+    return Napi::Number::New(info.Env(), lrvx_account_equity(acct()));
   }
   void AccountSetEquity(const Napi::CallbackInfo& info)
   {
-    flox_account_set_equity(acct(), info[0].As<Napi::Number>().DoubleValue());
+    lrvx_account_set_equity(acct(), info[0].As<Napi::Number>().DoubleValue());
   }
   void AccountAddEquity(const Napi::CallbackInfo& info)
   {
-    flox_account_add_equity(acct(), info[0].As<Napi::Number>().DoubleValue());
+    lrvx_account_add_equity(acct(), info[0].As<Napi::Number>().DoubleValue());
   }
   void AccountOpenPosition(const Napi::CallbackInfo& info)
   {
-    flox_account_open_position(acct(), info[0].As<Napi::Number>().Uint32Value(),
+    lrvx_account_open_position(acct(), info[0].As<Napi::Number>().Uint32Value(),
                                info[1].As<Napi::Number>().DoubleValue(),
                                info[2].As<Napi::Number>().DoubleValue());
   }
   void AccountClosePosition(const Napi::CallbackInfo& info)
   {
-    flox_account_close_position(acct(),
+    lrvx_account_close_position(acct(),
                                 info[0].As<Napi::Number>().Uint32Value());
   }
   Napi::Value AccountPositionCount(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_account_position_count(acct()));
+    return Napi::Number::New(info.Env(), lrvx_account_position_count(acct()));
   }
   void AccountSetMark(const Napi::CallbackInfo& info)
   {
-    flox_account_set_mark(acct(), info[0].As<Napi::Number>().Uint32Value(),
+    lrvx_account_set_mark(acct(), info[0].As<Napi::Number>().Uint32Value(),
                           info[1].As<Napi::Number>().DoubleValue());
   }
   Napi::Value AccountTotalNotional(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_account_total_notional(acct()));
+    return Napi::Number::New(info.Env(), lrvx_account_total_notional(acct()));
   }
   Napi::Value AccountTotalUnrealisedPnl(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_account_total_unrealised_pnl(acct()));
+                             lrvx_account_total_unrealised_pnl(acct()));
   }
   Napi::Value AccountRollingNotional30d(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_account_rolling_notional_30d(acct()));
+                             lrvx_account_rolling_notional_30d(acct()));
   }
   Napi::Value LiquidationOnMark(const Napi::CallbackInfo& info)
   {
-    const uint32_t n = flox_liquidation_engine_on_mark(
+    const uint32_t n = lrvx_liquidation_engine_on_mark(
         liq(), info[0].As<Napi::Number>().Uint32Value(),
         info[1].As<Napi::Number>().DoubleValue());
     return Napi::Number::New(info.Env(), n);
@@ -232,33 +232,33 @@ class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
   {
     return Napi::Number::New(
         info.Env(),
-        static_cast<double>(flox_liquidation_engine_liquidations_count(liq())));
+        static_cast<double>(lrvx_liquidation_engine_liquidations_count(liq())));
   }
   Napi::Value InsuranceFundBalance(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(
-        info.Env(), flox_liquidation_engine_insurance_fund_balance(liq()));
+        info.Env(), lrvx_liquidation_engine_insurance_fund_balance(liq()));
   }
   void FeesRecordFill(const Napi::CallbackInfo& info)
   {
-    flox_fee_schedule_record_fill(fees(), info[0].As<Napi::Number>().Int64Value(),
+    lrvx_fee_schedule_record_fill(fees(), info[0].As<Napi::Number>().Int64Value(),
                                   info[1].As<Napi::Number>().DoubleValue());
   }
   Napi::Value FeesCurrentTierIndex(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_fee_schedule_current_tier(fees()));
+    return Napi::Number::New(info.Env(), lrvx_fee_schedule_current_tier(fees()));
   }
   Napi::Value FeesFor(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(
         info.Env(),
-        flox_fee_schedule_fee_for(fees(),
+        lrvx_fee_schedule_fee_for(fees(),
                                   info[0].As<Napi::Number>().Int64Value(),
                                   info[1].As<Napi::Number>().DoubleValue(),
                                   info[2].As<Napi::Boolean>().Value() ? 1 : 0));
   }
 
-  FloxVenueStackHandle _h{nullptr};
+  LrvxVenueStackHandle _h{nullptr};
 };
 
 inline void registerVenueStack(Napi::Env env, Napi::Object exports)
@@ -266,4 +266,4 @@ inline void registerVenueStack(Napi::Env env, Napi::Object exports)
   exports.Set("VenueStack", VenueStackWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

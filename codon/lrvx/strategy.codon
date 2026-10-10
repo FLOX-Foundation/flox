@@ -1,0 +1,533 @@
+# lrvx/strategy.codon -- Strategy base class for Codon.
+# Mirrors C++ lrvx::Strategy. Override on_trade/on_book_update to implement logic.
+
+# The C ABI handshake runs when this module is imported: see
+# lrvx/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from lrvx.abi import check_abi_version
+
+from C import lrvx_strategy_create_p(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import lrvx_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
+from C import lrvx_strategy_destroy(cobj)
+from C import lrvx_emit_market_buy(cobj, u32, i64) -> u64
+from C import lrvx_emit_market_sell(cobj, u32, i64) -> u64
+from C import lrvx_emit_limit_buy(cobj, u32, i64, i64) -> u64
+from C import lrvx_emit_limit_sell(cobj, u32, i64, i64) -> u64
+from C import lrvx_emit_cancel(cobj, u64)
+from C import lrvx_emit_cancel_all(cobj, u32)
+from C import lrvx_emit_modify(cobj, u64, i64, i64)
+from C import lrvx_emit_stop_market(cobj, u32, u8, i64, i64) -> u64
+from C import lrvx_emit_stop_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import lrvx_emit_take_profit_market(cobj, u32, u8, i64, i64) -> u64
+from C import lrvx_emit_trailing_stop(cobj, u32, u8, i64, i64) -> u64
+from C import lrvx_emit_trailing_stop_percent(cobj, u32, u8, i32, i64) -> u64
+from C import lrvx_emit_take_profit_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import lrvx_emit_limit_buy_tif(cobj, u32, i64, i64, u8) -> u64
+from C import lrvx_emit_limit_sell_tif(cobj, u32, i64, i64, u8) -> u64
+from C import lrvx_emit_close_position(cobj, u32) -> u64
+from C import lrvx_position_raw(cobj, u32) -> i64
+from C import lrvx_get_order_status(cobj, u64) -> i32
+
+# Multi-TF alignment helpers. LrvxBar is written into a byte buffer the
+# caller allocates; see _lrvxbar_to_bardata for how it is read back.
+from C import lrvx_strategy_last_closed_bar(cobj, u32, u8, u64, cobj) -> u8
+from C import lrvx_strategy_last_n_closed_bars(cobj, u32, u8, u64, cobj, u32) -> u32
+from C import lrvx_strategy_get_bar_ring_capacity(cobj) -> u32
+from C import lrvx_strategy_set_bar_ring_capacity(cobj, u32)
+
+from lrvx.types import SCALE, Price, Quantity, TradeData, BarData, BUY, SELL
+from lrvx.types import TIF_GTC, TIF_IOC, TIF_FOK, TIF_POST_ONLY
+from lrvx.context import SymbolContext
+
+# LrvxBar's size and field offsets come from lrvx/layout.codon, generated
+# from the IDL spec and checked against offsetof by
+# tests/test_capi_event_layout.cpp.
+from lrvx.layout import _LRVXBAR_SIZE, _LRVXBAR_START_NS, _LRVXBAR_END_NS
+from lrvx.layout import _LRVXBAR_OPEN_RAW, _LRVXBAR_HIGH_RAW, _LRVXBAR_LOW_RAW
+from lrvx.layout import _LRVXBAR_CLOSE_RAW, _LRVXBAR_VOLUME_RAW
+from lrvx.layout import _LRVXBAR_BUY_VOLUME_RAW
+
+# LrvxStrategyCallbacks: nine function pointers plus user_data, 8 bytes each
+# on every 64-bit target this ships on. codon/lrvx/dispatch.codon fills it.
+_CALLBACKS_BYTES = 80
+
+# Room for an exchange or instrument name coming back from the registry.
+# The C entry point truncates to the length it is given rather than
+# overrunning, so this is a cap and not an assumption about the data.
+_SYMBOL_NAME_CAP = 128
+
+
+def _lrvxbar_to_bardata(buf: Ptr[byte], symbol: int, bar_type: int,
+                        bar_type_param: int, symbol_name: str = "") -> BarData:
+    start_ns = int(Ptr[i64](buf + _LRVXBAR_START_NS)[0])
+    end_ns = int(Ptr[i64](buf + _LRVXBAR_END_NS)[0])
+    o = int(Ptr[i64](buf + _LRVXBAR_OPEN_RAW)[0])
+    h = int(Ptr[i64](buf + _LRVXBAR_HIGH_RAW)[0])
+    l = int(Ptr[i64](buf + _LRVXBAR_LOW_RAW)[0])
+    c = int(Ptr[i64](buf + _LRVXBAR_CLOSE_RAW)[0])
+    v = int(Ptr[i64](buf + _LRVXBAR_VOLUME_RAW)[0])
+    bv = int(Ptr[i64](buf + _LRVXBAR_BUY_VOLUME_RAW)[0])
+    return BarData.from_raw(symbol, bar_type, bar_type_param,
+                            o, h, l, c, v, bv, start_ns, end_ns, 0,
+                            symbol_name)
+
+
+_TIF_MAP = {"gtc": TIF_GTC, "ioc": TIF_IOC, "fok": TIF_FOK, "post_only": TIF_POST_ONLY}
+_SIDE_MAP = {"buy": BUY, "sell": SELL}
+
+
+class Strategy:
+    """Base class for Codon strategies. Mirrors C++ lrvx::Strategy.
+
+    Override on_trade() and/or on_book_update() to implement strategy logic.
+    Use emit_* methods (raw) or the ergonomic wrappers
+    (market_buy, limit_sell, etc.) — both reach the same C ABI.
+    Use position() and ctx() to query state.
+
+    Codon compiles this to native code — no interpreter overhead.
+    """
+
+    _handle: cobj
+    _strategy_id: int
+    _symbols: List[int]
+    _symbol_names: List[str]
+    _symbol_map: Dict[str, int]
+    _reverse_map: Dict[int, str]
+    _callbacks_buf: Ptr[byte]
+    # Set only for the duration of the replace_callbacks call that installs
+    # the trampolines; see dispatch.bind_callbacks for why.
+    _suppress_start: bool
+
+    def __init__(self, symbols: List[int], strategy_id: int = 1,
+                 registry: cobj = cobj()):
+        """Construct a strategy bound to a registry. Without an attached
+        runner the handle is created but has no event source; pass it
+        into a Runner to drive trades / bars."""
+        self._symbols = symbols
+        self._symbol_names = list[str]()
+        self._symbol_map = dict[str, int]()
+        self._reverse_map = dict[int, str]()
+        # LrvxStrategyCallbacks is a 10-pointer struct on 64-bit
+        # (on_trade, on_book, on_bar, on_start, on_stop, on_fill,
+        # on_order_update, on_queue_position_change,
+        # on_market_position_change, user_data). Zero-initialise —
+        # overrides happen on the C++ side via the BridgeStrategy that
+        # the runner attaches to this handle.
+        self._strategy_id = strategy_id
+        self._suppress_start = False
+        self._callbacks_buf = Ptr[byte](_CALLBACKS_BYTES)
+        for i in range(_CALLBACKS_BYTES):
+            self._callbacks_buf[i] = byte(0)
+        if registry == cobj():
+            # No registry yet. Runner.add_strategy / BacktestRunner
+            # .set_strategy build the handle when the strategy is attached,
+            # through _rebuild_handle below -- the registry they were
+            # constructed with is the one to use.
+            self._handle = cobj()
+        else:
+            self._create_handle(registry)
+
+    def _create_handle(self, registry: cobj):
+        sym_buf = [u32(s) for s in self._symbols]
+        self._handle = lrvx_strategy_create_p(
+            u32(self._strategy_id), Ptr[u32](sym_buf.arr.ptr),
+            u32(len(self._symbols)), registry, cobj(self._callbacks_buf))
+        self._load_symbol_names(registry)
+
+    def _load_symbol_names(self, registry: cobj):
+        """Fill the symbol name maps from the registry.
+
+        _symbol_names, _symbol_map and _reverse_map were declared and left
+        empty, so _resolve("BTCUSDT") raised on every name and the
+        symbol_name on every TradeData and BarData came out blank. Nobody
+        saw it while the callbacks were dead; the first event that reached
+        a subclass would have.
+        """
+        if registry == cobj():
+            return
+        self._symbol_names = list[str]()
+        self._symbol_map = dict[str, int]()
+        self._reverse_map = dict[int, str]()
+        exch_buf = Ptr[byte](_SYMBOL_NAME_CAP)
+        name_buf = Ptr[byte](_SYMBOL_NAME_CAP)
+        for sym in self._symbols:
+            for i in range(_SYMBOL_NAME_CAP):
+                exch_buf[i] = byte(0)
+                name_buf[i] = byte(0)
+            ok = lrvx_registry_get_symbol_name(
+                registry, u32(sym), cobj(exch_buf), _SYMBOL_NAME_CAP,
+                cobj(name_buf), _SYMBOL_NAME_CAP)
+            name = str.from_ptr(cobj(name_buf)) if ok != u8(0) else ""
+            self._symbol_names.append(name)
+            if name != "":
+                self._symbol_map[name] = sym
+                self._reverse_map[sym] = name
+
+    def _rebuild_handle(self, registry: cobj):
+        """Create the handle for a strategy that was constructed without a
+        registry. Called when the strategy is attached to a runner."""
+        if self._handle != cobj():
+            return
+        if registry == cobj():
+            raise ValueError(
+                "lrvx: this strategy was constructed without a registry and "
+                "the runner it is being attached to has none either, so no "
+                "strategy handle can be created. Pass the registry to "
+                "Strategy.__init__ or to the runner.")
+        self._create_handle(registry)
+
+    # ------------------------------------------------------------------
+    # Overridable callbacks
+    # ------------------------------------------------------------------
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        """Called on each trade event. Override in subclass."""
+        pass
+
+    def on_book_update(self, ctx: SymbolContext):
+        """Called on each book update. Override in subclass."""
+        pass
+
+    def on_bar(self, ctx: SymbolContext, bar: BarData):
+        """Called on each closed bar. Override in subclass."""
+        pass
+
+    def on_start(self):
+        """Called when strategy starts. Override in subclass."""
+        pass
+
+    def on_stop(self):
+        """Called when strategy stops. Override in subclass."""
+        pass
+
+    def on_fill(self, ctx: SymbolContext, ev):
+        """Called on each fill (status PARTIALLY_FILLED or FILLED)
+        for orders this strategy emitted. `ev` carries `order_id`,
+        `side`, `fill_qty`, `fill_price`, `exchange_ts_ns`. Override
+        in subclass to react to your own fills."""
+        pass
+
+    def on_order_update(self, ctx: SymbolContext, ev):
+        """Called on every order-lifecycle status change for orders
+        this strategy emitted (NEW / ACCEPTED / CANCELED / REJECTED /
+        REPLACED / TRIGGERED / TRAILING_UPDATED). Includes fills
+        too — pick `on_fill` if you only want fills."""
+        pass
+
+    def on_queue_position_change(self, ctx: SymbolContext, ev):
+        """Resting limit order's queue position moved without any
+        other lifecycle transition. `ev.queue_ahead` and
+        `ev.queue_total` carry the current snapshot. Backtest only."""
+        pass
+
+    def on_market_position_change(self, ctx: SymbolContext, ev):
+        """Resting limit order's categorical market position
+        transitioned (best, behind_best, mid_spread, level_empty,
+        crossed). `ev.market_position` is the new state;
+        `ev.distance_to_best_ticks` is signed ticks from best on our
+        side. Backtest only."""
+        pass
+
+    # ------------------------------------------------------------------
+    # Signal emission -- same API as Python Strategy
+    # ------------------------------------------------------------------
+
+    def emit_market_buy(self, symbol: int, qty: float) -> int:
+        """Submit a market buy order. Returns order ID."""
+        return int(lrvx_emit_market_buy(
+            self._handle, u32(symbol),
+            Quantity.from_double(qty).raw()))
+
+    def emit_market_sell(self, symbol: int, qty: float) -> int:
+        """Submit a market sell order. Returns order ID."""
+        return int(lrvx_emit_market_sell(
+            self._handle, u32(symbol),
+            Quantity.from_double(qty).raw()))
+
+    def emit_limit_buy(self, symbol: int, price: float, qty: float) -> int:
+        """Submit a limit buy order. Returns order ID."""
+        return int(lrvx_emit_limit_buy(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_limit_sell(self, symbol: int, price: float, qty: float) -> int:
+        """Submit a limit sell order. Returns order ID."""
+        return int(lrvx_emit_limit_sell(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_cancel(self, order_id: int):
+        """Cancel an order by ID."""
+        lrvx_emit_cancel(self._handle, u64(order_id))
+
+    def emit_cancel_all(self, symbol: int):
+        """Cancel all orders for a symbol."""
+        lrvx_emit_cancel_all(self._handle, u32(symbol))
+
+    def emit_modify(self, order_id: int, new_price: float, new_qty: float):
+        """Modify an existing order."""
+        lrvx_emit_modify(
+            self._handle, u64(order_id),
+            Price.from_double(new_price).raw(),
+            Quantity.from_double(new_qty).raw())
+
+    def emit_stop_market(self, symbol: int, side: int, trigger: float,
+                         qty: float) -> int:
+        """Submit a stop market order. side: 0=BUY, 1=SELL."""
+        return int(lrvx_emit_stop_market(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_stop_limit(self, symbol: int, side: int, trigger: float,
+                        limit_price: float, qty: float) -> int:
+        """Submit a stop limit order. side: 0=BUY, 1=SELL."""
+        return int(lrvx_emit_stop_limit(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Price.from_double(limit_price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_take_profit_market(self, symbol: int, side: int, trigger: float,
+                                qty: float) -> int:
+        """Submit a take profit market order."""
+        return int(lrvx_emit_take_profit_market(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_take_profit_limit(self, symbol: int, side: int, trigger: float,
+                               limit_price: float, qty: float) -> int:
+        """Submit a take profit limit order."""
+        return int(lrvx_emit_take_profit_limit(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Price.from_double(limit_price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_trailing_stop(self, symbol: int, side: int, offset: float,
+                           qty: float) -> int:
+        """Submit a trailing stop order."""
+        return int(lrvx_emit_trailing_stop(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(offset).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_trailing_stop_percent(self, symbol: int, side: int,
+                                   callback_bps: int, qty: float) -> int:
+        """Submit a trailing stop with percentage callback (bps). 100 = 1%."""
+        return int(lrvx_emit_trailing_stop_percent(
+            self._handle, u32(symbol), u8(side),
+            i32(callback_bps),
+            Quantity.from_double(qty).raw()))
+
+    def emit_limit_buy_tif(self, symbol: int, price: float, qty: float,
+                           tif: int) -> int:
+        """Submit a limit buy with TimeInForce. tif: 0=GTC, 1=IOC, 2=FOK, 4=POST_ONLY."""
+        return int(lrvx_emit_limit_buy_tif(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw(),
+            u8(tif)))
+
+    def emit_limit_sell_tif(self, symbol: int, price: float, qty: float,
+                            tif: int) -> int:
+        """Submit a limit sell with TimeInForce."""
+        return int(lrvx_emit_limit_sell_tif(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw(),
+            u8(tif)))
+
+    def emit_close_position(self, symbol: int) -> int:
+        """Close entire position for a symbol (reduce-only market order)."""
+        return int(lrvx_emit_close_position(self._handle, u32(symbol)))
+
+    # ------------------------------------------------------------------
+    # Context queries
+    # ------------------------------------------------------------------
+
+    def position(self, symbol: Optional[int] = None) -> float:
+        """Current position quantity as float."""
+        sym = symbol if symbol is not None else self._symbols[0]
+        raw = lrvx_position_raw(self._handle, u32(sym))
+        return float(raw) / float(SCALE)
+
+    def ctx(self, symbol: Optional[int] = None) -> SymbolContext:
+        """Get SymbolContext for a symbol."""
+        sym = symbol if symbol is not None else self._symbols[0]
+        return SymbolContext(self._handle, u32(sym))
+
+    def get_order_status(self, order_id: int) -> int:
+        """Get order status. Returns -1 if not found."""
+        return int(lrvx_get_order_status(self._handle, u64(order_id)))
+
+    @property
+    def primary_symbol(self) -> int:
+        """First symbol in the subscription list."""
+        return self._symbols[0]
+
+    @property
+    def primary_symbol_name(self) -> str:
+        """First symbol name (string) if available."""
+        return self._symbol_names[0] if self._symbol_names else ""
+
+    # ------------------------------------------------------------------
+    # Ergonomic API: string symbols, kwargs, no emit_ prefix
+    # ------------------------------------------------------------------
+
+    def _resolve(self, symbol: Optional[str] = None) -> int:
+        """Resolve a string symbol name to numeric ID."""
+        if symbol is None:
+            return self._symbols[0]
+        if symbol in self._symbol_map:
+            return self._symbol_map[symbol]
+        raise ValueError(f"Unknown symbol: {symbol}")
+
+    def _reverse_lookup(self, symbol_id: int) -> str:
+        """Look up string name for a numeric symbol ID."""
+        if symbol_id in self._reverse_map:
+            return self._reverse_map[symbol_id]
+        return ""
+
+    def market_buy(self, qty: float, symbol: Optional[str] = None) -> int:
+        """Buy at market. Defaults to primary symbol."""
+        return self.emit_market_buy(self._resolve(symbol), qty)
+
+    def market_sell(self, qty: float, symbol: Optional[str] = None) -> int:
+        """Sell at market. Defaults to primary symbol."""
+        return self.emit_market_sell(self._resolve(symbol), qty)
+
+    def limit_buy(self, price: float, qty: float,
+                  symbol: Optional[str] = None, tif: str = "gtc") -> int:
+        """Place a limit buy. Defaults to primary symbol, GTC."""
+        return self.emit_limit_buy_tif(
+            self._resolve(symbol), price, qty, _TIF_MAP.get(tif, TIF_GTC))
+
+    def limit_sell(self, price: float, qty: float,
+                   symbol: Optional[str] = None, tif: str = "gtc") -> int:
+        """Place a limit sell. Defaults to primary symbol, GTC."""
+        return self.emit_limit_sell_tif(
+            self._resolve(symbol), price, qty, _TIF_MAP.get(tif, TIF_GTC))
+
+    def stop_market(self, side: str, trigger: float, qty: float,
+                    symbol: Optional[str] = None) -> int:
+        """Place a stop market order."""
+        return self.emit_stop_market(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), trigger, qty)
+
+    def stop_limit(self, side: str, trigger: float, limit_price: float,
+                   qty: float, symbol: Optional[str] = None) -> int:
+        """Place a stop limit order."""
+        return self.emit_stop_limit(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY),
+            trigger, limit_price, qty)
+
+    def take_profit_market(self, side: str, trigger: float, qty: float,
+                           symbol: Optional[str] = None) -> int:
+        """Place a take profit market order."""
+        return self.emit_take_profit_market(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), trigger, qty)
+
+    def take_profit_limit(self, side: str, trigger: float, limit_price: float,
+                          qty: float, symbol: Optional[str] = None) -> int:
+        """Place a take profit limit order."""
+        return self.emit_take_profit_limit(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY),
+            trigger, limit_price, qty)
+
+    def trailing_stop(self, side: str, offset: float, qty: float,
+                      symbol: Optional[str] = None) -> int:
+        """Place a trailing stop order."""
+        return self.emit_trailing_stop(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), offset, qty)
+
+    def trailing_stop_percent(self, side: str, callback_bps: int, qty: float,
+                              symbol: Optional[str] = None) -> int:
+        """Place a trailing stop with percentage callback."""
+        return self.emit_trailing_stop_percent(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), callback_bps, qty)
+
+    def close_position(self, symbol: Optional[str] = None) -> int:
+        """Close entire position for a symbol."""
+        return self.emit_close_position(self._resolve(symbol))
+
+    def cancel_order(self, order_id: int):
+        """Cancel an order by ID."""
+        self.emit_cancel(order_id)
+
+    def cancel_all_orders(self, symbol: Optional[str] = None):
+        """Cancel all orders for a symbol."""
+        self.emit_cancel_all(self._resolve(symbol))
+
+    def modify_order(self, order_id: int, new_price: float, new_qty: float):
+        """Modify an existing order."""
+        self.emit_modify(order_id, new_price, new_qty)
+
+    def pos(self, symbol: Optional[str] = None) -> float:
+        """Current position as float. Defaults to primary symbol."""
+        return self.position(self._resolve(symbol))
+
+    def last_price(self, symbol: Optional[str] = None) -> float:
+        """Last trade price. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).last_trade_price()
+
+    def best_bid(self, symbol: Optional[str] = None) -> Optional[float]:
+        """Best bid price, or None when the bid side is empty. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).best_bid()
+
+    def best_ask(self, symbol: Optional[str] = None) -> Optional[float]:
+        """Best ask price, or None when the ask side is empty. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).best_ask()
+
+    def mid_price(self, symbol: Optional[str] = None) -> Optional[float]:
+        """Mid price, or None unless both sides have a level. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).mid_price()
+
+    def order_status(self, order_id: int) -> int:
+        """Get order status. Returns -1 if not found."""
+        return self.get_order_status(order_id)
+
+    # ------------------------------------------------------------------
+    # Multi-TF alignment helpers
+    #
+    # Read the per-(symbol, bar_type, param) ring the engine populates as
+    # it dispatches BarEvents. `bar_type` is 0=Time, 1=Tick, 2=Volume,
+    # ...; `param` is interval-ns / count / threshold.
+    # ------------------------------------------------------------------
+
+    def last_closed_bar(self, symbol: int, bar_type: int, param: int) -> Optional[BarData]:
+        """Most recent closed bar for (symbol, bar_type, param), or None."""
+        buf = Ptr[byte](_LRVXBAR_SIZE)
+        ok = lrvx_strategy_last_closed_bar(
+            self._handle, u32(symbol), u8(bar_type), u64(param), buf)
+        if int(ok) == 0:
+            return None
+        return _lrvxbar_to_bardata(buf, symbol, bar_type, param,
+                                   self._reverse_lookup(symbol))
+
+    def last_n_closed_bars(self, symbol: int, bar_type: int, param: int,
+                           n: int) -> List[BarData]:
+        """Up to `n` most recent closed bars, oldest-first."""
+        if n <= 0:
+            return list[BarData]()
+        buf = Ptr[byte](_LRVXBAR_SIZE * n)
+        got = int(lrvx_strategy_last_n_closed_bars(
+            self._handle, u32(symbol), u8(bar_type), u64(param), buf, u32(n)))
+        out = list[BarData]()
+        for i in range(got):
+            out.append(_lrvxbar_to_bardata(
+                buf + i * _LRVXBAR_SIZE, symbol, bar_type, param,
+                self._reverse_lookup(symbol)))
+        return out
+
+    @property
+    def bar_ring_capacity(self) -> int:
+        """Maximum bars retained per (symbol, bar_type, param) tuple."""
+        return int(lrvx_strategy_get_bar_ring_capacity(self._handle))
+
+    def set_bar_ring_capacity(self, n: int):
+        """Resize the per-(symbol, bar_type, param) ring."""
+        lrvx_strategy_set_bar_ring_capacity(self._handle, u32(n))

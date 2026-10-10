@@ -11,7 +11,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 
@@ -40,7 +40,7 @@ check('aggregateTimeBars rejects a mismatched prices array', () => {
   const px = new Float64Array([100.0]); // too short
   const qty = new Float64Array([1.0, 1.0, 1.0]);
   const ib = new Uint8Array([1, 1, 1]);
-  assert.ok(throws(() => flox.aggregateTimeBars(ts, px, qty, ib, 1.0)));
+  assert.ok(throws(() => lrvx.aggregateTimeBars(ts, px, qty, ib, 1.0)));
 });
 
 check('aggregateTimeBars rejects a mismatched quantities array', () => {
@@ -48,7 +48,7 @@ check('aggregateTimeBars rejects a mismatched quantities array', () => {
   const px = new Float64Array([100.0, 101.0]);
   const qty = new Float64Array([1.0]); // too short
   const ib = new Uint8Array([1, 1]);
-  assert.ok(throws(() => flox.aggregateTimeBars(ts, px, qty, ib, 1.0)));
+  assert.ok(throws(() => lrvx.aggregateTimeBars(ts, px, qty, ib, 1.0)));
 });
 
 check('aggregateTimeBars rejects a mismatched isBuy array', () => {
@@ -56,7 +56,7 @@ check('aggregateTimeBars rejects a mismatched isBuy array', () => {
   const px = new Float64Array([100.0, 101.0]);
   const qty = new Float64Array([1.0, 1.0]);
   const ib = new Uint8Array([1]); // too short
-  assert.ok(throws(() => flox.aggregateTimeBars(ts, px, qty, ib, 1.0)));
+  assert.ok(throws(() => lrvx.aggregateTimeBars(ts, px, qty, ib, 1.0)));
 });
 
 check('aggregateTimeBars still works on matching-length arrays', () => {
@@ -71,7 +71,7 @@ check('aggregateTimeBars still works on matching-length arrays', () => {
     qty[i] = 1.0;
     ib[i] = 1;
   }
-  const bars = flox.aggregateTimeBars(ts, px, qty, ib, 1.0);
+  const bars = lrvx.aggregateTimeBars(ts, px, qty, ib, 1.0);
   // Not asserting an exact count here: the C-ABI aggregator's
   // last-bar-flush behavior is a separate, pre-existing concern from
   // the length check this test targets. What matters for THIS fix is
@@ -83,28 +83,28 @@ check('barReturns rejects a mismatched signalShort array', () => {
   const sl = new Int8Array(10).fill(1);
   const ss = new Int8Array(2); // too short
   const lr = new Float64Array(10);
-  assert.ok(throws(() => flox.barReturns(sl, ss, lr)));
+  assert.ok(throws(() => lrvx.barReturns(sl, ss, lr)));
 });
 
 check('barReturns rejects a mismatched logReturns array', () => {
   const sl = new Int8Array(10).fill(1);
   const ss = new Int8Array(10);
   const lr = new Float64Array(2); // too short
-  assert.ok(throws(() => flox.barReturns(sl, ss, lr)));
+  assert.ok(throws(() => lrvx.barReturns(sl, ss, lr)));
 });
 
 check('tradePnl rejects a mismatched signalShort array', () => {
   const sl = new Int8Array(10).fill(1);
   const ss = new Int8Array(3); // too short
   const lr = new Float64Array(10);
-  assert.ok(throws(() => flox.tradePnl(sl, ss, lr)));
+  assert.ok(throws(() => lrvx.tradePnl(sl, ss, lr)));
 });
 
 check('barReturns still works on matching-length arrays', () => {
   const sl = new Int8Array([0, 1, 1, 0, 0]);
   const ss = new Int8Array([0, 0, 0, 0, 1]);
   const lr = new Float64Array([0.0, 0.01, 0.02, -0.01, 0.03]);
-  const out = flox.barReturns(sl, ss, lr);
+  const out = lrvx.barReturns(sl, ss, lr);
   assert.strictEqual(out.length, 5);
 });
 

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "flox/engine/trading_calendar.h"
+#include "lrvx/engine/trading_calendar.h"
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

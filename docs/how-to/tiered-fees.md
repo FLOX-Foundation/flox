@@ -21,8 +21,8 @@ from the 30-day rolling sum on each lookup.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
-    const sched = new flox.FeeSchedule();
+    const lrvx = require('@lrvx/lrvx');
+    const sched = new lrvx.FeeSchedule();
     sched.loadProfile('binance_um_futures');
     sched.recordFill(tsNs, notional);
     const fee = sched.feeFor(tsNs, notional, /*isMaker=*/false);
@@ -31,7 +31,7 @@ from the 30-day rolling sum on each lookup.
 === "Codon"
 
     ```python
-    from flox.fee_schedule import FeeSchedule
+    from lrvx.fee_schedule import FeeSchedule
 
     s = FeeSchedule()
     s.load_profile("binance_um_futures")
@@ -42,16 +42,16 @@ from the 30-day rolling sum on each lookup.
 === "QuickJS"
 
     ```javascript
-    const h = __flox_fee_schedule_create();
-    __flox_fee_schedule_load_profile(h, "binance_um_futures");
-    __flox_fee_schedule_record_fill(h, tsNs, notional);
-    const fee = __flox_fee_schedule_fee_for(h, tsNs, notional, 0);
+    const h = __lrvx_fee_schedule_create();
+    __lrvx_fee_schedule_load_profile(h, "binance_um_futures");
+    __lrvx_fee_schedule_record_fill(h, tsNs, notional);
+    const fee = __lrvx_fee_schedule_fee_for(h, tsNs, notional, 0);
     ```
 
 === "C++"
 
     ```cpp
-    auto s = flox::FeeSchedule::binance_um_futures();
+    auto s = lrvx::FeeSchedule::binance_um_futures();
     s.recordFill(tsNs, notional);
     double fee = s.feeFor(tsNs, notional, /*isMaker=*/false);
     ```

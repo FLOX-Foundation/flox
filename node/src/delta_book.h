@@ -2,7 +2,7 @@
 //
 // Encode L2 snapshots as anchor snapshots plus deltas; replay the
 // stream back into reconstructed snapshots. Both classes wrap the
-// FloxDeltaBookEncoderHandle / FloxDeltaBookReplayerHandle through
+// LrvxDeltaBookEncoderHandle / LrvxDeltaBookReplayerHandle through
 // the C ABI and translate level arrays to / from JS objects.
 
 #pragma once
@@ -10,25 +10,25 @@
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <cstdint>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 namespace detail_db
 {
 
-inline std::vector<FloxBookLevel> readLevels(const Napi::Array& arr)
+inline std::vector<LrvxBookLevel> readLevels(const Napi::Array& arr)
 {
-  std::vector<FloxBookLevel> out;
+  std::vector<LrvxBookLevel> out;
   out.reserve(arr.Length());
   for (uint32_t i = 0; i < arr.Length(); ++i)
   {
     auto entry = arr.Get(i).As<Napi::Object>();
-    FloxBookLevel l{};
+    LrvxBookLevel l{};
     l.price_raw = entry.Get("priceRaw").As<Napi::Number>().Int64Value();
     l.quantity_raw = entry.Get("qtyRaw").As<Napi::Number>().Int64Value();
     out.push_back(l);
@@ -36,7 +36,7 @@ inline std::vector<FloxBookLevel> readLevels(const Napi::Array& arr)
   return out;
 }
 
-inline Napi::Array levelsToJs(Napi::Env env, const std::vector<FloxBookLevel>& levels)
+inline Napi::Array levelsToJs(Napi::Env env, const std::vector<LrvxBookLevel>& levels)
 {
   Napi::Array out = Napi::Array::New(env, levels.size());
   for (size_t i = 0; i < levels.size(); ++i)
@@ -74,12 +74,12 @@ class DeltaBookEncoderWrap : public Napi::ObjectWrap<DeltaBookEncoderWrap>
         anchor_every = opts.Get("anchorEvery").As<Napi::Number>().Uint32Value();
       }
     }
-    _h = flox_delta_book_encoder_create(anchor_every);
+    _h = lrvx_delta_book_encoder_create(anchor_every);
     if (!_h)
     {
       auto err = Napi::Error::New(info.Env(), "DeltaBookEncoder: construction failed");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
-      err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
+      err.Value().Set("name", Napi::String::New(info.Env(), "LrvxError"));
       throw err;
     }
   }
@@ -87,7 +87,7 @@ class DeltaBookEncoderWrap : public Napi::ObjectWrap<DeltaBookEncoderWrap>
   {
     if (_h)
     {
-      flox_delta_book_encoder_destroy(_h);
+      lrvx_delta_book_encoder_destroy(_h);
     }
   }
 
@@ -105,19 +105,19 @@ class DeltaBookEncoderWrap : public Napi::ObjectWrap<DeltaBookEncoderWrap>
     auto asks = detail_db::readLevels(info[2].As<Napi::Array>());
     uint8_t is_delta = 0;
     uint64_t bcnt = 0, acnt = 0;
-    flox_delta_book_encoder_encode(_h, sym,
+    lrvx_delta_book_encoder_encode(_h, sym,
                                    bids.empty() ? nullptr : bids.data(), bids.size(),
                                    asks.empty() ? nullptr : asks.data(), asks.size(),
                                    &is_delta, &bcnt, &acnt);
-    std::vector<FloxBookLevel> out_bids(bcnt);
-    std::vector<FloxBookLevel> out_asks(acnt);
+    std::vector<LrvxBookLevel> out_bids(bcnt);
+    std::vector<LrvxBookLevel> out_asks(acnt);
     if (bcnt > 0)
     {
-      flox_delta_book_encoder_copy_bids(_h, out_bids.data(), bcnt);
+      lrvx_delta_book_encoder_copy_bids(_h, out_bids.data(), bcnt);
     }
     if (acnt > 0)
     {
-      flox_delta_book_encoder_copy_asks(_h, out_asks.data(), acnt);
+      lrvx_delta_book_encoder_copy_asks(_h, out_asks.data(), acnt);
     }
     Napi::Object result = Napi::Object::New(env);
     result.Set("isDelta", Napi::Boolean::New(env, is_delta != 0));
@@ -128,15 +128,15 @@ class DeltaBookEncoderWrap : public Napi::ObjectWrap<DeltaBookEncoderWrap>
 
   void Reset(const Napi::CallbackInfo& info)
   {
-    flox_delta_book_encoder_reset(_h, info[0].As<Napi::Number>().Uint32Value());
+    lrvx_delta_book_encoder_reset(_h, info[0].As<Napi::Number>().Uint32Value());
   }
 
   void ResetAll(const Napi::CallbackInfo&)
   {
-    flox_delta_book_encoder_reset_all(_h);
+    lrvx_delta_book_encoder_reset_all(_h);
   }
 
-  FloxDeltaBookEncoderHandle _h{nullptr};
+  LrvxDeltaBookEncoderHandle _h{nullptr};
 };
 
 class DeltaBookReplayerWrap : public Napi::ObjectWrap<DeltaBookReplayerWrap>
@@ -153,13 +153,13 @@ class DeltaBookReplayerWrap : public Napi::ObjectWrap<DeltaBookReplayerWrap>
   DeltaBookReplayerWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<DeltaBookReplayerWrap>(info)
   {
-    _h = flox_delta_book_replayer_create();
+    _h = lrvx_delta_book_replayer_create();
   }
   ~DeltaBookReplayerWrap()
   {
     if (_h)
     {
-      flox_delta_book_replayer_destroy(_h);
+      lrvx_delta_book_replayer_destroy(_h);
     }
   }
 
@@ -177,19 +177,19 @@ class DeltaBookReplayerWrap : public Napi::ObjectWrap<DeltaBookReplayerWrap>
     auto bids = detail_db::readLevels(info[2].As<Napi::Array>());
     auto asks = detail_db::readLevels(info[3].As<Napi::Array>());
     uint64_t bcnt = 0, acnt = 0;
-    flox_delta_book_replayer_apply(_h, type, sym,
+    lrvx_delta_book_replayer_apply(_h, type, sym,
                                    bids.empty() ? nullptr : bids.data(), bids.size(),
                                    asks.empty() ? nullptr : asks.data(), asks.size(),
                                    &bcnt, &acnt);
-    std::vector<FloxBookLevel> out_bids(bcnt);
-    std::vector<FloxBookLevel> out_asks(acnt);
+    std::vector<LrvxBookLevel> out_bids(bcnt);
+    std::vector<LrvxBookLevel> out_asks(acnt);
     if (bcnt > 0)
     {
-      flox_delta_book_replayer_copy_bids(_h, out_bids.data(), bcnt);
+      lrvx_delta_book_replayer_copy_bids(_h, out_bids.data(), bcnt);
     }
     if (acnt > 0)
     {
-      flox_delta_book_replayer_copy_asks(_h, out_asks.data(), acnt);
+      lrvx_delta_book_replayer_copy_asks(_h, out_asks.data(), acnt);
     }
     Napi::Object result = Napi::Object::New(env);
     result.Set("bids", detail_db::levelsToJs(env, out_bids));
@@ -199,19 +199,19 @@ class DeltaBookReplayerWrap : public Napi::ObjectWrap<DeltaBookReplayerWrap>
 
   void Reset(const Napi::CallbackInfo& info)
   {
-    flox_delta_book_replayer_reset(_h, info[0].As<Napi::Number>().Uint32Value());
+    lrvx_delta_book_replayer_reset(_h, info[0].As<Napi::Number>().Uint32Value());
   }
 
   void ResetAll(const Napi::CallbackInfo&)
   {
     if (_h)
     {
-      flox_delta_book_replayer_destroy(_h);
-      _h = flox_delta_book_replayer_create();
+      lrvx_delta_book_replayer_destroy(_h);
+      _h = lrvx_delta_book_replayer_create();
     }
   }
 
-  FloxDeltaBookReplayerHandle _h{nullptr};
+  LrvxDeltaBookReplayerHandle _h{nullptr};
 };
 
 inline void registerDeltaBook(Napi::Env env, Napi::Object exports)
@@ -220,4 +220,4 @@ inline void registerDeltaBook(Napi::Env env, Napi::Object exports)
   exports.Set("DeltaBookReplayer", DeltaBookReplayerWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

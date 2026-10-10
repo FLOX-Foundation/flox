@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -15,7 +15,7 @@
  * Kept apart from the strictness suite so the two can be read for what they
  * are: that file is the specification, this one is the fence around it.
  */
-#include "flox-venue/fix_codec.h"
+#include "lrvx-venue/fix_codec.h"
 
 #include <gtest/gtest.h>
 
@@ -25,8 +25,8 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

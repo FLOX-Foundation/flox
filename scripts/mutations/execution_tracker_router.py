@@ -28,9 +28,9 @@ Usage:
 
 The build directories are expected to be configured already:
 
-    cmake -S . -B build         -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON
-    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release        -DFLOX_BUILD_TESTS=ON
-    cmake -S . -B build-tsan    -DCMAKE_BUILD_TYPE=Debug -DFLOX_BUILD_TESTS=ON \\
+    cmake -S . -B build         -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON
+    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release        -DLRVX_BUILD_TESTS=ON
+    cmake -S . -B build-tsan    -DCMAKE_BUILD_TYPE=Debug -DLRVX_BUILD_TESTS=ON \\
         -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \\
         -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
 """
@@ -58,10 +58,10 @@ BUILD_DIRS = {
     "build-tsan": REPO / "build-tsan",
 }
 
-RATE_LIMITER = "include/flox/util/rate_limiter.h"
-ORDER_TRACKER_H = "include/flox/execution/order_tracker.h"
+RATE_LIMITER = "include/lrvx/util/rate_limiter.h"
+ORDER_TRACKER_H = "include/lrvx/execution/order_tracker.h"
 ORDER_TRACKER_CPP = "src/execution/order_tracker.cpp"
-ORDER_ROUTER = "include/flox/execution/order_router.h"
+ORDER_ROUTER = "include/lrvx/execution/order_router.h"
 
 TSAN_OPTIONS = "halt_on_error=1:exitcode=66"
 
@@ -220,7 +220,7 @@ MUTATIONS: list[Mutation] = [
             old="""  auto& state = it->second;
   if (state.isTerminal())
   {
-    FLOX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
+    LRVX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
     return false;
   }""",
             new="""  auto& state = it->second;
@@ -228,7 +228,7 @@ MUTATIONS: list[Mutation] = [
       state.status == OrderEventStatus::REJECTED ||
       state.status == OrderEventStatus::EXPIRED)
   {
-    FLOX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
+    LRVX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
     return false;
   }""",
         )],
@@ -244,7 +244,7 @@ MUTATIONS: list[Mutation] = [
         edits=[Edit(
             old="""  if (!_orders.contains(order.id) && !makeRoomLocked())
   {
-    FLOX_LOG_ERROR("[OrderTracker] Refusing orderId=" << order.id << ": tracker full at "
+    LRVX_LOG_ERROR("[OrderTracker] Refusing orderId=" << order.id << ": tracker full at "
                                                       << _capacity << " live orders.");
     return false;
   }
@@ -305,13 +305,13 @@ MUTATIONS: list[Mutation] = [
   // makeRoomLocked() invalidates oldIt.
   if (!_orders.contains(newOrder.id) && !makeRoomLocked())
   {
-    FLOX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
+    LRVX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
                                                                    << _capacity << " live orders.");
     return false;
   }""",
             new="""  if (!_orders.contains(newOrder.id) && !makeRoomLocked())
   {
-    FLOX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
+    LRVX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
                                                                    << _capacity << " live orders.");
     return false;
   }

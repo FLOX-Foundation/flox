@@ -30,7 +30,7 @@
 
 const path = require('path');
 const { spawnSync } = require('child_process');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 const ADDON = path.join(__dirname, '..');
 let passed = 0;
@@ -74,15 +74,15 @@ function runChild(source, extraArgs = []) {
 }
 
 const PRELUDE = `
-const flox = require(${JSON.stringify(ADDON)});
-const reg = new flox.SymbolRegistry();
+const lrvx = require(${JSON.stringify(ADDON)});
+const reg = new lrvx.SymbolRegistry();
 const sym = Number(reg.addSymbol('bin', 'BTCUSDT', 0.01));
 `;
 
 console.log('=== a stopped threaded runner releases the event loop ===');
 if (underSanitizer) { skip('stopped runner releases the event loop'); } else {
   const r = runChild(PRELUDE + `
-const runner = new flox.Runner(reg, () => {}, true);
+const runner = new lrvx.Runner(reg, () => {}, true);
 runner.addStrategy({ symbols: [sym], onTrade() {} });
 runner.start();
 runner.onTrade(sym, 100, 1, true, 1000);
@@ -99,7 +99,7 @@ process.exitCode = 0;
 console.log('=== constructing a threaded runner holds nothing open ===');
 if (underSanitizer) { skip('bare construction holds nothing open'); } else {
   const r = runChild(PRELUDE + `
-const runner = new flox.Runner(reg, () => {}, true);
+const runner = new lrvx.Runner(reg, () => {}, true);
 void runner;
 console.log('END');
 process.exitCode = 0;
@@ -118,7 +118,7 @@ if (underSanitizer) { skip('abandoned runner with a queued backlog'); } else {
   const r = runChild(PRELUDE + `
 let seen = 0;
 (function () {
-  const runner = new flox.Runner(reg, () => {}, true);
+  const runner = new lrvx.Runner(reg, () => {}, true);
   runner.addStrategy({ symbols: [sym], onTrade() { seen++; } });
   runner.start();
   for (let i = 0; i < 20000; i++) runner.onTrade(sym, 100, 1, true, 1000 + i);
@@ -136,9 +136,9 @@ setTimeout(() => { console.log('END delivered=' + seen); process.exitCode = 0; }
 
 console.log('=== replaceStrategy on a running engine keeps delivering ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = Number(reg.addSymbol('bin', 'ETHUSDT', 0.01));
-  const runner = new flox.Runner(reg, () => {}, true);
+  const runner = new lrvx.Runner(reg, () => {}, true);
 
   const seen = [];
   const make = (label) => ({ symbols: [sym], onTrade() { seen.push(label); } });

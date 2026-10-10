@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/ops/manifest.h"
+#include "lrvx/replay/ops/manifest.h"
 
 #include <algorithm>
 #include <cstring>
 #include <fstream>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 std::optional<SegmentManifest> SegmentManifest::load(const std::filesystem::path& manifest_path)
@@ -218,7 +218,7 @@ bool SegmentManifest::isUpToDate() const
   // Check for new files
   for (const auto& entry : std::filesystem::directory_iterator(_data_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (isSegmentExtension(entry.path().extension().string()))
     {
       auto found = std::find_if(_segments.begin(), _segments.end(),
                                 [&entry](const SegmentInfo& s)
@@ -251,4 +251,4 @@ SegmentManifest getOrBuildManifest(const std::filesystem::path& data_dir)
   return SegmentManifest::buildAndSave(data_dir);
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

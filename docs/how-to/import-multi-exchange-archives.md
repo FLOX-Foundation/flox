@@ -1,16 +1,16 @@
 # Import multi-exchange public archives
 
-`flox_py.archives` collects the per-exchange importers under one namespace. Each submodule exposes the same two entry points and the matching CLI subcommand:
+`lrvx.archives` collects the per-exchange importers under one namespace. Each submodule exposes the same two entry points and the matching CLI subcommand:
 
 | Exchange | Module | Trade entry point | CLI |
 |---|---|---|---|
-| Binance | `flox_py.archives.binance` | `aggtrades_to_floxlog` | `flox archive binance ...` |
-| Bybit   | `flox_py.archives.bybit`   | `trades_to_floxlog`    | `flox archive bybit ...`   |
-| OKX     | `flox_py.archives.okx`     | `trades_to_floxlog`    | `flox archive okx ...`     |
-| Bitget  | `flox_py.archives.bitget`  | `trades_to_floxlog`    | `flox archive bitget ...`  |
-| Deribit | `flox_py.archives.deribit` | `trades_to_floxlog`    | `flox archive deribit ...` |
+| Binance | `lrvx.archives.binance` | `aggtrades_to_lrvx` | `lrvx archive binance ...` |
+| Bybit   | `lrvx.archives.bybit`   | `trades_to_lrvx`    | `lrvx archive bybit ...`   |
+| OKX     | `lrvx.archives.okx`     | `trades_to_lrvx`    | `lrvx archive okx ...`     |
+| Bitget  | `lrvx.archives.bitget`  | `trades_to_lrvx`    | `lrvx archive bitget ...`  |
+| Deribit | `lrvx.archives.deribit` | `trades_to_lrvx`    | `lrvx archive deribit ...` |
 
-Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
+Adding a new venue is a self-contained module under `lrvx/archives/` that implements `trades_to_lrvx` + `range_to_lrvx` matching the `ArchiveReader` Protocol.
 
 ## Bybit
 
@@ -21,7 +21,7 @@ timestamp, symbol, side, size, price, tickDirection, trdMatchID,
 grossValue, homeNotional, foreignNotional
 ```
 
-`timestamp` is Unix seconds (microsecond decimal precision). `side` is the active flow as `Buy` / `Sell` strings; the importer maps to floxlog's `Side::BUY` / `Side::SELL`. `trdMatchID` is the exchange-assigned trade id, used as the floxlog `trade_id` for append-safe dedup.
+`timestamp` is Unix seconds (microsecond decimal precision). `side` is the active flow as `Buy` / `Sell` strings; the importer maps to lrvx's `Side::BUY` / `Side::SELL`. `trdMatchID` is the exchange-assigned trade id, used as the lrvx `trade_id` for append-safe dedup.
 
 ### URL layout
 
@@ -33,7 +33,7 @@ The converter accepts the symbol verbatim; cross-exchange symbol normalisation i
 
 ### Example
 
-The script below builds a synthetic Bybit-style gzipped CSV in memory, runs `trades_to_floxlog`, then reads the produced tape back through `DataReader.read_trades`:
+The script below builds a synthetic Bybit-style gzipped CSV in memory, runs `trades_to_lrvx`, then reads the produced tape back through `DataReader.read_trades`:
 
 ```python
 --8<-- "examples/python_bybit_archive.py"
@@ -41,16 +41,16 @@ The script below builds a synthetic Bybit-style gzipped CSV in memory, runs `tra
 
 ### Range form
 
-For multi-day backfills, `range_to_floxlog` downloads missing files from the public archive and reuses anything already in the local mirror cache:
+For multi-day backfills, `range_to_lrvx` downloads missing files from the public archive and reuses anything already in the local mirror cache:
 
 ```text
-flox_py.archives.bybit.range_to_floxlog(
+lrvx.archives.bybit.range_to_lrvx(
     symbol="BTCUSDT",
     market="linear",
     date_from="2024-01-01",
     date_to="2024-12-31",
-    out_tape="/path/floxlog/BTCUSDT_bybit",
-    mirror=None,        # default = ~/.flox/archive-cache/bybit
+    out_tape="/path/lrvx/BTCUSDT_bybit",
+    mirror=None,        # default = ~/.lrvx/archive-cache/bybit
     parallel=4,
     skip_missing=False,
 )
@@ -59,7 +59,7 @@ flox_py.archives.bybit.range_to_floxlog(
 CLI form:
 
 ```bash
-flox archive bybit \
+lrvx archive bybit \
   --symbol BTCUSDT --market linear \
   --from 2024-01-01 --to 2024-12-31 \
   --out ./tapes/bybit-linear-BTCUSDT \
@@ -74,7 +74,7 @@ OKX publishes daily trade ticks on `www.okx.com/cdn/okex/traderecords/` for spot
 trade_id, side, size, price, timestamp_ms
 ```
 
-`trade_id` is an integer exchange-assigned id, used directly as the floxlog `trade_id` for dedup. `side` is the active flow as `buy` / `sell` lowercase, mapped to floxlog's `Side::BUY` / `Side::SELL`.
+`trade_id` is an integer exchange-assigned id, used directly as the lrvx `trade_id` for dedup. `side` is the active flow as `buy` / `sell` lowercase, mapped to lrvx's `Side::BUY` / `Side::SELL`.
 
 ### URL layout
 
@@ -97,13 +97,13 @@ The script below builds a synthetic OKX-style zipped CSV in memory and round-tri
 
 ```bash
 # Single day from a local CSV / zip
-flox archive okx \
+lrvx archive okx \
   --csv ./BTC-USDT-SWAP-trades-2024-01-15.zip \
   --out ./tapes/okx-swap-BTC-USDT-SWAP \
   --symbol BTC-USDT-SWAP --market swap
 
 # Multi-day range with download
-flox archive okx \
+lrvx archive okx \
   --symbol BTC-USDT-SWAP --market swap \
   --from 2024-01-01 --to 2024-12-31 \
   --out ./tapes/okx-swap-BTC-USDT-SWAP \
@@ -132,13 +132,13 @@ Market codes follow Bitget's own API naming: `spot`, `umcbl` (USDT-margined perp
 
 ```bash
 # Single day from a local file
-flox archive bitget \
+lrvx archive bitget \
   --csv ./BTCUSDT-trades-2024-01-15.zip \
   --out ./tapes/bitget-umcbl-BTCUSDT \
   --symbol BTCUSDT --market umcbl
 
 # Multi-day range with download
-flox archive bitget \
+lrvx archive bitget \
   --symbol BTCUSDT --market umcbl \
   --from 2024-01-01 --to 2024-12-31 \
   --out ./tapes/bitget-umcbl-BTCUSDT \
@@ -156,7 +156,7 @@ trade_id, timestamp_ms, instrument, side, price, amount,
 mark_price, iv, index_price
 ```
 
-`trade_id` is integer, used directly for append-safe dedup. `side` is `buy` / `sell` lowercase. `mark_price`, `iv`, and `index_price` are dropped at read time — the floxlog `TradeRecord` schema does not represent them; keep the source CSV alongside the tape and re-join in numpy when needed.
+`trade_id` is integer, used directly for append-safe dedup. `side` is `buy` / `sell` lowercase. `mark_price`, `iv`, and `index_price` are dropped at read time — the lrvx `TradeRecord` schema does not represent them; keep the source CSV alongside the tape and re-join in numpy when needed.
 
 ### Instrument naming
 
@@ -165,7 +165,7 @@ mark_price, iv, index_price
 - option:    `BTC-29MAR24-50000-C`, `BTC-29MAR24-50000-P` (date-encoded expiry + strike + C/P)
 
 The converter writes one instrument per tape, but option chains are handled by
-`flox_py.archives.deribit.load_option_chain`, which converts each instrument's
+`lrvx.archives.deribit.load_option_chain`, which converts each instrument's
 archive into its own tape under `out_root/<instrument>` and returns a queryable
 `OptionChain` over them:
 
@@ -189,13 +189,13 @@ future id.
 
 ```bash
 # Single day from a local file
-flox archive deribit \
+lrvx archive deribit \
   --csv ./BTC-PERPETUAL-2024-01-15.csv.gz \
   --out ./tapes/deribit-perp-BTC \
   --symbol BTC-PERPETUAL --market perpetual
 
 # Multi-day option-chain instrument
-flox archive deribit \
+lrvx archive deribit \
   --symbol BTC-29MAR24-50000-C --market option \
   --from 2024-01-01 --to 2024-03-29 \
   --out ./tapes/deribit-opt-BTC-29MAR24-50000-C \
@@ -204,7 +204,7 @@ flox archive deribit \
 
 ## Shared download cache
 
-All exchange-specific importers share one on-disk cache, rooted by default at `~/.flox/archive-cache/`. Override with `FLOX_ARCHIVE_CACHE=/some/path` (env var) or by passing `mirror=...` to the range form. Each exchange writes under its own subdirectory (`bybit/`, `binance/`, etc.) so the cache layout stays predictable.
+All exchange-specific importers share one on-disk cache, rooted by default at `~/.lrvx/archive-cache/`. Override with `LRVX_ARCHIVE_CACHE=/some/path` (env var) or by passing `mirror=...` to the range form. Each exchange writes under its own subdirectory (`bybit/`, `binance/`, etc.) so the cache layout stays predictable.
 
 The cache has no auto-eviction; it grows monotonically. Wipe it whenever you want — the download path is idempotent and will refetch what is missing.
 
@@ -213,8 +213,8 @@ The cache has no auto-eviction; it grows monotonically. Wipe it whenever you wan
 Tapes from different exchanges sit side by side in `MergedTapeReader`. The reader assigns one global symbol id per `(exchange, name)` pair, so a strategy or analysis that consumes both `binance:BTCUSDT` and `bybit:BTCUSDT` sees two distinct streams with the right exchange tag on every event.
 
 ```text
-import flox_py
-reader = flox_py.MergedTapeReader([
+import lrvx
+reader = lrvx.MergedTapeReader([
     "./tapes/binance-um-BTCUSDT",
     "./tapes/bybit-linear-BTCUSDT",
 ])
@@ -226,12 +226,12 @@ The `(exchange, name)` keying is the contract: every cross-exchange analysis tha
 
 ## Adding a new exchange
 
-A new exchange importer is one module under `flox_py/archives/<exchange>.py` exposing:
+A new exchange importer is one module under `lrvx/archives/<exchange>.py` exposing:
 
-- `trades_to_floxlog(csv_path, out_tape, *, symbol_id, symbol_name, market, ...)` — parse one day's CSV, write trades via `DataWriter`, append-safe by the venue's trade id.
-- `range_to_floxlog(symbol, market, date_from, date_to, out_tape, *, mirror, parallel, ...)` — download a date range, hand each day to the single-day function, merge `metadata.json` with the union counters.
+- `trades_to_lrvx(csv_path, out_tape, *, symbol_id, symbol_name, market, ...)` — parse one day's CSV, write trades via `DataWriter`, append-safe by the venue's trade id.
+- `range_to_lrvx(symbol, market, date_from, date_to, out_tape, *, mirror, parallel, ...)` — download a date range, hand each day to the single-day function, merge `metadata.json` with the union counters.
 
-Register the new module in `archives/__init__.py`, add a `flox archive <exchange>` subparser in `flox_py/cli.py`, and write a synthetic-fixture test under `python/tests/`. The CLI and tests work generically against the `ArchiveReader` Protocol; no changes elsewhere in the framework are required.
+Register the new module in `archives/__init__.py`, add a `lrvx archive <exchange>` subparser in `lrvx/cli.py`, and write a synthetic-fixture test under `python/tests/`. The CLI and tests work generically against the `ArchiveReader` Protocol; no changes elsewhere in the framework are required.
 
 ## See also
 

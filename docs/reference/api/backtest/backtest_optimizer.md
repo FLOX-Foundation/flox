@@ -9,7 +9,7 @@ Grid search optimizer for strategy parameter tuning.
 ## Header
 
 ```cpp
-#include "flox/backtest/backtest_optimizer.h"
+#include "lrvx/backtest/backtest_optimizer.h"
 ```
 
 ## Template Parameters

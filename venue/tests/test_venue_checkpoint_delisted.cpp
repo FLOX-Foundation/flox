@@ -1,23 +1,23 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
  * A checkpoint taken on a delisted instrument must restore it delisted.
  * `cloneForSnapshot` is the checkpoint path production actually takes
  * (SequencedShard::doCheckpoint clones the live engine and serializes the
- * clone on a background thread, see venue/include/flox-venue/sequenced_shard.h)
+ * clone on a background thread, see venue/include/lrvx-venue/sequenced_shard.h)
  * -- so this test goes through it rather than through the live engine's own
  * writeSnapshot, which would not have caught the bug this pins: the live
  * session's delisted_ flag is correct either way, only the clone's copy of it
  * was ever wrong.
  */
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -26,9 +26,9 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {

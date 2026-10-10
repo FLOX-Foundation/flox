@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,19 +16,19 @@
 // setSimulatedExecutor() closes that gap: the runner feeds the venue
 // executor and harvests its fills.
 
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/venue_stack.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/writers/binary_log_writer.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/venue_stack.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -101,7 +101,7 @@ TEST(BacktestRunnerVenueStack, VenueExecutorProducesFillsInTheResult)
 {
   SymbolRegistry reg;
   SymbolId sym = addSymbol(reg, "BTCUSDT");
-  auto tape = writeTape(sym, 10, "flox_bt_venue_fills");
+  auto tape = writeTape(sym, 10, "lrvx_bt_venue_fills");
 
   RoundTripStrategy strat(1, std::vector<SymbolId>{sym}, reg);
   strat.set_symbol(sym);
@@ -129,7 +129,7 @@ TEST(BacktestRunnerVenueStack, VenueClockAdvancesWithTheReplay)
 {
   SymbolRegistry reg;
   SymbolId sym = addSymbol(reg, "BTCUSDT");
-  auto tape = writeTape(sym, 10, "flox_bt_venue_clock");
+  auto tape = writeTape(sym, 10, "lrvx_bt_venue_clock");
 
   RoundTripStrategy strat(1, std::vector<SymbolId>{sym}, reg);
   strat.set_symbol(sym);
@@ -154,7 +154,7 @@ TEST(BacktestRunnerVenueStack, RevertingToTheBuiltInExecutorStillWorks)
 {
   SymbolRegistry reg;
   SymbolId sym = addSymbol(reg, "BTCUSDT");
-  auto tape = writeTape(sym, 10, "flox_bt_venue_revert");
+  auto tape = writeTape(sym, 10, "lrvx_bt_venue_revert");
 
   RoundTripStrategy strat(1, std::vector<SymbolId>{sym}, reg);
   strat.set_symbol(sym);

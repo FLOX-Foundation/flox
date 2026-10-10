@@ -5,7 +5,7 @@ Detects and resolves discrepancies between local position state and exchange-rep
 ## Header
 
 ```cpp
-#include "flox/position/position_reconciler.h"
+#include "lrvx/position/position_reconciler.h"
 ```
 
 ## Usage

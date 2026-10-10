@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,58 +12,58 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/backtest/venue_availability.h"
+#include "lrvx/backtest/venue_availability.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
-inline flox::OnOutage parseOnOutage(const std::string& s)
+inline lrvx::OnOutage parseOnOutage(const std::string& s)
 {
   if (s == "hold")
   {
-    return flox::OnOutage::HOLD;
+    return lrvx::OnOutage::HOLD;
   }
   if (s == "expire_gtc_after")
   {
-    return flox::OnOutage::EXPIRE_GTC_AFTER;
+    return lrvx::OnOutage::EXPIRE_GTC_AFTER;
   }
-  return flox::OnOutage::CANCEL_ALL;
+  return lrvx::OnOutage::CANCEL_ALL;
 }
 
-inline flox::OutageType parseOutageType(const std::string& s)
+inline lrvx::OutageType parseOutageType(const std::string& s)
 {
   if (s == "submit_only_down" || s == "submit_only")
   {
-    return flox::OutageType::SubmitOnlyDown;
+    return lrvx::OutageType::SubmitOnlyDown;
   }
   if (s == "cancel_only_down" || s == "cancel_only")
   {
-    return flox::OutageType::CancelOnlyDown;
+    return lrvx::OutageType::CancelOnlyDown;
   }
   if (s == "slow_degradation")
   {
-    return flox::OutageType::SlowDegradation;
+    return lrvx::OutageType::SlowDegradation;
   }
   if (s == "stale_book")
   {
-    return flox::OutageType::StaleBook;
+    return lrvx::OutageType::StaleBook;
   }
   if (s == "wrong_side_recovery")
   {
-    return flox::OutageType::WrongSideRecovery;
+    return lrvx::OutageType::WrongSideRecovery;
   }
-  return flox::OutageType::Total;
+  return lrvx::OutageType::Total;
 }
 
 inline void bindVenueAvailability(py::module_& m)
 {
-  py::class_<flox::VenueAvailability>(m, "VenueAvailability")
+  py::class_<lrvx::VenueAvailability>(m, "VenueAvailability")
       .def(py::init<>())
       .def(
           "schedule_outage",
-          [](flox::VenueAvailability& self, int64_t start_ns, int64_t duration_ns,
+          [](lrvx::VenueAvailability& self, int64_t start_ns, int64_t duration_ns,
              const std::string& policy, int64_t gtc_ttl_ns)
           {
             self.scheduleOutage(start_ns, duration_ns, parseOnOutage(policy), gtc_ttl_ns);
@@ -75,7 +75,7 @@ inline void bindVenueAvailability(py::module_& m)
           py::return_value_policy::reference_internal)
       .def(
           "auto_random_outages",
-          [](flox::VenueAvailability& self, double per_day, int64_t mean_duration_ns,
+          [](lrvx::VenueAvailability& self, double per_day, int64_t mean_duration_ns,
              const std::string& policy, uint64_t seed)
           {
             self.autoRandomOutages(per_day, mean_duration_ns, parseOnOutage(policy), seed);
@@ -87,7 +87,7 @@ inline void bindVenueAvailability(py::module_& m)
           py::return_value_policy::reference_internal)
       .def(
           "schedule_outage_ex",
-          [](flox::VenueAvailability& self, int64_t start_ns, int64_t duration_ns,
+          [](lrvx::VenueAvailability& self, int64_t start_ns, int64_t duration_ns,
              const std::string& outage_type, const std::string& policy,
              int64_t gtc_ttl_ns, double degradation_latency_multiplier,
              double wrong_side_recovery_bps)
@@ -105,19 +105,19 @@ inline void bindVenueAvailability(py::module_& m)
           py::arg("degradation_latency_multiplier") = 1.0,
           py::arg("wrong_side_recovery_bps") = 0.0,
           py::return_value_policy::reference_internal)
-      .def("is_up", &flox::VenueAvailability::isUp, py::arg("now_ns"))
-      .def("submits_allowed", &flox::VenueAvailability::submitsAllowed,
+      .def("is_up", &lrvx::VenueAvailability::isUp, py::arg("now_ns"))
+      .def("submits_allowed", &lrvx::VenueAvailability::submitsAllowed,
            py::arg("now_ns"))
-      .def("cancels_allowed", &flox::VenueAvailability::cancelsAllowed,
+      .def("cancels_allowed", &lrvx::VenueAvailability::cancelsAllowed,
            py::arg("now_ns"))
-      .def("book_updates_allowed", &flox::VenueAvailability::bookUpdatesAllowed,
+      .def("book_updates_allowed", &lrvx::VenueAvailability::bookUpdatesAllowed,
            py::arg("now_ns"))
-      .def("trades_allowed", &flox::VenueAvailability::tradesAllowed,
+      .def("trades_allowed", &lrvx::VenueAvailability::tradesAllowed,
            py::arg("now_ns"))
-      .def("latency_multiplier", &flox::VenueAvailability::latencyMultiplier,
+      .def("latency_multiplier", &lrvx::VenueAvailability::latencyMultiplier,
            py::arg("now_ns"))
       .def("consume_wrong_side_recovery_bps",
-           &flox::VenueAvailability::consumeWrongSideRecoveryBps);
+           &lrvx::VenueAvailability::consumeWrongSideRecoveryBps);
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

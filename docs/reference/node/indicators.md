@@ -1,7 +1,7 @@
 # Indicators
 
 ```javascript
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 ```
 
 ---
@@ -11,11 +11,11 @@ const flox = require('@flox-foundation/flox');
 Input arrays are `Float64Array`. Single-output functions return `Float64Array`.
 
 ```javascript
-const ema  = flox.ema(closes, 20);
-const macd = flox.macd(closes, 12, 26, 9);       // { line, signal, histogram }
-const bb   = flox.bollinger(closes, 20, 2.0);     // { upper, middle, lower }
-const st   = flox.stochastic(hi, lo, cl, 14, 3); // { k, d }
-const adx  = flox.adx(hi, lo, cl, 14);           // { adx, plusDi, minusDi }
+const ema  = lrvx.ema(closes, 20);
+const macd = lrvx.macd(closes, 12, 26, 9);       // { line, signal, histogram }
+const bb   = lrvx.bollinger(closes, 20, 2.0);     // { upper, middle, lower }
+const st   = lrvx.stochastic(hi, lo, cl, 14, 3); // { k, d }
+const adx  = lrvx.adx(hi, lo, cl, 14);           // { adx, plusDi, minusDi }
 ```
 
 **Single value** — `(input, period)`:
@@ -33,7 +33,7 @@ const adx  = flox.adx(hi, lo, cl, 14);           // { adx, plusDi, minusDi }
 
 `skewness`, `kurtosis`, `rolling_zscore`, `shannon_entropy(input, period, bins)`, `rollingCorrelation(x, y, period)`
 
-`flox.correlation(x, y)` (no `period`) is the single-number Pearson coefficient — see [Statistics](profiles.md#statistics).
+`lrvx.correlation(x, y)` (no `period`) is the single-number Pearson coefficient — see [Statistics](profiles.md#statistics).
 
 **Volume:**
 
@@ -46,7 +46,7 @@ const adx  = flox.adx(hi, lo, cl, 14);           // { adx, plusDi, minusDi }
 All streaming indicators share the same interface:
 
 ```javascript
-const ind = new flox.EMA(14);
+const ind = new lrvx.EMA(14);
 ind.update(price);   // returns current value (null during warmup)
 ind.value            // current value
 ind.ready            // true once warmed up
@@ -84,8 +84,8 @@ Every indicator below is **one Node.js class** with both a batch
 Same instance, two ways to use it:
 
 ```js
-const flox = require('@flox-foundation/flox');
-const ema = new flox.EMA(10);
+const lrvx = require('@lrvx/lrvx');
+const ema = new lrvx.EMA(10);
 const out = ema.compute(prices);            // batch
 for (const v of stream) {
   ema.update(v);
@@ -95,27 +95,27 @@ for (const v of stream) {
 
 | Indicator | Constructor | Kind |
 |---|---|---|
-| `EMA` | `new flox.EMA(period)` | SingleInput |
-| `SMA` | `new flox.SMA(period)` | SingleInput |
-| `RMA` | `new flox.RMA(period)` | SingleInput |
-| `RSI` | `new flox.RSI(period)` | SingleInput |
-| `KAMA` | `new flox.KAMA(period, fast, slow)` | SingleInput |
-| `DEMA` | `new flox.DEMA(period)` | SingleInput |
-| `TEMA` | `new flox.TEMA(period)` | SingleInput |
-| `Slope` | `new flox.Slope(length)` | SingleInput |
-| `Skewness` | `new flox.Skewness(period)` | SingleInput |
-| `Kurtosis` | `new flox.Kurtosis(period)` | SingleInput |
-| `RollingZScore` | `new flox.RollingZScore(period)` | SingleInput |
-| `ShannonEntropy` | `new flox.ShannonEntropy(period, bins)` | SingleInput |
-| `AutoCorrelation` | `new flox.AutoCorrelation(window, lag)` | SingleInput |
-| `ATR` | `new flox.ATR(period)` | BarInput |
-| `CCI` | `new flox.CCI(period)` | BarInput |
-| `Stochastic` | `new flox.Stochastic(k_period, d_period)` | BarInput |
-| `ParkinsonVol` | `new flox.ParkinsonVol(period)` | HighLowInput |
-| `RogersSatchellVol` | `new flox.RogersSatchellVol(period)` | OhlcInput |
-| `Correlation` | `new flox.Correlation(period)` | PairInput |
-| `MACD` | `new flox.MACD(fast, slow, signal)` | MultiOutput |
-| `Bollinger` | `new flox.Bollinger(period, stddev)` | MultiOutput |
+| `EMA` | `new lrvx.EMA(period)` | SingleInput |
+| `SMA` | `new lrvx.SMA(period)` | SingleInput |
+| `RMA` | `new lrvx.RMA(period)` | SingleInput |
+| `RSI` | `new lrvx.RSI(period)` | SingleInput |
+| `KAMA` | `new lrvx.KAMA(period, fast, slow)` | SingleInput |
+| `DEMA` | `new lrvx.DEMA(period)` | SingleInput |
+| `TEMA` | `new lrvx.TEMA(period)` | SingleInput |
+| `Slope` | `new lrvx.Slope(length)` | SingleInput |
+| `Skewness` | `new lrvx.Skewness(period)` | SingleInput |
+| `Kurtosis` | `new lrvx.Kurtosis(period)` | SingleInput |
+| `RollingZScore` | `new lrvx.RollingZScore(period)` | SingleInput |
+| `ShannonEntropy` | `new lrvx.ShannonEntropy(period, bins)` | SingleInput |
+| `AutoCorrelation` | `new lrvx.AutoCorrelation(window, lag)` | SingleInput |
+| `ATR` | `new lrvx.ATR(period)` | BarInput |
+| `CCI` | `new lrvx.CCI(period)` | BarInput |
+| `Stochastic` | `new lrvx.Stochastic(k_period, d_period)` | BarInput |
+| `ParkinsonVol` | `new lrvx.ParkinsonVol(period)` | HighLowInput |
+| `RogersSatchellVol` | `new lrvx.RogersSatchellVol(period)` | OhlcInput |
+| `Correlation` | `new lrvx.Correlation(period)` | PairInput |
+| `MACD` | `new lrvx.MACD(fast, slow, signal)` | MultiOutput |
+| `Bollinger` | `new lrvx.Bollinger(period, stddev)` | MultiOutput |
 
 
 <!-- INDICATOR-LIST-END -->

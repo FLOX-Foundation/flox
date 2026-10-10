@@ -1,10 +1,10 @@
 # Backtest components
 
 ```codon
-from flox.backtest import SimulatedExecutor, BacktestResult, BacktestStats
-from flox.backtest import SLIPPAGE_NONE, SLIPPAGE_FIXED_TICKS, SLIPPAGE_FIXED_BPS, SLIPPAGE_VOLUME_IMPACT
-from flox.backtest import QUEUE_NONE, QUEUE_TOB, QUEUE_FULL
-from flox.engine import Engine, SignalBuilder
+from lrvx.backtest import SimulatedExecutor, BacktestResult, BacktestStats
+from lrvx.backtest import SLIPPAGE_NONE, SLIPPAGE_FIXED_TICKS, SLIPPAGE_FIXED_BPS, SLIPPAGE_VOLUME_IMPACT
+from lrvx.backtest import QUEUE_NONE, QUEUE_TOB, QUEUE_FULL
+from lrvx.engine import Engine, SignalBuilder
 ```
 
 ---
@@ -52,7 +52,7 @@ Returned by `BacktestRunner.run_csv()` / `run_ohlcv()` and `BacktestResult.stats
 Fills orders from simulated market data. Use directly when you need more control than `BacktestRunner` provides.
 
 ```codon
-from flox.backtest import SimulatedExecutor, SLIPPAGE_FIXED_BPS, QUEUE_TOB
+from lrvx.backtest import SimulatedExecutor, SLIPPAGE_FIXED_BPS, QUEUE_TOB
 
 exec = SimulatedExecutor()
 exec.set_default_slippage(SLIPPAGE_FIXED_BPS, bps=2.0)
@@ -141,7 +141,7 @@ exec.reset()  # drop fills before a second hand-driven run
 Aggregates fills from a `SimulatedExecutor` into statistics and an equity curve.
 
 ```codon
-from flox.backtest import BacktestResult
+from lrvx.backtest import BacktestResult
 
 result = BacktestResult(initial_capital=10_000.0, fee_rate=0.0004)
 result.ingest_executor(exec)
@@ -179,7 +179,7 @@ BacktestResult(
 Bulk backtesting engine. Loads OHLCV data once, then runs a `SignalBuilder` against it.
 
 ```codon
-from flox.engine import Engine, SignalBuilder
+from lrvx.engine import Engine, SignalBuilder
 
 engine = Engine(initial_capital=10_000.0, fee_rate=0.0004)
 engine.load_csv("data/btcusdt.csv", symbol="BTCUSDT")

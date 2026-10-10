@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/bitget/authenticated_rest_client.h"
+#include "lrvx-connectors/bitget/authenticated_rest_client.h"
 
 #include <openssl/hmac.h>
 
@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace flox
+namespace lrvx
 {
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -98,4 +98,4 @@ void BitgetAuthenticatedRestClient::post(std::string_view path, std::string_view
   _transport->post(url, body, headers, std::move(onSuccess), std::move(onError));
 }
 
-}  // namespace flox
+}  // namespace lrvx

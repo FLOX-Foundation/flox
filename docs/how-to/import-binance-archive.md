@@ -1,20 +1,20 @@
-# Import Binance public archives into a floxlog tape
+# Import Binance public archives into a lrvx tape
 
 `data.binance.vision` publishes daily aggregate-trade zip archives for spot, USDT-margined perpetuals, and coin-margined perpetuals, going back more than two years. The archive layout is stable, but the per-row work is fiddly: column ordering, header autoskip, millisecond-to-nanosecond rescale, side mapping, and dedup on re-runs.
 
-`flox_py.archives.binance` wraps the converter in two function calls, plus a `flox archive binance` CLI subcommand. The output is a regular `.floxlog` tape, which means every aggregator, `MergedTapeReader`, the live recorder hook, and the engine itself read it without special-casing.
+`lrvx.archives.binance` wraps the converter in two function calls, plus a `lrvx archive binance` CLI subcommand. The output is a regular `.lrvx` tape, which means every aggregator, `MergedTapeReader`, the live recorder hook, and the engine itself read it without special-casing.
 
 ## Install
 
 ```bash
-pip install flox-py
+pip install lrvx
 ```
 
 No extras are required. `--mirror` downloads use `urllib` from the standard library.
 
 ## Convert a single day
 
-The simplest form takes one already-downloaded zip and writes a tape directory. The example below is the same script CI runs on every push: it builds a synthetic Binance-style zip in memory, calls `aggtrades_to_floxlog`, then reads the produced tape back through `DataReader`.
+The simplest form takes one already-downloaded zip and writes a tape directory. The example below is the same script CI runs on every push: it builds a synthetic Binance-style zip in memory, calls `aggtrades_to_lrvx`, then reads the produced tape back through `DataReader`.
 
 ```python
 --8<-- "examples/python_binance_archive.py"
@@ -22,14 +22,14 @@ The simplest form takes one already-downloaded zip and writes a tape directory. 
 
 `csv_path` accepts either the zip published by Binance or the extracted CSV; the reader autoskips a header row when one is present.
 
-Side encoding follows the floxlog convention. `is_buyer_maker = true` becomes `Side::SELL` (the buyer was the resting maker, so the active flow is a seller hitting the bid). `is_buyer_maker = false` becomes `Side::BUY`.
+Side encoding follows the lrvx convention. `is_buyer_maker = true` becomes `Side::SELL` (the buyer was the resting maker, so the active flow is a seller hitting the bid). `is_buyer_maker = false` becomes `Side::BUY`.
 
 ## Convert a date range
 
-For multi-day backfills, `range_to_floxlog` accepts a date range and optionally a local mirror cache. Missing zips are downloaded from `data.binance.vision` in parallel and reused on follow-up calls. The function signature:
+For multi-day backfills, `range_to_lrvx` accepts a date range and optionally a local mirror cache. Missing zips are downloaded from `data.binance.vision` in parallel and reused on follow-up calls. The function signature:
 
 ```text
-binance.range_to_floxlog(
+binance.range_to_lrvx(
     symbol: str,
     market: str,                # "spot" | "um-futures" | "cm-futures"
     date_from: str | date,      # YYYY-MM-DD, inclusive
@@ -48,10 +48,10 @@ Without `mirror`, the converter writes to a tempdir and discards it after the ra
 
 ## CLI
 
-`flox archive binance` is the same surface from the shell. For a date range:
+`lrvx archive binance` is the same surface from the shell. For a date range:
 
 ```bash
-flox archive binance \
+lrvx archive binance \
   --symbol BTCUSDT \
   --market um-futures \
   --from 2024-01-01 --to 2024-01-31 \
@@ -63,7 +63,7 @@ flox archive binance \
 For one-off conversions of a file already on disk, pass `--csv` instead of the date range:
 
 ```bash
-flox archive binance \
+lrvx archive binance \
   --csv ./BTCUSDT-aggTrades-2024-01-15.zip \
   --out ./tapes/binance-um-BTCUSDT \
   --symbol BTCUSDT --market um-futures --symbol-id 1
@@ -79,14 +79,14 @@ The tape's `metadata.json` is created (or merged into) on every successful conve
 
 ## What is and is not in the archive
 
-aggTrades only carries print events. There is no book information. The book archives have their own converters in `flox_py.archives.binance`:
+aggTrades only carries print events. There is no book information. The book archives have their own converters in `lrvx.archives.binance`:
 
 | Function | Archive |
 |---|---|
-| `t1_to_floxlog(csv_path, out_tape, ...)` | `T1` / `bookTicker` — top of book |
-| `depth20_to_floxlog(csv_path, out_tape, *, levels=20, ...)` | `depth20` / `bookDepth` — L2 ladder |
-| `range_book_to_floxlog(symbol, market, book_type, date_from, date_to, out_tape, ...)` | multi-day book range, downloads and converts in one call |
+| `t1_to_lrvx(csv_path, out_tape, ...)` | `T1` / `bookTicker` — top of book |
+| `depth20_to_lrvx(csv_path, out_tape, *, levels=20, ...)` | `depth20` / `bookDepth` — L2 ladder |
+| `range_book_to_lrvx(symbol, market, book_type, date_from, date_to, out_tape, ...)` | multi-day book range, downloads and converts in one call |
 
-They write into the same tape directory, so a single floxlog can carry both trades and book updates. See [Import Binance book archives](import-binance-book-archive.md).
+They write into the same tape directory, so a single lrvx can carry both trades and book updates. See [Import Binance book archives](import-binance-book-archive.md).
 
-Other public archives ship as sibling subcommands under `flox archive`: `bybit`, `okx`, `bitget` and `deribit` (`flox_py.archives.deribit`). See [Import multi-exchange archives](import-multi-exchange-archives.md).
+Other public archives ship as sibling subcommands under `lrvx archive`: `bybit`, `okx`, `bitget` and `deribit` (`lrvx.archives.deribit`). See [Import multi-exchange archives](import-multi-exchange-archives.md).

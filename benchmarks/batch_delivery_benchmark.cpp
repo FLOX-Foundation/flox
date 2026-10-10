@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -19,7 +19,7 @@
 //
 // On macOS, spinning multi-thread benchmarks are invalid without the
 // real-time scheduling class: the scheduler preempts the consumers and
-// becomes a confounder, not just noise. Set FLOX_BENCH_RT=1 to opt in
+// becomes a confounder, not just noise. Set LRVX_BENCH_RT=1 to opt in
 // (no-op elsewhere; on Linux use taskset/isolcpus instead).
 
 #include <benchmark/benchmark.h>
@@ -30,10 +30,10 @@
 #include <random>
 #include <vector>
 
-#include "flox/backtest/strategy_pump.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/util/eventing/event_bus.h"
+#include "lrvx/backtest/strategy_pump.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/util/eventing/event_bus.h"
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -45,7 +45,7 @@
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 constexpr size_t kSourceEvents = 4096;
 constexpr size_t kBusEvents = 1 << 20;
@@ -57,7 +57,7 @@ void makeSelfRealtime()
 #ifdef __APPLE__
   static const bool enabled = []
   {
-    const char* v = std::getenv("FLOX_BENCH_RT");
+    const char* v = std::getenv("LRVX_BENCH_RT");
     return v != nullptr && v[0] == '1';
   }();
   if (!enabled)

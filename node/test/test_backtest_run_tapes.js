@@ -12,7 +12,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const flox = require('..');
+const lrvx = require('..');
 
 let _failed = 0;
 let _passed = 0;
@@ -32,20 +32,20 @@ function check(cond, msg)
 
 function mkTmpDir(label)
 {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `flox-rt-${label}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `lrvx-rt-${label}-`));
 }
 
-// Write a `.floxlog` tape via the runtime path: SymbolRegistry +
+// Write a `.lrvx` tape via the runtime path: SymbolRegistry +
 // Runner + BinaryLogRecorderHook. Mirrors writeTape() in
 // test_merged_tape_reader.js (which mirrors Python `_write_tape`).
 function writeTape(outDir, exchange, symbolName, trades, exchangeId)
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol(exchange, symbolName, 0.01);
-  const hook = new flox.BinaryLogRecorderHook(
+  const hook = new lrvx.BinaryLogRecorderHook(
       outDir, 4, exchangeId, 'none', exchange, 'perpetual');
   hook.addSymbol(Number(sym), symbolName, '', '', 2, 6);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   runner.addStrategy({symbols: [sym]});
   runner.setMarketDataRecorder(hook);
   runner.start();
@@ -64,9 +64,9 @@ function writeTape(outDir, exchange, symbolName, trades, exchangeId)
 // stats shape/keys, not P&L.
 function freshBt(exchange, symbolName)
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   reg.addSymbol(exchange, symbolName, 0.01);
-  const bt = new flox.BacktestRunner(reg, 0.0004, 10000);
+  const bt = new lrvx.BacktestRunner(reg, 0.0004, 10000);
   bt.setStrategy({symbols: [], onTrade(_ctx, _t, _emit) {}});
   return bt;
 }
@@ -143,10 +143,10 @@ function testTwoTapesDifferentVenues()
   // so it can resolve them; concrete symbol IDs in the merged stream
   // are rekeyed by (exchange, name) so the strategy never sees them
   // directly here (no orders emitted).
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   reg.addSymbol('bybit', 'BTCUSDT', 0.01);
   reg.addSymbol('binance', 'ETHUSDT', 0.01);
-  const bt = new flox.BacktestRunner(reg, 0.0004, 10000);
+  const bt = new lrvx.BacktestRunner(reg, 0.0004, 10000);
   bt.setStrategy({symbols: [], onTrade(_ctx, _t, _emit) {}});
 
   let stats = null;

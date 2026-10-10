@@ -7,7 +7,7 @@
 L2 order book.
 
 ```javascript
-const book = new flox.OrderBook(tickSize);
+const book = new lrvx.OrderBook(tickSize);
 book.applySnapshot(bidPrices, bidQtys, askPrices, askQtys);
 ```
 
@@ -38,7 +38,7 @@ snapshot. See
 Order-level book with individual order tracking.
 
 ```javascript
-const book = new flox.L3Book();
+const book = new lrvx.L3Book();
 book.addOrder(orderId, price, qty, 'buy');
 ```
 
@@ -59,7 +59,7 @@ book.addOrder(orderId, price, qty, 'buy');
 Aggregates books across multiple exchanges per symbol.
 
 ```javascript
-const matrix = new flox.CompositeBookMatrix();
+const matrix = new lrvx.CompositeBookMatrix();
 matrix.applySnapshot(exchangeId, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
 ```
 

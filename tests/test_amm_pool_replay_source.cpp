@@ -1,22 +1,22 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/amm_pool_replay_source.h"
+#include "lrvx/replay/amm_pool_replay_source.h"
 
-#include "flox/backtest/constant_product_curve.h"
+#include "lrvx/backtest/constant_product_curve.h"
 
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

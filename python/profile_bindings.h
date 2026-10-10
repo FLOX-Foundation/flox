@@ -6,23 +6,23 @@
 #include <pybind11/pybind11.h>
 
 #include <pybind11/stl.h>
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include <chrono>
 
-#include "flox/aggregator/custom/footprint_bar.h"
-#include "flox/aggregator/custom/market_profile.h"
-#include "flox/aggregator/custom/volume_profile.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/util/base/time.h"
+#include "lrvx/aggregator/custom/footprint_bar.h"
+#include "lrvx/aggregator/custom/market_profile.h"
+#include "lrvx/aggregator/custom/volume_profile.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/util/base/time.h"
 
 namespace py = pybind11;
 
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 // ---------------------------------------------------------------------------
 // Wrapper: FootprintBar
@@ -52,7 +52,7 @@ class PyFootprintBar
     if (quantities.size() != static_cast<py::ssize_t>(n) ||
         isBuy.size() != static_cast<py::ssize_t>(n))
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_001",
           "prices, quantities, and is_buy arrays must have the same length.");
     }
@@ -141,7 +141,7 @@ class PyVolumeProfile
     if (quantities.size() != static_cast<py::ssize_t>(n) ||
         isBuy.size() != static_cast<py::ssize_t>(n))
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_001",
           "prices, quantities, and is_buy arrays must have the same length.");
     }
@@ -229,7 +229,7 @@ class PyMarketProfile
         quantities.size() != static_cast<py::ssize_t>(n) ||
         isBuy.size() != static_cast<py::ssize_t>(n))
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_001",
           "timestamps, prices, quantities, and is_buy arrays must have the same length.");
     }

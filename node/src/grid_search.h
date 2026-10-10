@@ -5,13 +5,13 @@
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 #include "walk_forward.h"  // for statsToJsObj
 
 #include <string>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 struct GridSearchCallContext
@@ -23,7 +23,7 @@ struct GridSearchCallContext
 
 inline int gridSearchFactoryThunk(void* user_data, uint64_t param_index,
                                   const double* params, uint32_t num_params,
-                                  FloxBacktestStats* out_stats)
+                                  LrvxBacktestStats* out_stats)
 {
   auto* ctx = static_cast<GridSearchCallContext*>(user_data);
   Napi::HandleScope scope(ctx->env);
@@ -81,19 +81,19 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
   GridSearchNode(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<GridSearchNode>(info)
   {
-    _handle = flox_grid_search_create();
+    _handle = lrvx_grid_search_create();
   }
 
   ~GridSearchNode() override
   {
     if (_handle)
     {
-      flox_grid_search_destroy(_handle);
+      lrvx_grid_search_destroy(_handle);
     }
   }
 
  private:
-  FloxGridSearchHandle _handle{nullptr};
+  LrvxGridSearchHandle _handle{nullptr};
   Napi::FunctionReference _factory;
 
   Napi::Value addAxis(const Napi::CallbackInfo& info)
@@ -104,7 +104,7 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
     {
       vals[i] = arr.Get(i).As<Napi::Number>().DoubleValue();
     }
-    flox_grid_search_add_axis(_handle, vals.data(),
+    lrvx_grid_search_add_axis(_handle, vals.data(),
                               static_cast<uint32_t>(vals.size()));
     return info.Env().Undefined();
   }
@@ -118,17 +118,17 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
   Napi::Value total(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(flox_grid_search_total(_handle)));
+                             static_cast<double>(lrvx_grid_search_total(_handle)));
   }
 
   Napi::Value paramsForIndex(const Napi::CallbackInfo& info)
   {
     uint64_t idx = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
-    uint32_t total = flox_grid_search_params_for_index(_handle, idx, nullptr, 0);
+    uint32_t total = lrvx_grid_search_params_for_index(_handle, idx, nullptr, 0);
     std::vector<double> out(total);
     if (total > 0)
     {
-      flox_grid_search_params_for_index(_handle, idx, out.data(), total);
+      lrvx_grid_search_params_for_index(_handle, idx, out.data(), total);
     }
     auto arr = Napi::Array::New(info.Env(), total);
     for (uint32_t i = 0; i < total; ++i)
@@ -140,36 +140,36 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
 
   Napi::Value run(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value
+    return tryLrvx(info.Env(), [&]() -> Napi::Value
                    {
       auto env = info.Env();
       if (_factory.IsEmpty())
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_RUN_001",
             "GridSearch.run called before setFactory.");
       }
-      const uint64_t total = flox_grid_search_total(_handle);
+      const uint64_t total = lrvx_grid_search_total(_handle);
       if (total == 0)
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_RUN_002",
             "GridSearch.run called with no axes / empty axis.");
       }
       GridSearchCallContext ctx{env, Napi::FunctionReference(), {}};
       ctx.factory_fn = Napi::Persistent(_factory.Value());
-      std::vector<FloxBacktestStats> stats(total);
-      flox_grid_search_run(_handle, &gridSearchFactoryThunk, &ctx,
+      std::vector<LrvxBacktestStats> stats(total);
+      lrvx_grid_search_run(_handle, &gridSearchFactoryThunk, &ctx,
                            stats.data(), static_cast<uint32_t>(total));
       auto results = Napi::Array::New(env, total);
       for (uint64_t i = 0; i < total; ++i)
       {
         // Decode params back from index for the result tuple.
-        uint32_t np = flox_grid_search_params_for_index(_handle, i, nullptr, 0);
+        uint32_t np = lrvx_grid_search_params_for_index(_handle, i, nullptr, 0);
         std::vector<double> p(np);
         if (np > 0)
         {
-          flox_grid_search_params_for_index(_handle, i, p.data(), np);
+          lrvx_grid_search_params_for_index(_handle, i, p.data(), np);
         }
         auto pArr = Napi::Array::New(env, np);
         for (uint32_t j = 0; j < np; ++j)
@@ -186,4 +186,4 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
   }
 };
 
-}  // namespace node_flox
+}  // namespace node_lrvx

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,7 +10,7 @@
 // Regression tests for the tracker/hook ownership race: the live engine's
 // bus consumer threads dereference the last-installed PnL tracker (and the
 // other optional signal hooks) inside RunnerSignalHandler::onSignal, while
-// flox_*_destroy() may run concurrently on a different thread the instant
+// lrvx_*_destroy() may run concurrently on a different thread the instant
 // the hook has been detached with set(NULL). Setting the pointer to NULL
 // only stops *future* dispatches from picking it up -- a dispatch already
 // past the load, mid-callback with the old pointer, is unaffected by it.
@@ -28,7 +28,7 @@
 // the task: a callback that is *actively executing* when destroy() runs on
 // another thread must be allowed to run to completion safely.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -41,72 +41,72 @@ namespace
 
 struct LifetimeState
 {
-  FloxStrategyHandle strategy{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
   uint32_t symbol_id{0};
   std::atomic<int> on_signal_calls{0};
   std::atomic<int> pnl_calls{0};
 };
 
-void on_trade_cb(void* ud, const FloxSymbolContext*, const FloxTradeData*)
+void on_trade_cb(void* ud, const LrvxSymbolContext*, const LrvxTradeData*)
 {
   auto* st = static_cast<LifetimeState*>(ud);
-  flox_emit_market_buy(st->strategy, st->symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(st->strategy, st->symbol_id, lrvx_quantity_from_double(1.0));
 }
 
-void on_signal_cb(void* ud, const FloxSignal*)
+void on_signal_cb(void* ud, const LrvxSignal*)
 {
   static_cast<LifetimeState*>(ud)->on_signal_calls.fetch_add(1, std::memory_order_relaxed);
 }
 
-void counting_pnl_cb(void* ud, const FloxSignal*)
+void counting_pnl_cb(void* ud, const LrvxSignal*)
 {
   static_cast<LifetimeState*>(ud)->pnl_calls.fetch_add(1, std::memory_order_relaxed);
 }
 
 struct EngineCtx
 {
-  FloxRegistryHandle registry{nullptr};
-  FloxStrategyHandle strategy{nullptr};
-  FloxLiveEngineHandle engine{nullptr};
+  LrvxRegistryHandle registry{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
+  LrvxLiveEngineHandle engine{nullptr};
   uint32_t symbol_id{0};
 
   ~EngineCtx()
   {
     if (engine)
     {
-      flox_live_engine_stop(engine);
-      flox_live_engine_destroy(engine);
+      lrvx_live_engine_stop(engine);
+      lrvx_live_engine_destroy(engine);
     }
     if (strategy)
     {
-      flox_strategy_destroy(strategy);
+      lrvx_strategy_destroy(strategy);
     }
     if (registry)
     {
-      flox_registry_destroy(registry);
+      lrvx_registry_destroy(registry);
     }
   }
 };
 
 void make_engine(EngineCtx& ctx, LifetimeState& state)
 {
-  ctx.registry = flox_registry_create();
+  ctx.registry = lrvx_registry_create();
   ASSERT_NE(ctx.registry, nullptr);
-  ctx.symbol_id = flox_registry_add_symbol(ctx.registry, "test", "BTC", 0.01);
+  ctx.symbol_id = lrvx_registry_add_symbol(ctx.registry, "test", "BTC", 0.01);
   state.symbol_id = ctx.symbol_id;
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_trade = on_trade_cb;
   cb.user_data = &state;
   uint32_t syms[] = {ctx.symbol_id};
-  ctx.strategy = flox_strategy_create(/*id=*/1, syms, 1, ctx.registry, cb);
+  ctx.strategy = lrvx_strategy_create(/*id=*/1, syms, 1, ctx.registry, cb);
   ASSERT_NE(ctx.strategy, nullptr);
   state.strategy = ctx.strategy;
 
-  ctx.engine = flox_live_engine_create(ctx.registry);
+  ctx.engine = lrvx_live_engine_create(ctx.registry);
   ASSERT_NE(ctx.engine, nullptr);
-  flox_live_engine_add_strategy(ctx.engine, ctx.strategy, on_signal_cb, &state);
-  flox_live_engine_start(ctx.engine);
+  lrvx_live_engine_add_strategy(ctx.engine, ctx.strategy, on_signal_cb, &state);
+  lrvx_live_engine_start(ctx.engine);
 }
 
 }  // namespace
@@ -133,7 +133,7 @@ TEST(CapiTrackerLifetime, StressDestroyDuringDispatch)
         int64_t ts = 1'000'000'000LL;
         while (!stop.load(std::memory_order_relaxed))
         {
-          flox_live_engine_publish_trade(ctx.engine, state.symbol_id, 100.0, 1.0, 1, ts++);
+          lrvx_live_engine_publish_trade(ctx.engine, state.symbol_id, 100.0, 1.0, 1, ts++);
         }
       });
 
@@ -152,14 +152,14 @@ TEST(CapiTrackerLifetime, StressDestroyDuringDispatch)
         {
           for (int i = 0; i < kChurnIterationsPerThread; ++i)
           {
-            FloxPnLTrackerCallbacks cb{};
+            LrvxPnLTrackerCallbacks cb{};
             cb.on_signal = counting_pnl_cb;
             cb.user_data = &state;
-            FloxPnLTrackerHandle tracker = flox_pnl_tracker_create(cb);
+            LrvxPnLTrackerHandle tracker = lrvx_pnl_tracker_create(cb);
 
-            flox_live_engine_set_pnl_tracker(ctx.engine, tracker);
-            flox_live_engine_set_pnl_tracker(ctx.engine, nullptr);
-            flox_pnl_tracker_destroy(tracker);
+            lrvx_live_engine_set_pnl_tracker(ctx.engine, tracker);
+            lrvx_live_engine_set_pnl_tracker(ctx.engine, nullptr);
+            lrvx_pnl_tracker_destroy(tracker);
           }
         });
   }
@@ -198,7 +198,7 @@ TEST(CapiTrackerLifetime, RevokeDuringInFlightCallbackIsSafe)
     std::atomic<int>* completed;
   } blocking_ctx{&entered, &may_finish, &completed};
 
-  auto blocking_cb = [](void* ud, const FloxSignal*)
+  auto blocking_cb = [](void* ud, const LrvxSignal*)
   {
     auto* b = static_cast<BlockingCtx*>(ud);
     b->entered->store(true, std::memory_order_release);
@@ -209,14 +209,14 @@ TEST(CapiTrackerLifetime, RevokeDuringInFlightCallbackIsSafe)
     b->completed->fetch_add(1, std::memory_order_release);
   };
 
-  FloxPnLTrackerCallbacks cb{};
+  LrvxPnLTrackerCallbacks cb{};
   cb.on_signal = blocking_cb;
   cb.user_data = &blocking_ctx;
-  FloxPnLTrackerHandle tracker = flox_pnl_tracker_create(cb);
+  LrvxPnLTrackerHandle tracker = lrvx_pnl_tracker_create(cb);
   ASSERT_NE(tracker, nullptr);
-  flox_live_engine_set_pnl_tracker(ctx.engine, tracker);
+  lrvx_live_engine_set_pnl_tracker(ctx.engine, tracker);
 
-  flox_live_engine_publish_trade(ctx.engine, state.symbol_id, 100.0, 1.0, 1, 1'000'000'000LL);
+  lrvx_live_engine_publish_trade(ctx.engine, state.symbol_id, 100.0, 1.0, 1, 1'000'000'000LL);
 
   // Wait for the dispatch thread to actually be inside the callback with
   // the tracker in hand.
@@ -229,8 +229,8 @@ TEST(CapiTrackerLifetime, RevokeDuringInFlightCallbackIsSafe)
 
   // The documented detach sequence, run while the callback above is known
   // to be blocked mid-flight with the old pointer.
-  flox_live_engine_set_pnl_tracker(ctx.engine, nullptr);
-  flox_pnl_tracker_destroy(tracker);
+  lrvx_live_engine_set_pnl_tracker(ctx.engine, nullptr);
+  lrvx_pnl_tracker_destroy(tracker);
 
   may_finish.store(true, std::memory_order_release);
 

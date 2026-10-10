@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,7 +10,7 @@
 // python/order_type_bindings.h
 //
 // The Python binding's single door onto the canonical order-type table in
-// include/flox/capi/order_type_names.hpp.
+// include/lrvx/capi/order_type_names.hpp.
 //
 // It used to keep three hand-written copies instead -- one in
 // strategy_bindings.h, one in backtest_bindings.h, one in
@@ -30,8 +30,8 @@
 
 #include <pybind11/pybind11.h>
 
-#include "flox/capi/order_type_names.hpp"
-#include "flox/common.h"
+#include "lrvx/capi/order_type_names.hpp"
+#include "lrvx/common.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -39,26 +39,26 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 // Raises ValueError in Python for a name outside the canonical table.
-inline flox::OrderType parseOrderTypeStrict(const std::string& name)
+inline lrvx::OrderType parseOrderTypeStrict(const std::string& name)
 {
   uint8_t code = 0;
-  if (!flox::capi::orderTypeCodeFromName(name, &code))
+  if (!lrvx::capi::orderTypeCodeFromName(name, &code))
   {
-    throw std::invalid_argument(flox::capi::unknownOrderTypeMessage(name));
+    throw std::invalid_argument(lrvx::capi::unknownOrderTypeMessage(name));
   }
-  return static_cast<flox::OrderType>(code);
+  return static_cast<lrvx::OrderType>(code);
 }
 
 inline void bindOrderTypes(py::module_& m)
 {
-  py::tuple names(flox::capi::kOrderTypeNameCount);
-  for (std::size_t i = 0; i < flox::capi::kOrderTypeNameCount; ++i)
+  py::tuple names(lrvx::capi::kOrderTypeNameCount);
+  for (std::size_t i = 0; i < lrvx::capi::kOrderTypeNameCount; ++i)
   {
-    names[i] = flox::capi::kOrderTypeNamesLower[i];
+    names[i] = lrvx::capi::kOrderTypeNamesLower[i];
   }
   m.attr("ORDER_TYPE_NAMES") = names;
 
@@ -66,16 +66,16 @@ inline void bindOrderTypes(py::module_& m)
       "order_type_name",
       [](uint32_t code)
       {
-        if (code >= flox::capi::kOrderTypeNameCount)
+        if (code >= lrvx::capi::kOrderTypeNameCount)
         {
           throw std::invalid_argument(
               "order type code " + std::to_string(code) + " is outside the table; codes 0.." +
-              std::to_string(flox::capi::kOrderTypeNameCount - 1) + " name " +
-              flox::capi::orderTypeNameList() + ".");
+              std::to_string(lrvx::capi::kOrderTypeNameCount - 1) + " name " +
+              lrvx::capi::orderTypeNameList() + ".");
         }
-        return std::string(flox::capi::kOrderTypeNamesLower[code]);
+        return std::string(lrvx::capi::kOrderTypeNamesLower[code]);
       },
-      "Canonical name of an order-type wire code (flox::OrderType space).\n"
+      "Canonical name of an order-type wire code (lrvx::OrderType space).\n"
       "Raises ValueError for a code outside ORDER_TYPE_NAMES.",
       py::arg("code"));
 
@@ -84,15 +84,15 @@ inline void bindOrderTypes(py::module_& m)
       [](const std::string& name)
       {
         uint8_t code = 0;
-        if (!flox::capi::orderTypeCodeFromName(name, &code))
+        if (!lrvx::capi::orderTypeCodeFromName(name, &code))
         {
-          throw std::invalid_argument(flox::capi::unknownOrderTypeMessage(name));
+          throw std::invalid_argument(lrvx::capi::unknownOrderTypeMessage(name));
         }
         return static_cast<uint32_t>(code);
       },
-      "Wire code of a canonical order-type name (flox::OrderType space).\n"
+      "Wire code of a canonical order-type name (lrvx::OrderType space).\n"
       "Raises ValueError naming the accepted set for anything else.",
       py::arg("name"));
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

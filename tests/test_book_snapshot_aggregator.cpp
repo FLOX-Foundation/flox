@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/aggregators/book_snapshot_bin.h"
+#include "lrvx/replay/aggregators/book_snapshot_bin.h"
 
 #include <gtest/gtest.h>
 
@@ -15,11 +15,11 @@
 #include <stdexcept>
 #include <vector>
 
-using flox::replay::AggregatorEventFilter;
-using flox::replay::BookLevel;
-using flox::replay::BookSnapshotBinAggregator;
-using flox::replay::EventType;
-using flox::replay::ReplayEvent;
+using lrvx::replay::AggregatorEventFilter;
+using lrvx::replay::BookLevel;
+using lrvx::replay::BookSnapshotBinAggregator;
+using lrvx::replay::EventType;
+using lrvx::replay::ReplayEvent;
 
 namespace
 {

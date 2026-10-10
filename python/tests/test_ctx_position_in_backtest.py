@@ -8,11 +8,11 @@ fills the simulator dispatches.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 import numpy as np
 
 
-class TrackingStrategy(flox.Strategy):
+class TrackingStrategy(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self.samples = []  # (idx, position, is_long, is_flat)
@@ -39,9 +39,9 @@ def _make_bars(n: int):
 
 
 def test_ctx_position_reflects_fills_after_market_buy() -> None:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, initial_capital=100_000.0)
     strat = TrackingStrategy([sym])
     runner.set_strategy(strat)
 
@@ -66,7 +66,7 @@ def test_flat_guard_prevents_re_entry_after_first_buy() -> None:
     in backtest, so a flat-guarded entry buys on every bar. This test
     pins that the guard works once a position is open."""
 
-    class GuardedStrategy(flox.Strategy):
+    class GuardedStrategy(lrvx.Strategy):
         def __init__(self, symbols):
             super().__init__(symbols)
             self.buys = 0
@@ -76,9 +76,9 @@ def test_flat_guard_prevents_re_entry_after_first_buy() -> None:
                 self.market_buy(0.5)
                 self.buys += 1
 
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, initial_capital=100_000.0)
     strat = GuardedStrategy([sym])
     runner.set_strategy(strat)
 

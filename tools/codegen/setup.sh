@@ -14,4 +14,4 @@ fi
 "$VENV/bin/pip" install --quiet -r "$HERE/requirements.txt"
 
 echo "ready: $VENV"
-echo "use:   $VENV/bin/python -m flox_codegen.cli --help"
+echo "use:   $VENV/bin/python -m lrvx_codegen.cli --help"

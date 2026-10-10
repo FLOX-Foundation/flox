@@ -1,7 +1,7 @@
 """Track a resting order's queue position from live trade + book events."""
-import flox_py as flox
+import lrvx
 
-est = flox.LiveQueuePositionEstimator()
+est = lrvx.LiveQueuePositionEstimator()
 est.set_confidence_half_life_ns(60_000_000_000)  # 60s decay
 est.set_shrink_attribution_factor(0.85)
 

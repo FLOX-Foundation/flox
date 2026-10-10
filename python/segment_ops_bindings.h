@@ -5,9 +5,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/replay/ops/partitioner.h"
-#include "flox/replay/ops/segment_ops.h"
-#include "flox/replay/ops/validator.h"
+#include "lrvx/replay/ops/partitioner.h"
+#include "lrvx/replay/ops/segment_ops.h"
+#include "lrvx/replay/ops/validator.h"
 
 #include <set>
 #include <string>
@@ -18,7 +18,7 @@ namespace py = pybind11;
 namespace
 {
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 inline CompressionType parseCompression(const std::string& s)
 {

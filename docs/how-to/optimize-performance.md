@@ -1,9 +1,9 @@
 # Optimize Performance
 
 !!! info "System-level (C++)"
-    These tuning knobs live in the C++ engine. Every binding inherits them automatically; there's nothing per-language to configure. If you only run Python or Node.js the relevant tuning is "use a Release build of FLOX" — the rest is for advanced low-latency setups.
+    These tuning knobs live in the C++ engine. Every binding inherits them automatically; there's nothing per-language to configure. If you only run Python or Node.js the relevant tuning is "use a Release build of lrvx" — the rest is for advanced low-latency setups.
 
-Tune FLOX for minimum latency.
+Tune lrvx for minimum latency.
 
 ## Build Optimization
 
@@ -15,18 +15,18 @@ cmake .. \
   -DCMAKE_CXX_FLAGS="-O3 -march=native -flto"
 ```
 
-Default release flags in FLOX:
+Default release flags in lrvx:
 ```cmake
-$<$<CONFIG:Release>:-O3 ${FLOX_ARCH_OPT} -flto -funroll-loops>
+$<$<CONFIG:Release>:-O3 ${LRVX_ARCH_OPT} -flto -funroll-loops>
 ```
 
-`FLOX_ARCH_OPT` resolves at configure time from `FLOX_NATIVE` (default `ON`):
+`LRVX_ARCH_OPT` resolves at configure time from `LRVX_NATIVE` (default `ON`):
 
-- `FLOX_NATIVE=ON` → `-march=native` (fastest, locked to the build host's ISA).
-- `FLOX_NATIVE=OFF` on x86_64 → `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, portable to anything since ~2015).
-- `FLOX_NATIVE=OFF` on arm64 → compiler default (no `-march`).
+- `LRVX_NATIVE=ON` → `-march=native` (fastest, locked to the build host's ISA).
+- `LRVX_NATIVE=OFF` on x86_64 → `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, portable to anything since ~2015).
+- `LRVX_NATIVE=OFF` on arm64 → compiler default (no `-march`).
 
-Set `FLOX_NATIVE=OFF` when shipping artefacts to machines whose CPUs you do not control; the `flox-py` wheel build does this automatically. See [Build feature flags](../build/feature-flags.md#compiler-options) for the full table.
+Set `LRVX_NATIVE=OFF` when shipping artefacts to machines whose CPUs you do not control; the `lrvx` wheel build does this automatically. See [Build feature flags](../build/feature-flags.md#compiler-options) for the full table.
 
 ### Link-Time Optimization
 
@@ -42,7 +42,7 @@ g++ --version  # GCC 13+ recommended
 Default: 4096 events. For high-frequency feeds, increase:
 
 ```bash
-cmake .. -DFLOX_DEFAULT_EVENTBUS_CAPACITY=16384
+cmake .. -DLRVX_DEFAULT_EVENTBUS_CAPACITY=16384
 ```
 
 Or per-bus:
@@ -57,7 +57,7 @@ Capacity must be power of 2.
 Default: 128 consumers. Adjust if needed:
 
 ```bash
-cmake .. -DFLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS=256
+cmake .. -DLRVX_DEFAULT_EVENTBUS_MAX_CONSUMERS=256
 ```
 
 ## Memory Optimization
@@ -78,7 +78,7 @@ Monitor pool usage:
 ```cpp
 size_t inUse = bookPool.inUse();
 if (inUse > threshold) {
-  FLOX_LOG("Warning: pool usage high: " << inUse);
+  LRVX_LOG("Warning: pool usage high: " << inUse);
 }
 ```
 
@@ -113,7 +113,7 @@ See [Configure CPU Affinity](cpu-affinity.md) for details.
 
 Quick setup:
 ```cpp
-#if FLOX_CPU_AFFINITY_ENABLED
+#if LRVX_CPU_AFFINITY_ENABLED
 tradeBus.setupOptimalConfiguration(TradeBus::ComponentType::MARKET_DATA, true);
 #endif
 ```
@@ -179,17 +179,17 @@ for (const auto& item : data) {
 Disable logging during performance-critical sections:
 
 ```cpp
-FLOX_LOG_OFF();
+LRVX_LOG_OFF();
 
 // Hot path - no logging overhead
 
-FLOX_LOG_ON();
+LRVX_LOG_ON();
 ```
 
 Or disable at build time for production:
 
 ```bash
-cmake .. -DFLOX_DISABLE_LOGGING=ON
+cmake .. -DCMAKE_CXX_FLAGS=-DLRVX_DISABLE_LOGGING
 ```
 
 ## Profiling
@@ -197,13 +197,13 @@ cmake .. -DFLOX_DISABLE_LOGGING=ON
 ### Enable Tracy
 
 ```bash
-cmake .. -DFLOX_ENABLE_TRACY=ON
+cmake .. -DLRVX_ENABLE_TRACY=ON
 ```
 
 Use profiling macros:
 ```cpp
 void onTrade(const TradeEvent& ev) {
-  FLOX_PROFILE_SCOPE("Strategy::onTrade");
+  LRVX_PROFILE_SCOPE("Strategy::onTrade");
 
   // Your code...
 }
@@ -277,7 +277,7 @@ sudo sysctl -w net.core.busy_read=50
 
 Run included benchmarks:
 ```bash
-cmake .. -DFLOX_BUILD_BENCHMARKS=ON
+cmake .. -DLRVX_BUILD_BENCHMARKS=ON
 make -j
 ./benchmarks/binary_log_benchmark
 ./benchmarks/nlevel_order_book_benchmark

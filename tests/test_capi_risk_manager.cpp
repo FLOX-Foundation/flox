@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,12 +10,12 @@
 // Tests for the C-API risk-manager hook.
 //
 // The hook is a callback bundle attached to a runner (or live engine) via
-// flox_runner_set_risk_manager / flox_live_engine_set_risk_manager. Its
+// lrvx_runner_set_risk_manager / lrvx_live_engine_set_risk_manager. Its
 // `allow` function fires synchronously on every signal a strategy emits;
 // returning 0 drops the signal before it reaches the user's on_signal,
 // returning non-zero lets it through.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -35,14 +35,14 @@ struct State
   std::vector<uint8_t> allow_order_types;
 };
 
-void on_signal(void* ud, const FloxSignal* sig)
+void on_signal(void* ud, const LrvxSignal* sig)
 {
   auto* s = static_cast<State*>(ud);
   s->signals_received.fetch_add(1, std::memory_order_relaxed);
   s->received_order_ids.push_back(sig->order_id);
 }
 
-uint8_t allow_cb(void* ud, const FloxSignal* sig)
+uint8_t allow_cb(void* ud, const LrvxSignal* sig)
 {
   auto* s = static_cast<State*>(ud);
   s->allow_calls.fetch_add(1, std::memory_order_relaxed);
@@ -56,46 +56,46 @@ uint8_t allow_cb(void* ud, const FloxSignal* sig)
 // caller must destroy in reverse order.
 struct RunnerCtx
 {
-  FloxRegistryHandle registry{nullptr};
-  FloxStrategyHandle strategy{nullptr};
-  FloxRunnerHandle runner{nullptr};
+  LrvxRegistryHandle registry{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
+  LrvxRunnerHandle runner{nullptr};
   uint32_t symbol_id{0};
 
   ~RunnerCtx()
   {
     if (runner)
     {
-      flox_runner_destroy(runner);
+      lrvx_runner_destroy(runner);
     }
     if (strategy)
     {
-      flox_strategy_destroy(strategy);
+      lrvx_strategy_destroy(strategy);
     }
     if (registry)
     {
-      flox_registry_destroy(registry);
+      lrvx_registry_destroy(registry);
     }
   }
 };
 
 void make_setup(RunnerCtx& s, State& state)
 {
-  s.registry = flox_registry_create();
+  s.registry = lrvx_registry_create();
   ASSERT_NE(s.registry, nullptr);
-  s.symbol_id = flox_registry_add_symbol(s.registry, "test", "BTC", 0.01);
+  s.symbol_id = lrvx_registry_add_symbol(s.registry, "test", "BTC", 0.01);
 
   // Strategy with a no-op callback bundle. We exercise emit_market_buy
   // directly from the test, so the strategy callbacks themselves don't
   // need to do anything.
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   uint32_t syms[] = {s.symbol_id};
-  s.strategy = flox_strategy_create(/*id=*/1, syms, 1, s.registry, cb);
+  s.strategy = lrvx_strategy_create(/*id=*/1, syms, 1, s.registry, cb);
   ASSERT_NE(s.strategy, nullptr);
 
-  s.runner = flox_runner_create(s.registry, on_signal, &state);
+  s.runner = lrvx_runner_create(s.registry, on_signal, &state);
   ASSERT_NE(s.runner, nullptr);
-  flox_runner_add_strategy(s.runner, s.strategy);
-  flox_runner_start(s.runner);
+  lrvx_runner_add_strategy(s.runner, s.strategy);
+  lrvx_runner_start(s.runner);
 }
 
 }  // namespace
@@ -107,14 +107,14 @@ TEST(CapiRiskManager, NullRiskManagerLetsAllSignalsThrough)
   make_setup(s, state);
 
   uint64_t order_id =
-      flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+      lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_NE(order_id, 0u);
   EXPECT_EQ(state.signals_received.load(), 1);
   EXPECT_EQ(state.allow_calls.load(), 0);
   ASSERT_EQ(state.received_order_ids.size(), 1u);
   EXPECT_EQ(state.received_order_ids[0], order_id);
 
-  flox_runner_stop(s.runner);
+  lrvx_runner_stop(s.runner);
 }
 
 TEST(CapiRiskManager, AllowReturnsOneLetsSignalThrough)
@@ -125,23 +125,23 @@ TEST(CapiRiskManager, AllowReturnsOneLetsSignalThrough)
   RunnerCtx s;
   make_setup(s, state);
 
-  FloxRiskManagerCallbacks cb{};
+  LrvxRiskManagerCallbacks cb{};
   cb.allow = allow_cb;
   cb.user_data = &state;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(cb);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(cb);
   ASSERT_NE(rm, nullptr);
-  flox_runner_set_risk_manager(s.runner, rm);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
   uint64_t order_id =
-      flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+      lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_NE(order_id, 0u);
   EXPECT_EQ(state.allow_calls.load(), 1);
   EXPECT_EQ(state.signals_received.load(), 1);
   ASSERT_EQ(state.allow_order_ids.size(), 1u);
   EXPECT_EQ(state.allow_order_ids[0], order_id);
 
-  flox_runner_stop(s.runner);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_risk_manager_destroy(rm);
 }
 
 TEST(CapiRiskManager, AllowReturnsZeroDropsSignal)
@@ -152,21 +152,21 @@ TEST(CapiRiskManager, AllowReturnsZeroDropsSignal)
   RunnerCtx s;
   make_setup(s, state);
 
-  FloxRiskManagerCallbacks cb{};
+  LrvxRiskManagerCallbacks cb{};
   cb.allow = allow_cb;
   cb.user_data = &state;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(cb);
-  flox_runner_set_risk_manager(s.runner, rm);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(cb);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(2.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(2.0));
 
   // Both calls saw allow(), neither propagated to on_signal.
   EXPECT_EQ(state.allow_calls.load(), 2);
   EXPECT_EQ(state.signals_received.load(), 0);
 
-  flox_runner_stop(s.runner);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_risk_manager_destroy(rm);
 }
 
 TEST(CapiRiskManager, DetachReenablesNormalFlow)
@@ -177,25 +177,25 @@ TEST(CapiRiskManager, DetachReenablesNormalFlow)
   RunnerCtx s;
   make_setup(s, state);
 
-  FloxRiskManagerCallbacks cb{};
+  LrvxRiskManagerCallbacks cb{};
   cb.allow = allow_cb;
   cb.user_data = &state;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(cb);
-  flox_runner_set_risk_manager(s.runner, rm);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(cb);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_EQ(state.signals_received.load(), 0);
 
   // Detach.
-  flox_runner_set_risk_manager(s.runner, nullptr);
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(2.0));
+  lrvx_runner_set_risk_manager(s.runner, nullptr);
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(2.0));
   EXPECT_EQ(state.signals_received.load(), 1)
       << "After detach, signals must propagate without consulting risk";
   EXPECT_EQ(state.allow_calls.load(), 1)
       << "Only the first emission should have triggered the (now-detached) hook";
 
-  flox_runner_stop(s.runner);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_risk_manager_destroy(rm);
 }
 
 TEST(CapiRiskManager, AllowReturnIsConsultedPerSignal)
@@ -208,23 +208,23 @@ TEST(CapiRiskManager, AllowReturnIsConsultedPerSignal)
   RunnerCtx s;
   make_setup(s, state);
 
-  FloxRiskManagerCallbacks cb{};
+  LrvxRiskManagerCallbacks cb{};
   cb.allow = allow_cb;
   cb.user_data = &state;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(cb);
-  flox_runner_set_risk_manager(s.runner, rm);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(cb);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   state.allow_return.store(0);
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   state.allow_return.store(1);
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
 
   EXPECT_EQ(state.allow_calls.load(), 3);
   EXPECT_EQ(state.signals_received.load(), 2);
 
-  flox_runner_stop(s.runner);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_risk_manager_destroy(rm);
 }
 
 TEST(CapiRiskManager, NullAllowFunctionLetsSignalThrough)
@@ -236,24 +236,24 @@ TEST(CapiRiskManager, NullAllowFunctionLetsSignalThrough)
   RunnerCtx s;
   make_setup(s, state);
 
-  FloxRiskManagerCallbacks cb{};
+  LrvxRiskManagerCallbacks cb{};
   cb.allow = nullptr;
   cb.user_data = &state;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(cb);
-  flox_runner_set_risk_manager(s.runner, rm);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(cb);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_EQ(state.signals_received.load(), 1);
   EXPECT_EQ(state.allow_calls.load(), 0);
 
-  flox_runner_stop(s.runner);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_risk_manager_destroy(rm);
 }
 
 TEST(CapiRiskManager, OrderTypeUsesTheWireEncodingNotTheCxxEnum)
 {
-  // FloxSignal.order_type must carry the FLOX_SIGNAL_TYPE_* codes on
-  // every path that fills the struct. flox::OrderType disagrees on 0
+  // LrvxSignal.order_type must carry the LRVX_SIGNAL_TYPE_* codes on
+  // every path that fills the struct. lrvx::OrderType disagrees on 0
   // and 1 (OrderType::LIMIT == 0, but the wire code for LIMIT is 1), so
   // a raw cast used to hand risk managers a market order tagged as a
   // limit order.
@@ -263,34 +263,34 @@ TEST(CapiRiskManager, OrderTypeUsesTheWireEncodingNotTheCxxEnum)
   RunnerCtx s;
   make_setup(s, state);
 
-  FloxRiskManagerCallbacks cb{};
+  LrvxRiskManagerCallbacks cb{};
   cb.allow = allow_cb;
   cb.user_data = &state;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(cb);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(cb);
   ASSERT_NE(rm, nullptr);
-  flox_runner_set_risk_manager(s.runner, rm);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   ASSERT_EQ(state.allow_order_types.size(), 1u);
-  EXPECT_EQ(state.allow_order_types[0], FLOX_SIGNAL_TYPE_MARKET);
+  EXPECT_EQ(state.allow_order_types[0], LRVX_SIGNAL_TYPE_MARKET);
 
-  flox_emit_limit_buy(s.strategy, s.symbol_id, flox_price_from_double(100.0),
-                      flox_quantity_from_double(1.0));
+  lrvx_emit_limit_buy(s.strategy, s.symbol_id, lrvx_price_from_double(100.0),
+                      lrvx_quantity_from_double(1.0));
   ASSERT_EQ(state.allow_order_types.size(), 2u);
-  EXPECT_EQ(state.allow_order_types[1], FLOX_SIGNAL_TYPE_LIMIT);
+  EXPECT_EQ(state.allow_order_types[1], LRVX_SIGNAL_TYPE_LIMIT);
 
-  flox_runner_stop(s.runner);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_risk_manager_destroy(rm);
 }
 
 namespace
 {
-// Captures FloxSignal.order_type as seen by a BACKTEST-path risk
+// Captures LrvxSignal.order_type as seen by a BACKTEST-path risk
 // manager. That path converts an Order (not a Signal) via
-// orderToFloxSignal, which is where the encoding bug lived.
+// orderToLrvxSignal, which is where the encoding bug lived.
 std::vector<uint8_t> g_backtest_order_types;
 
-uint8_t backtest_allow_cb(void*, const FloxSignal* sig)
+uint8_t backtest_allow_cb(void*, const LrvxSignal* sig)
 {
   g_backtest_order_types.push_back(sig->order_type);
   return 1;
@@ -300,61 +300,61 @@ uint8_t backtest_allow_cb(void*, const FloxSignal* sig)
 TEST(CapiRiskManager, BacktestPathOrderTypeUsesTheWireEncoding)
 {
   // The backtest hooks (risk manager / kill switch / order validator /
-  // PnL tracker) receive an Order converted to FloxSignal. A raw cast of
-  // flox::OrderType put LIMIT==0 and MARKET==1 into a field the wire
+  // PnL tracker) receive an Order converted to LrvxSignal. A raw cast of
+  // lrvx::OrderType put LIMIT==0 and MARKET==1 into a field the wire
   // contract defines as MARKET==0, LIMIT==1, so a risk manager checking
   // for market orders saw limit orders and vice versa.
   g_backtest_order_types.clear();
 
-  auto* registry = flox_registry_create();
-  uint32_t sym = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
-  auto* btr = flox_backtest_runner_create(registry, 0.0, 10000.0);
+  auto* registry = lrvx_registry_create();
+  uint32_t sym = lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
+  auto* btr = lrvx_backtest_runner_create(registry, 0.0, 10000.0);
 
-  FloxRiskManagerCallbacks rcb{};
+  LrvxRiskManagerCallbacks rcb{};
   rcb.allow = backtest_allow_cb;
-  FloxRiskManagerHandle rm = flox_risk_manager_create(rcb);
+  LrvxRiskManagerHandle rm = lrvx_risk_manager_create(rcb);
   ASSERT_NE(rm, nullptr);
-  flox_backtest_runner_set_risk_manager(btr, rm);
+  lrvx_backtest_runner_set_risk_manager(btr, rm);
 
   static std::atomic<bool> fired{false};
   fired.store(false);
   struct St
   {
-    FloxStrategyHandle h;
+    LrvxStrategyHandle h;
     uint32_t sym;
   } st{nullptr, sym};
-  auto on_bar = +[](void* ud, const FloxSymbolContext*, const FloxBarData*)
+  auto on_bar = +[](void* ud, const LrvxSymbolContext*, const LrvxBarData*)
   {
     if (fired.exchange(true))
     {
       return;
     }
     auto* p = static_cast<St*>(ud);
-    flox_emit_market_buy(p->h, p->sym, 100000000LL);
+    lrvx_emit_market_buy(p->h, p->sym, 100000000LL);
   };
-  FloxStrategyCallbacks scb{};
+  LrvxStrategyCallbacks scb{};
   scb.on_bar = on_bar;
   scb.user_data = &st;
   uint32_t syms[] = {sym};
-  auto* strat = flox_strategy_create(1, syms, 1, registry, scb);
+  auto* strat = lrvx_strategy_create(1, syms, 1, registry, scb);
   st.h = strat;
-  flox_backtest_runner_set_strategy(btr, strat);
+  lrvx_backtest_runner_set_strategy(btr, strat);
 
   int64_t starts[1] = {1'000'000'000};
   int64_t ends[1] = {1'999'999'999};
   double opens[1] = {100.0}, highs[1] = {101.0}, lows[1] = {99.0};
   double closes[1] = {100.5}, volumes[1] = {10.0};
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows,
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows,
                                          closes, volumes, 1, "BTC", 0, 0, &stats);
   EXPECT_EQ(rc, 1);
 
   ASSERT_FALSE(g_backtest_order_types.empty())
       << "risk manager never saw the emitted market order";
-  EXPECT_EQ(g_backtest_order_types[0], FLOX_SIGNAL_TYPE_MARKET);
+  EXPECT_EQ(g_backtest_order_types[0], LRVX_SIGNAL_TYPE_MARKET);
 
-  flox_strategy_destroy(strat);
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
-  flox_risk_manager_destroy(rm);
+  lrvx_strategy_destroy(strat);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
+  lrvx_risk_manager_destroy(rm);
 }

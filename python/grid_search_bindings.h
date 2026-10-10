@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,8 +12,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/backtest/grid_search.h"
-#include "flox/error/flox_error.h"
+#include "lrvx/backtest/grid_search.h"
+#include "lrvx/error/lrvx_error.h"
 #include "walk_forward_bindings.h"  // for statsToDict
 
 #include <utility>
@@ -21,7 +21,7 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 class PyGridSearch
@@ -50,14 +50,14 @@ class PyGridSearch
   {
     if (!_factory || _factory.is_none())
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_001",
           "GridSearch.run() called before set_factory().");
     }
     const std::size_t total = _gs.totalCombinations();
     if (total == 0)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_002",
           "GridSearch.run() called with no axes / empty axis. "
           "Add at least one non-empty axis via add_axis(values).");
@@ -76,7 +76,7 @@ class PyGridSearch
       py::object res = _factory(pyParams);
       if (!py::isinstance<py::dict>(res))
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_RUN_003",
             "GridSearch factory must return a dict (BacktestRunner stats); "
             "got something else.");
@@ -91,7 +91,7 @@ class PyGridSearch
   }
 
  private:
-  flox::GridSearch _gs;
+  lrvx::GridSearch _gs;
   py::object _factory;
 };
 
@@ -114,4 +114,4 @@ inline void bindGridSearch(py::module_& m)
            "keys 'index', 'params', 'stats'.");
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

@@ -23,7 +23,7 @@ Check the input variance and the lag specification:
     print(f"unique values: {len(np.unique(prices))}")
 
     # Reduce lag count if the series is short relative to max_lag.
-    result = flox.adf(prices, max_lag=4, regression="c")
+    result = lrvx.adf(prices, max_lag=4, regression="c")
     ```
 
 ## Common causes

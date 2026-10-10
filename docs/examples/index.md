@@ -1,6 +1,6 @@
 # Examples
 
-Source files and sample data are in [`docs/examples/`](https://github.com/FLOX-Foundation/flox/tree/main/docs/examples).
+Source files and sample data are in [`docs/examples/`](https://github.com/lrvx/lrvx/tree/main/docs/examples).
 
 | Example | Language | What it shows |
 |---------|----------|---------------|

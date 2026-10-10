@@ -1,27 +1,27 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/recording_metadata.h"
+#include "lrvx/replay/recording_metadata.h"
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 class RecordingMetadataTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _testDir = std::filesystem::temp_directory_path() / "flox_metadata_test";
+    _testDir = std::filesystem::temp_directory_path() / "lrvx_metadata_test";
     std::filesystem::create_directories(_testDir);
   }
 

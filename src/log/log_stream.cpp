@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/log/log_stream.h"
+#include "lrvx/log/log_stream.h"
 
 #include <atomic>
 
-#include "flox/log/console_logger.h"
+#include "lrvx/log/console_logger.h"
 
-namespace flox
+namespace lrvx
 {
 
 namespace
@@ -67,4 +67,4 @@ LogStream::~LogStream()
   }
 }
 
-}  // namespace flox
+}  // namespace lrvx

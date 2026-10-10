@@ -1,6 +1,6 @@
 # Live engine analytics over MCP
 
-The MCP control plane serves mutating tools. It also serves a set of read-only analytics tools so an AI client can answer questions about a running flox engine without any risk of moving state. List strategies, dump current state, walk an event back to its root cause, replay a window with different params, all over the same HTTP control plane and the same scoped bearer token.
+The MCP control plane serves mutating tools. It also serves a set of read-only analytics tools so an AI client can answer questions about a running lrvx engine without any risk of moving state. List strategies, dump current state, walk an event back to its root cause, replay a window with different params, all over the same HTTP control plane and the same scoped bearer token.
 
 ## What's available
 
@@ -18,11 +18,11 @@ All seven are read-only. They accept any scope (`read`, `paper`, `live`); there 
 
 ## Wiring up the providers
 
-`ControlServer` accepts five optional analytics inputs — four callables (`strategies`, `strategy_state_provider`, `indicator_provider`, `replay_callback`) plus `event_log`, which takes a `flox_py.event_log.EventLog` instance, not a callable. The user app passes whichever it can, and the corresponding tool answers; the rest return `{data: [], note: "..."}` rather than crashing.
+`ControlServer` accepts five optional analytics inputs — four callables (`strategies`, `strategy_state_provider`, `indicator_provider`, `replay_callback`) plus `event_log`, which takes a `lrvx.event_log.EventLog` instance, not a callable. The user app passes whichever it can, and the corresponding tool answers; the rest return `{data: [], note: "..."}` rather than crashing.
 
 ```python
-from flox_py.control_server import ControlServer
-from flox_py.event_log import EventLog
+from lrvx.control_server import ControlServer
+from lrvx.event_log import EventLog
 
 event_log = EventLog(capacity=10_000)
 
@@ -45,7 +45,7 @@ server = ControlServer(
 server.start()
 ```
 
-`run_sandbox_replay(args: dict) → dict` is whatever you decide; the bundled `flox_py.bundle` helpers are a good starting point. The function takes the args the agent supplied and returns a JSON-serializable result.
+`run_sandbox_replay(args: dict) → dict` is whatever you decide; the bundled `lrvx.bundle` helpers are a good starting point. The function takes the args the agent supplied and returns a JSON-serializable result.
 
 Emit events from inside your hooks. The log is thread-safe; emit from any callback:
 

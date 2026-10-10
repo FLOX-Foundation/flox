@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #pragma once
 
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/connector/abstract_exchange_connector.h"
-#include "flox/engine/engine_config.h"
-#include "flox/util/memory/pool.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/connector/abstract_exchange_connector.h"
+#include "lrvx/engine/engine_config.h"
+#include "lrvx/util/memory/pool.h"
 
 #include <atomic>
 #include <random>
@@ -23,7 +23,7 @@
 
 namespace demo
 {
-using namespace flox;
+using namespace lrvx;
 
 class DemoConnector : public IExchangeConnector
 {

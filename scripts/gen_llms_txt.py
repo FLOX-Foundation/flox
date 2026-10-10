@@ -4,7 +4,7 @@ scripts/gen_llms_txt.py
 
 Generate `docs/llms.txt` and `docs/llms-full.txt` per the llmstxt.org spec
 so AI agents (Cursor, Claude Code, Cline, etc.) can ground themselves in
-FLOX docs.
+lrvx docs.
 
 `llms.txt` is a short curated map (sections + links). `llms-full.txt` is
 the concatenated body of the same curated set — small enough to fit a
@@ -29,13 +29,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DOCS = REPO / "docs"
-DOCS_BASE_URL = "https://flox-foundation.github.io/flox"
+DOCS_BASE_URL = "https://docs.lrvx.dev"
 
 LLMS_TXT_PATH = DOCS / "llms.txt"
 LLMS_FULL_PATH = DOCS / "llms-full.txt"
 
 PROJECT_SUMMARY = (
-    "FLOX is a C++23 high-performance trading framework with first-class "
+    "lrvx is a C++23 high-performance trading framework with first-class "
     "bindings for Python, Node.js, Codon, and embedded JavaScript. Use it "
     "to build strategies, backtest on historical data, and run live trading "
     "from any of these languages — the same C++ core powers all of them, "
@@ -51,7 +51,7 @@ Entry = tuple[str, str, str]
 # the module docstring.
 SECTIONS: list[tuple[str, list[Entry]]] = [
     ("Overview", [
-        ("docs/index.md", "Project overview", "What FLOX is and how the pieces fit"),
+        ("docs/index.md", "Project overview", "What lrvx is and how the pieces fit"),
         ("docs/bindings/README.md", "Bindings overview", "Pick a language: Python, Node, Codon, JavaScript, C"),
     ]),
     ("Bindings (language entry points)", [
@@ -113,11 +113,11 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
         ("docs/how-to/contributing.md", "Contributing", "How to contribute"),
     ]),
     ("Errors", [
-        ("docs/errors/index.md", "Error code reference", "Catalog of FloxError codes, format, and lifecycle"),
+        ("docs/errors/index.md", "Error code reference", "Catalog of LrvxError codes, format, and lifecycle"),
         ("docs/errors/E_SYM_001.md", "E_SYM_001 — Symbol is not registered", "Fix: call Engine.add_symbol() before referencing the symbol"),
     ]),
     ("AI tooling (MCP)", [
-        ("mcp/README.md", "flox-mcp — Model Context Protocol server", "Local MCP server that gives AI agents grounded access to indicators, error codes, and the C API"),
+        ("mcp/README.md", "lrvx-mcp — Model Context Protocol server", "Local MCP server that gives AI agents grounded access to indicators, error codes, and the C API"),
     ]),
     ("Reference: Python", [
         ("docs/reference/python/index.md", "Python reference index", "All Python binding modules"),
@@ -162,7 +162,7 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
         ("docs/reference/quickjs/backtest.md", "Backtest and runtime", "JS backtest entry points"),
     ]),
     ("Reference: C API", [
-        ("docs/reference/api/capi/flox_capi.md", "C API surface", "ABI-stable C symbols and lifecycle"),
+        ("docs/reference/api/capi/lrvx_capi.md", "C API surface", "ABI-stable C symbols and lifecycle"),
     ]),
     ("Concepts (explanation)", [
         ("docs/explanation/README.md", "Explanation index", "Conceptual background"),
@@ -188,7 +188,7 @@ def page_url(rel_path: str) -> str:
 
 def render_llms_txt() -> str:
     out: list[str] = []
-    out.append("# FLOX")
+    out.append("# lrvx")
     out.append("")
     out.append(f"> {PROJECT_SUMMARY}")
     out.append("")
@@ -210,7 +210,7 @@ def render_llms_txt() -> str:
 
 def render_llms_full_txt() -> str:
     out: list[str] = []
-    out.append("# FLOX — full documentation bundle")
+    out.append("# lrvx — full documentation bundle")
     out.append("")
     out.append(PROJECT_SUMMARY)
     out.append("")

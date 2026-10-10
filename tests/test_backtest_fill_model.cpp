@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -13,13 +13,13 @@
 // held for the next bar's open goes when it is cancelled or belongs to another
 // symbol, and what a queue model does with a limit it never registered.
 
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -30,7 +30,7 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

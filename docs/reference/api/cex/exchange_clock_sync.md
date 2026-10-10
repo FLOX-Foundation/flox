@@ -5,7 +5,7 @@ Clock synchronization for exchanges using RTT-based offset estimation with EMA s
 ## Header
 
 ```cpp
-#include "flox/util/sync/exchange_clock_sync.h"
+#include "lrvx/util/sync/exchange_clock_sync.h"
 ```
 
 ## Synopsis

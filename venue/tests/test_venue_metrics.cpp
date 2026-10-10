@@ -1,16 +1,16 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/ledger.h"
-#include "flox-venue/messages.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/metrics_server.h"
-#include "flox-venue/prometheus.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/messages.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/metrics_server.h"
+#include "lrvx-venue/prometheus.h"
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
@@ -24,8 +24,8 @@
 #include <cstdlib>
 #include <string>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

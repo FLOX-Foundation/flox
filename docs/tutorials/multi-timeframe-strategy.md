@@ -1,7 +1,7 @@
 # Tutorial: Multi-Timeframe Strategy
 
 !!! info "C++ tutorial"
-    This walkthrough uses `BarMatrix<...>` and `MultiTimeframeAggregator<...>` — C++ template infrastructure that isn't yet exposed as a high-level Python/Node API. You can replicate the logic from those bindings by aggregating each timeframe yourself with `flox.aggregate_time_bars(...)` and indexing the result. The pattern below is the canonical C++ flow.
+    This walkthrough uses `BarMatrix<...>` and `MultiTimeframeAggregator<...>` — C++ template infrastructure that isn't yet exposed as a high-level Python/Node API. You can replicate the logic from those bindings by aggregating each timeframe yourself with `lrvx.aggregate_time_bars(...)` and indexing the result. The pattern below is the canonical C++ flow.
 
 This tutorial builds a multi-timeframe momentum strategy. You'll learn how to:
 
@@ -30,19 +30,19 @@ A momentum strategy that:
 Create a new file `my_mtf_strategy.cpp`:
 
 ```cpp
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bar_matrix.h"
-#include "flox/aggregator/bus/bar_bus.h"
-#include "flox/aggregator/multi_timeframe_aggregator.h"
-#include "flox/aggregator/timeframe.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bar_matrix.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
+#include "lrvx/aggregator/multi_timeframe_aggregator.h"
+#include "lrvx/aggregator/timeframe.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
 
 #include <iostream>
 #include <memory>
 
-using namespace flox;
+using namespace lrvx;
 ```
 
 ## Step 2: Define the Strategy Class
@@ -295,7 +295,7 @@ if (h1Bullish && m5Pullback && m1BullishReversal && positiveDelta)
 
 ## Complete Example
 
-See [multi_timeframe_demo.cpp](https://github.com/FLOX-Foundation/flox/blob/main/demo/src/multi_timeframe_demo.cpp) for a complete working example.
+See [multi_timeframe_demo.cpp](https://github.com/lrvx/lrvx/blob/main/demo/src/multi_timeframe_demo.cpp) for a complete working example.
 
 ## Next Steps
 

@@ -23,9 +23,9 @@ Details and the exact bounds: [SimulatedExecutor](../reference/api/backtest/simu
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    ex = flox.SimulatedExecutor()
+    ex = lrvx.SimulatedExecutor()
     ex.set_default_slippage("fixed_bps", bps=1.0)   # 1 bps default
     ex.set_queue_model("tob")                       # top-of-book queue
     # Per-symbol override:
@@ -35,7 +35,7 @@ Details and the exact bounds: [SimulatedExecutor](../reference/api/backtest/simu
 === "Node.js"
 
     ```javascript
-    const ex = new flox.SimulatedExecutor();
+    const ex = new lrvx.SimulatedExecutor();
     ex.setDefaultSlippage("fixed_bps", 0, 0, 1.0, 0);    // ticks, tickSize, bps, impactCoeff
     ex.setQueueModel("tob", 1);
     ```
@@ -43,7 +43,7 @@ Details and the exact bounds: [SimulatedExecutor](../reference/api/backtest/simu
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor, SLIPPAGE_FIXED_BPS, QUEUE_TOB
+    from lrvx.backtest import SimulatedExecutor, SLIPPAGE_FIXED_BPS, QUEUE_TOB
 
     ex = SimulatedExecutor()
     ex.set_default_slippage(SLIPPAGE_FIXED_BPS, 0, 0.0, 1.0, 0.0)
@@ -53,21 +53,21 @@ Details and the exact bounds: [SimulatedExecutor](../reference/api/backtest/simu
 === "C++"
 
     ```cpp
-    #include "flox/backtest/backtest_config.h"
-    #include "flox/backtest/backtest_runner.h"
+    #include "lrvx/backtest/backtest_config.h"
+    #include "lrvx/backtest/backtest_runner.h"
 
-    flox::BacktestConfig cfg;
+    lrvx::BacktestConfig cfg;
     cfg.initialCapital = 100'000.0;
     cfg.feeRate = 0.0002;                                                                 // 2 bps per fill
-    cfg.defaultSlippage = { flox::SlippageModel::FIXED_BPS, 0, flox::Price{}, 1.0, 0.0 };  // 1 bps default
-    cfg.queueModel = flox::QueueModel::TOB;
+    cfg.defaultSlippage = { lrvx::SlippageModel::FIXED_BPS, 0, lrvx::Price{}, 1.0, 0.0 };  // 1 bps default
+    cfg.queueModel = lrvx::QueueModel::TOB;
     cfg.riskFreeRate = 0.0;
     cfg.metricsAnnualizationFactor = 252.0;
 
-    flox::BacktestRunner runner(cfg);
+    lrvx::BacktestRunner runner(cfg);
 
     cfg.perSymbolSlippage.emplace_back(
-        kEthUsd, flox::SlippageProfile{flox::SlippageModel::VOLUME_IMPACT, 0, 0.0, 0.01});
+        kEthUsd, lrvx::SlippageProfile{lrvx::SlippageModel::VOLUME_IMPACT, 0, 0.0, 0.01});
     ```
 
 ## 2. Run it
@@ -75,7 +75,7 @@ Details and the exact bounds: [SimulatedExecutor](../reference/api/backtest/simu
 === "Python"
 
     ```python
-    bt = flox.BacktestRunner(reg, fee_rate=0.0002, initial_capital=100_000)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0002, initial_capital=100_000)
     bt.set_strategy(my_strategy)
     stats = bt.run_csv("data.csv", "BTCUSDT")
     ```
@@ -83,7 +83,7 @@ Details and the exact bounds: [SimulatedExecutor](../reference/api/backtest/simu
 === "Node.js"
 
     ```javascript
-    const bt = new flox.BacktestRunner(reg, 0.0002, 100_000);
+    const bt = new lrvx.BacktestRunner(reg, 0.0002, 100_000);
     bt.setStrategy(myStrategy);
     const stats = bt.runCsv("data.csv", "BTCUSDT");
     ```
@@ -124,7 +124,7 @@ These are the fields on the dict returned by `run_csv` / `run_ohlcv` / `run_bars
 
     # BacktestRunner has no CSV writer. write_equity_curve_csv lives on
     # BacktestResult, which you drive from a SimulatedExecutor:
-    res = flox.BacktestResult(initial_capital=100_000.0, fee_rate=0.0002)
+    res = lrvx.BacktestResult(initial_capital=100_000.0, fee_rate=0.0002)
     res.ingest_executor(ex)
     res.write_equity_curve_csv("equity.csv")   # or res.equity_curve() -> structured array
     ```

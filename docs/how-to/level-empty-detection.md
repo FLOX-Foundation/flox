@@ -33,8 +33,8 @@ Just enable the queue tracker — no extra config:
 === "C++"
 
     ```cpp
-    flox::BacktestConfig cfg;
-    cfg.queueModel = flox::QueueModel::TOB;
+    lrvx::BacktestConfig cfg;
+    cfg.queueModel = lrvx::QueueModel::TOB;
     ```
 
 ## React from a strategy
@@ -42,7 +42,7 @@ Just enable the queue tracker — no extra config:
 === "Python"
 
     ```python
-    class Watcher(flox.Strategy):
+    class Watcher(lrvx.Strategy):
         def on_market_position_change(self, ctx, ev):
             if ev.market_position == "level_empty":
                 # alone at our price — reprice tighter or step back

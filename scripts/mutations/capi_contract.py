@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Mutation harness for the C API contract fix: the canonical order-type
-table (python/order_type_bindings.h + include/flox/capi/order_type_names.hpp),
+table (python/order_type_bindings.h + include/lrvx/capi/order_type_names.hpp),
 the C ABI version handshake run at load by Python/Node/QuickJS
-(include/flox/capi/abi_check.hpp + the four call sites), the VenueExecutor
+(include/lrvx/capi/abi_check.hpp + the four call sites), the VenueExecutor
 trigger fix (python/bare_executor_bindings.h), the simulated executor no
 longer rewriting a conditional order's type (src/backtest/simulated_executor.cpp),
-and the ownership notes in include/flox/capi/flox_capi.h.
+and the ownership notes in include/lrvx/capi/lrvx_capi.h.
 
 A test that passes proves nothing on its own; what it has to do is fail when
 the code it covers is wrong. This script breaks each piece of the fix one at
@@ -17,16 +17,16 @@ calling it a survivor.
 Three build trees are involved, because the fix spans three bindings plus a
 handful of shared headers compiled separately into each of them:
 
-    build/      -DFLOX_BUILD_TESTS=ON -DFLOX_BUILD_CAPI=ON -DFLOX_BUILD_QUICKJS=ON
-                -DFLOX_ENABLE_BACKTEST=ON      (gtest binaries, one per test file)
-    build-py/   -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON, against .venv-tests
-                (the _flox_py extension -- its own copy of libflox, not build/'s)
-    node/build/ cmake-js against build/'s libflox (FLOX_BUILD_CAPI=ON there)
+    build/      -DLRVX_BUILD_TESTS=ON -DLRVX_BUILD_CAPI=ON -DLRVX_BUILD_QUICKJS=ON
+                -DLRVX_ENABLE_BACKTEST=ON      (gtest binaries, one per test file)
+    build-py/   -DLRVX_BUILD_PYTHON=ON -DLRVX_ENABLE_BACKTEST=ON, against .venv-tests
+                (the _lrvx extension -- its own copy of liblrvx, not build/'s)
+    node/build/ cmake-js against build/'s liblrvx (LRVX_BUILD_CAPI=ON there)
 
 Every rebuild is honest about it: the mutated file's hash is printed before
 and after, the affected target's own object files are deleted first so
 nothing is served from cache, a C++ rebuild has to contain "Building CXX" or
-the run is refused, a Node rebuild has to relink flox_node.node (size/mtime
+the run is refused, a Node rebuild has to relink lrvx_node.node (size/mtime
 checked), and every test run carries a timeout. A mutation that does not
 compile is not a mutation.
 
@@ -39,16 +39,16 @@ Usage:
 
 Prerequisites (not done by this script -- see the worktree's own setup):
 
-    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFLOX_BUILD_TESTS=ON \\
-          -DFLOX_BUILD_CAPI=ON -DFLOX_BUILD_QUICKJS=ON -DFLOX_ENABLE_BACKTEST=ON
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLRVX_BUILD_TESTS=ON \\
+          -DLRVX_BUILD_CAPI=ON -DLRVX_BUILD_QUICKJS=ON -DLRVX_ENABLE_BACKTEST=ON
     cmake --build build -j8
 
     python3 -m venv .venv-tests && .venv-tests/bin/python -m pip install \\
           "pybind11<3.1.0" numpy pytest
-    cmake -S . -B build-py -G Ninja -DCMAKE_BUILD_TYPE=Release -DFLOX_BUILD_PYTHON=ON \\
-          -DFLOX_ENABLE_BACKTEST=ON -Dpybind11_DIR=$(.venv-tests/bin/python -c \\
+    cmake -S . -B build-py -G Ninja -DCMAKE_BUILD_TYPE=Release -DLRVX_BUILD_PYTHON=ON \\
+          -DLRVX_ENABLE_BACKTEST=ON -Dpybind11_DIR=$(.venv-tests/bin/python -c \\
           "import pybind11; print(pybind11.get_cmake_dir())")
-    cmake --build build-py --target _flox_py -j8
+    cmake --build build-py --target _lrvx -j8
 
     cd node && npm install && npm run build
 """
@@ -68,7 +68,7 @@ REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 BUILD_PY = REPO / "build-py"
 NODE_DIR = REPO / "node"
-NODE_ADDON = NODE_DIR / "build" / "Release" / "flox_node.node"
+NODE_ADDON = NODE_DIR / "build" / "Release" / "lrvx_node.node"
 
 CMAKE = os.environ.get("CMAKE", shutil.which("cmake") or "/opt/homebrew/bin/cmake")
 NPM = os.environ.get("NPM", "npm")
@@ -82,21 +82,21 @@ _venv_python = REPO / ".venv-tests" / "bin" / "python"
 PYTHON = str(_venv_python) if _venv_python.is_file() else sys.executable
 PYTHONPATH = str(BUILD_PY / "python")
 
-PY_TARGET = "_flox_py"
+PY_TARGET = "_lrvx"
 
 # ── files touched, by name used in the Mutation table below ────────────────
-ORDER_TYPE_NAMES_HPP = "include/flox/capi/order_type_names.hpp"
-ABI_CHECK_HPP = "include/flox/capi/abi_check.hpp"
-FLOX_CAPI_H = "include/flox/capi/flox_capi.h"
+ORDER_TYPE_NAMES_HPP = "include/lrvx/capi/order_type_names.hpp"
+ABI_CHECK_HPP = "include/lrvx/capi/abi_check.hpp"
+LRVX_CAPI_H = "include/lrvx/capi/lrvx_capi.h"
 ORDER_TYPE_BINDINGS_H = "python/order_type_bindings.h"
 BACKTEST_BINDINGS_H = "python/backtest_bindings.h"
 BARE_EXECUTOR_BINDINGS_H = "python/bare_executor_bindings.h"
-FLOX_PY_CPP = "python/flox_py.cpp"
-BUNDLE_PY = "python/flox_py/bundle.py"
+LRVX_PY_CPP = "python/lrvx.cpp"
+BUNDLE_PY = "python/lrvx/bundle.py"
 SIMULATED_EXECUTOR_CPP = "src/backtest/simulated_executor.cpp"
 NODE_ABI_H = "node/src/abi.h"
 JS_BINDINGS_CPP = "src/quickjs/js_bindings.cpp"
-TRACE_HANDLERS_H = "include/flox/run/trace_handlers.h"
+TRACE_HANDLERS_H = "include/lrvx/run/trace_handlers.h"
 
 
 @dataclass
@@ -148,7 +148,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="ordertype-unknown-to-market-backtest-bindings",
         why="PySimulatedExecutor::parseOrderType (backtest_bindings.h) stops delegating "
-            "straight to the canonical flox_py::parseOrderTypeStrict and instead swallows its "
+            "straight to the canonical lrvx::parseOrderTypeStrict and instead swallows its "
             "ValueError, falling back to OrderType::MARKET -- the first of the three former "
             "hand-written tables, reproduced at its call site instead of in a private copy",
         kind="py",
@@ -156,13 +156,13 @@ MUTATIONS: list[Mutation] = [
             file=BACKTEST_BINDINGS_H,
             old="""  static OrderType parseOrderType(const std::string& s)
   {
-    return flox_py::parseOrderTypeStrict(s);
+    return lrvx::parseOrderTypeStrict(s);
   }""",
             new="""  static OrderType parseOrderType(const std::string& s)
   {
     try
     {
-      return flox_py::parseOrderTypeStrict(s);
+      return lrvx::parseOrderTypeStrict(s);
     }
     catch (const std::invalid_argument&)
     {
@@ -181,12 +181,12 @@ MUTATIONS: list[Mutation] = [
         edits=[Edit(
             file=BARE_EXECUTOR_BINDINGS_H,
             old="""  auto parseOrderType = [](const std::string& s) -> OrderType
-  { return flox_py::parseOrderTypeStrict(s); };""",
+  { return lrvx::parseOrderTypeStrict(s); };""",
             new="""  auto parseOrderType = [](const std::string& s) -> OrderType
   {
     try
     {
-      return flox_py::parseOrderTypeStrict(s);
+      return lrvx::parseOrderTypeStrict(s);
     }
     catch (const std::invalid_argument&)
     {
@@ -199,29 +199,29 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="ordertype-unknown-to-market-shared-strict",
-        why="flox_py::parseOrderTypeStrict itself (order_type_bindings.h) -- the shared door "
+        why="lrvx::parseOrderTypeStrict itself (order_type_bindings.h) -- the shared door "
             "both call sites above now go through -- falls back to MARKET on an unrecognised "
             "name instead of raising: the third former table, now centralised into one bug",
         kind="py",
         edits=[Edit(
             file=ORDER_TYPE_BINDINGS_H,
-            old="""inline flox::OrderType parseOrderTypeStrict(const std::string& name)
+            old="""inline lrvx::OrderType parseOrderTypeStrict(const std::string& name)
 {
   uint8_t code = 0;
-  if (!flox::capi::orderTypeCodeFromName(name, &code))
+  if (!lrvx::capi::orderTypeCodeFromName(name, &code))
   {
-    throw std::invalid_argument(flox::capi::unknownOrderTypeMessage(name));
+    throw std::invalid_argument(lrvx::capi::unknownOrderTypeMessage(name));
   }
-  return static_cast<flox::OrderType>(code);
+  return static_cast<lrvx::OrderType>(code);
 }""",
-            new="""inline flox::OrderType parseOrderTypeStrict(const std::string& name)
+            new="""inline lrvx::OrderType parseOrderTypeStrict(const std::string& name)
 {
   uint8_t code = 0;
-  if (!flox::capi::orderTypeCodeFromName(name, &code))
+  if (!lrvx::capi::orderTypeCodeFromName(name, &code))
   {
-    return flox::OrderType::MARKET;
+    return lrvx::OrderType::MARKET;
   }
-  return static_cast<flox::OrderType>(code);
+  return static_cast<lrvx::OrderType>(code);
 }""",
         )],
         py_tests=["python/tests/test_order_type_names.py"],
@@ -346,14 +346,14 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="ordertype-name-off-by-one",
         why="the order_type_name() Python function reads kOrderTypeNamesLower[(code+1) % "
-            "count] instead of [code] -- flox.order_type_name(4) answers \"tp_limit\" instead "
+            "count] instead of [code] -- lrvx.order_type_name(4) answers \"tp_limit\" instead "
             "of \"tp_market\"",
         kind="py",
         edits=[Edit(
             file=ORDER_TYPE_BINDINGS_H,
-            old="        return std::string(flox::capi::kOrderTypeNamesLower[code]);",
+            old="        return std::string(lrvx::capi::kOrderTypeNamesLower[code]);",
             new="        return std::string(\n"
-                "            flox::capi::kOrderTypeNamesLower[(code + 1) % flox::capi::kOrderTypeNameCount]);",
+                "            lrvx::capi::kOrderTypeNamesLower[(code + 1) % lrvx::capi::kOrderTypeNameCount]);",
         )],
         py_tests=["python/tests/test_order_type_names.py"],
         sweep_rebuild_py=True,
@@ -361,20 +361,20 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="ordertype-names-tuple-drops-entry",
         why="bindOrderTypes allocates and fills ORDER_TYPE_NAMES one short "
-            "(kOrderTypeNameCount - 1), so flox.ORDER_TYPE_NAMES silently drops \"iceberg\" "
+            "(kOrderTypeNameCount - 1), so lrvx.ORDER_TYPE_NAMES silently drops \"iceberg\" "
             "even though order_type_name(7)/order_type_code(\"iceberg\") still work",
         kind="py",
         edits=[Edit(
             file=ORDER_TYPE_BINDINGS_H,
-            old="""  py::tuple names(flox::capi::kOrderTypeNameCount);
-  for (std::size_t i = 0; i < flox::capi::kOrderTypeNameCount; ++i)
+            old="""  py::tuple names(lrvx::capi::kOrderTypeNameCount);
+  for (std::size_t i = 0; i < lrvx::capi::kOrderTypeNameCount; ++i)
   {
-    names[i] = flox::capi::kOrderTypeNamesLower[i];
+    names[i] = lrvx::capi::kOrderTypeNamesLower[i];
   }""",
-            new="""  py::tuple names(flox::capi::kOrderTypeNameCount - 1);
-  for (std::size_t i = 0; i < flox::capi::kOrderTypeNameCount - 1; ++i)
+            new="""  py::tuple names(lrvx::capi::kOrderTypeNameCount - 1);
+  for (std::size_t i = 0; i < lrvx::capi::kOrderTypeNameCount - 1; ++i)
   {
-    names[i] = flox::capi::kOrderTypeNamesLower[i];
+    names[i] = lrvx::capi::kOrderTypeNamesLower[i];
   }""",
         )],
         py_tests=["python/tests/test_order_type_names.py"],
@@ -392,10 +392,10 @@ MUTATIONS: list[Mutation] = [
         kind="gtest",
         edits=[Edit(
             file=ABI_CHECK_HPP,
-            old="""  const uint32_t runtimeVersion = flox_capi_abi_version();
+            old="""  const uint32_t runtimeVersion = lrvx_capi_abi_version();
   if (compiledVersion == runtimeVersion)
   {""",
-            new="""  const uint32_t runtimeVersion = flox_capi_abi_version();
+            new="""  const uint32_t runtimeVersion = lrvx_capi_abi_version();
   if (true)
   {""",
         )],
@@ -427,15 +427,15 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="abi-check-constant-instead-of-runtime-call",
-        why="runtimeVersion is read from the FLOX_CAPI_ABI_VERSION macro instead of calling "
-            "flox_capi_abi_version() -- indistinguishable from the correct code whenever the "
+        why="runtimeVersion is read from the LRVX_CAPI_ABI_VERSION macro instead of calling "
+            "lrvx_capi_abi_version() -- indistinguishable from the correct code whenever the "
             "binding and the library it links were built from the same header, which is every "
             "case this single-tree test harness can construct",
         kind="gtest",
         edits=[Edit(
             file=ABI_CHECK_HPP,
-            old="  const uint32_t runtimeVersion = flox_capi_abi_version();",
-            new="  const uint32_t runtimeVersion = FLOX_CAPI_ABI_VERSION;",
+            old="  const uint32_t runtimeVersion = lrvx_capi_abi_version();",
+            new="  const uint32_t runtimeVersion = LRVX_CAPI_ABI_VERSION;",
         )],
         gtest_target="test_capi_abi_check",
         sweep_rebuild_py=True,
@@ -450,11 +450,11 @@ MUTATIONS: list[Mutation] = [
         kind="gtest",
         edits=[Edit(
             file=ABI_CHECK_HPP,
-            old="""    *message = "flox C ABI version mismatch: this binding was built against version " +
-               std::to_string(compiledVersion) + ", the loaded flox library reports version " +
+            old="""    *message = "lrvx C ABI version mismatch: this binding was built against version " +
+               std::to_string(compiledVersion) + ", the loaded lrvx library reports version " +
                std::to_string(runtimeVersion) +""",
-            new="""    *message = "flox C ABI version mismatch: this binding was built against version " +
-               std::to_string(runtimeVersion) + ", the loaded flox library reports version " +
+            new="""    *message = "lrvx C ABI version mismatch: this binding was built against version " +
+               std::to_string(runtimeVersion) + ", the loaded lrvx library reports version " +
                std::to_string(compiledVersion) +""",
         )],
         gtest_target="test_capi_abi_check",
@@ -464,46 +464,46 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="abi-python-import-skips-check",
-        why="the throw-on-mismatch block is removed from the _flox_py module init entirely; "
+        why="the throw-on-mismatch block is removed from the _lrvx module init entirely; "
             "CAPI_ABI_VERSION and capi_abi_version() are still bound from the same macro/"
             "function as before, so their equality (all test_abi_version.py checks) holds "
             "regardless of whether the check ever ran",
         kind="py",
         edits=[Edit(
-            file=FLOX_PY_CPP,
+            file=LRVX_PY_CPP,
             old="""  {
     std::string abiMessage;
-    if (!flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &abiMessage))
+    if (!lrvx::capi::checkAbiVersion(LRVX_CAPI_ABI_VERSION, &abiMessage))
     {
       throw py::import_error(abiMessage);
     }
   }
-  m.attr("CAPI_ABI_VERSION") = static_cast<uint32_t>(FLOX_CAPI_ABI_VERSION);""",
-            new="""  m.attr("CAPI_ABI_VERSION") = static_cast<uint32_t>(FLOX_CAPI_ABI_VERSION);""",
+  m.attr("CAPI_ABI_VERSION") = static_cast<uint32_t>(LRVX_CAPI_ABI_VERSION);""",
+            new="""  m.attr("CAPI_ABI_VERSION") = static_cast<uint32_t>(LRVX_CAPI_ABI_VERSION);""",
         )],
         py_tests=["python/tests/test_abi_version.py"],
         sweep_rebuild_py=True,
     ),
     Mutation(
         name="abi-node-exports-runtime-as-compiled",
-        why="CAPI_ABI_VERSION is exported from flox_capi_abi_version() (the runtime read) "
-            "instead of the FLOX_CAPI_ABI_VERSION macro (the compiled-against constant) -- the "
+        why="CAPI_ABI_VERSION is exported from lrvx_capi_abi_version() (the runtime read) "
+            "instead of the LRVX_CAPI_ABI_VERSION macro (the compiled-against constant) -- the "
             "two are equal in any single build tree, so test_abi_version.js's equality check "
             "cannot tell the difference",
         kind="node",
         edits=[Edit(
             file=NODE_ABI_H,
             old="""  exports.Set("CAPI_ABI_VERSION",
-              Napi::Number::New(env, static_cast<double>(FLOX_CAPI_ABI_VERSION)));""",
+              Napi::Number::New(env, static_cast<double>(LRVX_CAPI_ABI_VERSION)));""",
             new="""  exports.Set("CAPI_ABI_VERSION",
-              Napi::Number::New(env, static_cast<double>(flox_capi_abi_version())));""",
+              Napi::Number::New(env, static_cast<double>(lrvx_capi_abi_version())));""",
         )],
         node_test="test_abi_version.js",
         sweep_rebuild_node=True,
     ),
     Mutation(
         name="abi-quickjs-registers-despite-refusal",
-        why="registerFloxBindings computes the refusal message but no longer throws or returns "
+        why="registerLrvxBindings computes the refusal message but no longer throws or returns "
             "false on a mismatch -- it registers every global regardless. In this build tree "
             "the compiled-against and runtime versions are always equal (one compiler, one "
             "header), so the refusal path this deletes never actually executes today; nothing "
@@ -513,7 +513,7 @@ MUTATIONS: list[Mutation] = [
             file=JS_BINDINGS_CPP,
             old="""  {
     std::string abiMessage;
-    if (!capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &abiMessage))
+    if (!capi::checkAbiVersion(LRVX_CAPI_ABI_VERSION, &abiMessage))
     {
       JS_ThrowInternalError(ctx, "%s", abiMessage.c_str());
       return false;
@@ -521,15 +521,15 @@ MUTATIONS: list[Mutation] = [
   }""",
             new="""  {
     std::string abiMessage;
-    capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &abiMessage);
+    capi::checkAbiVersion(LRVX_CAPI_ABI_VERSION, &abiMessage);
     // BUG: the refusal is computed and ignored; registration proceeds anyway.
   }""",
         )],
         gtest_target="test_quickjs",
         # Both ABI tests: the pair-is-exposed one cannot see this, the
-        # refusal one can -- it drives registerFloxBindings against a
+        # refusal one can -- it drives registerLrvxBindings against a
         # library reporting another version (tests/test_quickjs.cpp
-        # defines flox_capi_abi_version itself) and asserts nothing is
+        # defines lrvx_capi_abi_version itself) and asserts nothing is
         # registered.
         gtest_filter="JsEngineTest.*Abi*",
     ),
@@ -618,7 +618,7 @@ MUTATIONS: list[Mutation] = [
   // if it crosses.""",
         )],
         py_tests=["python/tests/test_order_type_names.py", "python/tests/test_conditional_orders.py"],
-        extra_py_objects=["CMakeFiles/flox.dir/src/backtest/simulated_executor.cpp.o"],
+        extra_py_objects=["CMakeFiles/lrvx.dir/src/backtest/simulated_executor.cpp.o"],
         sweep_rebuild_py=True,
     ),
     Mutation(
@@ -640,7 +640,7 @@ MUTATIONS: list[Mutation] = [
 }""",
         )],
         py_tests=["python/tests/test_order_type_names.py", "python/tests/test_conditional_orders.py"],
-        extra_py_objects=["CMakeFiles/flox.dir/src/backtest/simulated_executor.cpp.o"],
+        extra_py_objects=["CMakeFiles/lrvx.dir/src/backtest/simulated_executor.cpp.o"],
         sweep_rebuild_py=True,
     ),
     Mutation(
@@ -661,7 +661,7 @@ MUTATIONS: list[Mutation] = [
 }""",
         )],
         py_tests=["python/tests/test_order_type_names.py", "python/tests/test_conditional_orders.py"],
-        extra_py_objects=["CMakeFiles/flox.dir/src/backtest/simulated_executor.cpp.o"],
+        extra_py_objects=["CMakeFiles/lrvx.dir/src/backtest/simulated_executor.cpp.o"],
         sweep_rebuild_py=True,
         equivalent_reason=(
             "not observable from any binding, checked rather than assumed. fillsAsLimit "
@@ -686,67 +686,67 @@ MUTATIONS: list[Mutation] = [
     ),
 
     # ═══════════════════════════════════════════════════════════════════
-    # 5. Ownership notes (flox_capi.h) -- read by test_capi_contract as a
+    # 5. Ownership notes (lrvx_capi.h) -- read by test_capi_contract as a
     # text file, so the "rebuild" is nominal; it still forces a real
     # recompile because the target's own object is deleted first.
     # ═══════════════════════════════════════════════════════════════════
 
     Mutation(
         name="ownership-note-removed-curve-clone",
-        why="flox_curve_clone's owned note is deleted outright -- back to undocumented, one "
+        why="lrvx_curve_clone's owned note is deleted outright -- back to undocumented, one "
             "of the six the audit named",
         kind="gtest",
         edits=[Edit(
-            file=FLOX_CAPI_H,
-            old="""  /* Owned: a fresh copy the caller destroys with flox_curve_destroy,
+            file=LRVX_CAPI_H,
+            old="""  /* Owned: a fresh copy the caller destroys with lrvx_curve_destroy,
    * independent of the curve it was cloned from. */
-  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);""",
-            new="""  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);""",
+  LrvxCurveHandle lrvx_curve_clone(LrvxCurveHandle curve);""",
+            new="""  LrvxCurveHandle lrvx_curve_clone(LrvxCurveHandle curve);""",
         )],
         gtest_target="test_capi_contract",
         gtest_filter="CapiContractTest.*Ownership*",
     ),
     Mutation(
         name="ownership-note-vague-neither-owned-nor-borrowed",
-        why="flox_curve_clone's note is replaced with wording that never says owned/owns/"
+        why="lrvx_curve_clone's note is replaced with wording that never says owned/owns/"
             "borrow -- mentionsOwnership() is a keyword match, so language that only implies "
             "the rule without using its words still counts as undocumented",
         kind="gtest",
         edits=[Edit(
-            file=FLOX_CAPI_H,
-            old="""  /* Owned: a fresh copy the caller destroys with flox_curve_destroy,
+            file=LRVX_CAPI_H,
+            old="""  /* Owned: a fresh copy the caller destroys with lrvx_curve_destroy,
    * independent of the curve it was cloned from. */
-  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);""",
-            new="""  /* The caller is responsible for eventually calling flox_curve_destroy
+  LrvxCurveHandle lrvx_curve_clone(LrvxCurveHandle curve);""",
+            new="""  /* The caller is responsible for eventually calling lrvx_curve_destroy
    * on the value this returns. */
-  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);""",
+  LrvxCurveHandle lrvx_curve_clone(LrvxCurveHandle curve);""",
         )],
         gtest_target="test_capi_contract",
         gtest_filter="CapiContractTest.*Ownership*",
     ),
     Mutation(
         name="ownership-note-wrong-borrowed-marked-owned",
-        why="flox_pool_replay_curve is genuinely BORROWED (flox_curve_destroy on it is a "
+        why="lrvx_pool_replay_curve is genuinely BORROWED (lrvx_curve_destroy on it is a "
             "no-op) but its note is rewritten to say \"Owned\" and tell the caller to destroy "
             "it -- a caller who follows this comment double-frees the replay's own curve. "
             "mentionsOwnership() only checks that one of owned/owns/borrow appears somewhere "
             "near the declaration; it cannot tell which one is true",
         kind="gtest",
         edits=[Edit(
-            file=FLOX_CAPI_H,
+            file=LRVX_CAPI_H,
             old="""  /* Borrowed: the replay owns this curve. It stays valid while the replay
-   * lives and flox_curve_destroy on it is a no-op. */
-  FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay);""",
+   * lives and lrvx_curve_destroy on it is a no-op. */
+  LrvxCurveHandle lrvx_pool_replay_curve(LrvxPoolReplayHandle replay);""",
             new="""  /* Owned: the replay hands out a fresh copy of its curve here. Destroy
-   * it with flox_curve_destroy when done with it. */
-  FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay);""",
+   * it with lrvx_curve_destroy when done with it. */
+  LrvxCurveHandle lrvx_pool_replay_curve(LrvxPoolReplayHandle replay);""",
         )],
         gtest_target="test_capi_contract",
         gtest_filter="CapiContractTest.*Ownership*",
     ),
 
     # ═══════════════════════════════════════════════════════════════════
-    # 6. bundle.py -- pure-Python source, no C++ rebuild, but _flox_py's
+    # 6. bundle.py -- pure-Python source, no C++ rebuild, but _lrvx's
     # POST_BUILD copy_directory step still has to refresh it, so this goes
     # through the same "py" rebuild pipeline as everything else.
     # ═══════════════════════════════════════════════════════════════════
@@ -799,12 +799,12 @@ MUTATIONS: list[Mutation] = [
 
     # ═══════════════════════════════════════════════════════════════════
     # 7. Not covered by any binding test: trace_handlers.h's fourth,
-    # deliberately-untouched order-type table (.floxrun trace format).
+    # deliberately-untouched order-type table (.lrvxrun trace format).
     # ═══════════════════════════════════════════════════════════════════
 
     Mutation(
         name="trace-handlers-tp-market-tp-limit-swapped",
-        why="TraceHandlers::signalTypeName (include/flox/run/trace_handlers.h, the .floxrun "
+        why="TraceHandlers::signalTypeName (include/lrvx/run/trace_handlers.h, the .lrvxrun "
             "trace writer's own copy of the order-type table -- explicitly out of scope for "
             "this task per the task note) has TakeProfitMarket and TakeProfitLimit's strings "
             "swapped. tests/test_trace_handlers.cpp is the only file that even includes this "
@@ -828,7 +828,7 @@ MUTATIONS: list[Mutation] = [
         sweep_rebuild_gtest_targets=["test_quickjs"],
         sweep_rebuild_node=True,
         equivalent_reason=(
-            "out of scope, recorded as a follow-up: trace_handlers.h is the .floxrun "
+            "out of scope, recorded as a follow-up: trace_handlers.h is the .lrvxrun "
             "trace writer's own table, not a language binding. Its strings are a "
             "recorded file format, so changing them is a reader-compatibility "
             "question this task did not open -- the task note says so explicitly. "
@@ -842,8 +842,8 @@ MUTATIONS: list[Mutation] = [
 # ── Not executed: Codon ─────────────────────────────────────────────────
 #
 # The task asks for "one Codon module without the abi import (say whether
-# any test can see it)" -- e.g. dropping the `from flox.abi import
-# check_abi_version` line codon/flox/backtest.codon (or any of the other 21
+# any test can see it)" -- e.g. dropping the `from lrvx.abi import
+# check_abi_version` line codon/lrvx/backtest.codon (or any of the other 21
 # modules) carries alongside `from C import ...`.
 #
 # This is deliberately NOT in MUTATIONS above -- untestable as a mutation
@@ -855,8 +855,8 @@ MUTATIONS: list[Mutation] = [
 # What it can have instead is a test that reads the modules, which is what
 # python/tests/test_abi_version.py::
 # test_every_codon_module_with_c_declarations_runs_the_abi_check now does:
-# every codon/flox/*.codon that carries a `from C import` must also carry
-# `from flox.abi import check_abi_version`, the import whose side effect
+# every codon/lrvx/*.codon that carries a `from C import` must also carry
+# `from lrvx.abi import check_abi_version`, the import whose side effect
 # is the check (abi.codon calls check_abi_version() at module level). Drop
 # that line from any one module and the test names the module. It is a
 # text-level pin, not a behavioural one -- it cannot tell that the check
@@ -868,12 +868,12 @@ MUTATIONS: list[Mutation] = [
 # `scripts/check_codon_examples_coverage.py` (the one Codon-aware CI gate
 # that inspects source rather than running a binary) audits
 # codon/examples/*.codon against what CI executes -- it never reads
-# codon/flox/*.codon, so a missing `from flox.abi import check_abi_version`
+# codon/lrvx/*.codon, so a missing `from lrvx.abi import check_abi_version`
 # in one of the 22 library modules is invisible to it. The only thing that
 # would ever exercise the missing import is CI's own "Run Codon smoke
 # examples" step actually importing that specific module at runtime and
 # hitting the ABI mismatch this handshake exists to catch -- which requires
-# a mismatched libflox_capi to begin with, the same gap
+# a mismatched liblrvx_capi to begin with, the same gap
 # abi-python-import-skips-check / abi-quickjs-registers-despite-refusal
 # document for the other three bindings.
 
@@ -929,7 +929,7 @@ def cmake_build(build_dir: Path, targets: list[str], require_cxx: bool = True) -
 
 
 def rebuild_py(extra_objects: list[str], require_cxx: bool = True) -> str:
-    for obj in find_objects(BUILD_PY / "python", "_flox_py.dir"):
+    for obj in find_objects(BUILD_PY / "python", "_lrvx.dir"):
         obj.unlink()
     for rel in extra_objects:
         p = BUILD_PY / rel

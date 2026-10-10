@@ -1,8 +1,8 @@
 """Stop a shrunken run of this suite from reading like a complete one.
 
-Most of what makes `flox_mcp` worth testing -- the runtime tools, the DEX
+Most of what makes `lrvx_mcp` worth testing -- the runtime tools, the DEX
 tools, the custom-venue assembly, the 38 tool schemas and the dispatch chain
-behind them -- needs either the compiled `flox_py` binding or the `mcp`
+behind them -- needs either the compiled `lrvx` binding or the `mcp`
 package. When one is absent those cases skip, and the summary line of a run
 that lost 19 of its cases ("229 passed, 20 skipped") reads exactly like a
 healthy one ("248 passed, 1 skipped"). Both exit 0. The difference shows up
@@ -16,7 +16,7 @@ Complete is the default in CI (the `CI` environment variable, which GitHub
 Actions sets) and opt-in elsewhere. A contributor who has not built the C++
 side still gets a useful run of the pure-Python half; a CI job that thinks it
 built the binding and did not gets a red job instead of a green one with a
-hole in it. Override either way with `FLOX_MCP_REQUIRE_DEPS=1` / `=0`.
+hole in it. Override either way with `LRVX_MCP_REQUIRE_DEPS=1` / `=0`.
 """
 from __future__ import annotations
 
@@ -37,14 +37,14 @@ if BUILD_PY.is_dir() and str(BUILD_PY) not in sys.path:
 
 # Dependencies whose absence silently shrinks this suite, and how to get them.
 REQUIRED_DEPENDENCIES: dict[str, str] = {
-    "flox_py": (
-        "the compiled binding -- configure with -DFLOX_BUILD_PYTHON=ON, then "
-        "`cmake --build build --target _flox_py`, and run pytest with "
+    "lrvx": (
+        "the compiled binding -- configure with -DLRVX_BUILD_PYTHON=ON, then "
+        "`cmake --build build --target _lrvx`, and run pytest with "
         "PYTHONPATH=build/python"
     ),
-    "flox_py.dex": (
+    "lrvx.dex": (
         "the DEX comfort layer, which ships inside the binding -- a build that "
-        "imports as flox_py but not flox_py.dex is half-installed"
+        "imports as lrvx but not lrvx.dex is half-installed"
     ),
     "mcp.types": 'the MCP SDK -- `pip install "mcp>=2.0,<3"` (the range in mcp/pyproject.toml)',
 }
@@ -59,7 +59,7 @@ def _truthy(value: str | None) -> bool:
 
 
 def _requires_complete_run() -> bool:
-    explicit = os.environ.get("FLOX_MCP_REQUIRE_DEPS")
+    explicit = os.environ.get("LRVX_MCP_REQUIRE_DEPS")
     if explicit is not None and explicit.strip() != "":
         return _truthy(explicit)
     return _truthy(os.environ.get("CI"))
@@ -78,7 +78,7 @@ def _probe() -> dict[str, str]:
 def _attribute(reason: str) -> str | None:
     """Which missing dependency a skip reason is talking about, if any.
 
-    Longest name first, so a reason naming `flox_py.dex` is charged to the
+    Longest name first, so a reason naming `lrvx.dex` is charged to the
     submodule rather than to its parent and counted once.
     """
     lowered = (reason or "").lower()
@@ -107,7 +107,7 @@ def pytest_configure(config: pytest.Config) -> None:
             "mcp/tests cannot run completely here, and a partial run of this "
             "suite is indistinguishable from a healthy one:\n"
             f"{detail}\n"
-            "Set FLOX_MCP_REQUIRE_DEPS=0 to accept a partial run on purpose."
+            "Set LRVX_MCP_REQUIRE_DEPS=0 to accept a partial run on purpose."
         )
 
 

@@ -22,7 +22,7 @@ post-only, cancels, modifies and pegs. After every command:
 - neither book may be crossed.
 
 The reference book is the oracle: any ladder divergence fails with the command
-index. Depth is CI-friendly by default; set `FLOX_FUZZ_OPS` for a deep run
+index. Depth is CI-friendly by default; set `LRVX_FUZZ_OPS` for a deep run
 (2M commands verified).
 
 ## Golden replay, on both books
@@ -38,10 +38,10 @@ test for.
 The corpus is templated on the resting-book implementation
 (`corpus<Book>()`), and `CorpusMatchesTheTable` runs it twice: once on
 `MatchingEngine<MatchingBook>`, whose numbers are what the table records and
-what `FLOX_UPDATE_GOLDEN=1` rewrites, and once on `MatchingEngine<LadderBook>`,
+what `LRVX_UPDATE_GOLDEN=1` rewrites, and once on `MatchingEngine<LadderBook>`,
 checked against the SAME table with no separate `replay_hashes_ladder.txt`.
 That is a contract, not a convenience: `stateHash`/`configHash`
-(`venue/include/flox-venue/engine/checkpoint.inl`) fold in only `SymbolConfig`
+(`venue/include/lrvx-venue/engine/checkpoint.inl`) fold in only `SymbolConfig`
 and the book's content through `Book::forEachOrder`'s canonical traversal
 (price levels best-first, FIFO within each level) -- never a book's own
 internal representation -- so for the same config and the same command

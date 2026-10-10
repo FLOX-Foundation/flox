@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,7 +12,7 @@
 // BacktestRunner::runBars walks every bar open -> low -> high -> close, holds
 // whatever the bar callback submits, and releases it at the next bar's open.
 // A binding consumer driving SimulatedExecutor by hand has none of that: the C
-// API offers `flox_simulated_executor_on_bar(handle, symbol, close)` and
+// API offers `lrvx_simulated_executor_on_bar(handle, symbol, close)` and
 // nothing else, so it moves the market straight to the close, never sees an
 // intrabar extreme, and matches a callback order at a price that exists only
 // because the bar has already happened.
@@ -23,32 +23,32 @@
 // called directly: that keeps the file compiling and linking against today's
 // header, and makes the absence a named test failure instead of a build break.
 //
-// needs: void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle executor,
+// needs: void lrvx_simulated_executor_on_bar_ohlc(LrvxSimulatedExecutorHandle executor,
 //                                                 uint32_t symbol, double open_price,
 //                                                 double high_price, double low_price,
 //                                                 double close_price);
-// needs: void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle executor);
-// needs: void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle executor);
-// needs: void flox_simulated_executor_reset(FloxSimulatedExecutorHandle executor);
-// needs: uint8_t FloxBar::close_reason, carrying flox::Bar::reason through batch aggregation.
+// needs: void lrvx_simulated_executor_begin_bar_callback_window(LrvxSimulatedExecutorHandle executor);
+// needs: void lrvx_simulated_executor_end_bar_callback_window(LrvxSimulatedExecutorHandle executor);
+// needs: void lrvx_simulated_executor_reset(LrvxSimulatedExecutorHandle executor);
+// needs: uint8_t LrvxBar::close_reason, carrying lrvx::Bar::reason through batch aggregation.
 
 // This is the one capi test that also links the engine headers, so the
 // reference run and the run under test sit in one process. The executable then
-// holds two copies of the engine -- the static `flox` it links and the one
-// `flox_capi` embeds -- which is safe here because neither path reads engine
+// holds two copies of the engine -- the static `lrvx` it links and the one
+// `lrvx_capi` embeds -- which is safe here because neither path reads engine
 // global state: bar times are passed as raw nanoseconds on both sides and the
 // timebase mapping is never consulted. Keep it that way; see the note on
 // test_capi_logger in tests/CMakeLists.txt for what goes wrong when a test
 // straddles both copies of a global.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/engine/symbol_registry.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/engine/symbol_registry.h"
 
 #include <gtest/gtest.h>
 
@@ -64,7 +64,7 @@
 #include <dlfcn.h>
 #endif
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -229,7 +229,7 @@ void expectAggregatedCloseReason()
     const uint8_t isBuy[] = {1, 1, 1, 1, 1};
 
     BarT bars[8]{};
-    const uint32_t n = flox_aggregate_time_bars(ts, px, qty, isBuy, 5, 60.0, bars, 8);
+    const uint32_t n = lrvx_aggregate_time_bars(ts, px, qty, isBuy, 5, 60.0, bars, 8);
     ASSERT_GE(n, 1u);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -251,7 +251,7 @@ std::vector<FillRow> toRows(const std::vector<Fill>& fills)
   return rows;
 }
 
-std::vector<FillRow> toRows(const std::vector<FloxFill>& fills)
+std::vector<FillRow> toRows(const std::vector<LrvxFill>& fills)
 {
   std::vector<FillRow> rows;
   rows.reserve(fills.size());
@@ -396,10 +396,10 @@ void* symbolNamed(const char* name)
 #endif
 }
 
-using OnBarOhlcFn = void (*)(FloxSimulatedExecutorHandle, uint32_t, double, double, double,
+using OnBarOhlcFn = void (*)(LrvxSimulatedExecutorHandle, uint32_t, double, double, double,
                              double);
-using WindowFn = void (*)(FloxSimulatedExecutorHandle);
-using ResetFn = void (*)(FloxSimulatedExecutorHandle);
+using WindowFn = void (*)(LrvxSimulatedExecutorHandle);
+using ResetFn = void (*)(LrvxSimulatedExecutorHandle);
 
 struct BarApi
 {
@@ -418,43 +418,43 @@ BarApi loadBarApi()
 {
   BarApi api;
   api.onBarOhlc = reinterpret_cast<OnBarOhlcFn>(
-      symbolNamed("flox_simulated_executor_on_bar_ohlc"));
+      symbolNamed("lrvx_simulated_executor_on_bar_ohlc"));
   api.beginWindow = reinterpret_cast<WindowFn>(
-      symbolNamed("flox_simulated_executor_begin_bar_callback_window"));
+      symbolNamed("lrvx_simulated_executor_begin_bar_callback_window"));
   api.endWindow = reinterpret_cast<WindowFn>(
-      symbolNamed("flox_simulated_executor_end_bar_callback_window"));
-  api.reset = reinterpret_cast<ResetFn>(symbolNamed("flox_simulated_executor_reset"));
+      symbolNamed("lrvx_simulated_executor_end_bar_callback_window"));
+  api.reset = reinterpret_cast<ResetFn>(symbolNamed("lrvx_simulated_executor_reset"));
   return api;
 }
 
-std::vector<FillRow> readFills(FloxSimulatedExecutorHandle exec)
+std::vector<FillRow> readFills(LrvxSimulatedExecutorHandle exec)
 {
-  const uint32_t n = flox_simulated_executor_fill_count(exec);
-  std::vector<FloxFill> raw(n);
+  const uint32_t n = lrvx_simulated_executor_fill_count(exec);
+  std::vector<LrvxFill> raw(n);
   if (n > 0)
   {
-    const uint32_t got = flox_simulated_executor_get_fills(exec, raw.data(), n);
+    const uint32_t got = lrvx_simulated_executor_get_fills(exec, raw.data(), n);
     raw.resize(got);
   }
   return toRows(raw);
 }
 
 // The hand-drive: exactly what runBars does per bar, spelled in C.
-void driveTape(const BarApi& api, FloxSimulatedExecutorHandle exec)
+void driveTape(const BarApi& api, LrvxSimulatedExecutorHandle exec)
 {
   bool sent = false;
   for (const auto& row : tape())
   {
-    flox_simulated_executor_advance_clock(exec, row.endNs);
+    lrvx_simulated_executor_advance_clock(exec, row.endNs);
     api.onBarOhlc(exec, kSym, row.open, row.high, row.low, row.close);
 
     api.beginWindow(exec);
     if (!sent)
     {
       sent = true;
-      flox_simulated_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0,
+      lrvx_simulated_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0,
                                            static_cast<uint8_t>(OrderType::MARKET), kSym);
-      flox_simulated_executor_submit_order(exec, /*id=*/2, /*side=sell=*/1, 109.0, 1.0,
+      lrvx_simulated_executor_submit_order(exec, /*id=*/2, /*side=sell=*/1, 109.0, 1.0,
                                            static_cast<uint8_t>(OrderType::LIMIT), kSym);
     }
     api.endWindow(exec);
@@ -462,19 +462,19 @@ void driveTape(const BarApi& api, FloxSimulatedExecutorHandle exec)
 }
 
 // The hand-drive for the bracket tape, spelled in C.
-void driveBracketTape(const BarApi& api, FloxSimulatedExecutorHandle exec)
+void driveBracketTape(const BarApi& api, LrvxSimulatedExecutorHandle exec)
 {
   bool sent = false;
   for (const auto& row : bracketTape())
   {
-    flox_simulated_executor_advance_clock(exec, row.endNs);
+    lrvx_simulated_executor_advance_clock(exec, row.endNs);
     api.onBarOhlc(exec, kSym, row.open, row.high, row.low, row.close);
 
     api.beginWindow(exec);
     if (!sent)
     {
       sent = true;
-      flox_simulated_executor_submit_bracket(
+      lrvx_simulated_executor_submit_bracket(
           exec, kBracketId, kSym, /*entry_side=buy=*/0,
           static_cast<uint8_t>(OrderType::MARKET), /*entry_price=*/0.0, /*quantity=*/1.0,
           /*tp_side=sell=*/1, static_cast<uint8_t>(OrderType::LIMIT), kTakeProfitPrice,
@@ -532,21 +532,21 @@ TEST(CapiExecutorBarOhlc, TheBarPathIsReachableFromC)
 
   // Green control: the close-only form is there, which is the whole of the
   // bar path a binding can reach today.
-  EXPECT_NE(symbolNamed("flox_simulated_executor_on_bar"), nullptr);
+  EXPECT_NE(symbolNamed("lrvx_simulated_executor_on_bar"), nullptr);
 
   EXPECT_NE(api.onBarOhlc, nullptr)
-      << "needs void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle, "
+      << "needs void lrvx_simulated_executor_on_bar_ohlc(LrvxSimulatedExecutorHandle, "
          "uint32_t symbol, double open_price, double high_price, double low_price, "
          "double close_price) -- a binding driving the executor by hand has no way "
          "to feed a bar's open or its intrabar extremes";
   EXPECT_NE(api.beginWindow, nullptr)
-      << "needs void flox_simulated_executor_begin_bar_callback_window("
-         "FloxSimulatedExecutorHandle)";
+      << "needs void lrvx_simulated_executor_begin_bar_callback_window("
+         "LrvxSimulatedExecutorHandle)";
   EXPECT_NE(api.endWindow, nullptr)
-      << "needs void flox_simulated_executor_end_bar_callback_window("
-         "FloxSimulatedExecutorHandle)";
+      << "needs void lrvx_simulated_executor_end_bar_callback_window("
+         "LrvxSimulatedExecutorHandle)";
   EXPECT_NE(api.reset, nullptr)
-      << "needs void flox_simulated_executor_reset(FloxSimulatedExecutorHandle) -- "
+      << "needs void lrvx_simulated_executor_reset(LrvxSimulatedExecutorHandle) -- "
          "without it a second hand-driven run reports the sum of every run so far";
 }
 
@@ -561,7 +561,7 @@ TEST(CapiExecutorBarOhlc, HandDrivenBarsMatchTheRunner)
   const std::vector<FillRow> expected = runnerFills();
   ASSERT_EQ(expected.size(), 2u) << "reference run changed shape:" << describe(expected);
 
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
   driveTape(api, exec);
 
@@ -569,7 +569,7 @@ TEST(CapiExecutorBarOhlc, HandDrivenBarsMatchTheRunner)
   EXPECT_EQ(actual, expected) << "runner:" << describe(expected)
                               << "\nC API:" << describe(actual);
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
 // The mutation this is shaped against: on_bar_ohlc forwarding the close where
@@ -581,7 +581,7 @@ TEST(CapiExecutorBarOhlc, AHeldOrderFillsAtTheOpenNotTheClose)
   ASSERT_TRUE(api.complete())
       << "the C bar path is incomplete; see CapiExecutorBarOhlc.TheBarPathIsReachableFromC";
 
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
   driveTape(api, exec);
 
@@ -596,7 +596,7 @@ TEST(CapiExecutorBarOhlc, AHeldOrderFillsAtTheOpenNotTheClose)
   EXPECT_NE(buy.price, 90.0) << "filled at the low of a bar that had already closed";
   EXPECT_NE(buy.price, 100.0) << "filled at the open of a bar that had already closed";
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
 // The other half of the walk: a resting sell at 109 fills against bar 1's high
@@ -608,7 +608,7 @@ TEST(CapiExecutorBarOhlc, ARestingOrderMatchesTheIntrabarExtreme)
   ASSERT_TRUE(api.complete())
       << "the C bar path is incomplete; see CapiExecutorBarOhlc.TheBarPathIsReachableFromC";
 
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
   driveTape(api, exec);
 
@@ -620,7 +620,7 @@ TEST(CapiExecutorBarOhlc, ARestingOrderMatchesTheIntrabarExtreme)
   EXPECT_EQ(sell.side, 1u);
   EXPECT_DOUBLE_EQ(sell.price, 109.0) << "a resting limit trades at the price it posted";
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
 // Without the window the order is not held at all: it matches inside the bar
@@ -633,13 +633,13 @@ TEST(CapiExecutorBarOhlc, WithoutTheWindowTheOrderIsNotHeld)
   ASSERT_TRUE(api.complete())
       << "the C bar path is incomplete; see CapiExecutorBarOhlc.TheBarPathIsReachableFromC";
 
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
 
   const BarRow& bar0 = tape()[0];
-  flox_simulated_executor_advance_clock(exec, bar0.endNs);
+  lrvx_simulated_executor_advance_clock(exec, bar0.endNs);
   api.onBarOhlc(exec, kSym, bar0.open, bar0.high, bar0.low, bar0.close);
-  flox_simulated_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0,
+  lrvx_simulated_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0,
                                        static_cast<uint8_t>(OrderType::MARKET), kSym);
 
   const std::vector<FillRow> fills = readFills(exec);
@@ -647,7 +647,7 @@ TEST(CapiExecutorBarOhlc, WithoutTheWindowTheOrderIsNotHeld)
   EXPECT_DOUBLE_EQ(fills[0].price, bar0.close)
       << "outside the window the market has been walked to the close";
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
 // reset() is what makes a second hand-driven run report that run. Without it
@@ -658,7 +658,7 @@ TEST(CapiExecutorBarOhlc, ResetMakesASecondRunReportThatRun)
   ASSERT_TRUE(api.complete())
       << "the C bar path is incomplete; see CapiExecutorBarOhlc.TheBarPathIsReachableFromC";
 
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
 
   driveTape(api, exec);
@@ -666,28 +666,28 @@ TEST(CapiExecutorBarOhlc, ResetMakesASecondRunReportThatRun)
   ASSERT_FALSE(first.empty());
 
   api.reset(exec);
-  EXPECT_EQ(flox_simulated_executor_fill_count(exec), 0u)
+  EXPECT_EQ(lrvx_simulated_executor_fill_count(exec), 0u)
       << "reset left the previous run's fills behind";
 
   driveTape(api, exec);
   EXPECT_EQ(readFills(exec), first) << "the second run did not repeat the first";
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
-// Batch aggregation hands back a FloxBar with no close_reason, so the reason a
+// Batch aggregation hands back a LrvxBar with no close_reason, so the reason a
 // bar closed -- the one field that separates a bar the threshold closed from
 // one a flush forced out -- is readable on the live callback path
-// (FloxBarData) and nowhere else. The struct is the ABI, so the field has to
+// (LrvxBarData) and nowhere else. The struct is the ABI, so the field has to
 // land there before any binding can carry it.
 TEST(CapiExecutorBarOhlc, AggregatedBarsCarryACloseReason)
 {
-  EXPECT_TRUE(HasCloseReason<FloxBar>)
-      << "needs `uint8_t close_reason;` on FloxBar, set from flox::Bar::reason in the "
+  EXPECT_TRUE(HasCloseReason<LrvxBar>)
+      << "needs `uint8_t close_reason;` on LrvxBar, set from lrvx::Bar::reason in the "
          "batch aggregation path, so aggregated bars carry the same field the live "
-         "FloxBarData already does";
+         "LrvxBarData already does";
 
-  expectAggregatedCloseReason<FloxBar>();
+  expectAggregatedCloseReason<LrvxBar>();
 }
 
 // ── which intrabar extreme the walk reaches first ──────────────────────────
@@ -741,12 +741,12 @@ TEST(CapiExecutorBarOhlc, TheWalkReachesTheLowBeforeTheHigh)
   ASSERT_TRUE(api.complete())
       << "the C bar path is incomplete; see CapiExecutorBarOhlc.TheBarPathIsReachableFromC";
 
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
   driveBracketTape(api, exec);
 
   const BracketOutcome actual{readFills(exec),
-                              flox_simulated_executor_bracket_state(exec, kBracketId)};
+                              lrvx_simulated_executor_bracket_state(exec, kBracketId)};
   const BracketOutcome expected = runnerBracketRun();
 
   EXPECT_EQ(actual.state, expected.state)
@@ -764,63 +764,63 @@ TEST(CapiExecutorBarOhlc, TheWalkReachesTheLowBeforeTheHigh)
   EXPECT_NE(actual.fills[1].price, kTakeProfitPrice)
       << "the child that filled was the take-profit, not the stop";
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
 // ── the other bar that crosses the C ABI: the strategy's own ring ──────────
 
-// close_reason reaches a FloxBar by two separate writers: doAggregateC, which
+// close_reason reaches a LrvxBar by two separate writers: doAggregateC, which
 // builds the batch-aggregation result (covered above, through
-// flox_aggregate_time_bars), and writeFloxBar, which fills the bars
-// flox_strategy_last_closed_bar / _last_n_closed_bars hand back. They share
+// lrvx_aggregate_time_bars), and writeLrvxBar, which fills the bars
+// lrvx_strategy_last_closed_bar / _last_n_closed_bars hand back. They share
 // the struct and nothing else, so one can carry the reason while the other
 // leaves the caller's bytes untouched.
 //
 // Driven entirely through the C ABI -- registry, strategy, runner -- because
-// that is the path a binding takes, and flox_runner_on_bar is where a caller
+// that is the path a binding takes, and lrvx_runner_on_bar is where a caller
 // says why the bar closed in the first place.
 TEST(CapiExecutorBarOhlc, AClosedBarReadBackCarriesItsCloseReason)
 {
-  FloxRegistryHandle registry = flox_registry_create();
+  LrvxRegistryHandle registry = lrvx_registry_create();
   ASSERT_NE(registry, nullptr);
-  const uint32_t symbol = flox_registry_add_symbol(registry, "test", "BTCUSDT", 0.01);
+  const uint32_t symbol = lrvx_registry_add_symbol(registry, "test", "BTCUSDT", 0.01);
 
-  FloxStrategyCallbacks callbacks{};
+  LrvxStrategyCallbacks callbacks{};
   const uint32_t symbols[] = {symbol};
-  FloxStrategyHandle strategy = flox_strategy_create(1, symbols, 1, registry, callbacks);
+  LrvxStrategyHandle strategy = lrvx_strategy_create(1, symbols, 1, registry, callbacks);
   ASSERT_NE(strategy, nullptr);
 
-  FloxRunnerHandle runner = flox_runner_create(registry, nullptr, nullptr);
+  LrvxRunnerHandle runner = lrvx_runner_create(registry, nullptr, nullptr);
   ASSERT_NE(runner, nullptr);
-  flox_runner_add_strategy(runner, strategy);
-  flox_runner_start(runner);
+  lrvx_runner_add_strategy(runner, strategy);
+  lrvx_runner_start(runner);
 
   // 2 = Forced, the reason a flush gives a bar. Deliberately not 0
   // (Threshold), which a struct nobody wrote also reports.
   const uint8_t kForced = static_cast<uint8_t>(BarCloseReason::Forced);
   const uint64_t param = static_cast<uint64_t>(kMinuteNs);
-  flox_runner_on_bar(runner, symbol, /*bar_type=time=*/0, param, 100.0, 101.0, 99.0, 100.5,
+  lrvx_runner_on_bar(runner, symbol, /*bar_type=time=*/0, param, 100.0, 101.0, 99.0, 100.5,
                      10.0, 6.0, 0, kMinuteNs, kForced);
 
   // Poisoned, so "never written" reads differently from "written as Threshold".
-  FloxBar last;
+  LrvxBar last;
   std::memset(&last, 0xFF, sizeof(last));
-  ASSERT_EQ(flox_strategy_last_closed_bar(strategy, symbol, 0, param, &last), 1u)
+  ASSERT_EQ(lrvx_strategy_last_closed_bar(strategy, symbol, 0, param, &last), 1u)
       << "the bar never reached the strategy's ring";
   EXPECT_EQ(last.close_raw, Price::fromDouble(100.5).raw()) << "wrong bar came back";
   EXPECT_EQ(last.close_reason, kForced)
-      << "flox_strategy_last_closed_bar hands back a bar whose close_reason it "
+      << "lrvx_strategy_last_closed_bar hands back a bar whose close_reason it "
          "never wrote (0xFF is the caller's own poison, 0 is Threshold)";
 
-  FloxBar ring[4];
+  LrvxBar ring[4];
   std::memset(ring, 0xFF, sizeof(ring));
-  const uint32_t n = flox_strategy_last_n_closed_bars(strategy, symbol, 0, param, ring, 4);
+  const uint32_t n = lrvx_strategy_last_n_closed_bars(strategy, symbol, 0, param, ring, 4);
   ASSERT_EQ(n, 1u);
   EXPECT_EQ(ring[0].close_reason, kForced)
-      << "flox_strategy_last_n_closed_bars drops the reason its single-bar sibling carries";
+      << "lrvx_strategy_last_n_closed_bars drops the reason its single-bar sibling carries";
 
-  flox_runner_stop(runner);
-  flox_runner_destroy(runner);
-  flox_strategy_destroy(strategy);
-  flox_registry_destroy(registry);
+  lrvx_runner_stop(runner);
+  lrvx_runner_destroy(runner);
+  lrvx_strategy_destroy(strategy);
+  lrvx_registry_destroy(registry);
 }

@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/net/curl_transport.h"
+#include "lrvx-connectors/net/curl_transport.h"
 
-#include <flox/log/log.h>
+#include <lrvx/log/log.h>
 
 #include <exception>
 #include <stdexcept>
@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace flox
+namespace lrvx
 {
 
 namespace
@@ -52,11 +52,11 @@ void invokeSafely(MoveOnlyFunction<void(std::string_view)>& fn, std::string_view
   }
   catch (const std::exception& e)
   {
-    FLOX_LOG_ERROR("[CurlTransport] " << which << " handler threw: " << e.what());
+    LRVX_LOG_ERROR("[CurlTransport] " << which << " handler threw: " << e.what());
   }
   catch (...)
   {
-    FLOX_LOG_ERROR("[CurlTransport] " << which << " handler threw a non-standard exception");
+    LRVX_LOG_ERROR("[CurlTransport] " << which << " handler threw a non-standard exception");
   }
 }
 }  // namespace
@@ -186,7 +186,7 @@ void CurlTransport::submit(
     if (_queue.size() >= _dispatchConfig.maxQueueDepth)
     {
       lk.unlock();
-      FLOX_LOG_ERROR("[CurlTransport] send queue full (" << _dispatchConfig.maxQueueDepth
+      LRVX_LOG_ERROR("[CurlTransport] send queue full (" << _dispatchConfig.maxQueueDepth
                                                          << "), refusing request to " << req.url);
       invokeSafely(req.onError, "Transport send queue is full", "onError");
       return;
@@ -308,4 +308,4 @@ void CurlTransport::perform(Request& req)
   }
 }
 
-}  // namespace flox
+}  // namespace lrvx

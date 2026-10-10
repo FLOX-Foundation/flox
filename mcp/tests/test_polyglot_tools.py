@@ -15,7 +15,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "mcp"))
 
-from flox_mcp.tools import (
+from lrvx_mcp.tools import (
+    _data,
     docs_search as docs_search_tool,
     examples,
     lookup,
@@ -29,28 +30,39 @@ from flox_mcp.tools import (
 
 
 def test_lookup_symbol_known_struct():
-    out = lookup.lookup_symbol("FloxBarData")
-    assert "FloxBarData" in out
+    out = lookup.lookup_symbol("LrvxBarData")
+    assert "LrvxBarData" in out
     assert "capi" in out
     # Cross-language hit: every binding should contribute *something*
     # for a core event struct unless a binding is in allowlist mode.
     assert "struct" in out
 
 
+def test_bare_struct_name_maps_to_its_capi_spelling():
+    assert "LrvxBarData" in lookup._ir_name_to_capi_keys("BarData")
+
+
+def test_lrvx_prefixed_c_spelling_resolves_the_cpp_type():
+    manifest = _data.load_binding_manifest()
+    assert "SimulatedExecutor" in lookup._by_name(manifest, "cpp")
+    hit = lookup._resolve_cpp("LrvxSimulatedExecutor", manifest, None)
+    assert hit is not None
+
+
 def test_lookup_symbol_known_macro():
-    out = lookup.lookup_symbol("FLOX_SIGNAL_TYPE_MARKET")
-    assert "FLOX_SIGNAL_TYPE_MARKET" in out
+    out = lookup.lookup_symbol("LRVX_SIGNAL_TYPE_MARKET")
+    assert "LRVX_SIGNAL_TYPE_MARKET" in out
     assert "capi" in out
     assert "macro" in out
-    assert "#define FLOX_SIGNAL_TYPE_MARKET 0" in out
+    assert "#define LRVX_SIGNAL_TYPE_MARKET 0" in out
 
 
 def test_lookup_symbol_indicator_short_name():
-    """`ema` → finds flox_indicator_ema in C, plus exposed forms across
+    """`ema` → finds lrvx_indicator_ema in C, plus exposed forms across
     bindings (the function `ema` is exported by both pybind11 and NAPI;
     `EMA` exists as a class — that's a separate lookup)."""
     out = lookup.lookup_symbol("ema")
-    assert "flox_indicator_ema" in out
+    assert "lrvx_indicator_ema" in out
     # Python + Node both export at least one form.
     assert "python" in out
     assert "node" in out
@@ -69,8 +81,8 @@ def test_lookup_symbol_unknown():
 
 
 def test_lookup_symbol_language_filter():
-    full = lookup.lookup_symbol("FloxBarData")
-    capi_only = lookup.lookup_symbol("FloxBarData", language="capi")
+    full = lookup.lookup_symbol("LrvxBarData")
+    capi_only = lookup.lookup_symbol("LrvxBarData", language="capi")
     assert "capi" in capi_only
     # Filter restricts the table; full output mentions other bindings,
     # filtered output should not.
@@ -78,7 +90,7 @@ def test_lookup_symbol_language_filter():
 
 
 def test_lookup_symbol_invalid_language():
-    out = lookup.lookup_symbol("FloxBarData", language="rust")
+    out = lookup.lookup_symbol("LrvxBarData", language="rust")
     assert "unknown language" in out
 
 
@@ -164,7 +176,7 @@ def test_list_bindings_filter_reduces():
 
 def test_list_bindings_limit_truncates():
     full = lookup.list_bindings(language="capi", limit=10)
-    rows = [l for l in full.splitlines() if l.startswith("| `flox_")]
+    rows = [l for l in full.splitlines() if l.startswith("| `lrvx_")]
     assert len(rows) <= 10
 
 
@@ -213,7 +225,7 @@ def test_scaffold_python_parses_and_validates(kind):
     (a) compiles in Python, (b) passes the existing validate_strategy."""
     import ast
 
-    from flox_mcp.tools import strategy
+    from lrvx_mcp.tools import strategy
 
     rendered = scaffold.scaffold_strategy(language="python", kind=kind,
                                           name="MyStrat")
@@ -381,14 +393,14 @@ def test_docs_search_clamps_k():
     assert "docs_search" in out or "## " in out
 
 
-# ── flox_overview ────────────────────────────────────────────────────
+# ── lrvx_overview ────────────────────────────────────────────────────
 
 
-def test_flox_overview_returns_markdown_catalogue():
+def test_lrvx_overview_returns_markdown_catalogue():
     """overview is the 'what can you do?' tool. Must be a
     standalone markdown narrative covering every tool category and
     the canonical workflows."""
-    out = overview.flox_overview()
+    out = overview.lrvx_overview()
     assert len(out) > 500
     # Categories.
     assert "Discovery" in out
@@ -409,73 +421,73 @@ def test_flox_overview_returns_markdown_catalogue():
         "explain_decision",
         "place_order",
     ):
-        assert tool_name in out, f"flox_overview missing tool reference: {tool_name}"
+        assert tool_name in out, f"lrvx_overview missing tool reference: {tool_name}"
 
 
-def test_flox_overview_lists_recent_venue_stack_additions():
+def test_lrvx_overview_lists_recent_venue_stack_additions():
     """The recent-additions section keeps the toolkit's most-recent
     surface visible without forcing the agent to crawl every
     individual tool description."""
-    out = overview.flox_overview()
+    out = overview.lrvx_overview()
     assert "VenueStack" in out
     assert "on_marks" in out
     assert "cross-margin" in out.lower()
 
 
-def test_flox_overview_covers_paper_and_live_trading():
+def test_lrvx_overview_covers_paper_and_live_trading():
     """overview must cover the full toolkit — not just MCP
     tools. Paper trading (PaperBroker) and live trading (CcxtBroker)
     are first-class paths an AI agent should know about when the
     user moves beyond pure backtest."""
-    out = overview.flox_overview()
+    out = overview.lrvx_overview()
     assert "PaperBroker" in out
     assert "CcxtBroker" in out
     assert "paper trading" in out.lower()
     assert "live trading" in out.lower()
 
 
-def test_flox_overview_mentions_replay_viewer():
+def test_lrvx_overview_mentions_replay_viewer():
     """The replay viewer is the visualisation path — agents directing
-    users to inspect a tape should reach for `flox tape view`."""
-    out = overview.flox_overview()
+    users to inspect a tape should reach for `lrvx tape view`."""
+    out = overview.lrvx_overview()
     assert "replay viewer" in out.lower()
-    assert "flox tape view" in out
+    assert "lrvx tape view" in out
 
 
-def test_flox_overview_covers_cli_subcommands():
-    """The `flox` CLI carries half the toolkit (project scaffold,
+def test_lrvx_overview_covers_cli_subcommands():
+    """The `lrvx` CLI carries half the toolkit (project scaffold,
     tape ops, archive pulls, reports, bundles). Overview must list
     the canonical subcommands."""
-    out = overview.flox_overview()
-    for cmd in ("flox new", "flox tape record", "flox tape view",
-                "flox report", "flox bundle", "flox archive"):
+    out = overview.lrvx_overview()
+    for cmd in ("lrvx new", "lrvx tape record", "lrvx tape view",
+                "lrvx report", "lrvx bundle", "lrvx archive"):
         assert cmd in out, f"CLI subcommand missing from overview: {cmd}"
 
 
-def test_flox_overview_covers_control_plane_safety():
+def test_lrvx_overview_covers_control_plane_safety():
     """The MCP control plane has explicit safety semantics (scoped
     tokens, OOB approval, rate limits, audit). Agents directing
     users to live trading must surface these — not just the tool
     names."""
-    out = overview.flox_overview()
+    out = overview.lrvx_overview()
     assert "scope" in out.lower()
     assert "out-of-band" in out.lower() or "OOB" in out
     assert "audit" in out.lower()
 
 
-# ── flox_venue_guide ──────────────────────────────────────────────────
+# ── lrvx_venue_guide ──────────────────────────────────────────────────
 
 
-def test_flox_venue_guide_covers_the_module_surface():
-    """The venue guide is how an agent discovers that FLOX can BE a
+def test_lrvx_venue_guide_covers_the_module_surface():
+    """The venue guide is how an agent discovers that lrvx can BE a
     market, not just trade on one. It must name the build flag, the
     include prefix, and the pieces an agent needs to assemble one."""
-    out = venue.flox_venue_guide()
+    out = venue.lrvx_venue_guide()
     assert len(out) > 500
     # How to get it at all.
-    assert "FLOX_BUILD_VENUE" in out
-    assert "flox-venue/" in out
-    assert "flox::venue" in out
+    assert "LRVX_BUILD_VENUE" in out
+    assert "lrvx-venue/" in out
+    assert "lrvx::venue" in out
     # The capability that justifies the module.
     assert "Multi-agent" in out or "multi-agent" in out
     # Core pieces an agent has to reach for.
@@ -486,9 +498,9 @@ def test_flox_venue_guide_covers_the_module_surface():
     assert "run_backtest" in out
 
 
-def test_flox_venue_guide_flags_the_two_margin_models():
+def test_lrvx_venue_guide_flags_the_two_margin_models():
     """The venue and backtest margin models coexist deliberately;
     an agent that mixes them for one account gets wrong numbers."""
-    out = venue.flox_venue_guide()
+    out = venue.lrvx_venue_guide()
     assert "LiquidationEngine" in out
     assert "CrossMarginManager" in out

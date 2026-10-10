@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -26,16 +26,16 @@
 // the tests keep their meaning whether the fix keeps the double-facing API or
 // moves it to Quantity / Price / Volume.
 
-#include "flox/clearing/account.h"
-#include "flox/clearing/leveraged_position.h"
-#include "flox/common.h"
+#include "lrvx/clearing/account.h"
+#include "lrvx/clearing/leveraged_position.h"
+#include "lrvx/common.h"
 
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <type_traits>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

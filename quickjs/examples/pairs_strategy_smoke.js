@@ -6,7 +6,7 @@
 // threshold. Buys/sells are plain market orders on both legs, sized by
 // a fixed hedge ratio against leg1's order size.
 //
-// Unlike sma_crossover.js (a demo strategy that flox_js_runner only
+// Unlike sma_crossover.js (a demo strategy that lrvx_js_runner only
 // loads and starts/stops -- no data is fed to it in CI), this file also
 // drives the strategy against a synthetic input at module scope and
 // checks the emitted signals, so it runs as a real smoke test.
@@ -124,7 +124,7 @@ class PairsStrategy extends Strategy {
 
 // ── Smoke test ─────────────────────────────────────────────────────────
 //
-// flox_js_runner only loads and start()/stop()s a registered strategy; it
+// lrvx_js_runner only loads and start()/stop()s a registered strategy; it
 // does not feed it data. So this drives the strategy directly: real
 // native OrderBook instances stand in for each leg's book (the same mid()
 // the engine itself would compute), onBookUpdate is invoked by hand for

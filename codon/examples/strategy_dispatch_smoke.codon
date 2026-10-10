@@ -5,7 +5,7 @@
 # or checks state the C++ side keeps rather than a call the strategy got
 # (strategy_e2e_smoke reads the bar ring). None of them would notice if the
 # strategy's overrides were never called -- and for a long time they were
-# not, on every driver, because nothing ever filled FloxStrategyCallbacks.
+# not, on every driver, because nothing ever filled LrvxStrategyCallbacks.
 # A backtest in that state still finishes and still prints a result.
 #
 # So this counts calls, and checks what arrived in them. A count alone would
@@ -13,14 +13,14 @@
 # of C structs by byte offset, which is exactly the kind of thing that
 # breaks quietly when a field moves.
 
-from C import flox_registry_create() -> cobj
-from C import flox_registry_destroy(cobj)
-from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_destroy(cobj)
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
 
-from flox.runner import BacktestRunner, Runner, Signal
-from flox.strategy import Strategy, SymbolContext
-from flox.types import BarData, TradeData, OrderEventData
-from flox.dispatch import _require_callbacks_installed
+from lrvx.runner import BacktestRunner, Runner, Signal
+from lrvx.strategy import Strategy, SymbolContext
+from lrvx.types import BarData, TradeData, OrderEventData
+from lrvx.dispatch import _require_callbacks_installed
 
 failed = 0
 
@@ -124,7 +124,7 @@ def check_run_bars(reg: cobj, sym: int):
     check(s.stops >= 1, f"on_stop called (got {s.stops})")
 
     # The payload, not just the count. dispatch.codon reads it at the offsets
-    # in flox/layout.codon, so a field moving in the C struct has to fail here.
+    # in lrvx/layout.codon, so a field moving in the C struct has to fail here.
     b = s.last_bar
     check(b.symbol == sym, f"bar carries the symbol id (got {b.symbol})")
     check(b.symbol_name == SYMBOL, f"bar carries the symbol name (got '{b.symbol_name}')")
@@ -208,17 +208,17 @@ def check_unattached_strategy_is_loud(reg: cobj, sym: int):
 
 
 def run():
-    registry = flox_registry_create()
+    registry = lrvx_registry_create()
     exch = "test"
     name = SYMBOL
-    sym = int(flox_registry_add_symbol(registry, exch.c_str(), name.c_str(), 0.01))
+    sym = int(lrvx_registry_add_symbol(registry, exch.c_str(), name.c_str(), 0.01))
 
     check_run_bars(registry, sym)
     check_run_ohlcv(registry, sym)
     check_live_runner(registry, sym)
     check_unattached_strategy_is_loud(registry, sym)
 
-    flox_registry_destroy(registry)
+    lrvx_registry_destroy(registry)
 
     if failed != 0:
         raise ValueError(f"codon strategy dispatch smoke: {failed} check(s) failed")

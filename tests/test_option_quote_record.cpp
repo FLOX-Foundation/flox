@@ -3,9 +3,9 @@
 #include <cstring>
 #include <vector>
 
-#include "flox/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_format_v1.h"
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 TEST(OptionQuoteRecord, SizeAndAlignment)
 {

@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
-#include "flox-connectors/net/ix_websocket_client.h"
-#include "flox-connectors/util/safe_parse.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_exchange_connector.h"
+#include "lrvx-connectors/net/ix_websocket_client.h"
+#include "lrvx-connectors/util/safe_parse.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
-#include <flox/log/log.h>
+#include <lrvx/log/log.h>
 
 #include <simdjson.h>
 
@@ -21,7 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace flox
+namespace lrvx
 {
 
 HyperliquidExchangeConnector::HyperliquidExchangeConnector(const HyperliquidConfig& config,
@@ -65,7 +65,7 @@ void HyperliquidExchangeConnector::start()
   _wsClient->onOpen(
       [this]()
       {
-        FLOX_LOG("[Hyperliquid] WS open, sending subscriptions");
+        LRVX_LOG("[Hyperliquid] WS open, sending subscriptions");
 
         // Send subscriptions in batches with small delays to avoid overwhelming the server
         // Hyperliquid seems to have issues when >40 messages are sent rapidly
@@ -101,7 +101,7 @@ void HyperliquidExchangeConnector::start()
           }
         }
 
-        FLOX_LOG("[Hyperliquid] Subscribed to " << _config.symbols.size() << " symbols");
+        LRVX_LOG("[Hyperliquid] Subscribed to " << _config.symbols.size() << " symbols");
       });
 
   _wsClient->onClose(
@@ -138,7 +138,7 @@ void HyperliquidExchangeConnector::start()
 void HyperliquidExchangeConnector::handleDisconnect(int code, std::string_view reason)
 {
   const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
-  FLOX_LOG("[Hyperliquid] WS closed: " << detail);
+  LRVX_LOG("[Hyperliquid] WS closed: " << detail);
   if (_logger)
   {
     _logger->info("[Hyperliquid] WS closed: " + detail);
@@ -247,7 +247,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
       {
         _logger->error(
             "[Hyperliquid] Book pool exhausted, dropping orderbook update. Increase "
-            "FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
+            "LRVX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
             "enough.");
         return;
       }
@@ -395,4 +395,4 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
   }
 }
 
-}  // namespace flox
+}  // namespace lrvx

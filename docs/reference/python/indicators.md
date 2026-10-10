@@ -7,7 +7,7 @@ Vectorized technical indicators operating on numpy arrays. All functions release
 All streaming indicators share the same interface:
 
 ```python
-ind = flox.EMA(20)
+ind = lrvx.EMA(20)
 result = ind.update(price)  # None during warmup, float when ready
 ind.value                   # None or float
 ind.ready                   # bool
@@ -48,7 +48,7 @@ Volume indicators (`obv`, `vwap`, `cvd`) exist as batch functions only — there
 Exponential Moving Average.
 
 ```python
-result = flox.ema(closes, period=20)
+result = lrvx.ema(closes, period=20)
 ```
 
 ### `sma(input, period) -> ndarray`
@@ -56,7 +56,7 @@ result = flox.ema(closes, period=20)
 Simple Moving Average.
 
 ```python
-result = flox.sma(closes, period=20)
+result = lrvx.sma(closes, period=20)
 ```
 
 ### `rma(input, period) -> ndarray`
@@ -64,7 +64,7 @@ result = flox.sma(closes, period=20)
 Wilder's Moving Average (alpha = 1/period). Used internally by RSI and ATR.
 
 ```python
-result = flox.rma(closes, period=14)
+result = lrvx.rma(closes, period=14)
 ```
 
 ### `dema(input, period) -> ndarray`
@@ -72,7 +72,7 @@ result = flox.rma(closes, period=14)
 Double EMA: `2*EMA - EMA(EMA)`. Reduces lag versus standard EMA.
 
 ```python
-result = flox.dema(closes, period=20)
+result = lrvx.dema(closes, period=20)
 ```
 
 ### `tema(input, period) -> ndarray`
@@ -80,7 +80,7 @@ result = flox.dema(closes, period=20)
 Triple EMA: `3*EMA - 3*EMA(EMA) + EMA(EMA(EMA))`. Further lag reduction.
 
 ```python
-result = flox.tema(closes, period=20)
+result = lrvx.tema(closes, period=20)
 ```
 
 ### `kama(input, period=10) -> ndarray`
@@ -88,7 +88,7 @@ result = flox.tema(closes, period=20)
 Kaufman Adaptive Moving Average. Adjusts smoothing based on market efficiency.
 
 ```python
-result = flox.kama(closes, period=10)
+result = lrvx.kama(closes, period=10)
 ```
 
 ---
@@ -100,7 +100,7 @@ result = flox.kama(closes, period=10)
 Relative Strength Index (0–100).
 
 ```python
-result = flox.rsi(closes, period=14)
+result = lrvx.rsi(closes, period=14)
 ```
 
 ### `macd(input, fast=12, slow=26, signal=9) -> dict`
@@ -108,7 +108,7 @@ result = flox.rsi(closes, period=14)
 Moving Average Convergence Divergence. Returns a dict with three arrays.
 
 ```python
-result = flox.macd(closes, fast=12, slow=26, signal=9)
+result = lrvx.macd(closes, fast=12, slow=26, signal=9)
 # result['line'], result['signal'], result['histogram']
 ```
 
@@ -117,7 +117,7 @@ result = flox.macd(closes, fast=12, slow=26, signal=9)
 Stochastic oscillator (%K and %D).
 
 ```python
-result = flox.stochastic(highs, lows, closes, k_period=14, d_period=3)
+result = lrvx.stochastic(highs, lows, closes, k_period=14, d_period=3)
 k = result['k']
 d = result['d']
 ```
@@ -127,7 +127,7 @@ d = result['d']
 Commodity Channel Index.
 
 ```python
-result = flox.cci(highs, lows, closes, period=20)
+result = lrvx.cci(highs, lows, closes, period=20)
 ```
 
 ---
@@ -139,7 +139,7 @@ result = flox.cci(highs, lows, closes, period=20)
 Average Directional Index with directional indicators.
 
 ```python
-result = flox.adx(highs, lows, closes, period=14)
+result = lrvx.adx(highs, lows, closes, period=14)
 # result['adx'], result['plus_di'], result['minus_di']
 ```
 
@@ -148,7 +148,7 @@ result = flox.adx(highs, lows, closes, period=14)
 Choppiness Index (0–100). High values indicate ranging markets.
 
 ```python
-result = flox.chop(highs, lows, closes, period=14)
+result = lrvx.chop(highs, lows, closes, period=14)
 ```
 
 ### `slope(input, length=1) -> ndarray`
@@ -156,7 +156,7 @@ result = flox.chop(highs, lows, closes, period=14)
 Linear slope over a lookback window.
 
 ```python
-result = flox.slope(closes, length=5)
+result = lrvx.slope(closes, length=5)
 ```
 
 ---
@@ -168,7 +168,7 @@ result = flox.slope(closes, length=5)
 Average True Range.
 
 ```python
-result = flox.atr(highs, lows, closes, period=14)
+result = lrvx.atr(highs, lows, closes, period=14)
 ```
 
 ### `bollinger(input, period=20, stddev=2.0) -> dict`
@@ -176,7 +176,7 @@ result = flox.atr(highs, lows, closes, period=14)
 Bollinger Bands.
 
 ```python
-result = flox.bollinger(closes, period=20, stddev=2.0)
+result = lrvx.bollinger(closes, period=20, stddev=2.0)
 # result['upper'], result['middle'], result['lower']
 ```
 
@@ -189,7 +189,7 @@ result = flox.bollinger(closes, period=20, stddev=2.0)
 Rolling Fisher-Pearson skewness. Measures distribution asymmetry. Requires period >= 3. NaN if std = 0.
 
 ```python
-result = flox.skewness(closes, period=20)
+result = lrvx.skewness(closes, period=20)
 ```
 
 ### `kurtosis(input, period) -> ndarray`
@@ -197,7 +197,7 @@ result = flox.skewness(closes, period=20)
 Rolling Fisher excess kurtosis. Measures tail heaviness. Requires period >= 4. NaN if std = 0.
 
 ```python
-result = flox.kurtosis(closes, period=20)
+result = lrvx.kurtosis(closes, period=20)
 ```
 
 ### `rolling_zscore(input, period) -> ndarray`
@@ -205,7 +205,7 @@ result = flox.kurtosis(closes, period=20)
 Rolling z-score normalization: `(x - mean) / std`. NaN if std = 0.
 
 ```python
-result = flox.rolling_zscore(closes, period=20)
+result = lrvx.rolling_zscore(closes, period=20)
 ```
 
 ### `shannon_entropy(input, period, bins=10) -> ndarray`
@@ -213,7 +213,7 @@ result = flox.rolling_zscore(closes, period=20)
 Rolling Shannon entropy with histogram binning, normalized to [0, 1]. Zero = all values identical, 1 = uniform distribution.
 
 ```python
-result = flox.shannon_entropy(closes, period=20, bins=10)
+result = lrvx.shannon_entropy(closes, period=20, bins=10)
 ```
 
 ### `parkinson_vol(high, low, period) -> ndarray`
@@ -221,7 +221,7 @@ result = flox.shannon_entropy(closes, period=20, bins=10)
 Parkinson high-low volatility estimator: `sqrt(mean(ln(H/L)^2) / (4*ln(2)))`. More efficient than close-to-close volatility.
 
 ```python
-result = flox.parkinson_vol(highs, lows, period=20)
+result = lrvx.parkinson_vol(highs, lows, period=20)
 ```
 
 ### `rogers_satchell_vol(open, high, low, close, period) -> ndarray`
@@ -229,17 +229,17 @@ result = flox.parkinson_vol(highs, lows, period=20)
 Rogers-Satchell OHLC volatility estimator. Unbiased with drift, suitable for trending markets.
 
 ```python
-result = flox.rogers_satchell_vol(opens, highs, lows, closes, period=20)
+result = lrvx.rogers_satchell_vol(opens, highs, lows, closes, period=20)
 ```
 
 ### `rolling_correlation(x, y, period) -> ndarray`
 
 Rolling Pearson correlation between two series. NaN if either series is constant within the window.
 
-`flox.correlation(x, y)` (no `period`) is the single-number Pearson coefficient — see [Optimizer](optimizer.md#correlation).
+`lrvx.correlation(x, y)` (no `period`) is the single-number Pearson coefficient — see [Optimizer](optimizer.md#correlation).
 
 ```python
-result = flox.rolling_correlation(closes_btc, closes_eth, period=20)
+result = lrvx.rolling_correlation(closes_btc, closes_eth, period=20)
 ```
 
 ### `autocorrelation(input, window, lag) -> ndarray`
@@ -247,7 +247,7 @@ result = flox.rolling_correlation(closes_btc, closes_eth, period=20)
 Rolling autocorrelation of a series against itself at a fixed `lag`.
 
 ```python
-result = flox.autocorrelation(closes, window=100, lag=1)
+result = lrvx.autocorrelation(closes, window=100, lag=1)
 ```
 
 ---
@@ -259,7 +259,7 @@ result = flox.autocorrelation(closes, window=100, lag=1)
 Augmented Dickey-Fuller unit-root test. `regression` selects the deterministic terms. Returns `test_stat`, `p_value`, `used_lag`.
 
 ```python
-result = flox.adf(spread, max_lag=4)
+result = lrvx.adf(spread, max_lag=4)
 if result['p_value'] < 0.05:
     print("spread is stationary")
 ```
@@ -269,7 +269,7 @@ if result['p_value'] < 0.05:
 Hurst exponent via Detrended Fluctuation Analysis. Input is a series of **returns**, not prices. `H ~ 0.5` random, `H > 0.5` persistent/trending, `H < 0.5` mean-reverting. `scales=None` uses a log-spaced grid from 4 to `N/4`. Returns NaN for inputs shorter than 32 or degenerate ones.
 
 ```python
-h = flox.hurst_dfa(np.diff(np.log(closes)))
+h = lrvx.hurst_dfa(np.diff(np.log(closes)))
 ```
 
 ### `rolling_hurst(prices, window=1080) -> ndarray`
@@ -277,7 +277,7 @@ h = flox.hurst_dfa(np.diff(np.log(closes)))
 Rolling DFA-Hurst on price levels. For bar `i` it computes the Hurst exponent of the previous `window` log-returns; `output[i]` is NaN for `i <= window`. Output length matches input.
 
 ```python
-result = flox.rolling_hurst(closes, window=1080)
+result = lrvx.rolling_hurst(closes, window=1080)
 ```
 
 ### `realized_vol(returns, periods_per_year) -> float`
@@ -285,7 +285,7 @@ result = flox.rolling_hurst(closes, window=1080)
 Annualized realized volatility from log returns: sample stdev times `sqrt(periods_per_year)`.
 
 ```python
-rv = flox.realized_vol(log_returns, periods_per_year=365 * 24)
+rv = lrvx.realized_vol(log_returns, periods_per_year=365 * 24)
 ```
 
 ### `whites_reality_check(returns, num_bootstrap=10000, avg_block_size=0.0, seed=42) -> dict`
@@ -293,7 +293,7 @@ rv = flox.realized_vol(log_returns, periods_per_year=365 * 24)
 White's reality check via stationary bootstrap. Tests whether the best of `K` candidate strategies beats zero after multiple-comparison correction. `returns` is a `(K, T)` array of **excess** returns relative to a benchmark. Returns `p_value`, `best_stat`, `best_index`.
 
 ```python
-result = flox.whites_reality_check(excess_returns)
+result = lrvx.whites_reality_check(excess_returns)
 print(result['best_index'], result['p_value'])
 ```
 
@@ -310,7 +310,7 @@ Names of every indicator class registered in this build.
 Rolling Volume-Weighted Average Price.
 
 ```python
-result = flox.vwap(closes, volumes, window=96)
+result = lrvx.vwap(closes, volumes, window=96)
 ```
 
 ### `obv(close, volume) -> ndarray`
@@ -318,7 +318,7 @@ result = flox.vwap(closes, volumes, window=96)
 On-Balance Volume.
 
 ```python
-result = flox.obv(closes, volumes)
+result = lrvx.obv(closes, volumes)
 ```
 
 ### `cvd(open, high, low, close, volume) -> ndarray`
@@ -326,7 +326,7 @@ result = flox.obv(closes, volumes)
 Cumulative Volume Delta. Estimates buying/selling pressure from OHLCV data.
 
 ```python
-result = flox.cvd(opens, highs, lows, closes, volumes)
+result = lrvx.cvd(opens, highs, lows, closes, volumes)
 ```
 
 ---
@@ -338,7 +338,7 @@ result = flox.cvd(opens, highs, lows, closes, volumes)
 Compute per-bar returns given position signals and log returns.
 
 ```python
-returns = flox.bar_returns(signal_long, signal_short, log_returns)
+returns = lrvx.bar_returns(signal_long, signal_short, log_returns)
 ```
 
 `signal_long` and `signal_short` are `int8[]` (+1 or 0 / -1 or 0). `log_returns` is `float64[]`.
@@ -348,7 +348,7 @@ returns = flox.bar_returns(signal_long, signal_short, log_returns)
 Extract per-trade PnL from position signals.
 
 ```python
-pnls = flox.trade_pnl(signal_long, signal_short, log_returns)
+pnls = lrvx.trade_pnl(signal_long, signal_short, log_returns)
 ```
 
 ### `profit_factor(returns) -> float`
@@ -356,7 +356,7 @@ pnls = flox.trade_pnl(signal_long, signal_short, log_returns)
 Ratio of gross profit to gross loss. Values > 1.0 indicate profitability.
 
 ```python
-pf = flox.profit_factor(returns)
+pf = lrvx.profit_factor(returns)
 ```
 
 ### `win_rate(trade_pnls) -> float`
@@ -364,7 +364,7 @@ pf = flox.profit_factor(returns)
 Fraction of trades with positive PnL.
 
 ```python
-wr = flox.win_rate(pnls)
+wr = lrvx.win_rate(pnls)
 ```
 
 ## Indicator catalog
@@ -376,8 +376,8 @@ Every indicator below is **one Python class** with both a batch
 Same instance, two ways to use it:
 
 ```python
-import flox_py as flox
-ema = flox.EMA(10)
+import lrvx
+ema = lrvx.EMA(10)
 out = ema.compute(prices)             # batch
 for v in stream:
     ema.update(v)
@@ -386,28 +386,28 @@ for v in stream:
 
 | Indicator | Constructor | Kind |
 |---|---|---|
-| `EMA` | `flox.EMA(period)` | SingleInput |
-| `SMA` | `flox.SMA(period)` | SingleInput |
-| `RMA` | `flox.RMA(period)` | SingleInput |
-| `RSI` | `flox.RSI(period)` | SingleInput |
-| `KAMA` | `flox.KAMA(period, fast, slow)` | SingleInput |
-| `DEMA` | `flox.DEMA(period)` | SingleInput |
-| `TEMA` | `flox.TEMA(period)` | SingleInput |
-| `Slope` | `flox.Slope(length)` | SingleInput |
-| `Skewness` | `flox.Skewness(period)` | SingleInput |
-| `Kurtosis` | `flox.Kurtosis(period)` | SingleInput |
-| `RollingZScore` | `flox.RollingZScore(period)` | SingleInput |
-| `ShannonEntropy` | `flox.ShannonEntropy(period, bins)` | SingleInput |
-| `AutoCorrelation` | `flox.AutoCorrelation(window, lag)` | SingleInput |
-| `ATR` | `flox.ATR(period)` | BarInput |
-| `CCI` | `flox.CCI(period)` | BarInput |
-| `Stochastic` | `flox.Stochastic(k_period, d_period)` | BarInput |
-| `ParkinsonVol` | `flox.ParkinsonVol(period)` | HighLowInput |
-| `RogersSatchellVol` | `flox.RogersSatchellVol(period)` | OhlcInput |
-| `Correlation` | `flox.Correlation(period)` | PairInput |
-| `MACD` | `flox.MACD(fast, slow, signal)` | MultiOutput |
-| `Bollinger` | `flox.Bollinger(period, stddev)` | MultiOutput |
+| `EMA` | `lrvx.EMA(period)` | SingleInput |
+| `SMA` | `lrvx.SMA(period)` | SingleInput |
+| `RMA` | `lrvx.RMA(period)` | SingleInput |
+| `RSI` | `lrvx.RSI(period)` | SingleInput |
+| `KAMA` | `lrvx.KAMA(period, fast, slow)` | SingleInput |
+| `DEMA` | `lrvx.DEMA(period)` | SingleInput |
+| `TEMA` | `lrvx.TEMA(period)` | SingleInput |
+| `Slope` | `lrvx.Slope(length)` | SingleInput |
+| `Skewness` | `lrvx.Skewness(period)` | SingleInput |
+| `Kurtosis` | `lrvx.Kurtosis(period)` | SingleInput |
+| `RollingZScore` | `lrvx.RollingZScore(period)` | SingleInput |
+| `ShannonEntropy` | `lrvx.ShannonEntropy(period, bins)` | SingleInput |
+| `AutoCorrelation` | `lrvx.AutoCorrelation(window, lag)` | SingleInput |
+| `ATR` | `lrvx.ATR(period)` | BarInput |
+| `CCI` | `lrvx.CCI(period)` | BarInput |
+| `Stochastic` | `lrvx.Stochastic(k_period, d_period)` | BarInput |
+| `ParkinsonVol` | `lrvx.ParkinsonVol(period)` | HighLowInput |
+| `RogersSatchellVol` | `lrvx.RogersSatchellVol(period)` | OhlcInput |
+| `Correlation` | `lrvx.Correlation(period)` | PairInput |
+| `MACD` | `lrvx.MACD(fast, slow, signal)` | MultiOutput |
+| `Bollinger` | `lrvx.Bollinger(period, stddev)` | MultiOutput |
 
-Discovery: `flox.list_indicators()` returns the full list at runtime.
+Discovery: `lrvx.list_indicators()` returns the full list at runtime.
 
 <!-- INDICATOR-LIST-END -->

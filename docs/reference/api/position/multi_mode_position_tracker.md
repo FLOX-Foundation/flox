@@ -5,7 +5,7 @@ Position tracking with configurable aggregation: net, per-side (hedging), or gro
 ## Header
 
 ```cpp
-#include "flox/position/multi_mode_position_tracker.h"
+#include "lrvx/position/multi_mode_position_tracker.h"
 ```
 
 ## Aggregation Modes
@@ -54,7 +54,7 @@ snap.unrealizedPnl(currentPrice);  // mark-to-market
 
 ```cpp
 std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
-flox::PositionSnapshot positionSnapshot(SymbolId symbol) const override;
+lrvx::PositionSnapshot positionSnapshot(SymbolId symbol) const override;
 ```
 
 The `IPositionManager` overrides the strategy context reads. Empty when the
@@ -66,7 +66,7 @@ net position is.
 under one acquisition of the mutex; it is what `Strategy::refreshPosition()`
 calls on every tick. Note the two snapshots are different things:
 `snapshot()` above is this tracker's own per-side breakdown, while
-`flox::PositionSnapshot` is the interface's `{position, avgEntryPrice}` pair.
+`lrvx::PositionSnapshot` is the interface's `{position, avgEntryPrice}` pair.
 
 ## Position Change Callback
 

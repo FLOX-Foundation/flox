@@ -1,26 +1,26 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/mmap_bar_storage.h"
-#include "flox/backtest/mmap_bar_writer.h"
+#include "lrvx/backtest/mmap_bar_storage.h"
+#include "lrvx/backtest/mmap_bar_writer.h"
 
 #include <gtest/gtest.h>
 #include <filesystem>
 
-using namespace flox;
+using namespace lrvx;
 
 class MmapBarWriterTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _testDir = std::filesystem::temp_directory_path() / "flox_bar_writer_test";
+    _testDir = std::filesystem::temp_directory_path() / "lrvx_bar_writer_test";
     std::filesystem::remove_all(_testDir);
     std::filesystem::create_directories(_testDir);
   }

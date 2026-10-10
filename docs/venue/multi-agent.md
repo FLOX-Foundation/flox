@@ -11,7 +11,7 @@ side and reacts to it.
 ## Run the demo
 
 ```bash
-cmake -S . -B build -DFLOX_BUILD_DEMO=ON
+cmake -S . -B build -DLRVX_BUILD_DEMO=ON
 cmake --build build --target multi_agent_venue_demo
 ./build/demo/multi_agent_venue_demo
 ```

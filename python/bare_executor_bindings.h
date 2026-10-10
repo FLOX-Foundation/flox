@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 // python/bare_executor_bindings.h
 //
-// Direct py::class_<flox::SimulatedExecutor> bindings, so the executor
+// Direct py::class_<lrvx::SimulatedExecutor> bindings, so the executor
 // instance owned by a VenueStack can be driven from Python via
 // stack.executor(). The standalone PySimulatedExecutor wrapper in
 // backtest_bindings.h owns its own SimulatedExecutor and is unrelated;
@@ -29,11 +29,11 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/backtest/rate_limit_policy.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/backtest/venue_availability.h"
-#include "flox/common.h"
-#include "flox/execution/order.h"
+#include "lrvx/backtest/rate_limit_policy.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/backtest/venue_availability.h"
+#include "lrvx/common.h"
+#include "lrvx/execution/order.h"
 #include "order_type_bindings.h"
 
 #include <cstdint>
@@ -41,12 +41,12 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 inline void bindBareExecutor(py::module_& m)
 {
-  using namespace flox;
+  using namespace lrvx;
 
   auto parseSide = [](const std::string& s) -> Side
   { return s == "buy" ? Side::BUY : Side::SELL; };
@@ -55,7 +55,7 @@ inline void bindBareExecutor(py::module_& m)
   // python/order_type_bindings.h. An unrecognised name raises instead of
   // quietly becoming a market order.
   auto parseOrderType = [](const std::string& s) -> OrderType
-  { return flox_py::parseOrderTypeStrict(s); };
+  { return lrvx::parseOrderTypeStrict(s); };
 
   auto parseTif = [](const std::string& s) -> TimeInForce
   {
@@ -78,7 +78,7 @@ inline void bindBareExecutor(py::module_& m)
     return TimeInForce::GTC;
   };
 
-  py::class_<flox::SimulatedExecutor>(
+  py::class_<lrvx::SimulatedExecutor>(
       m, "VenueExecutor",
       "Executor handed out by VenueStack.executor(). Same simulated\n"
       "engine as standalone SimulatedExecutor, but the instance is\n"
@@ -89,7 +89,7 @@ inline void bindBareExecutor(py::module_& m)
       .def(
           "submit_order",
           [parseSide, parseOrderType, parseTif](
-              flox::SimulatedExecutor& self, uint64_t id,
+              lrvx::SimulatedExecutor& self, uint64_t id,
               const std::string& side, double price, double qty,
               const std::string& type, uint32_t symbol,
               const std::string& tif, bool reduce_only,
@@ -130,7 +130,7 @@ inline void bindBareExecutor(py::module_& m)
             self.submitOrder(order);
           },
           "Submit an order. side: buy|sell. type: one of "
-          "flox_py.ORDER_TYPE_NAMES (market|limit|stop_market|stop_limit|"
+          "lrvx.ORDER_TYPE_NAMES (market|limit|stop_market|stop_limit|"
           "tp_market|tp_limit|trailing_stop|iceberg); anything else raises "
           "ValueError. tif: gtc|ioc|fok|gtd|post_only. trigger: arming "
           "price for the conditional types, defaulting to `price`.",
@@ -141,24 +141,24 @@ inline void bindBareExecutor(py::module_& m)
           py::arg("trigger") = 0.0)
       .def(
           "cancel_order",
-          [](flox::SimulatedExecutor& self, uint64_t order_id)
+          [](lrvx::SimulatedExecutor& self, uint64_t order_id)
           { self.cancelOrder(order_id); },
           py::arg("order_id"))
       .def(
           "cancel_all",
-          [](flox::SimulatedExecutor& self, uint32_t symbol)
+          [](lrvx::SimulatedExecutor& self, uint32_t symbol)
           { self.cancelAllOrders(symbol); },
           py::arg("symbol"))
       .def(
           "on_trade",
-          [](flox::SimulatedExecutor& self, uint32_t symbol, double price,
+          [](lrvx::SimulatedExecutor& self, uint32_t symbol, double price,
              bool is_buy)
           { self.onTrade(symbol, Price::fromDouble(price), is_buy); },
           "Feed a trade tick for order matching.",
           py::arg("symbol"), py::arg("price"), py::arg("is_buy"))
       .def(
           "on_trade_qty",
-          [](flox::SimulatedExecutor& self, uint32_t symbol, double price,
+          [](lrvx::SimulatedExecutor& self, uint32_t symbol, double price,
              double quantity, bool is_buy)
           {
             self.onTrade(symbol, Price::fromDouble(price),
@@ -169,13 +169,13 @@ inline void bindBareExecutor(py::module_& m)
           py::arg("is_buy"))
       .def(
           "on_bar",
-          [](flox::SimulatedExecutor& self, uint32_t symbol, double close_price)
+          [](lrvx::SimulatedExecutor& self, uint32_t symbol, double close_price)
           { self.onBar(symbol, Price::fromDouble(close_price)); },
           "Feed a bar close for order matching.",
           py::arg("symbol"), py::arg("close_price"))
       .def(
           "fills_list",
-          [](const flox::SimulatedExecutor& self)
+          [](const lrvx::SimulatedExecutor& self)
           {
             py::list out;
             for (const auto& f : self.fills())
@@ -195,11 +195,11 @@ inline void bindBareExecutor(py::module_& m)
           "Every fill recorded on this executor as a list of dicts.")
       .def_property_readonly(
           "fill_count",
-          [](const flox::SimulatedExecutor& self)
+          [](const lrvx::SimulatedExecutor& self)
           { return self.fills().size(); })
       .def(
           "clear_fills",
-          [](flox::SimulatedExecutor& self)
+          [](lrvx::SimulatedExecutor& self)
           { self.extractFills(); },
           "Discard every fill recorded so far. `fills_list()` and "
           "`fill_count` read the same accumulating buffer as the plain "
@@ -209,18 +209,18 @@ inline void bindBareExecutor(py::module_& m)
           "must call this explicitly or fills keep growing forever.")
       .def(
           "set_rate_limit_policy",
-          [](flox::SimulatedExecutor& self, const flox::RateLimitPolicy& p)
+          [](lrvx::SimulatedExecutor& self, const lrvx::RateLimitPolicy& p)
           { self.setRateLimitPolicy(p); },
           py::arg("policy"))
       .def(
           "clear_rate_limit_policy",
-          [](flox::SimulatedExecutor& self)
+          [](lrvx::SimulatedExecutor& self)
           { self.clearRateLimitPolicy(); })
       .def(
           "set_venue_availability",
-          [](flox::SimulatedExecutor& self, flox::VenueAvailability* va)
+          [](lrvx::SimulatedExecutor& self, lrvx::VenueAvailability* va)
           { self.setVenueAvailability(va); },
           py::arg("venue_availability"));
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

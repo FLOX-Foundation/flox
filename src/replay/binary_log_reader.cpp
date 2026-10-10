@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/error/flox_error.h"
-#include "flox/log/log.h"
-#include "flox/replay/aggregator.h"
-#include "flox/replay/ops/compression.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/log/log.h"
+#include "lrvx/replay/aggregator.h"
+#include "lrvx/replay/ops/compression.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
 #include <algorithm>
 #include <atomic>
@@ -25,7 +25,7 @@
 #include <thread>
 #include <vector>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -644,13 +644,13 @@ class ReorderBuffer
       const int64_t delta = _watermark - event.timestamp_ns;
       if (_strict)
       {
-        throw flox::FloxError("E_DATA_002", lateMessage(event, delta, file_offset));
+        throw lrvx::LrvxError("E_DATA_002", lateMessage(event, delta, file_offset));
       }
       ++_stats.late_dropped;
       if (!_warned)
       {
         _warned = true;
-        FLOX_LOG_WARN(lateMessage(event, delta, file_offset)
+        LRVX_LOG_WARN(lateMessage(event, delta, file_offset)
                       << " Dropping it and any further late events in this segment; "
                          "see ReaderStats::late_dropped for the total.");
       }
@@ -858,7 +858,7 @@ bool BinaryLogReader::scanSegments()
   std::vector<std::filesystem::path> paths;
   for (const auto& entry : fs::directory_iterator(_config.data_dir))
   {
-    if (entry.is_regular_file() && entry.path().extension() == ".floxlog")
+    if (entry.is_regular_file() && isSegmentExtension(entry.path().extension().string()))
     {
       paths.push_back(entry.path());
     }
@@ -1251,7 +1251,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
   {
     if (n_threads > 1)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_DATA_003",
           "run(aggregators, n_threads=" + std::to_string(n_threads) +
               "): the panel contains an aggregator that cannot run on partitioned "
@@ -1366,7 +1366,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
       const std::size_t lo = (ti * n_blocks) / workers_for_segment;
       const std::size_t hi = ((ti + 1) * n_blocks) / workers_for_segment;
       threads.push_back(makeThread(
-          "flox.replay.reader", [this, ti, lo, hi, &blocks, &worker_panels, &local_stats, &ok,
+          "lrvx.replay.reader", [this, ti, lo, hi, &blocks, &worker_panels, &local_stats, &ok,
                                  &error_mutex, &first_error, &seg_path, reorder_W, strict_ordering]()
           {
             try
@@ -1732,7 +1732,7 @@ DatasetSummary BinaryLogReader::inspect(const std::filesystem::path& data_dir)
   std::vector<std::filesystem::path> paths;
   for (const auto& entry : fs::directory_iterator(data_dir))
   {
-    if (entry.is_regular_file() && entry.path().extension() == ".floxlog")
+    if (entry.is_regular_file() && isSegmentExtension(entry.path().extension().string()))
     {
       paths.push_back(entry.path());
     }
@@ -2390,4 +2390,4 @@ void BinaryLogIterator::discardBlockState()
   _block_events_remaining = 0;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

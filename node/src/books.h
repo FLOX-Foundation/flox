@@ -3,9 +3,9 @@
 #pragma once
 #include <napi.h>
 #include "data_ops.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
@@ -26,7 +26,7 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
                         InstanceMethod("clear", &OrderBookWrap::Clear)});
   }
   OrderBookWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderBookWrap>(info),
-                                                  _h(flox_book_create(info[0].As<Napi::Number>().DoubleValue()))
+                                                  _h(lrvx_book_create(info[0].As<Napi::Number>().DoubleValue()))
   {
     if (!_h)
     {
@@ -38,13 +38,13 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
   {
     if (_h)
     {
-      flox_book_destroy(_h);
+      lrvx_book_destroy(_h);
     }
   }
 
  private:
   void applyUpdate(const Napi::CallbackInfo& info,
-                   void (*fn)(FloxBookHandle, const double*, const double*, size_t, const double*, const double*, size_t))
+                   void (*fn)(LrvxBookHandle, const double*, const double*, size_t, const double*, const double*, size_t))
   {
     auto bp = info[0].As<Napi::Float64Array>();
     auto bq = info[1].As<Napi::Float64Array>();
@@ -63,10 +63,10 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
     }
     fn(_h, bp.Data(), bq.Data(), bp.ElementLength(), ap.Data(), aq.Data(), ap.ElementLength());
   }
-  void ApplySnapshot(const Napi::CallbackInfo& info) { applyUpdate(info, flox_book_apply_snapshot); }
-  void ApplyDelta(const Napi::CallbackInfo& info) { applyUpdate(info, flox_book_apply_delta); }
+  void ApplySnapshot(const Napi::CallbackInfo& info) { applyUpdate(info, lrvx_book_apply_snapshot); }
+  void ApplyDelta(const Napi::CallbackInfo& info) { applyUpdate(info, lrvx_book_apply_delta); }
 
-  Napi::Value optDouble(const Napi::CallbackInfo& info, uint8_t (*fn)(FloxBookHandle, double*))
+  Napi::Value optDouble(const Napi::CallbackInfo& info, uint8_t (*fn)(LrvxBookHandle, double*))
   {
     double v = 0;
     if (fn(_h, &v))
@@ -75,14 +75,14 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
     }
     return info.Env().Null();
   }
-  Napi::Value BestBid(const Napi::CallbackInfo& info) { return optDouble(info, flox_book_best_bid); }
-  Napi::Value BestAsk(const Napi::CallbackInfo& info) { return optDouble(info, flox_book_best_ask); }
-  Napi::Value Mid(const Napi::CallbackInfo& info) { return optDouble(info, flox_book_mid); }
-  Napi::Value Spread(const Napi::CallbackInfo& info) { return optDouble(info, flox_book_spread); }
-  Napi::Value IsCrossed(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_book_is_crossed(_h)); }
-  void Clear(const Napi::CallbackInfo&) { flox_book_clear(_h); }
+  Napi::Value BestBid(const Napi::CallbackInfo& info) { return optDouble(info, lrvx_book_best_bid); }
+  Napi::Value BestAsk(const Napi::CallbackInfo& info) { return optDouble(info, lrvx_book_best_ask); }
+  Napi::Value Mid(const Napi::CallbackInfo& info) { return optDouble(info, lrvx_book_mid); }
+  Napi::Value Spread(const Napi::CallbackInfo& info) { return optDouble(info, lrvx_book_spread); }
+  Napi::Value IsCrossed(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_book_is_crossed(_h)); }
+  void Clear(const Napi::CallbackInfo&) { lrvx_book_clear(_h); }
 
-  Napi::Value getLevels(const Napi::CallbackInfo& info, uint32_t (*fn)(FloxBookHandle, double*, double*, uint32_t))
+  Napi::Value getLevels(const Napi::CallbackInfo& info, uint32_t (*fn)(LrvxBookHandle, double*, double*, uint32_t))
   {
     uint32_t n = info[0].As<Napi::Number>().Uint32Value();
     if (n > 100)
@@ -101,10 +101,10 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
     }
     return arr;
   }
-  Napi::Value GetBids(const Napi::CallbackInfo& info) { return getLevels(info, flox_book_get_bids); }
-  Napi::Value GetAsks(const Napi::CallbackInfo& info) { return getLevels(info, flox_book_get_asks); }
+  Napi::Value GetBids(const Napi::CallbackInfo& info) { return getLevels(info, lrvx_book_get_bids); }
+  Napi::Value GetAsks(const Napi::CallbackInfo& info) { return getLevels(info, lrvx_book_get_asks); }
 
-  FloxBookHandle _h;
+  LrvxBookHandle _h;
 };
 
 class L3BookWrap : public Napi::ObjectWrap<L3BookWrap>
@@ -121,12 +121,12 @@ class L3BookWrap : public Napi::ObjectWrap<L3BookWrap>
                         InstanceMethod("bidAtPrice", &L3BookWrap::BidAtPrice),
                         InstanceMethod("askAtPrice", &L3BookWrap::AskAtPrice)});
   }
-  L3BookWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<L3BookWrap>(info), _h(flox_l3_book_create()) {}
+  L3BookWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<L3BookWrap>(info), _h(lrvx_l3_book_create()) {}
   ~L3BookWrap()
   {
     if (_h)
     {
-      flox_l3_book_destroy(_h);
+      lrvx_l3_book_destroy(_h);
     }
   }
 
@@ -134,16 +134,16 @@ class L3BookWrap : public Napi::ObjectWrap<L3BookWrap>
   Napi::Value AddOrder(const Napi::CallbackInfo& info)
   {
     std::string side = info[3].As<Napi::String>().Utf8Value();
-    return Napi::Number::New(info.Env(), flox_l3_book_add_order(_h,
+    return Napi::Number::New(info.Env(), lrvx_l3_book_add_order(_h,
                                                                 info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue(),
                                                                 info[2].As<Napi::Number>().DoubleValue(), side == "buy" ? 0 : 1));
   }
-  Napi::Value RemoveOrder(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_l3_book_remove_order(_h, info[0].As<Napi::Number>().Int64Value())); }
-  Napi::Value ModifyOrder(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_l3_book_modify_order(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue())); }
+  Napi::Value RemoveOrder(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_l3_book_remove_order(_h, info[0].As<Napi::Number>().Int64Value())); }
+  Napi::Value ModifyOrder(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_l3_book_modify_order(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue())); }
   Napi::Value BestBid(const Napi::CallbackInfo& info)
   {
     double v;
-    if (flox_l3_book_best_bid(_h, &v))
+    if (lrvx_l3_book_best_bid(_h, &v))
     {
       return Napi::Number::New(info.Env(), v);
     }
@@ -152,15 +152,15 @@ class L3BookWrap : public Napi::ObjectWrap<L3BookWrap>
   Napi::Value BestAsk(const Napi::CallbackInfo& info)
   {
     double v;
-    if (flox_l3_book_best_ask(_h, &v))
+    if (lrvx_l3_book_best_ask(_h, &v))
     {
       return Napi::Number::New(info.Env(), v);
     }
     return info.Env().Null();
   }
-  Napi::Value BidAtPrice(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_l3_book_bid_at_price(_h, info[0].As<Napi::Number>().DoubleValue())); }
-  Napi::Value AskAtPrice(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_l3_book_ask_at_price(_h, info[0].As<Napi::Number>().DoubleValue())); }
-  FloxL3BookHandle _h;
+  Napi::Value BidAtPrice(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_l3_book_bid_at_price(_h, info[0].As<Napi::Number>().DoubleValue())); }
+  Napi::Value AskAtPrice(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_l3_book_ask_at_price(_h, info[0].As<Napi::Number>().DoubleValue())); }
+  LrvxL3BookHandle _h;
 };
 
 class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
@@ -177,19 +177,19 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
                         InstanceMethod("markStale", &CompositeBookMatrixWrap::MarkStale),
                         InstanceMethod("checkStaleness", &CompositeBookMatrixWrap::CheckStaleness)});
   }
-  CompositeBookMatrixWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<CompositeBookMatrixWrap>(info), _h(flox_composite_book_create()) {}
+  CompositeBookMatrixWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<CompositeBookMatrixWrap>(info), _h(lrvx_composite_book_create()) {}
   ~CompositeBookMatrixWrap()
   {
     if (_h)
     {
-      flox_composite_book_destroy(_h);
+      lrvx_composite_book_destroy(_h);
     }
   }
 
  private:
   // exchange, symbol, bidPx, bidQty, askPx, askQty, recvNs.
   void applyUpdate(const Napi::CallbackInfo& info,
-                   void (*fn)(FloxCompositeBookHandle, uint32_t, uint32_t, const double*, const double*,
+                   void (*fn)(LrvxCompositeBookHandle, uint32_t, uint32_t, const double*, const double*,
                               size_t, const double*, const double*, size_t, int64_t))
   {
     uint32_t exchange = info[0].As<Napi::Number>().Uint32Value();
@@ -211,13 +211,13 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
     fn(_h, exchange, symbol, bp.Data(), bq.Data(), bp.ElementLength(), ap.Data(), aq.Data(),
        ap.ElementLength(), recvNs);
   }
-  void ApplySnapshot(const Napi::CallbackInfo& info) { applyUpdate(info, flox_composite_book_apply_snapshot); }
-  void ApplyDelta(const Napi::CallbackInfo& info) { applyUpdate(info, flox_composite_book_apply_delta); }
+  void ApplySnapshot(const Napi::CallbackInfo& info) { applyUpdate(info, lrvx_composite_book_apply_snapshot); }
+  void ApplyDelta(const Napi::CallbackInfo& info) { applyUpdate(info, lrvx_composite_book_apply_delta); }
 
   Napi::Value BestBid(const Napi::CallbackInfo& info)
   {
     double p = 0, q = 0;
-    if (flox_composite_book_best_bid(_h, info[0].As<Napi::Number>().Uint32Value(), &p, &q))
+    if (lrvx_composite_book_best_bid(_h, info[0].As<Napi::Number>().Uint32Value(), &p, &q))
     {
       auto o = Napi::Object::New(info.Env());
       o.Set("price", p);
@@ -229,7 +229,7 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
   Napi::Value BestAsk(const Napi::CallbackInfo& info)
   {
     double p = 0, q = 0;
-    if (flox_composite_book_best_ask(_h, info[0].As<Napi::Number>().Uint32Value(), &p, &q))
+    if (lrvx_composite_book_best_ask(_h, info[0].As<Napi::Number>().Uint32Value(), &p, &q))
     {
       auto o = Napi::Object::New(info.Env());
       o.Set("price", p);
@@ -238,10 +238,10 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
     }
     return info.Env().Null();
   }
-  Napi::Value HasArb(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_composite_book_has_arb(_h, info[0].As<Napi::Number>().Uint32Value())); }
-  void MarkStale(const Napi::CallbackInfo& info) { flox_composite_book_mark_stale(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().Uint32Value()); }
-  void CheckStaleness(const Napi::CallbackInfo& info) { flox_composite_book_check_staleness(_h, toInt64Ns(info[0]), toInt64Ns(info[1])); }
-  FloxCompositeBookHandle _h;
+  Napi::Value HasArb(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_composite_book_has_arb(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  void MarkStale(const Napi::CallbackInfo& info) { lrvx_composite_book_mark_stale(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().Uint32Value()); }
+  void CheckStaleness(const Napi::CallbackInfo& info) { lrvx_composite_book_check_staleness(_h, toInt64Ns(info[0]), toInt64Ns(info[1])); }
+  LrvxCompositeBookHandle _h;
 };
 
 inline void registerBooks(Napi::Env env, Napi::Object exports)
@@ -251,4 +251,4 @@ inline void registerBooks(Napi::Env env, Napi::Object exports)
   exports.Set("CompositeBookMatrix", CompositeBookMatrixWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/ops/index_builder.h"
+#include "lrvx/replay/ops/index_builder.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 IndexBuilder::IndexBuilder(IndexBuilderConfig config) : _config(std::move(config)) {}
@@ -224,7 +224,7 @@ std::vector<IndexBuildResult> IndexBuilder::buildForDirectory(const std::filesys
 
   for (const auto& entry : std::filesystem::directory_iterator(dir))
   {
-    if (entry.is_regular_file() && entry.path().extension() == ".floxlog")
+    if (entry.is_regular_file() && isSegmentExtension(entry.path().extension().string()))
     {
       results.push_back(buildForSegment(entry.path()));
     }
@@ -307,7 +307,7 @@ GlobalIndexBuildResult GlobalIndexBuilder::build(const std::filesystem::path& da
 
   for (const auto& entry : std::filesystem::directory_iterator(data_dir))
   {
-    if (!entry.is_regular_file() || entry.path().extension() != ".floxlog")
+    if (!entry.is_regular_file() || !isSegmentExtension(entry.path().extension().string()))
     {
       continue;
     }
@@ -373,7 +373,7 @@ GlobalIndexBuildResult GlobalIndexBuilder::build(const std::filesystem::path& da
   }
 
   // Determine output path
-  std::filesystem::path idx_path = output_path.empty() ? (data_dir / "index.floxidx") : output_path;
+  std::filesystem::path idx_path = output_path.empty() ? (data_dir / "index.lrvxidx") : output_path;
 
   // Write global index
   std::FILE* file = std::fopen(idx_path.string().c_str(), "wb");
@@ -443,4 +443,4 @@ std::optional<std::vector<GlobalIndexSegment>> GlobalIndexBuilder::load(
   return segments;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

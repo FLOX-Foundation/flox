@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flox-mcp"
+version = "0.10.2"
+authors = [{name = "lrvx contributors"}]
+description = "Deprecated: flox-mcp is renamed to lrvx-mcp. This release installs lrvx-mcp and keeps `import flox_mcp` working."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["lrvx-mcp==0.10.1"]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://docs.lrvx.dev/"
+Repository = "https://github.com/lrvx/lrvx"
+Migration = "https://docs.lrvx.dev/how-to/migrate-from-flox/"
+
+[project.scripts]
+flox-mcp = "_flox_mcp_cli:main"
+
+[tool.setuptools]
+packages = ["flox_mcp"]
+py-modules = ["_flox_mcp_cli"]

@@ -1,13 +1,13 @@
-"""Tests for ``flox_py.archives.okx`` — OKX public archive converter.
+"""Tests for ``lrvx.archives.okx`` — OKX public archive converter.
 
 No network: synthetic CSV matching OKX's published column layout is
 built in memory (as both .zip and .csv.gz variants) and fed through
-the converter. The resulting `.floxlog` is read back via DataReader
+the converter. The resulting `.lrvx` is read back via DataReader
 and asserted trade-by-trade.
 
 Covers:
 
-  * `trades_to_floxlog` round-trip + side mapping (buy → 0, sell → 1).
+  * `trades_to_lrvx` round-trip + side mapping (buy → 0, sell → 1).
   * `.zip` (with one CSV inside) and `.csv.gz` packaging both parse.
   * Dedup on re-run via integer `trade_id`.
   * `metadata.json` carries `exchange=okx`, instrument_type per market.
@@ -36,9 +36,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py.archives import ArchiveReader, okx  # noqa: E402
+from lrvx.archives import ArchiveReader, okx  # noqa: E402
 
 
 # OKX columns: trade_id, side, size, price, timestamp_ms.
@@ -77,7 +77,7 @@ class OkxConvertTests(unittest.TestCase):
     def _convert_zip(self) -> okx.ConvertStats:
         z = self.tmp / "BTC-USDT-SWAP-trades-2024-01-15.zip"
         _build_zip(z)
-        return okx.trades_to_floxlog(
+        return okx.trades_to_lrvx(
             z, self.tape,
             symbol_id=7, symbol_name="BTC-USDT-SWAP", market="swap",
         )
@@ -85,7 +85,7 @@ class OkxConvertTests(unittest.TestCase):
     def test_round_trip_zip(self) -> None:
         stats = self._convert_zip()
         self.assertEqual(stats.trades_written, 3)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 3)
         sides = [int(t["side"]) for t in trades]
         self.assertEqual(sides, [0, 1, 0])
@@ -98,7 +98,7 @@ class OkxConvertTests(unittest.TestCase):
     def test_round_trip_gz(self) -> None:
         g = self.tmp / "BTC-USDT-SWAP-trades-2024-01-15.csv.gz"
         _build_gz(g)
-        stats = okx.trades_to_floxlog(
+        stats = okx.trades_to_lrvx(
             g, self.tape,
             symbol_id=7, symbol_name="BTC-USDT-SWAP", market="swap",
         )
@@ -107,7 +107,7 @@ class OkxConvertTests(unittest.TestCase):
     def test_dedup_on_rerun(self) -> None:
         first = self._convert_zip()
         self.assertEqual(first.trades_written, 3)
-        second = okx.trades_to_floxlog(
+        second = okx.trades_to_lrvx(
             self.tmp / "BTC-USDT-SWAP-trades-2024-01-15.zip", self.tape,
             symbol_id=7, symbol_name="BTC-USDT-SWAP", market="swap",
         )
@@ -131,7 +131,7 @@ class OkxConvertTests(unittest.TestCase):
     def test_option_market_metadata(self) -> None:
         z = self.tmp / "BTC-29MAR24-50000-C-trades-2024-01-15.zip"
         _build_zip(z)
-        okx.trades_to_floxlog(
+        okx.trades_to_lrvx(
             z, self.tape, symbol_id=7,
             symbol_name="BTC-29MAR24-50000-C", market="option",
         )
@@ -145,7 +145,7 @@ class OkxConvertTests(unittest.TestCase):
 
 class CrossExchangeMergeTests(unittest.TestCase):
     def setUp(self) -> None:
-        from flox_py.archives import binance as bnc
+        from lrvx.archives import binance as bnc
 
         self.tmp = Path(tempfile.mkdtemp(prefix="okx-xmrg-"))
         bnz = self.tmp / "BTCUSDT-aggTrades-2024-01-15.zip"
@@ -158,20 +158,20 @@ class CrossExchangeMergeTests(unittest.TestCase):
         with zipfile.ZipFile(bnz, "w") as z:
             z.writestr(bnz.with_suffix(".csv").name, buf.getvalue())
         self.bnz_tape = self.tmp / "binance-tape"
-        bnc.aggtrades_to_floxlog(
+        bnc.aggtrades_to_lrvx(
             bnz, self.bnz_tape, symbol_id=1, symbol_name="BTCUSDT",
             market="um-futures",
         )
         z = self.tmp / "BTC-USDT-SWAP-trades-2024-01-15.zip"
         _build_zip(z)
         self.okx_tape = self.tmp / "okx-tape"
-        okx.trades_to_floxlog(
+        okx.trades_to_lrvx(
             z, self.okx_tape, symbol_id=1, symbol_name="BTC-USDT-SWAP",
             market="swap",
         )
 
     def test_merge(self) -> None:
-        reader = flox_py.MergedTapeReader([
+        reader = lrvx.MergedTapeReader([
             str(self.bnz_tape), str(self.okx_tape),
         ])
         trades = reader.read_trades()

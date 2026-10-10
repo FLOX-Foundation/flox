@@ -5,7 +5,7 @@
 # point, so a book built here stayed empty forever. This drives the new
 # apply_snapshot/apply_delta bindings end to end.
 
-from flox.tools import CompositeBook
+from lrvx.tools import CompositeBook
 
 book = CompositeBook()
 

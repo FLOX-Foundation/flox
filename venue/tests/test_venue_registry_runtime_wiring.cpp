@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -31,11 +31,11 @@
  *        -- set before start(); every record the shard applies, replayed on
  *        start() and sequenced afterwards, is also offered to reg->apply().
  */
-#include "flox-venue/control_api.h"
-#include "flox-venue/control_plane.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
+#include "lrvx-venue/control_api.h"
+#include "lrvx-venue/control_plane.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -48,14 +48,14 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
 
-using VenueConfig = flox::venue::SymbolConfig;
+using VenueConfig = lrvx::venue::SymbolConfig;
 
 constexpr SymbolId SYM = 7;
 

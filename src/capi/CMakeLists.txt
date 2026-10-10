@@ -1,14 +1,14 @@
-add_library(flox_capi SHARED flox_capi.cpp)
+add_library(lrvx_capi SHARED lrvx_capi.cpp)
 
-target_link_libraries(flox_capi PRIVATE flox)
-target_include_directories(flox_capi PUBLIC
+target_link_libraries(lrvx_capi PRIVATE lrvx)
+target_include_directories(lrvx_capi PUBLIC
   ${CMAKE_SOURCE_DIR}/include
 )
 
 # Without VERSION/SOVERSION the shared library carries compatibility version
 # 0.0.0, so neither the macOS nor the ELF loader can refuse a mismatched
 # build -- the one check that happens before any of our code runs.
-set_target_properties(flox_capi PROPERTIES
+set_target_properties(lrvx_capi PROPERTIES
   C_VISIBILITY_PRESET default
   CXX_VISIBILITY_PRESET default
   POSITION_INDEPENDENT_CODE ON
@@ -17,23 +17,23 @@ set_target_properties(flox_capi PROPERTIES
 )
 
 if(NOT MSVC)
-  # FLOX_ARCH_OPT comes from the top-level CMakeLists.txt and honours
-  # the FLOX_NATIVE option; the shared CAPI lib is a distribution target
-  # (Codon/QuickJS/Node load it at runtime), so set FLOX_NATIVE=OFF when
+  # LRVX_ARCH_OPT comes from the top-level CMakeLists.txt and honours
+  # the LRVX_NATIVE option; the shared CAPI lib is a distribution target
+  # (Codon/QuickJS/Node load it at runtime), so set LRVX_NATIVE=OFF when
   # shipping it to heterogeneous CPUs.
-  set(_FLOX_CAPI_OPTS -O3 -flto)
-  if(FLOX_ARCH_OPT)
-    list(APPEND _FLOX_CAPI_OPTS ${FLOX_ARCH_OPT})
+  set(_LRVX_CAPI_OPTS -O3 -flto)
+  if(LRVX_ARCH_OPT)
+    list(APPEND _LRVX_CAPI_OPTS ${LRVX_ARCH_OPT})
   endif()
-  target_compile_options(flox_capi PRIVATE
-    $<$<CONFIG:Release>:${_FLOX_CAPI_OPTS}>
+  target_compile_options(lrvx_capi PRIVATE
+    $<$<CONFIG:Release>:${_LRVX_CAPI_OPTS}>
   )
 endif()
 
-install(TARGETS flox_capi
+install(TARGETS lrvx_capi
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(FILES ${CMAKE_SOURCE_DIR}/include/flox/capi/flox_capi.h
-  DESTINATION include/flox/capi
+install(FILES ${CMAKE_SOURCE_DIR}/include/lrvx/capi/lrvx_capi.h
+  DESTINATION include/lrvx/capi
 )

@@ -98,7 +98,7 @@ replaced, so determinism hashes and replays are unaffected.
 
 ## Fees
 
-Fees flow through `flox::FeeSchedule` (maker rebate / taker fee, volume tiers),
+Fees flow through `lrvx::FeeSchedule` (maker rebate / taker fee, volume tiers),
 but only the tier lookup does: the arithmetic is fixed point. The active tier's
 maker and taker rates are converted from basis points to raws at
 `kFeeRateScale` once, rounded to nearest, and the fee is
@@ -116,8 +116,8 @@ behaviour as the intended policy.
 
 ## Two margin models
 
-`flox::venue::CrossMarginManager` and `flox::LiquidationEngine`
-(`flox/backtest/`) both liquidate. They answer different questions:
+`lrvx::venue::CrossMarginManager` and `lrvx::LiquidationEngine`
+(`lrvx/backtest/`) both liquidate. They answer different questions:
 
 | | `LiquidationEngine` (backtest) | `CrossMarginManager` (venue) |
 |---|---|---|
@@ -126,7 +126,7 @@ behaviour as the intended policy.
 | Optimised for | speed, cascade modelling, ADL ranking, mark impact | exactness: conservation per asset, multi-asset collateral haircuts, segregation |
 
 Collapsing them would either put `double` money on the venue path or force
-ledger machinery into backtests. It is the same split FLOX makes between
+ledger machinery into backtests. It is the same split lrvx makes between
 `SimulatedClock` and `SystemClock`: one concept, two drivers. Pick by what you
 are building, and keep one account on one model.
 

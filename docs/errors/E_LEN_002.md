@@ -18,7 +18,7 @@ Check the array length before calling, or filter out empty cases:
 === "Python"
     ```python
     if len(returns) > 0:
-        ci = flox.bootstrap_ci(returns, confidence=0.95)
+        ci = lrvx.bootstrap_ci(returns, confidence=0.95)
     else:
         ci = (float("nan"), float("nan"), float("nan"))
     ```

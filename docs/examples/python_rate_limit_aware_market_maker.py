@@ -12,13 +12,13 @@ Demonstrates:
 - The VenueExecutor surface returned by stack.executor()
 """
 
-import flox_py as flox
+import lrvx
 
 BTC = 1
 
 
 def main():
-    stack = flox.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
     # RateLimitPolicy is wired by the venue factory and attached to the
     # executor. Submits past the budget surface as REJECTED_RATE_LIMIT
     # order events; the executor records fills only for accepted ones.

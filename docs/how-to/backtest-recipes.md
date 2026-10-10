@@ -28,9 +28,9 @@ and exercises a specific composition of the venue-stack subsystems.
 
 Each recipe is indexed by `sync_mcp_data.py` and surfaces via:
 
-- `mcp__flox__get_example(topic="backtest", language="python")` —
+- `mcp__lrvx__get_example(topic="backtest", language="python")` —
   topics: strategy, connector, indicator, event-handler, risk, backtest.
-- `mcp__flox__docs_search("venue factory")` — full-text over the docs.
+- `mcp__lrvx__docs_search("venue factory")` — full-text over the docs.
 
 There is no `examples_search` tool. AI agents writing a backtest from
 scratch should call `get_example` first; copying a recipe and adapting

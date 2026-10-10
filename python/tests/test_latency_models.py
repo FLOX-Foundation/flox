@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.latency_models``."""
+"""Tests for ``lrvx.latency_models``."""
 from __future__ import annotations
 
 import statistics
@@ -13,7 +13,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import latency_models as lm  # noqa: E402
+from lrvx import latency_models as lm  # noqa: E402
 
 
 class ConstantTests(unittest.TestCase):

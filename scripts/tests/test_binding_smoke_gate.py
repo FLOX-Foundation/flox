@@ -16,7 +16,7 @@ throws, and require a non-zero exit that names the binding.
 
 Seam: `--root`, plus `PYTHONPATH` for the Python half. The Python probe
 already runs as a subprocess that inherits the environment, so a fake
-`flox_py` earlier on the path is enough to stand in for a broken wheel; the
+`lrvx` earlier on the path is enough to stand in for a broken wheel; the
 Node half resolves its package directory from the repository root, so it
 needs `--root` to be pointed at a fixture.
 """
@@ -49,7 +49,7 @@ def test_a_python_binding_that_cannot_be_imported_is_a_failure(tmp_path):
     import must be red and must name it."""
     good = tmp_path / "good"
     good.mkdir()
-    (good / "flox_py.py").write_text(
+    (good / "lrvx.py").write_text(
         "class Ok:\n"
         "    def ping(self):\n"
         "        return 1\n")
@@ -58,12 +58,12 @@ def test_a_python_binding_that_cannot_be_imported_is_a_failure(tmp_path):
 
     broken = tmp_path / "broken"
     broken.mkdir()
-    (broken / "flox_py.py").write_text(
-        'raise ImportError("libflox_capi.so: cannot open shared object file")\n')
+    (broken / "lrvx.py").write_text(
+        'raise ImportError("liblrvx_capi.so: cannot open shared object file")\n')
     r = run_smoke(["--python"], env=_env(PYTHONPATH=str(broken)))
 
     assert "SKIP" not in r.output, r.output
-    assert "flox_py" in r.output
+    assert "lrvx" in r.output
     assert "cannot open shared object file" in r.output
     assert r.returncode != 0, r.output
 
@@ -77,7 +77,7 @@ def test_a_node_addon_that_cannot_be_loaded_is_a_failure(tmp_path):
     assert ok.returncode == 0, ok.output
 
     _write(root, "node/index.js",
-           "throw new Error('Cannot find module \\'./prebuilds/darwin-arm64/flox_node.node\\'');\n")
+           "throw new Error('Cannot find module \\'./prebuilds/darwin-arm64/lrvx_node.node\\'');\n")
     r = run_smoke(["--node", "--root", str(root)])
 
     assert "SKIP" not in r.output, r.output

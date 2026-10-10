@@ -75,7 +75,7 @@ docs/tutorials/codon-strategy.md
 docs/tutorials/node-quickstart.md
 docs/tutorials/python-quickstart.md
 # 60-second tutorial mirrors the substituted output of the bundled
-# `research` template (already covered by python/tests/test_flox_new_cli.py)
+# `research` template (already covered by python/tests/test_lrvx_new_cli.py)
 # — extracting it as a separate runnable would just duplicate the
 # template body. The CLI test asserts the file content this snippet shows.
 docs/tutorials/first-backtest.md
@@ -199,11 +199,11 @@ docs/how-to/rl-environment.md
 # node/test/test_authoring.ts.
 docs/how-to/typescript-strategy-authoring.md
 
-# How-to: Record a strategy run as .floxrun. Illustrative recorder /
+# How-to: Record a strategy run as .lrvxrun. Illustrative recorder /
 # reader usage across four bindings; the round-trip path is exercised
 # by python/tests/test_run_trace.py, node/test/test_run_trace.js,
 # quickjs/examples/run_trace_smoke.js, and codon/examples/run_trace_smoke.codon.
-docs/how-to/floxrun.md
+docs/how-to/lrvxrun.md
 
 
 # How-to: Read multi-timeframe context from a strategy. Illustrative
@@ -228,7 +228,7 @@ docs/how-to/multi-feed-clock.md
 # Cross-binding tabs for `Runner.attach_trace_recorder`. Polyglot
 # usage examples; the runtime path is exercised by
 # python/tests/test_runner_attach_trace.py + node/test/test_trace_attach.js.
-docs/how-to/floxrun-auto-capture.md
+docs/how-to/lrvxrun-auto-capture.md
 
 # How-to: Replace a leg of an active OrderGroup. Polyglot API tabs
 # plus an abstract event-routing pseudocode block; runtime path
@@ -265,19 +265,19 @@ docs/how-to/options-pricing.md
 # docs/examples/python_options_greeks.py (CI mypy + run step).
 docs/how-to/options-greeks.md
 
-# How-to: price a DEX swap -- flox_py.dex usage snippets; the same calls are
+# How-to: price a DEX swap -- lrvx.dex usage snippets; the same calls are
 # exercised end-to-end by python/tests/test_dex.py (CI run step).
 docs/how-to/price-a-dex-swap.md
 
-# How-to: backtest an LP position -- flox_py.dex.Tape / LpPosition snippets;
+# How-to: backtest an LP position -- lrvx.dex.Tape / LpPosition snippets;
 # the same calls are exercised by python/tests/test_dex_tape.py (CI run step).
 docs/how-to/backtest-an-lp-position.md
 
-# How-to: route / arb / ingest DEX pools -- flox_py.dex.Router / arb / ingest
+# How-to: route / arb / ingest DEX pools -- lrvx.dex.Router / arb / ingest
 # snippets; exercised by python/tests/test_dex_router.py (CI run step).
 docs/how-to/route-and-arb-dex-pools.md
 
-# How-to: DEX on Node -- flox/dex usage snippets; the same calls are
+# How-to: DEX on Node -- lrvx/dex usage snippets; the same calls are
 # exercised end-to-end by node/test/test_dex.js (CI run step).
 docs/how-to/dex-on-node.md
 

@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/mmap_bar_storage.h"
+#include "lrvx/backtest/mmap_bar_storage.h"
 
 #include <benchmark/benchmark.h>
 #include <filesystem>
 #include <fstream>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -41,7 +41,7 @@ void initTestData()
     return;
   }
 
-  g_test_dir = std::filesystem::temp_directory_path() / "flox_mmap_bench";
+  g_test_dir = std::filesystem::temp_directory_path() / "lrvx_mmap_bench";
   std::filesystem::remove_all(g_test_dir);
   std::filesystem::create_directories(g_test_dir);
 

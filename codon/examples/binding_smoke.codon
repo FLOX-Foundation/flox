@@ -10,11 +10,11 @@
 # Everything below is called at module scope on purpose -- that is what
 # forces realization, and what makes this file a gate rather than decoration.
 
-from flox.fee_schedule import FeeSchedule
-from flox.funding_schedule import FundingSchedule
-from flox.rate_limit import RateLimitPolicy
-from flox.tools import Partitioner
-from flox.backtest import SimulatedExecutor
+from lrvx.fee_schedule import FeeSchedule
+from lrvx.funding_schedule import FundingSchedule
+from lrvx.rate_limit import RateLimitPolicy
+from lrvx.tools import Partitioner
+from lrvx.backtest import SimulatedExecutor
 
 fees = FeeSchedule()
 fees.load_profile("binance_um_futures")
@@ -25,7 +25,7 @@ funding.load_profile("binance_um_futures")
 limits = RateLimitPolicy()
 limits.add_bucket("orders", 60_000_000_000, 1200)
 
-part = Partitioner("/tmp/flox-binding-smoke-nonexistent")
+part = Partitioner("/tmp/lrvx-binding-smoke-nonexistent")
 _by_time = part.by_time(4, 0)
 _by_duration = part.by_duration(1_000_000_000, 0)
 _by_calendar = part.by_calendar(1, 0)

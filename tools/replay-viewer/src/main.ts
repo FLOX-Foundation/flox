@@ -1,7 +1,7 @@
 // Entry point: wires drop-zone -> parsers -> store -> views.
 
-import { parseFloxlogDirectory } from './parsers/floxlog.ts';
-import { parseFloxrunDirectory } from './parsers/floxrun.ts';
+import { parseLrvxDirectory } from './parsers/lrvx.ts';
+import { parseLrvxrunDirectory } from './parsers/lrvxrun.ts';
 import { Store, readBookmark, writeBookmark } from './state.ts';
 import {
   renderTrades,
@@ -42,25 +42,26 @@ async function loadFiles(files: File[]) {
     if (m) {
       const json = JSON.parse(await m.text());
       if (Array.isArray(json.segments) && json.segments.some((s: { record_kind?: string }) => s.record_kind)) {
-        const run = await parseFloxrunDirectory(group);
+        const run = await parseLrvxrunDirectory(group);
         store.setRun(run);
         messages.push(
-          `${dirName || '.floxrun'}: ${run.signals.length} signals, ${run.orders.length} orders, ${run.fills.length} fills`,
+          `${dirName || '.lrvxrun'}: ${run.signals.length} signals, ${run.orders.length} orders, ${run.fills.length} fills`,
         );
         continue;
       }
       if (Array.isArray(json.segments)) {
-        const tape = await parseFloxlogDirectory(group);
+        const tape = await parseLrvxDirectory(group);
         store.setTape(tape.events);
         store.setSymbols(tape.symbols);
-        messages.push(`${dirName || '.floxlog'}: ${tape.events.length} events`);
+        messages.push(`${dirName || '.lrvx'}: ${tape.events.length} events`);
         continue;
       }
     }
-    // No manifest. Treat the group as a legacy bare-segment .floxlog
-    // directory if any candidate file carries the FLOX magic.
+    // No manifest. Treat the group as a legacy bare-segment .lrvx
+    // directory if any candidate file starts with the segment sentinel,
+    // which spells FLOX for compatibility with existing tapes.
     try {
-      const tape = await parseFloxlogDirectory(group);
+      const tape = await parseLrvxDirectory(group);
       if (tape.events.length > 0) {
         store.setTape(tape.events);
         store.setSymbols(tape.symbols);
@@ -71,7 +72,7 @@ async function loadFiles(files: File[]) {
     }
   }
   if (messages.length === 0) {
-    showStatus('No flox artifacts recognized. Drop a .floxlog or .floxrun directory.');
+    showStatus('No lrvx artifacts recognized. Drop a .lrvx or .lrvxrun directory.');
     return;
   }
   showStatus('loaded · ' + messages.join(' · '));
@@ -195,7 +196,7 @@ function updateOverflowMarkers() {
   }
 }
 
-// Autoload from a server-staged directory (used by `flox tape view`).
+// Autoload from a server-staged directory (used by `lrvx tape view`).
 async function tryAutoload() {
   const params = new URLSearchParams(window.location.search);
   const base = params.get('autoload');
@@ -211,7 +212,7 @@ async function tryAutoload() {
         const name = decodeURIComponent(m[1]).replace(/^\.?\//, '').replace(/\/$/, '');
         if (!name || name === '..' || name.startsWith('?')) continue;
         if (name === 'manifest.json' || name === 'metadata.json'
-            || /\.(bin|floxlog)$/i.test(name)) {
+            || /\.(bin|lrvx|floxlog)$/i.test(name)) {
           names.push(name);
         }
       }
@@ -220,7 +221,7 @@ async function tryAutoload() {
         if (!r.ok) continue;
         const buf = await r.arrayBuffer();
         const f = new File([buf], name, { type: 'application/octet-stream' });
-        const dir = sub === 'tape' ? 'tape.floxlog' : 'run.floxrun';
+        const dir = sub === 'tape' ? 'tape.lrvx' : 'run.lrvxrun';
         Object.defineProperty(f, 'webkitRelativePath', { value: `${dir}/${name}`, configurable: true });
         collected.push(f);
       }

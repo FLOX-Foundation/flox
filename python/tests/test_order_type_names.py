@@ -1,7 +1,7 @@
 """The Python binding's order-type names must be the canonical ones.
 
-``include/flox/capi/order_type_names.hpp`` is the one string <-> code table
-for the flox::OrderType space, and its header says every binding "must go
+``include/lrvx/capi/order_type_names.hpp`` is the one string <-> code table
+for the lrvx::OrderType space, and its header says every binding "must go
 through this header instead of keeping its own private copy". The Python
 binding kept three private copies instead
 (``python/strategy_bindings.h:orderTypeName``,
@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import pytest
 
-import flox_py as flox
+import lrvx
 
 NS = 1_000_000_000
 
-# Space A (flox::OrderType) as order_type_names.hpp spells it, in code order.
+# Space A (lrvx::OrderType) as order_type_names.hpp spells it, in code order.
 CANONICAL_NAMES = (
     "limit",
     "market",
@@ -41,7 +41,7 @@ CANONICAL_NAMES = (
 
 
 def _sim():
-    return flox.SimulatedExecutor()
+    return lrvx.SimulatedExecutor()
 
 
 def _trade(sim, t_ns: int, price: float) -> None:
@@ -53,28 +53,28 @@ def _trade(sim, t_ns: int, price: float) -> None:
 
 
 def test_order_type_names_are_the_canonical_table() -> None:
-    assert tuple(flox.ORDER_TYPE_NAMES) == CANONICAL_NAMES
+    assert tuple(lrvx.ORDER_TYPE_NAMES) == CANONICAL_NAMES
 
 
 def test_every_code_round_trips_through_its_name() -> None:
     for code, name in enumerate(CANONICAL_NAMES):
-        assert flox.order_type_name(code) == name
-        assert flox.order_type_code(name) == code
+        assert lrvx.order_type_name(code) == name
+        assert lrvx.order_type_code(name) == code
 
 
 def test_iceberg_is_code_seven_not_unknown() -> None:
-    assert flox.order_type_name(7) == "iceberg"
-    assert flox.order_type_code("iceberg") == 7
+    assert lrvx.order_type_name(7) == "iceberg"
+    assert lrvx.order_type_code("iceberg") == 7
 
 
 def test_a_code_outside_the_table_raises() -> None:
     with pytest.raises(ValueError):
-        flox.order_type_name(len(CANONICAL_NAMES))
+        lrvx.order_type_name(len(CANONICAL_NAMES))
 
 
 def test_an_unknown_name_raises_and_names_the_accepted_set() -> None:
     with pytest.raises(ValueError) as excinfo:
-        flox.order_type_code("banana")
+        lrvx.order_type_code("banana")
     message = str(excinfo.value)
     assert "banana" in message
     for name in CANONICAL_NAMES:
@@ -154,7 +154,7 @@ def test_bracket_legs_reject_an_unknown_order_type_too() -> None:
 
 def _venue_executor():
     # The stack owns the executor, so the caller has to hold on to both.
-    stack = flox.VenueStack.binance_um_futures(account_id=1, equity=100_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=100_000.0)
     return stack, stack.executor()
 
 
@@ -162,7 +162,7 @@ def test_venue_executor_accepts_the_canonical_names() -> None:
     _stack, executor = _venue_executor()
     for name in CANONICAL_NAMES:
         executor.submit_order(
-            flox.order_type_code(name) + 1, "buy", 100.0, 1.0, type=name, symbol=1
+            lrvx.order_type_code(name) + 1, "buy", 100.0, 1.0, type=name, symbol=1
         )
 
 
@@ -179,7 +179,7 @@ def test_venue_executor_refuses_the_legacy_and_unknown_names() -> None:
 # ── Order events (strategy_bindings.h) ────────────────────────────────
 
 
-class _TakeProfitStrategy(flox.Strategy):
+class _TakeProfitStrategy(lrvx.Strategy):
     """Buys on the first bar, then hangs a take-profit above the market."""
 
     def __init__(self, symbols):
@@ -212,9 +212,9 @@ def _bars(n: int):
 
 
 def test_a_take_profit_fill_event_carries_the_canonical_name() -> None:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
     strat = _TakeProfitStrategy([sym])
     runner.set_strategy(strat)
     runner.run_bars(*_bars(6), symbol="BTCUSDT")

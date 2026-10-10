@@ -15,9 +15,9 @@
 
 #include <gtest/gtest.h>
 
-#include "flox/net/socket.h"
+#include "lrvx/net/socket.h"
 
-using namespace flox::net;
+using namespace lrvx::net;
 
 namespace
 {

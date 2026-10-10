@@ -19,7 +19,7 @@ Usage:
 
 The build directory is expected to be configured already:
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-DECIMAL = "include/flox/util/base/decimal.h"
-SCALE_CHECK = "include/flox/util/base/scale_check.h"
-BOOK = "include/flox/book/nlevel_order_book.h"
+DECIMAL = "include/lrvx/util/base/decimal.h"
+SCALE_CHECK = "include/lrvx/util/base/scale_check.h"
+BOOK = "include/lrvx/book/nlevel_order_book.h"
 
 NATIVE = "test_decimal_portable"
 FORCED = "test_decimal_portable_forced"
@@ -190,12 +190,12 @@ MUTATIONS: list[Mutation] = [
     # hand precisely because it looks too simple to get wrong.
     #
     # Everything below is red in the build this script documents
-    # (RelWithDebInfo, so NDEBUG, so FLOX_SCALE_CHECKS off). The scale
+    # (RelWithDebInfo, so NDEBUG, so LRVX_SCALE_CHECKS off). The scale
     # bookkeeping that operator+ / operator- / operator+= / operator-= do on a
     # zero operand is NOT here: the runtime scale only exists with
-    # FLOX_SCALE_CHECKS on, so those mutations are equivalent in this build and
+    # LRVX_SCALE_CHECKS on, so those mutations are equivalent in this build and
     # only go red under -DCMAKE_BUILD_TYPE=Debug. Their tests live in
-    # tests/test_decimal.cpp behind #if FLOX_SCALE_CHECKS.
+    # tests/test_decimal.cpp behind #if LRVX_SCALE_CHECKS.
     Mutation(
         name="decimal-scalar-divide-multiplies-instead",
         why="swaps the / for a * in the tail of Decimal / int64_t, past both of its guards",
@@ -422,7 +422,7 @@ def main() -> int:
     if not (BUILD / "CMakeCache.txt").is_file():
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
-            "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON"
+            "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON"
         )
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]

@@ -1,6 +1,6 @@
 // node/src/feed_clock.h — Multi-feed clock.
 //
-// Thin NAPI wrap over the C ABI flox_feed_clock_* surface. Policy is
+// Thin NAPI wrap over the C ABI lrvx_feed_clock_* surface. Policy is
 // taken as a string ('WaitForAll' / 'FireOnAny' / 'LeaderFollower');
 // snapshot returned as `{ fired, triggeredBy, lastTsNs: Map, stalenessNs: Map }`.
 
@@ -9,13 +9,13 @@
 #include <napi.h>
 
 #include "bindings_common.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <map>
 #include <string>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class MultiFeedClockWrap : public Napi::ObjectWrap<MultiFeedClockWrap>
@@ -96,7 +96,7 @@ class MultiFeedClockWrap : public Napi::ObjectWrap<MultiFeedClockWrap>
     int64_t budget = opts.Has("stalenessBudgetMs")
                          ? opts.Get("stalenessBudgetMs").As<Napi::Number>().Int64Value()
                          : 200;
-    _h = flox_feed_clock_create(symVec.data(), static_cast<uint32_t>(symVec.size()), policy,
+    _h = lrvx_feed_clock_create(symVec.data(), static_cast<uint32_t>(symVec.size()), policy,
                                 timeout, leader, budget);
   }
 
@@ -104,47 +104,47 @@ class MultiFeedClockWrap : public Napi::ObjectWrap<MultiFeedClockWrap>
   {
     if (_h)
     {
-      flox_feed_clock_destroy(_h);
+      lrvx_feed_clock_destroy(_h);
       _h = nullptr;
     }
   }
 
  private:
-  FloxFeedClockHandle _h{nullptr};
+  LrvxFeedClockHandle _h{nullptr};
 
   Napi::Value Tick(const Napi::CallbackInfo& info)
   {
     int64_t ts = toInt64Ns(info[0]);
     uint32_t sym = info[1].As<Napi::Number>().Uint32Value();
-    uint8_t fired = flox_feed_clock_tick(_h, ts, sym);
+    uint8_t fired = lrvx_feed_clock_tick(_h, ts, sym);
     Napi::Object out = Napi::Object::New(info.Env());
     out.Set("fired", Napi::Boolean::New(info.Env(), fired != 0));
     out.Set("triggeredBy",
-            Napi::Number::New(info.Env(), flox_feed_clock_last_triggered_by(_h)));
-    uint32_t n = flox_feed_clock_symbol_count(_h);
+            Napi::Number::New(info.Env(), lrvx_feed_clock_last_triggered_by(_h)));
+    uint32_t n = lrvx_feed_clock_symbol_count(_h);
     Napi::Object lastTs = Napi::Object::New(info.Env());
     Napi::Object stale = Napi::Object::New(info.Env());
     for (uint32_t i = 0; i < n; ++i)
     {
-      uint32_t s = flox_feed_clock_symbol_at(_h, i);
+      uint32_t s = lrvx_feed_clock_symbol_at(_h, i);
       std::string key = std::to_string(s);
       // lastTsNs is a clock reading and has to survive at full width; a
       // staleness is a difference of two of them, exact in a double below
       // 104 days, and stays a Number.
-      lastTs.Set(key, Napi::BigInt::New(info.Env(), flox_feed_clock_last_seen_at(_h, i)));
+      lastTs.Set(key, Napi::BigInt::New(info.Env(), lrvx_feed_clock_last_seen_at(_h, i)));
       stale.Set(key, Napi::Number::New(info.Env(), static_cast<double>(
-                                                       flox_feed_clock_staleness_at(_h, i))));
+                                                       lrvx_feed_clock_staleness_at(_h, i))));
     }
     out.Set("lastTsNs", lastTs);
     out.Set("stalenessNs", stale);
     return out;
   }
 
-  void Reset(const Napi::CallbackInfo&) { flox_feed_clock_reset(_h); }
+  void Reset(const Napi::CallbackInfo&) { lrvx_feed_clock_reset(_h); }
 
   Napi::Value SymbolCount(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_feed_clock_symbol_count(_h));
+    return Napi::Number::New(info.Env(), lrvx_feed_clock_symbol_count(_h));
   }
 };
 
@@ -160,4 +160,4 @@ inline void registerFeedClock(Napi::Env env, Napi::Object exports)
   exports.Set("FeedClockPolicy", policy);
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

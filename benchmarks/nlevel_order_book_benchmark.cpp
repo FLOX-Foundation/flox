@@ -1,21 +1,21 @@
 /*
-  * Flox Engine
-  * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+  * lrvx Engine
+  * Developed by lrvx contributors (https://github.com/lrvx)
   *
-  * Copyright (c) 2025 FLOX Foundation
+  * Copyright (c) 2025 lrvx contributors
   * Licensed under the MIT License. See LICENSE file in the project root for full
   * license information.
   */
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/nlevel_order_book.h"
-#include "flox/common.h"
-#include "flox/util/memory/pool.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/nlevel_order_book.h"
+#include "lrvx/common.h"
+#include "lrvx/util/memory/pool.h"
 
 #include <benchmark/benchmark.h>
 #include <random>
 
-using namespace flox;
+using namespace lrvx;
 
 using BookUpdatePool = pool::Pool<BookUpdateEvent, 63>;
 

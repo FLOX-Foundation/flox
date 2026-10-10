@@ -11,17 +11,17 @@ from __future__ import annotations
 
 import pytest
 
-import flox_py as flox
+import lrvx
 
 
-def _runner() -> flox.BacktestRunner:
-    reg = flox.SymbolRegistry()
+def _runner() -> lrvx.BacktestRunner:
+    reg = lrvx.SymbolRegistry()
     reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-    return flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
+    return lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
 
 
 def test_venue_stack_executor_is_refused_with_guidance() -> None:
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
 
     with pytest.raises(ValueError) as excinfo:
         _runner().set_executor(stack.executor())
@@ -33,7 +33,7 @@ def test_venue_stack_executor_is_refused_with_guidance() -> None:
 
 
 def test_custom_executor_overload_still_accepted() -> None:
-    class NullExecutor(flox.Executor):
+    class NullExecutor(lrvx.Executor):
         def submit_order(self, order) -> None:  # noqa: ANN001
             pass
 

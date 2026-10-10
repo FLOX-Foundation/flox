@@ -1,4 +1,4 @@
-"""Ordering and boundary contract of ``flox_py.DataReader``.
+"""Ordering and boundary contract of ``lrvx.DataReader``.
 
 Covers what a tape reader owes its caller when the tape is not perfectly
 ordered: late events are dropped and counted rather than ending the walk,
@@ -25,7 +25,7 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
 _SEC = 1_000_000_000
 _BASE = 1_700_000_000 * _SEC
@@ -35,7 +35,7 @@ def _write_lagging_tape(tape_dir: Path) -> None:
     """50 in-order trades on symbol 1, one trade on symbol 2 stamped 40s back,
     then 50 more on symbol 1."""
     tape_dir.mkdir(parents=True, exist_ok=True)
-    w = flox_py.DataWriter(str(tape_dir), max_segment_mb=4,
+    w = lrvx.DataWriter(str(tape_dir), max_segment_mb=4,
                            exchange_id=0, compression="none")
     try:
         for i in range(50):
@@ -60,8 +60,8 @@ class OrderingTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_late_event_is_dropped_and_counted(self) -> None:
-        reader = flox_py.DataReader(str(self.tape), reorder_window_ns=10 * _SEC)
-        agg = flox_py.EventTypeStatsAggregator()
+        reader = lrvx.DataReader(str(self.tape), reorder_window_ns=10 * _SEC)
+        agg = lrvx.EventTypeStatsAggregator()
         self.assertTrue(reader.run([agg], n_threads=1))
 
         stats = reader.stats()
@@ -69,9 +69,9 @@ class OrderingTests(unittest.TestCase):
         self.assertEqual(stats["events_read"], 100)
 
     def test_strict_ordering_raises(self) -> None:
-        reader = flox_py.DataReader(str(self.tape), reorder_window_ns=10 * _SEC,
+        reader = lrvx.DataReader(str(self.tape), reorder_window_ns=10 * _SEC,
                                     strict_ordering=True)
-        agg = flox_py.EventTypeStatsAggregator()
+        agg = lrvx.EventTypeStatsAggregator()
         with self.assertRaises(Exception) as ctx:
             reader.run([agg], n_threads=1)
         # The message has to say which symbol and where, or the caller cannot
@@ -81,9 +81,9 @@ class OrderingTests(unittest.TestCase):
         self.assertIn("offset=", message)
 
     def test_filtered_symbol_does_not_move_the_watermark(self) -> None:
-        reader = flox_py.DataReader(str(self.tape), symbols=[1],
+        reader = lrvx.DataReader(str(self.tape), symbols=[1],
                                     reorder_window_ns=10 * _SEC)
-        agg = flox_py.EventTypeStatsAggregator()
+        agg = lrvx.EventTypeStatsAggregator()
         self.assertTrue(reader.run([agg], n_threads=1))
 
         stats = reader.stats()
@@ -91,8 +91,8 @@ class OrderingTests(unittest.TestCase):
         self.assertEqual(stats["late_dropped"], 0)
 
     def test_wide_window_keeps_every_event(self) -> None:
-        reader = flox_py.DataReader(str(self.tape), reorder_window_ns=60 * _SEC)
-        agg = flox_py.EventTypeStatsAggregator()
+        reader = lrvx.DataReader(str(self.tape), reorder_window_ns=60 * _SEC)
+        agg = lrvx.EventTypeStatsAggregator()
         self.assertTrue(reader.run([agg], n_threads=1))
 
         stats = reader.stats()
@@ -111,7 +111,7 @@ class TimeBoundTests(unittest.TestCase):
         self.tape = Path(self._tmp.name) / "tape"
         self.tape.mkdir(parents=True, exist_ok=True)
         stamps = np.array([_BASE + i * _SEC for i in range(10)], dtype=np.int64)
-        w = flox_py.DataWriter(str(self.tape), max_segment_mb=4,
+        w = lrvx.DataWriter(str(self.tape), max_segment_mb=4,
                                exchange_id=0, compression="none")
         try:
             for i, ts in enumerate(stamps):
@@ -136,22 +136,22 @@ class TimeBoundTests(unittest.TestCase):
 
     def test_trade_upper_bound_is_inclusive(self) -> None:
         boundary = _BASE + 4 * _SEC
-        reader = flox_py.DataReader(str(self.tape), to_ns=boundary)
+        reader = lrvx.DataReader(str(self.tape), to_ns=boundary)
         trades = reader.read_trades()
         self.assertEqual(len(trades), 5)
         self.assertEqual(int(trades[-1]["exchange_ts_ns"]), boundary)
 
     def test_option_quote_upper_bound_is_exclusive(self) -> None:
         boundary = _BASE + 4 * _SEC
-        reader = flox_py.DataReader(str(self.tape), to_ns=boundary)
+        reader = lrvx.DataReader(str(self.tape), to_ns=boundary)
         quotes = reader.read_option_quotes_from(_BASE)
         self.assertEqual(len(quotes), 4)
         self.assertLess(int(quotes[-1]["exchange_ts_ns"]), boundary)
 
     def test_adjacent_quote_windows_do_not_overlap(self) -> None:
         split = _BASE + 5 * _SEC
-        first = flox_py.DataReader(str(self.tape), to_ns=split).read_option_quotes_from(_BASE)
-        second = flox_py.DataReader(str(self.tape)).read_option_quotes_from(split)
+        first = lrvx.DataReader(str(self.tape), to_ns=split).read_option_quotes_from(_BASE)
+        second = lrvx.DataReader(str(self.tape)).read_option_quotes_from(split)
         stamps = [int(q["exchange_ts_ns"]) for q in first]
         stamps += [int(q["exchange_ts_ns"]) for q in second]
         self.assertEqual(len(stamps), len(set(stamps)))

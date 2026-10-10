@@ -1,12 +1,12 @@
-# Control a running flox engine over MCP
+# Control a running lrvx engine over MCP
 
-`flox-mcp` Phase 2 lets an AI client send mutating commands (place an order, cancel, flatten, flip the kill switch) to a running flox engine. The wiring is two-process: the user's app embeds a `ControlServer` that listens on localhost; the AI client launches `flox-mcp` as a child, and the child connects to the server with a scoped bearer token. Defaults are dry-run; live trading requires an out-of-band approval flow.
+`lrvx-mcp` Phase 2 lets an AI client send mutating commands (place an order, cancel, flatten, flip the kill switch) to a running lrvx engine. The wiring is two-process: the user's app embeds a `ControlServer` that listens on localhost; the AI client launches `lrvx-mcp` as a child, and the child connects to the server with a scoped bearer token. Defaults are dry-run; live trading requires an out-of-band approval flow.
 
 The companion read-only inspection (`get_positions`, `get_open_orders`, `get_pnl`, `get_kill_switch`) keeps using a snapshot file. Reads do not need real-time IPC. Writes do.
 
 ## Threat model and what protects what
 
-The MCP server is a child process the AI client spawns. Anything else on the machine that can read the user's environment can also see `FLOX_CONTROL_URL` and `FLOX_CONTROL_TOKEN`. The server enforces three layered defenses:
+The MCP server is a child process the AI client spawns. Anything else on the machine that can read the user's environment can also see `LRVX_CONTROL_URL` and `LRVX_CONTROL_TOKEN`. The server enforces three layered defenses:
 
 - Scoped bearer tokens (`read`, `paper`, `live`). Every mutating op — `place_order`, `cancel_order`, `cancel_all`, `flatten_positions` — takes an `account` argument, and a `paper` token cannot target an account whose name does not start with `paper-`. A `live` token is required for anything else. `flatten_positions` additionally skips any position row the `positions` accessor tags with a different account, so a paper caller flattening its own book cannot sweep a live account sharing the same accessor.
 - `set_kill_switch` halts trading at the engine level rather than for one account, so the paper/live account split does not apply to it. Only a `live` token may call it.
@@ -20,13 +20,13 @@ Audit log records every accepted and rejected mutating call with the bearer toke
 ```python
 from pathlib import Path
 
-import flox_py as flox
-from flox_py.control_server import ControlServer
+import lrvx
+from lrvx.control_server import ControlServer
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 sym = registry.add_symbol("paper", "BTCUSDT", tick_size=0.01)
 
-executor = flox.SimulatedExecutor()  # or your live executor
+executor = lrvx.SimulatedExecutor()  # or your live executor
 kill_switch = MyKillSwitch()         # any object with .set(active, reason)
 
 server = ControlServer(
@@ -37,7 +37,7 @@ server = ControlServer(
     },
     executor=executor,
     kill_switch=kill_switch,
-    audit_sink=Path("/var/log/flox/control-audit.jsonl"),
+    audit_sink=Path("/var/log/lrvx/control-audit.jsonl"),
     host="127.0.0.1",
     port=8765,
 )
@@ -50,20 +50,20 @@ server.stop()
 
 The `tokens` map is the only place secrets land. Generate them with a real RNG (`secrets.token_urlsafe(32)`), keep them out of source control, and pass them through your secret manager.
 
-The `audit_sink` is mandatory in production. The default sink writes to the `flox.control_server` logger, which is fine for development but not for compliance.
+The `audit_sink` is mandatory in production. The default sink writes to the `lrvx.control_server` logger, which is fine for development but not for compliance.
 
 ## Configuring the MCP client
 
-Add `flox-mcp` to your MCP client's server list. Pass `FLOX_CONTROL_URL` and `FLOX_CONTROL_TOKEN`:
+Add `lrvx-mcp` to your MCP client's server list. Pass `LRVX_CONTROL_URL` and `LRVX_CONTROL_TOKEN`:
 
 ```json
 {
   "mcpServers": {
-    "flox": {
-      "command": "flox-mcp",
+    "lrvx": {
+      "command": "lrvx-mcp",
       "env": {
-        "FLOX_CONTROL_URL": "http://127.0.0.1:8765",
-        "FLOX_CONTROL_TOKEN": "paper-key-xxx"
+        "LRVX_CONTROL_URL": "http://127.0.0.1:8765",
+        "LRVX_CONTROL_TOKEN": "paper-key-xxx"
       }
     }
   }
@@ -84,7 +84,7 @@ This default is deliberate. AI clients that hallucinate a tool call still hit th
 
 ```python
 # In a CLI session the operator owns:
-import flox_py
+import lrvx
 # ... boot the same ControlServer instance the MCP server talks to ...
 print(server.issue_approval())
 # → "f9c1e2... a one-shot token, valid for 60 seconds"

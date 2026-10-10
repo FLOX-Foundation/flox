@@ -38,8 +38,8 @@ def _declared() -> dict[str, tuple[str, Path]]:
         data = tomllib.loads(manifest.read_text())
         project = data.get("project", {})
         specs = list(project.get("dependencies", []) or [])
-        # Extras count too: flox-py declares `mcp` under optional-dependencies,
-        # and an unbounded range there breaks `pip install flox-py[mcp]` just
+        # Extras count too: lrvx declares `mcp` under optional-dependencies,
+        # and an unbounded range there breaks `pip install lrvx[mcp]` just
         # as thoroughly as one in the main list.
         for extra in (project.get("optional-dependencies", {}) or {}).values():
             specs.extend(extra or [])

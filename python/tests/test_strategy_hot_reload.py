@@ -12,10 +12,10 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
 
-class _RecordingStrategy(flox_py.Strategy):
+class _RecordingStrategy(lrvx.Strategy):
     """Marks each lifecycle event so a test can assert who saw what."""
 
     def __init__(self, symbols, label: str) -> None:
@@ -37,10 +37,10 @@ class _RecordingStrategy(flox_py.Strategy):
 
 class HotReloadTests(unittest.TestCase):
     def test_replace_strategy_swaps_callbacks(self) -> None:
-        registry = flox_py.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = int(registry.add_symbol("test", "BTCUSDT", tick_size=0.01))
 
-        runner = flox_py.Runner(registry, on_signal=lambda _: None)
+        runner = lrvx.Runner(registry, on_signal=lambda _: None)
         a = _RecordingStrategy([sym], "A")
         runner.add_strategy(a)
         runner.start()
@@ -68,9 +68,9 @@ class HotReloadTests(unittest.TestCase):
         self.assertEqual(b.stops, 1)
 
     def test_replace_strategy_rejects_bad_index(self) -> None:
-        registry = flox_py.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = int(registry.add_symbol("test", "BTCUSDT", tick_size=0.01))
-        runner = flox_py.Runner(registry, on_signal=lambda _: None)
+        runner = lrvx.Runner(registry, on_signal=lambda _: None)
         a = _RecordingStrategy([sym], "A")
         runner.add_strategy(a)
 

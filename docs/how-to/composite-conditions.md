@@ -7,8 +7,8 @@ The DSL pulls bars from the per-(symbol, timeframe) ring populated by `Strategy.
 ## Quick start
 
 ```python
-from flox_py import Strategy
-from flox_py.composite import when, TIME_BARS
+from lrvx import Strategy
+from lrvx.composite import when, TIME_BARS
 
 H4_NS = 4 * 3600 * 1_000_000_000
 M5_NS = 5 * 60 * 1_000_000_000
@@ -70,7 +70,7 @@ The DSL is pure Python and re-evaluates lazily on every `.value()` call. For mul
 When the same indicator runs on every symbol × timeframe slot, declare the cross-product in one shot:
 
 ```python
-from flox_py.composite import grid, TIME_BARS
+from lrvx.composite import grid, TIME_BARS
 
 H4 = 14_400_000_000_000
 M5 = 300_000_000_000
@@ -88,7 +88,7 @@ The grid ships in every binding. Lookup is `g.get(symbol, bar_type, param)` in J
 
 ```javascript
 // node
-const { grid, BAR_TYPE_TIME } = require('@flox-foundation/flox').composite;
+const { grid, BAR_TYPE_TIME } = require('@lrvx/lrvx').composite;
 const g = grid(strat, [btcId, ethId], [M5_NS, [BAR_TYPE_TIME, H4_NS]]).ema(50);
 const btcM5 = g.get(btcId, BAR_TYPE_TIME, M5_NS);
 if (btcM5.isReady()) console.log(btcM5.value());
@@ -100,9 +100,9 @@ const g = grid(this, [btcId, ethId], [M5_NS, H4_NS]).ema(50);
 const eth4h = g.get(ethId, 0, H4_NS);
 ```
 
-```python
+```codon
 # codon
-from flox.composite import grid, BAR_TYPE_TIME
+from lrvx.composite import grid, BAR_TYPE_TIME
 g = grid(self, [btc_id, eth_id],
          [(BAR_TYPE_TIME, M5_NS), (BAR_TYPE_TIME, H4_NS)]).ema(50)
 btc_m5 = g.get(btc_id, BAR_TYPE_TIME, M5_NS)
@@ -112,11 +112,11 @@ btc_m5 = g.get(btc_id, BAR_TYPE_TIME, M5_NS)
 
 The DSL ships in every binding. The Python form uses Python operator overloading; the JS / Codon forms use named methods because their type systems do not give the same operator-overload latitude. The semantics are identical **across the four bindings**.
 
-Note that the DSL's `.ema()` and `.rsi()` are lightweight window computations, NOT the engine's indicators: `.ema()` seeds from the first value in the window (the engine seeds from the SMA of the first `period` values over the full series), and `.rsi()` is a simple gain/loss average (the engine uses Wilder smoothing). Use them for composite entry conditions; for the exact engine values use `flox.ema(...)` / `flox.rsi(...)` directly.
+Note that the DSL's `.ema()` and `.rsi()` are lightweight window computations, NOT the engine's indicators: `.ema()` seeds from the first value in the window (the engine seeds from the SMA of the first `period` values over the full series), and `.rsi()` is a simple gain/loss average (the engine uses Wilder smoothing). Use them for composite entry conditions; for the exact engine values use `lrvx.ema(...)` / `lrvx.rsi(...)` directly.
 
 ```javascript
 // node
-const { when, BAR_TYPE_TIME } = require('@flox-foundation/flox').composite;
+const { when, BAR_TYPE_TIME } = require('@lrvx/lrvx').composite;
 const fast = when(strat, btcId, BAR_TYPE_TIME, M5_NS).ema(50);
 const slow = when(strat, btcId, BAR_TYPE_TIME, M5_NS).ema(200);
 const crossUp = fast.gt(slow);
@@ -137,10 +137,10 @@ class TrendFollow extends Strategy {
 }
 ```
 
-```python
+```codon
 # codon — Compare returns named methods; logical composition uses
 # plain `and` / `or` / `not` on the boolean values
-from flox.composite import when, BAR_TYPE_TIME
+from lrvx.composite import when, BAR_TYPE_TIME
 
 class TrendFollow(Strategy):
     def on_bar(self, ctx, bar):

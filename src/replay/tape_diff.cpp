@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/tape_diff.h"
+#include "lrvx/replay/tape_diff.h"
 
-#include "flox/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
 
 #include <algorithm>
 #include <cstdlib>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -99,4 +99,4 @@ TapeDiffResult diffTapes(const std::filesystem::path& left,
   return result;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

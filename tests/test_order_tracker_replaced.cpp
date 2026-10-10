@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,12 +16,12 @@
 // pruneTerminal() refuses to drop it, so _orders grows by one entry per
 // replace on a quoting strategy that amends continuously.
 
-#include "flox/engine/engine_config.h"
-#include "flox/execution/order_tracker.h"
+#include "lrvx/engine/engine_config.h"
+#include "lrvx/execution/order_tracker.h"
 
 #include <gtest/gtest.h>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

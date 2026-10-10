@@ -1,6 +1,6 @@
 # Build profiles: the full tree and `venue-lite`
 
-`FLOX_BUILD_VENUE` answers one question -- is the venue in this build. This
+`LRVX_BUILD_VENUE` answers one question -- is the venue in this build. This
 page answers the other one: is anything *else*.
 
 A downstream consumer that runs the execution venue compiles against 37 of
@@ -8,7 +8,7 @@ this tree's headers. Everything else here -- the backtest module, the
 exchange connectors and their DEX curves, the Python, Node, C-API, Codon and
 QuickJS bindings, the demo, the benchmarks -- is weight that consumer carries
 and never calls, and each one drags a dependency: OpenSSL, CURL, zlib,
-ixwebsocket, LZ4, pybind11. `FLOX_VENUE_LITE=ON` is the configuration that
+ixwebsocket, LZ4, pybind11. `LRVX_VENUE_LITE=ON` is the configuration that
 does not have them.
 
 ## The profile
@@ -19,14 +19,14 @@ cmake --build build-venue-lite -j"$(nproc)"
 ctest --preset venue-lite
 ```
 
-The preset lives in `CMakePresets.json` and sets `FLOX_VENUE_LITE=ON`,
-`FLOX_BUILD_TESTS=ON`, `CMAKE_BUILD_TYPE=Release`. There is a second preset,
+The preset lives in `CMakePresets.json` and sets `LRVX_VENUE_LITE=ON`,
+`LRVX_BUILD_TESTS=ON`, `CMAKE_BUILD_TYPE=Release`. There is a second preset,
 `venue-lite-engine-only`, which is the same thing with
-`FLOX_VENUE_PERIMETER=OFF`: the matching engine, its journal and its
+`LRVX_VENUE_PERIMETER=OFF`: the matching engine, its journal and its
 checkpoints, on a platform the perimeter does not reach yet (see
 [Building with and without the venue](build.md) for what that split is).
 
-The option can also be set by hand -- `-DFLOX_VENUE_LITE=ON` -- and forces
+The option can also be set by hand -- `-DLRVX_VENUE_LITE=ON` -- and forces
 everything below rather than defaulting it, so a cache left over from a full
 configure cannot leave half the tree switched on.
 
@@ -34,9 +34,9 @@ configure cannot leave half the tree switched on.
 
 | | |
 |---|---|
-| `flox-venue` | the matching engine, clearing, the ledger, the journal, checkpoints, the sequenced shard |
-| the perimeter | FIX and SBE codecs, sessions, the TCP gateway, the control plane, metrics (`FLOX_VENUE_PERIMETER=ON`, the default off Windows) |
-| the FIX initiator | `flox/connector/fix/` -- the client side of the same protocol |
+| `lrvx-venue` | the matching engine, clearing, the ledger, the journal, checkpoints, the sequenced shard |
+| the perimeter | FIX and SBE codecs, sessions, the TCP gateway, the control plane, metrics (`LRVX_VENUE_PERIMETER=ON`, the default off Windows) |
+| the FIX initiator | `lrvx/connector/fix/` -- the client side of the same protocol |
 | the core library | `src/clearing`, `src/engine`, `src/execution`, `src/log`, and the header-only utilities the venue links |
 | the venue suite | `venue/tests`, golden replay included |
 
@@ -44,12 +44,12 @@ configure cannot leave half the tree switched on.
 
 | | why |
 |---|---|
-| the backtest module | `FLOX_ENABLE_BACKTEST=OFF`. The venue needed it until `FeeSchedule`, `Account` and `LeveragedPosition` moved from `flox/backtest/` to `flox/clearing/`; it does not any more. |
-| exchange connectors, DEX curves | `FLOX_BUILD_CONNECTORS=OFF`, and with them OpenSSL, CURL, zlib and ixwebsocket |
+| the backtest module | `LRVX_ENABLE_BACKTEST=OFF`. The venue needed it until `FeeSchedule`, `Account` and `LeveragedPosition` moved from `lrvx/backtest/` to `lrvx/clearing/`; it does not any more. |
+| exchange connectors, DEX curves | `LRVX_BUILD_CONNECTORS=OFF`, and with them OpenSSL, CURL, zlib and ixwebsocket |
 | Python, Node, C API, Codon, QuickJS | nothing in the venue's surface crosses a binding |
 | the demo and the benchmarks | not a deliverable of this profile |
-| `src/replay`, `src/report`, `src/risk`, `src/run` | the venue links none of them, and `src/replay` is the only thing in the core that needs LZ4 -- so `FLOX_ENABLE_LZ4=OFF` here |
-| the core test suite (`tests/`) | it drives the backtest module, the replay pipeline and the indicator graph. `FLOX_BUILD_TESTS=ON` in this profile builds the venue's suite only. |
+| `src/replay`, `src/report`, `src/risk`, `src/run` | the venue links none of them, and `src/replay` is the only thing in the core that needs LZ4 -- so `LRVX_ENABLE_LZ4=OFF` here |
+| the core test suite (`tests/`) | it drives the backtest module, the replay pipeline and the indicator graph. `LRVX_BUILD_TESTS=ON` in this profile builds the venue's suite only. |
 
 These are subdirectories that are never added and `find_package` calls that
 never run, not targets excluded at build time: a lite configure asks the
@@ -59,9 +59,9 @@ grow, the profile has stopped being lite and the diff says so.
 
 Three venue tests are not built here, each derived from what it includes
 rather than from a list kept by hand: `test_venue_derivatives` (drives the
-backtest liquidation engine through `flox-venue/liquidation_monitor.h`),
-`test_venue_tape` (writes through `flox::replay::BinaryLogWriter`), and
-`test_venue_fix_tls_channel` (needs `FLOX_FIX_TLS`, off by default in every
+backtest liquidation engine through `lrvx-venue/liquidation_monitor.h`),
+`test_venue_tape` (writes through `lrvx::replay::BinaryLogWriter`), and
+`test_venue_fix_tls_channel` (needs `LRVX_FIX_TLS`, off by default in every
 profile).
 
 ## The surface contract
@@ -74,8 +74,8 @@ contract, written down in one place. Two things read it:
   configure the backtest module and the connectors are present, so the TU
   would pass whether or not the profile still held; here it fails instead.
 * `scripts/lite_closure.py` walks the transitive closure of the list and
-  refuses a closure that reaches `flox/backtest/`, `flox/aggregator/`,
-  `flox/connector/` other than the FIX initiator, `flox-connectors/`, or any
+  refuses a closure that reaches `lrvx/backtest/`, `lrvx/aggregator/`,
+  `lrvx/connector/` other than the FIX initiator, `lrvx-connectors/`, or any
   directory outside the ones the profile allows. It also checks the TU's
   includes against the list, so the contract cannot become two lists with one
   of them stale.
@@ -93,13 +93,13 @@ that target on your own build, not three jobs later in CI.
 
 The root `CMakeLists.txt` reads the same closure to decide which
 `src/{clearing,engine,execution,log}/*.cpp` the lite profile compiles: a
-`src/<x>/<y>.cpp` is kept only when `include/flox/<x>/<y>.h` -- its own
+`src/<x>/<y>.cpp` is kept only when `include/lrvx/<x>/<y>.h` -- its own
 header -- is on the list. Most of what is in those four directories is not:
 `engine.cpp`, `symbol_registry.cpp`, `algos.cpp`, `order_journey_tracer.cpp`,
 `order_tracker.cpp` and `atomic_logger.cpp` exist for the full engine, the
 venue links none of them, and the filter drops all six. One entry in
 `venue/lite_surface.txt` is there for this reason rather than because the
-consumer includes it: `flox/log/console_logger.h`, needed by
+consumer includes it: `lrvx/log/console_logger.h`, needed by
 `src/log/log_stream.cpp` (the `LogStream` destructor's fallback logger), not
 by anything a venue consumer writes. It is marked "required by lite
 library" in the file so the two reasons an entry can be on the list stay
@@ -107,9 +107,9 @@ distinguishable.
 
 ## Moving a consumer onto it
 
-1. Drop `-DFLOX_ENABLE_BACKTEST=ON`. It was required before the clearing
+1. Drop `-DLRVX_ENABLE_BACKTEST=ON`. It was required before the clearing
    primitives moved into the core and is not any more.
-2. Configure with `cmake --preset venue-lite`, or add `-DFLOX_VENUE_LITE=ON`
+2. Configure with `cmake --preset venue-lite`, or add `-DLRVX_VENUE_LITE=ON`
    to the existing command.
 3. Install as usual. `cmake --install` now places the closure and the two
    library targets and nothing else, so a consumer build that still compiles
@@ -140,7 +140,7 @@ kept there because the lite library needs it to link -- and what they
 transitively include; deliberately narrow, because it is what
 `cmake --install` ships. The venue module's own
 source reaches further: `venue/tests/test_venue_admin_surface.cpp` includes
-`flox-venue/control_server.h`, the perimeter's admin surface, which no
+`lrvx-venue/control_server.h`, the perimeter's admin surface, which no
 downstream consumer's 38-entry contract ever mentions because no consumer
 instantiates it. A first rehearsal of this cut (`git filter-repo` into a
 local copy) found this by building: with only the consumer's closure
@@ -152,9 +152,9 @@ the lite profile itself never builds, same rule as above) and
 direction gate as `lite_closure.py`, imported rather than reimplemented.
 `venue/include/` is then copied whole regardless of that closure: two of its
 headers (`tape_recorder.h`, `liquidation_monitor.h`) reach
-`flox/replay/`/`flox/backtest/` and are never included by anything the lite
+`lrvx/replay/`/`lrvx/backtest/` and are never included by anything the lite
 profile compiles, so leaving them out of the mirror would ship a smaller
-module than the one flox actually has, while leaving their forbidden
+module than the one lrvx actually has, while leaving their forbidden
 `#include`s out of the *closure* is what keeps the direction gate meaningful.
 
 ```bash
@@ -177,7 +177,7 @@ KEEP=1 scripts/lite_standalone_check.sh /some/dir  # left in place afterwards
 It fails the same way a broken profile would -- a non-zero `cmake --build`
 or `ctest` -- and additionally on a plain `CMake Warning` from the configure
 step, which is what an `add_subdirectory` or `file(GLOB)` running outside
-`FLOX_VENUE_LITE`'s forced-off options would look like: the standalone tree
+`LRVX_VENUE_LITE`'s forced-off options would look like: the standalone tree
 has no `python/`, `node/`, `connectors/`, `tests/`, `demo/`, `tools/`, or
 `benchmarks/` outside `venue/`, so anything that reaches for one is a
 misconfigured guard, not a missing directory to warn about and move past.

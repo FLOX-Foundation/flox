@@ -1,7 +1,7 @@
 # Codon smoke for the multi-leg order group state machine.
 # Drives the same scenarios as the NAPI / QuickJS tests.
 
-from flox.order_group import (
+from lrvx.order_group import (
     OrderGroup, OrderGroupAction,
     BEST_EFFORT, ALL_OR_NOTHING, ONE_SIDED,
     GROUP_PENDING, GROUP_SUBMITTED, GROUP_PARTIAL, GROUP_FILLED,

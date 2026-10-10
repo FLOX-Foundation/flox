@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -21,8 +21,8 @@
  * checked here against the hardware one on the values that matter: large
  * products, negatives on each side, and the boundaries.
  */
-#include "flox/common.h"
-#include "flox/util/base/scale_check.h"
+#include "lrvx/common.h"
+#include "lrvx/util/base/scale_check.h"
 
 #include <gtest/gtest.h>
 
@@ -32,7 +32,7 @@
 #include <random>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -162,7 +162,7 @@ TEST(FixedPointMulDiv, RandomValuesAgreeWithTheHardwarePath)
 // edge, and obviously at the edge rather than wrapped into a plausible
 // number. The first version of this test asserted only the second half, and
 // aborted every checked build it met.
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 TEST(FixedPointMulDivDeathTest, AQuotientPastTheEdgeTrapsWhenChecksAreOn)
 {
   ::testing::FLAGS_gtest_death_test_style = "threadsafe";
@@ -206,7 +206,7 @@ TEST(FixedPointMulDiv, TheLargestQuotientsThatAreNotOverflowsAreAccepted)
 // differently on purpose: checked says so and stops, release hands back the
 // saturated value both paths agree on. Either way the two paths must not
 // improvise separately.
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 TEST(FixedPointMulDivDeathTest, AZeroDivisorTrapsInBothPathsWhenChecksAreOn)
 {
   ::testing::FLAGS_gtest_death_test_style = "threadsafe";

@@ -14,13 +14,13 @@ function(add_codon_executable name source)
   add_custom_command(
     OUTPUT ${OUTPUT_EXE}
     COMMAND ${CMAKE_COMMAND} -E env
-      "LIBRARY_PATH=$<TARGET_FILE_DIR:flox_capi>"
+      "LIBRARY_PATH=$<TARGET_FILE_DIR:lrvx_capi>"
       "CODON_PATH=${CMAKE_CURRENT_SOURCE_DIR}"
       ${CODON_COMPILER} build
         -o ${OUTPUT_EXE}
-        -l flox_capi
+        -l lrvx_capi
         ${source}
-    DEPENDS ${source} flox_capi
+    DEPENDS ${source} lrvx_capi
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Compiling Codon: ${name}"
   )

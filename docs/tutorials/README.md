@@ -1,6 +1,6 @@
 # Tutorials
 
-Step-by-step lessons to get you productive with FLOX.
+Step-by-step lessons to get you productive with lrvx.
 
 ## Pick your language
 
@@ -19,7 +19,7 @@ After your language quickstart, work through these. They cover the same concepts
 
 | Tutorial | What You'll Learn |
 |----------|-------------------|
-| [Your first FLOX backtest](first-backtest.md) | Three commands from a clean Python env to a working backtest |
+| [Your first lrvx backtest](first-backtest.md) | Three commands from a clean Python env to a working backtest |
 | [First Strategy](first-strategy.md) | Write a simple trading strategy |
 | [Multi-Timeframe Strategy](multi-timeframe-strategy.md) | Build strategies using multiple bar timeframes |
 | [Recording Data](recording-data.md) | Capture live market data to disk |
@@ -29,7 +29,7 @@ After your language quickstart, work through these. They cover the same concepts
 ## Recommended order
 
 1. **Quickstart** for your language — verify your environment works
-2. **Your first FLOX backtest** — fastest path to a result on real BTC data
+2. **Your first lrvx backtest** — fastest path to a result on real BTC data
 3. **First Strategy** — understand the core programming model
 4. **Multi-Timeframe Strategy** — work with multiple bar timeframes
 5. **Recording Data** — set up market data capture
@@ -41,15 +41,15 @@ After completing these tutorials, move on to [How-To Guides](../how-to/README.md
 
 === "Python"
     - Python 3.10+
-    - `pip install flox-py` or build from source
+    - `pip install lrvx` or build from source
 
 === "Node.js"
     - Node.js 20+
-    - `npm install @flox-foundation/flox` or build from source
+    - `npm install @lrvx/lrvx` or build from source
 
 === "Codon"
     - Codon compiler installed
-    - Flox built with `-DFLOX_BUILD_CAPI=ON`
+    - lrvx built with `-DLRVX_BUILD_CAPI=ON`
 
 === "C++"
     - C++23 compiler (GCC 14+ or Clang 18+; MSVC or clang-cl on Windows)

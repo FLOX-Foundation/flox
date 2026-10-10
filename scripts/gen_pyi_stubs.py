@@ -2,19 +2,19 @@
 """
 scripts/gen_pyi_stubs.py
 
-Regenerate `python/flox_py/__init__.pyi` and `python/flox_py/targets.pyi`
-from the built `flox_py` extension via pybind11-stubgen.
+Regenerate `python/lrvx/__init__.pyi` and `python/lrvx/targets.pyi`
+from the built `lrvx` extension via pybind11-stubgen.
 
 Without committed stubs, type checkers (mypy, pyright) and AI agents
 (Cursor, Claude Code, Copilot) treat the pybind11 module as opaque and
 hallucinate method names. Committed stubs + a CI sync gate close that
 gap; the generated `.pyi` files ship inside the wheel via
-`python/flox_py/`, so PyPI users get types automatically (PEP 561 marker
-is `python/flox_py/py.typed`).
+`python/lrvx/`, so PyPI users get types automatically (PEP 561 marker
+is `python/lrvx/py.typed`).
 
-The script imports `flox_py` from `build/python` (set by
-`PYTHONPATH=build/python` if not already importable) — flox_py must be
-built first, e.g. `cmake --build build --target _flox_py`.
+The script imports `lrvx` from `build/python` (set by
+`PYTHONPATH=build/python` if not already importable) — lrvx must be
+built first, e.g. `cmake --build build --target _lrvx`.
 
 Usage:
     python3 scripts/gen_pyi_stubs.py            # write
@@ -32,31 +32,31 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PKG_SRC = REPO / "python" / "flox_py"
-# Override with FLOX_PY_BUILD_DIR=path/to/python when the .so lives
+PKG_SRC = REPO / "python" / "lrvx"
+# Override with LRVX_PY_BUILD_DIR=path/to/python when the .so lives
 # outside the default `build/python` (e.g. a per-Python-version build).
-BUILD_PYTHON = Path(os.environ.get("FLOX_PY_BUILD_DIR", REPO / "build" / "python"))
+BUILD_PYTHON = Path(os.environ.get("LRVX_PY_BUILD_DIR", REPO / "build" / "python"))
 
 # Stub layout produced by stubgen for our package:
-#   flox_py/__init__.pyi               wrapper that re-exports symbols
-#   flox_py/_flox_py/__init__.pyi      typed signatures of the C extension
-#   flox_py/_flox_py/targets.pyi       typed signatures of the C submodule
-# Even though `_flox_py` is a `.so` at runtime (not a directory), type
-# checkers happily resolve `flox_py._flox_py.X` against
-# `flox_py/_flox_py/__init__.pyi` when the parent package has `py.typed`.
+#   lrvx/__init__.pyi               wrapper that re-exports symbols
+#   lrvx/_lrvx/__init__.pyi      typed signatures of the C extension
+#   lrvx/_lrvx/targets.pyi       typed signatures of the C submodule
+# Even though `_lrvx` is a `.so` at runtime (not a directory), type
+# checkers happily resolve `lrvx._lrvx.X` against
+# `lrvx/_lrvx/__init__.pyi` when the parent package has `py.typed`.
 STUB_FILES = (
     Path("__init__.pyi"),
-    Path("_flox_py") / "__init__.pyi",
-    Path("_flox_py") / "targets.pyi",
+    Path("_lrvx") / "__init__.pyi",
+    Path("_lrvx") / "targets.pyi",
     # `_heatmap` is a second bound submodule of the C extension (same
     # shape as `targets`, just for the heatmap-export helpers) and gets
     # its own stub from stubgen. It was missing from this list, so
-    # `_flox_py/__init__.pyi`'s own `from . import _heatmap` pointed at
+    # `_lrvx/__init__.pyi`'s own `from . import _heatmap` pointed at
     # a stub that was never written to the committed package: mypy
-    # reported "Module flox_py._flox_py does not explicitly export
+    # reported "Module lrvx._lrvx does not explicitly export
     # attribute _heatmap" because, as far as the committed tree was
     # concerned, there was nothing there to export.
-    Path("_flox_py") / "_heatmap.pyi",
+    Path("_lrvx") / "_heatmap.pyi",
 )
 
 # `(anonymous namespace)::PyExtBar` shows up as a return-type annotation
@@ -67,16 +67,16 @@ IGNORE_INVALID_RE = r"anonymous namespace"
 
 
 def ensure_module_importable() -> None:
-    if not (BUILD_PYTHON / "flox_py" / "__init__.py").exists():
+    if not (BUILD_PYTHON / "lrvx" / "__init__.py").exists():
         sys.exit(
-            "error: flox_py package not found in build/python. Build it first:\n"
-            "    cmake --build build --target _flox_py"
+            "error: lrvx package not found in build/python. Build it first:\n"
+            "    cmake --build build --target _lrvx"
         )
     sys.path.insert(0, str(BUILD_PYTHON))
     try:
-        __import__("flox_py")
+        __import__("lrvx")
     except ImportError as e:
-        sys.exit(f"error: cannot import flox_py from {BUILD_PYTHON}: {e}")
+        sys.exit(f"error: cannot import lrvx from {BUILD_PYTHON}: {e}")
 
 
 def sort_import_lines(text: str) -> str:
@@ -168,19 +168,19 @@ def fix_invalid_annotations(text: str, *, rel: Path | None = None) -> str:
     for name in private_submodules:
         if f"'{name}'" not in text:
             text = _ALL_LIST_RE.sub(f"__all__: list[str] = ['{name}', ", text, count=1)
-    if rel is not None and rel.parent.name == "_flox_py":
+    if rel is not None and rel.parent.name == "_lrvx":
         # This file's own fully-qualified module name IS
-        # `flox_py._flox_py` -- stubgen occasionally qualifies a type
+        # `lrvx._lrvx` -- stubgen occasionally qualifies a type
         # this fully even for a class defined earlier in this very
-        # file (seen on `ReplaySource.next() -> flox_py._flox_py.
+        # file (seen on `ReplaySource.next() -> lrvx._lrvx.
         # ReplayEvent | None`), and nothing in the file ever imports
-        # the top-level `flox_py` package to make that name resolve,
-        # so mypy reports "Name flox_py is not defined". Every such
+        # the top-level `lrvx` package to make that name resolve,
+        # so mypy reports "Name lrvx is not defined". Every such
         # reference is self-referential by construction, so dropping
         # the redundant prefix is always correct here (never in the
-        # sibling `flox_py/__init__.pyi`, where the same prefix is a
+        # sibling `lrvx/__init__.pyi`, where the same prefix is a
         # real cross-module reference).
-        text = text.replace("flox_py._flox_py.", "")
+        text = text.replace("lrvx._lrvx.", "")
     return text
 
 
@@ -195,7 +195,7 @@ def run_stubgen(out_dir: Path) -> None:
         sys.executable,
         "-m",
         "pybind11_stubgen",
-        "flox_py",
+        "lrvx",
         "--output-dir",
         str(out_dir),
         "--ignore-invalid-expressions",
@@ -225,7 +225,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_root = Path(tmp)
         run_stubgen(tmp_root)
-        gen_pkg = tmp_root / "flox_py"
+        gen_pkg = tmp_root / "lrvx"
 
         for rel in STUB_FILES:
             src = gen_pkg / rel
@@ -246,7 +246,7 @@ def main() -> int:
                     ok = False
             if not ok:
                 print(
-                    "Run: cmake --build build --target _flox_py "
+                    "Run: cmake --build build --target _lrvx "
                     "&& python3 scripts/gen_pyi_stubs.py",
                     file=sys.stderr,
                 )

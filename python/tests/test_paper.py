@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.paper.PaperBroker``."""
+"""Tests for ``lrvx.paper.PaperBroker``."""
 from __future__ import annotations
 
 import sys
@@ -12,20 +12,20 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import paper  # noqa: E402
+from lrvx import paper  # noqa: E402
 
 
 def _build_broker() -> tuple[paper.PaperBroker, int]:
     """Common scaffolding: a registered symbol and a fresh broker."""
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("paper", "BTCUSDT", tick_size=0.01)
     broker = paper.PaperBroker(registry=registry)
     return broker, int(sym)
 
 
-class _MarketOrderStrategy(flox.Strategy):
+class _MarketOrderStrategy(lrvx.Strategy):
     """Sends one market BUY when the first trade comes in."""
 
     def __init__(self, symbols, qty: float = 1.0):
@@ -65,7 +65,7 @@ class PaperBrokerTests(unittest.TestCase):
         self.assertIsNone(broker.stats.error)
 
     def test_user_on_signal_callback_fires_after_routing(self) -> None:
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = int(registry.add_symbol("paper", "BTCUSDT", tick_size=0.01))
         seen = []
 
@@ -86,7 +86,7 @@ class PaperBrokerTests(unittest.TestCase):
         self.assertGreaterEqual(broker.stats.orders_simulated, 1)
 
     def test_slippage_fixed_bps_applied(self) -> None:
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         sym = int(registry.add_symbol("paper", "BTCUSDT", tick_size=0.01))
         broker = paper.PaperBroker(
             registry=registry,
@@ -114,7 +114,7 @@ class PaperBrokerTests(unittest.TestCase):
         )
 
     def test_unknown_slippage_model_raises(self) -> None:
-        registry = flox.SymbolRegistry()
+        registry = lrvx.SymbolRegistry()
         registry.add_symbol("paper", "BTCUSDT", tick_size=0.01)
         with self.assertRaises(ValueError):
             paper.PaperBroker(

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -21,15 +21,15 @@
 //   2. A pre-trade gate that did not answer denies. RiskManager.allow,
 //      KillSwitch.check and OrderValidator.validate return kGateDenied
 //      when the Python callable raises or returns something that is not
-//      a bool -- flox_capi.h:47, "a call that was stopped this way
+//      a bool -- lrvx_capi.h:47, "a call that was stopped this way
 //      returns its failure value", and a gate's failure value is the one
-//      that drops the signal (flox_capi_spec.hpp:2306).
+//      that drops the signal (lrvx_capi_spec.hpp:2306).
 //   3. The description survives. The text of the exception goes to the
 //      engine log at error level, which is the same sink
-//      flox_py.set_log_callback redirects into Python; with no callback
+//      lrvx.set_log_callback redirects into Python; with no callback
 //      installed the bundled ConsoleLogger writes it to stderr. This is
-//      the "leaves a description behind" half of flox_capi.h:47 for a
-//      binding that exposes no flox_last_error_* accessor.
+//      the "leaves a description behind" half of lrvx_capi.h:47 for a
+//      binding that exposes no lrvx_last_error_* accessor.
 //
 // Everything here runs with the GIL held -- the caller acquires it
 // before invoking the Python callable and still holds it while the error
@@ -44,12 +44,12 @@
 #include <source_location>
 #include <string>
 
-#include "flox/log/log.h"
-#include "flox/log/log_stream.h"
+#include "lrvx/log/log.h"
+#include "lrvx/log/log_stream.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 // What a pre-trade gate answers. Deny is the safe side of the question,
@@ -80,7 +80,7 @@ struct ReportingScope
 inline void reportCallbackError(const char* source, const std::string& what)
 {
   const std::string text =
-      std::string("flox: ") + (source ? source : "a Python callback") + " raised: " + what;
+      std::string("lrvx: ") + (source ? source : "a Python callback") + " raised: " + what;
 
   if (g_reportingCallbackError)
   {
@@ -95,10 +95,10 @@ inline void reportCallbackError(const char* source, const std::string& what)
   bool delivered = false;
   try
   {
-    if (flox::isLoggingEnabled())
+    if (lrvx::isLoggingEnabled())
     {
       g_logSinkRaised = false;
-      flox::LogStream(flox::LogLevel::Error) << text;
+      lrvx::LogStream(lrvx::LogLevel::Error) << text;
       delivered = !g_logSinkRaised;
     }
   }
@@ -147,4 +147,4 @@ inline bool guardCallback(Fn&& fn, const char* source = nullptr,
   return false;
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

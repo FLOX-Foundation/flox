@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Flox venue market-data SBE schema.
+  lrvx venue market-data SBE schema.
 
   This is the source of truth for the wire format emitted by
-  flox-venue/sbe_md_codec.h. It follows the FIX/SBE (Simple Binary Encoding)
+  lrvx-venue/sbe_md_codec.h. It follows the FIX/SBE (Simple Binary Encoding)
   contract: a fixed messageHeader composite (blockLength, templateId, schemaId,
   version) precedes every message, all encodings are little-endian, and a
   reader uses the header's blockLength to skip trailing fields a newer sender
@@ -63,11 +63,11 @@
     mark. SnapshotBegin's orderCount still counts AddOrder messages only.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
-                   package="flox.venue.md"
+                   package="lrvx.venue.md"
                    id="91"
                    version="3"
                    semanticVersion="1.0"
-                   description="Flox venue market-data feed"
+                   description="lrvx venue market-data feed"
                    byteOrder="littleEndian">
   <types>
     <composite name="messageHeader" description="SBE message header">

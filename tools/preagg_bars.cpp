@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -19,12 +19,12 @@
  * Output files: bars_60s.bin, bars_300s.bin, etc.
  */
 
-#include "flox/aggregator/bar.h"
-#include "flox/aggregator/multi_timeframe_aggregator.h"
-#include "flox/aggregator/timeframe.h"
-#include "flox/backtest/mmap_bar_writer.h"
-#include "flox/common.h"
-#include "flox/replay/abstract_event_reader.h"
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/aggregator/multi_timeframe_aggregator.h"
+#include "lrvx/aggregator/timeframe.h"
+#include "lrvx/backtest/mmap_bar_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/abstract_event_reader.h"
 
 #include <chrono>
 #include <filesystem>
@@ -33,7 +33,7 @@
 #include <map>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 // Read .symbol_metadata file (key=value format)
 std::map<std::string, std::string> readSymbolMetadata(const std::filesystem::path& dir)

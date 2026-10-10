@@ -15,7 +15,7 @@ Negative rate flips both signs.
 `FundingSchedule` walks the schedule and produces a `FundingPayment`
 record per (settlement timestamp, symbol). The strategy / backtest
 runner is responsible for routing the amount into equity, since
-flox's BacktestResult is fill-driven and does not own a
+lrvx's BacktestResult is fill-driven and does not own a
 periodic-event clock of its own.
 
 ## Construct a schedule
@@ -29,8 +29,8 @@ periodic-event clock of its own.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
-    const sched = new flox.FundingSchedule();
+    const lrvx = require('@lrvx/lrvx');
+    const sched = new lrvx.FundingSchedule();
     sched.loadProfile('binance_um_futures');
     sched.setConstantRate(0.0001);
     const events = sched.tick(nowNs, [1, 2], [1.0, -2.0], [50000, 3000]);
@@ -39,7 +39,7 @@ periodic-event clock of its own.
 === "Codon"
 
     ```python
-    from flox.funding_schedule import FundingSchedule
+    from lrvx.funding_schedule import FundingSchedule
 
     s = FundingSchedule()
     s.load_profile("binance_um_futures")
@@ -51,10 +51,10 @@ periodic-event clock of its own.
 === "QuickJS"
 
     ```javascript
-    const h = __flox_funding_schedule_create();
-    __flox_funding_schedule_load_profile(h, "binance_um_futures");
-    __flox_funding_schedule_set_constant_rate(h, 0.0001);
-    const events = __flox_funding_schedule_tick(h, nowNs, [1, 2],
+    const h = __lrvx_funding_schedule_create();
+    __lrvx_funding_schedule_load_profile(h, "binance_um_futures");
+    __lrvx_funding_schedule_set_constant_rate(h, 0.0001);
+    const events = __lrvx_funding_schedule_tick(h, nowNs, [1, 2],
                                                  [1.0, -2.0],
                                                  [50000.0, 3000.0]);
     ```
@@ -62,7 +62,7 @@ periodic-event clock of its own.
 === "C++"
 
     ```cpp
-    auto s = flox::FundingSchedule::binance_um_futures();
+    auto s = lrvx::FundingSchedule::binance_um_futures();
     s.setConstantRate(0.0001);
     auto events = s.tick(nowNs, {1, 2}, {1.0, -2.0}, {50000.0, 3000.0});
     ```
@@ -115,7 +115,7 @@ timestamp_ns,symbol,funding_rate
 === "Node.js"
 
     ```javascript
-    const sched = new flox.FundingSchedule();
+    const sched = new lrvx.FundingSchedule();
     sched.loadTape("funding.csv");
     sched.setConstantRate(0.00005);
     ```

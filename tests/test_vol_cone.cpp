@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
-#include "flox/pricing/vol_cone.h"
+#include "lrvx/pricing/vol_cone.h"
 
 #include <cmath>
 #include <random>
 #include <vector>
 
-using namespace flox::pricing;
+using namespace lrvx::pricing;
 
 namespace
 {

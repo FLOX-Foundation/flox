@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/bybit/authenticated_rest_client.h"
+#include "lrvx-connectors/bybit/authenticated_rest_client.h"
 
 #include <openssl/hmac.h>
 #include <chrono>
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace flox
+namespace lrvx
 {
 
 AuthenticatedRestClient::AuthenticatedRestClient(std::string apiKey, std::string apiSecret,
@@ -71,4 +71,4 @@ void AuthenticatedRestClient::post(std::string_view path, std::string_view body,
   _transport->post(url, body, headers, std::move(onSuccess), std::move(onError));
 }
 
-}  // namespace flox
+}  // namespace lrvx

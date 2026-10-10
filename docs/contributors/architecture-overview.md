@@ -1,19 +1,19 @@
 # Binding Architecture Overview
 
-How FLOX exposes a single C++ engine to Python, Node.js, Codon, and QuickJS — and why each path is shaped the way it is.
+How lrvx exposes a single C++ engine to Python, Node.js, Codon, and QuickJS — and why each path is shaped the way it is.
 
 ## Layers
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  C++ engine (src/, include/flox/) — the authoritative implementation │
+│  C++ engine (src/, include/lrvx/) — the authoritative implementation │
 └─────────────────────────────────────────────────────────────────────┘
                               ▲
-                              │ thin C ABI wrapper (src/capi/flox_capi.cpp)
+                              │ thin C ABI wrapper (src/capi/lrvx_capi.cpp)
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  C ABI surface (include/flox/capi/flox_capi.h)                       │
-│  • declared in IDL spec (flox_capi_spec.hpp)                         │
+│  C ABI surface (include/lrvx/capi/lrvx_capi.h)                       │
+│  • declared in IDL spec (lrvx_capi_spec.hpp)                         │
 │  • frozen via .api/c-api.snapshot                                    │
 │  • 328+ functions, opaque handles, raw fixed-point integers          │
 └─────────────────────────────────────────────────────────────────────┘
@@ -33,7 +33,7 @@ A reasonable question: "why not generate every binding from the C ABI? Single so
 
 Two reasons it isn't done:
 
-**Performance.** Python's [pybind11](https://pybind11.readthedocs.io/) gives numpy zero-copy via the [buffer protocol](https://docs.python.org/3/c-api/buffer.html) — bar arrays, indicator outputs, position equity curves cross C++↔Python without copying. A pure C ABI binding via cffi/ctypes requires either a copy or hand-rolled `ctypes.c_double * N` machinery, costing 20–40% on hot paths (large backtests, tick data ingestion). FLOX is a high-frequency trading framework; we don't trade that.
+**Performance.** Python's [pybind11](https://pybind11.readthedocs.io/) gives numpy zero-copy via the [buffer protocol](https://docs.python.org/3/c-api/buffer.html) — bar arrays, indicator outputs, position equity curves cross C++↔Python without copying. A pure C ABI binding via cffi/ctypes requires either a copy or hand-rolled `ctypes.c_double * N` machinery, costing 20–40% on hot paths (large backtests, tick data ingestion). lrvx is a high-frequency trading framework; we don't trade that.
 
 Same logic applies to NAPI: native async / `Promise` / `Worker` patterns are ergonomic in Node and slow to fake from `node-ffi` / `koffi`.
 
@@ -45,19 +45,19 @@ Same logic applies to NAPI: native async / `Promise` / `Worker` patterns are erg
 
 ### pybind11 (`python/`)
 
-- Wraps **C ABI handles**, not C++ classes directly. `python/strategy_bindings.h` calls `flox_runner_create`, `flox_runner_add_strategy`, etc. — same surface Codon and QuickJS see.
-- One exception: `PyBacktestRunner` wraps `flox::BacktestRunner` (C++) directly. It predates the C ABI on that surface; the hook setters work around it via `cxx_adapters` in `python/hook_bindings.h` that implement `flox::IOrderExecutor` / `IOrderExecutionListener` rather than going through C ABI handles. Subject to migration once the C ABI replay-source path covers OHLCV / CSV.
+- Wraps **C ABI handles**, not C++ classes directly. `python/strategy_bindings.h` calls `lrvx_runner_create`, `lrvx_runner_add_strategy`, etc. — same surface Codon and QuickJS see.
+- One exception: `PyBacktestRunner` wraps `lrvx::BacktestRunner` (C++) directly. It predates the C ABI on that surface; the hook setters work around it via `cxx_adapters` in `python/hook_bindings.h` that implement `lrvx::IOrderExecutor` / `IOrderExecutionListener` rather than going through C ABI handles. Subject to migration once the C ABI replay-source path covers OHLCV / CSV.
 - `.pyi` stubs auto-generated from the live module by `scripts/gen_pyi_stubs.py`. Type checkers and AI agents see the full typed surface.
 
 ### NAPI (`node/`)
 
-- All wrappers go through C ABI handles (`FloxRunnerHandle`, `FloxBacktestRunnerHandle`, etc.) — `node/src/strategy.h`, `backtest.h`, `engine.h`.
+- All wrappers go through C ABI handles (`LrvxRunnerHandle`, `LrvxBacktestRunnerHandle`, etc.) — `node/src/strategy.h`, `backtest.h`, `engine.h`.
 - TypeScript declarations hand-written in `node/index.d.ts`. CI verifies declared exports match the C++ binding (`scripts/check_dts_exports.py`) and that `tsc --noEmit` passes (`node/test/test_types.ts`).
 
-### Codon (`codon/`, `tools/codegen/golden/flox_capi.codon`)
+### Codon (`codon/`, `tools/codegen/golden/lrvx_capi.codon`)
 
-- 100% generated from the IDL spec by `tools/codegen/flox_codegen/emit_codon.py`. Each `FLOX_EXPORT(...)` becomes a `from C import ...` declaration.
-- Strategy / backtest examples in `codon/flox/` consume the golden file via re-export.
+- 100% generated from the IDL spec by `tools/codegen/lrvx_codegen/emit_codon.py`. Each `LRVX_EXPORT(...)` becomes a `from C import ...` declaration.
+- Strategy / backtest examples in `codon/lrvx/` consume the golden file via re-export.
 
 ### QuickJS (`src/quickjs/`)
 
@@ -67,12 +67,12 @@ Same logic applies to NAPI: native async / `Promise` / `Worker` patterns are erg
 
 | Binding   | Build mechanism                         | Distributed as                    |
 |-----------|-----------------------------------------|-----------------------------------|
-| pybind11  | CMake target `_flox_py` via pybind11    | Wheel on PyPI (`flox-py`)         |
-| NAPI      | `cmake-js` via `node/CMakeLists.txt`    | npm package (`@flox-foundation/flox`) |
-| Codon    | Codon compiler emits native binaries     | Linked against `libflox_capi.so`  |
-| QuickJS   | CMake target `flox_js_runner`           | In-tree binary                    |
+| pybind11  | CMake target `_lrvx` via pybind11    | Wheel on PyPI (`lrvx`)         |
+| NAPI      | `cmake-js` via `node/CMakeLists.txt`    | npm package (`lrvx`) |
+| Codon    | Codon compiler emits native binaries     | Linked against `liblrvx_capi.so`  |
+| QuickJS   | CMake target `lrvx_js_runner`           | In-tree binary                    |
 
-The C++ engine and C ABI compile into `libflox_capi.so` (Linux) / `.dylib` (macOS) / `.dll` (Windows). All binding modules link against it.
+The C++ engine and C ABI compile into `liblrvx_capi.so` (Linux) / `.dylib` (macOS) / `.dll` (Windows). All binding modules link against it.
 
 ## Where to look next
 

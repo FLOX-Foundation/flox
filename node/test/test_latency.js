@@ -7,7 +7,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -26,7 +26,7 @@ function check(condition, msg) {
 
 console.log('=== ConstantLatency ===');
 {
-  const c = new flox.ConstantLatency({ feedNs: 100, orderNs: 200, fillNs: 300 });
+  const c = new lrvx.ConstantLatency({ feedNs: 100, orderNs: 200, fillNs: 300 });
   check(c.feedDelay() === 100, 'feed_delay returns configured feed_ns');
   check(c.orderDelay() === 200, 'order_delay returns configured order_ns');
   check(c.fillDelay() === 300, 'fill_delay returns configured fill_ns');
@@ -38,7 +38,7 @@ console.log('=== ConstantLatency ===');
 }
 {
   let threw = false;
-  try { new flox.ConstantLatency({ feedNs: -1 }); }
+  try { new lrvx.ConstantLatency({ feedNs: -1 }); }
   catch (e) { threw = true; check(e.code === 'E_VAL_002', 'negative feedNs throws E_VAL_002'); }
   check(threw, 'negative feedNs rejected');
 }
@@ -47,7 +47,7 @@ console.log('=== ConstantLatency ===');
 
 console.log('=== GaussianLatency ===');
 {
-  const g = new flox.GaussianLatency({
+  const g = new lrvx.GaussianLatency({
     feedMeanNs: 1000, feedStddevNs: 200,
     orderMeanNs: 500, orderStddevNs: 50,
     fillMeanNs: 2000, fillStddevNs: 300,
@@ -68,7 +68,7 @@ console.log('=== GaussianLatency ===');
   }
   check(allNonNeg, 'gaussian samples are clamped non-negative');
   // Stddev=0 collapses to mean.
-  const collapsed = new flox.GaussianLatency({ feedMeanNs: 1500, feedStddevNs: 0, seed: 0 });
+  const collapsed = new lrvx.GaussianLatency({ feedMeanNs: 1500, feedStddevNs: 0, seed: 0 });
   check(collapsed.feedDelay() === 1500, 'stddev=0 collapses to mean');
 }
 
@@ -76,13 +76,13 @@ console.log('=== GaussianLatency ===');
 
 console.log('=== ExponentialLatency ===');
 {
-  const e = new flox.ExponentialLatency({ feedMeanNs: 500, seed: 7 });
+  const e = new lrvx.ExponentialLatency({ feedMeanNs: 500, seed: 7 });
   let nonNegSeen = true;
   for (let i = 0; i < 50; i++) {
     if (e.feedDelay() < 0) { nonNegSeen = false; break; }
   }
   check(nonNegSeen, 'exponential samples are non-negative');
-  const zero = new flox.ExponentialLatency({ feedMeanNs: 0, seed: 0 });
+  const zero = new lrvx.ExponentialLatency({ feedMeanNs: 0, seed: 0 });
   check(zero.feedDelay() === 0, 'zero mean -> zero delay');
 }
 
@@ -90,7 +90,7 @@ console.log('=== ExponentialLatency ===');
 
 console.log('=== EmpiricalLatency ===');
 {
-  const emp = new flox.EmpiricalLatency({ feedSamples: [10, 20, 30], seed: 0 });
+  const emp = new lrvx.EmpiricalLatency({ feedSamples: [10, 20, 30], seed: 0 });
   const allowed = new Set([10, 20, 30]);
   let allInSet = true;
   for (let i = 0; i < 30; i++) {
@@ -101,7 +101,7 @@ console.log('=== EmpiricalLatency ===');
 }
 {
   let threw = false;
-  try { new flox.EmpiricalLatency({}); }
+  try { new lrvx.EmpiricalLatency({}); }
   catch (e) { threw = true; check(e.code === 'E_VAL_002', 'empty empirical throws E_VAL_002'); }
   check(threw, 'all-empty empirical rejected');
 }

@@ -3,10 +3,10 @@ import math
 import tempfile
 from pathlib import Path
 
-import flox_py as flox
+import lrvx
 
-estimator = flox.LiveQueuePositionEstimator()
-cal = flox.LiveQueueCalibrator(estimator)
+estimator = lrvx.LiveQueuePositionEstimator()
+cal = lrvx.LiveQueueCalibrator(estimator)
 
 # Synthetic ground truth following a known model:
 #   ground = estimator * exp(-elapsed/half_life) * shrink ** events
@@ -32,6 +32,6 @@ cal.apply(result)
 with tempfile.TemporaryDirectory() as d:
     path = Path(d) / "live_queue.json"
     cal.export(path)
-    loaded = flox.LiveQueueCalibrator.load(path)
+    loaded = lrvx.LiveQueueCalibrator.load(path)
     print(f"roundtrip: half_life = {loaded.half_life_ns}, "
           f"shrink = {loaded.shrink_factor}")

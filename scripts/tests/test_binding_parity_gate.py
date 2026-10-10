@@ -24,12 +24,12 @@ def test_a_function_dropped_from_the_pybind11_source_turns_the_gate_red(parity_t
     baseline = parity_tree.run()
     assert baseline.returncode == 0, baseline.output
 
-    parity_tree.drop_line("python/widget_bindings.h", "flox_widget_size")
-    assert "class Widget" in parity_tree.read("python/flox_py/_flox_py/__init__.pyi")
+    parity_tree.drop_line("python/widget_bindings.h", "lrvx_widget_size")
+    assert "class Widget" in parity_tree.read("python/lrvx/_lrvx/__init__.pyi")
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
-    assert "flox_widget_size" in r.output
+    assert "lrvx_widget_size" in r.output
     assert "pybind11" in r.output
 
 
@@ -37,28 +37,28 @@ def test_a_function_dropped_from_the_napi_source_turns_the_gate_red(parity_tree)
     baseline = parity_tree.run()
     assert baseline.returncode == 0, baseline.output
 
-    parity_tree.drop_line("node/src/widget.h", "flox_widget_size")
+    parity_tree.drop_line("node/src/widget.h", "lrvx_widget_size")
     assert "export class Widget" in parity_tree.read("node/index.d.ts")
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
-    assert "flox_widget_size" in r.output
+    assert "lrvx_widget_size" in r.output
     assert "napi" in r.output
 
 
 def test_the_codon_half_reads_the_shipped_module_and_not_the_golden(parity_tree):
-    """Dropping the import from codon/flox/*.codon must fail even though the
+    """Dropping the import from codon/lrvx/*.codon must fail even though the
     IDL-generated golden still lists it -- the golden cannot disagree with the
     IDL, so a check against it proves nothing about what Codon can call."""
     baseline = parity_tree.run()
     assert baseline.returncode == 0, baseline.output
 
-    parity_tree.drop_line("codon/flox/widget.codon", "flox_widget_size")
-    assert "flox_widget_size" in parity_tree.read("tools/codegen/golden/flox_capi.codon")
+    parity_tree.drop_line("codon/lrvx/widget.codon", "lrvx_widget_size")
+    assert "lrvx_widget_size" in parity_tree.read("tools/codegen/golden/lrvx_capi.codon")
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
-    assert "flox_widget_size" in r.output
+    assert "lrvx_widget_size" in r.output
     assert "codon" in r.output
 
 
@@ -86,14 +86,14 @@ def test_a_new_c_function_with_no_wrapper_is_red_in_all_four_bindings(parity_tre
     baseline = parity_tree.run()
     assert baseline.returncode == 0, baseline.output
 
-    idl = parity_tree.read("include/flox/capi/flox_capi_spec.hpp")
-    idl = idl.replace("}\n", '  FLOX_EXPORT(group = "widget")\n'
-                             "  void flox_widget_reset(FloxWidgetHandle widget);\n}\n")
-    parity_tree.write("include/flox/capi/flox_capi_spec.hpp", idl)
+    idl = parity_tree.read("include/lrvx/capi/lrvx_capi_spec.hpp")
+    idl = idl.replace("}\n", '  LRVX_EXPORT(group = "widget")\n'
+                             "  void lrvx_widget_reset(LrvxWidgetHandle widget);\n}\n")
+    parity_tree.write("include/lrvx/capi/lrvx_capi_spec.hpp", idl)
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
-    assert r.output.count("flox_widget_reset") >= 4, r.output
+    assert r.output.count("lrvx_widget_reset") >= 4, r.output
     for binding in ("pybind11", "napi", "codon", "quickjs"):
         assert binding in r.output, f"{binding} stayed green: {r.output}"
 
@@ -117,20 +117,20 @@ def test_the_real_repository_passes_its_own_gate():
 
 
 def test_a_call_site_that_merely_starts_with_the_name_does_not_satisfy_it(parity_tree):
-    """`flox_widget_create_ex` is a different function. Matching it as
-    "reachable" for `flox_widget_create` is how a prefix match reads a
+    """`lrvx_widget_create_ex` is a different function. Matching it as
+    "reachable" for `lrvx_widget_create` is how a prefix match reads a
     neighbouring wrapper as the one that is missing."""
     baseline = parity_tree.run()
     assert baseline.returncode == 0, baseline.output
 
     for rel in ("python/widget_bindings.h", "node/src/widget.h",
-                "codon/flox/widget.codon"):
+                "codon/lrvx/widget.codon"):
         parity_tree.write(rel, parity_tree.read(rel).replace(
-            "flox_widget_create", "flox_widget_create_ex"))
+            "lrvx_widget_create", "lrvx_widget_create_ex"))
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
-    assert r.output.count("flox_widget_create'") >= 3, r.output
+    assert r.output.count("lrvx_widget_create'") >= 3, r.output
     for binding in ("pybind11", "napi", "codon"):
         assert binding in r.output, f"{binding} accepted the prefix: {r.output}"
 
@@ -143,26 +143,26 @@ def test_a_quickjs_global_that_is_not_registered_is_red(parity_tree):
 
     parity_tree.write("tools/codegen/binding_parity.yaml",
                       parity_tree.read("tools/codegen/binding_parity.yaml").replace(
-                          "flox_widget_size: __flox_widget_size",
-                          "flox_widget_size: __flox_widget_size_typo"))
+                          "lrvx_widget_size: __lrvx_widget_size",
+                          "lrvx_widget_size: __lrvx_widget_size_typo"))
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
     assert "quickjs" in r.output
-    assert "__flox_widget_size_typo" in r.output, r.output
+    assert "__lrvx_widget_size_typo" in r.output, r.output
 
 
 def test_a_quickjs_global_that_is_only_a_prefix_of_a_registration_is_red(parity_tree):
-    """`__flox_widget_size` is not registered; `__flox_widget_size_ex` is.
+    """`__lrvx_widget_size` is not registered; `__lrvx_widget_size_ex` is.
     A prefix match would call that satisfied."""
     parity_tree.write("src/quickjs/js_bindings.cpp",
                       parity_tree.read("src/quickjs/js_bindings.cpp").replace(
-                          '"__flox_widget_size"', '"__flox_widget_size_ex"'))
+                          '"__lrvx_widget_size"', '"__lrvx_widget_size_ex"'))
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
     assert "quickjs" in r.output
-    assert "__flox_widget_size" in r.output, r.output
+    assert "__lrvx_widget_size" in r.output, r.output
 
 
 def test_a_function_named_only_in_a_comment_is_not_reachable(parity_tree):
@@ -172,31 +172,31 @@ def test_a_function_named_only_in_a_comment_is_not_reachable(parity_tree):
     assert baseline.returncode == 0, baseline.output
 
     parity_tree.write("python/widget_bindings.h", """\
-#include <flox/capi/flox_capi.h>
+#include <lrvx/capi/lrvx_capi.h>
 
-// flox_widget_size is reached through the C++ class, not the C ABI.
+// lrvx_widget_size is reached through the C++ class, not the C ABI.
 void registerWidget(py::module_& m)
 {
   py::class_<Widget>(m, "Widget")
-      .def(py::init([]() { return flox_widget_create(); }));
-  m.add_object("_widget_cleanup", py::capsule(flox_widget_destroy));
+      .def(py::init([]() { return lrvx_widget_create(); }));
+  m.add_object("_widget_cleanup", py::capsule(lrvx_widget_destroy));
 }
 """)
     parity_tree.write("node/src/widget.h", """\
-#include <flox/capi/flox_capi.h>
+#include <lrvx/capi/lrvx_capi.h>
 
-/* The size accessor used to call flox_widget_size here; it now goes
+/* The size accessor used to call lrvx_widget_size here; it now goes
    through the cached handle instead. */
 Napi::Value WidgetNew(const Napi::CallbackInfo& info)
 {
-  return Wrap(flox_widget_create());
+  return Wrap(lrvx_widget_create());
 }
-void WidgetFinalize(void* h) { flox_widget_destroy(h); }
+void WidgetFinalize(void* h) { lrvx_widget_destroy(h); }
 """)
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
-    assert r.output.count("flox_widget_size") >= 2, r.output
+    assert r.output.count("lrvx_widget_size") >= 2, r.output
     for binding in ("pybind11", "napi"):
         assert binding in r.output, f"{binding} read a comment as a call site: {r.output}"
 
@@ -219,7 +219,7 @@ groups:
         r = parity_tree.run()
         assert r.returncode == 1, f"functions:{tail!r} passed: {r.output}"
         assert "quickjs" in r.output
-        assert r.output.count("flox_widget_") >= 3, r.output
+        assert r.output.count("lrvx_widget_") >= 3, r.output
 
 
 def test_an_idl_group_absent_from_the_manifest_is_red(parity_tree):
@@ -228,10 +228,10 @@ def test_an_idl_group_absent_from_the_manifest_is_red(parity_tree):
     baseline = parity_tree.run()
     assert baseline.returncode == 0, baseline.output
 
-    idl = parity_tree.read("include/flox/capi/flox_capi_spec.hpp")
-    idl = idl.replace("}\n", '  FLOX_EXPORT(group = "gadget")\n'
-                             "  void flox_gadget_reset(FloxGadgetHandle gadget);\n}\n")
-    parity_tree.write("include/flox/capi/flox_capi_spec.hpp", idl)
+    idl = parity_tree.read("include/lrvx/capi/lrvx_capi_spec.hpp")
+    idl = idl.replace("}\n", '  LRVX_EXPORT(group = "gadget")\n'
+                             "  void lrvx_gadget_reset(LrvxGadgetHandle gadget);\n}\n")
+    parity_tree.write("include/lrvx/capi/lrvx_capi_spec.hpp", idl)
 
     r = parity_tree.run()
     assert r.returncode == 1, r.output
@@ -270,14 +270,14 @@ def test_an_allowlisted_function_without_a_reason_is_red(parity_tree):
     """The allowlist is the inventory of what a binding does not reach, and
     the reason is the whole entry -- a bare name turns the inventory back
     into a list of functions nobody has to explain."""
-    parity_tree.drop_line("python/widget_bindings.h", "flox_widget_size")
+    parity_tree.drop_line("python/widget_bindings.h", "lrvx_widget_size")
     yaml_text = parity_tree.read("tools/codegen/binding_parity.yaml")
 
     def with_entry(entry: str) -> str:
         return yaml_text + f"""
 allowlist_functions:
   pybind11:
-    flox_widget_size:{entry}
+    lrvx_widget_size:{entry}
 """
 
     parity_tree.write("tools/codegen/binding_parity.yaml",
@@ -289,5 +289,5 @@ allowlist_functions:
         parity_tree.write("tools/codegen/binding_parity.yaml", with_entry(entry))
         r = parity_tree.run()
         assert r.returncode == 1, f"{label} passed: {r.output}"
-        assert "flox_widget_size" in r.output, r.output
+        assert "lrvx_widget_size" in r.output, r.output
         assert "without a reason" in r.output, r.output

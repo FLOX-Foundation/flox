@@ -14,8 +14,8 @@
 ```cpp
 AtomicLoggerOptions opts;
 opts.levelThreshold = LogLevel::Warn;
-opts.basename = "flox.log";
-opts.directory = "/var/log/flox";
+opts.basename = "lrvx.log";
+opts.directory = "/var/log/lrvx";
 opts.maxFileSize = 10 * 1024 * 1024;
 opts.rotateInterval = std::chrono::minutes(30);
 
@@ -28,7 +28,7 @@ auto logger = std::make_unique<AtomicLogger>(opts);
 | ------------------ | -------------------- | ----------------------------------------------- |
 | `overflow`         | `Drop`               | `Drop` or `Overwrite` when buffer is full       |
 | `levelThreshold`   | `LogLevel::Info`     | Minimum `LogLevel` to log                       |
-| `basename`         | `"flox.log"`         | Log file base name                              |
+| `basename`         | `"lrvx.log"`         | Log file base name                              |
 | `directory`        | `defaultLogDirectory()` | Directory for log output                     |
 | `maxFileSize`      | 100 MB               | Maximum size before rotation                    |
 | `rotateInterval`   | 60 minutes           | Time-based rotation window                      |

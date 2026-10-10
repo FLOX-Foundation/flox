@@ -78,7 +78,7 @@ otherwise, and the bindings surface that the way each language expects:
 | Node    | throws a `RangeError` |
 | QuickJS | throws a `RangeError` |
 | Codon   | raises `ValueError` |
-| C ABI   | `flox_book_create` returns `NULL` |
+| C ABI   | `lrvx_book_create` returns `NULL` |
 
 A tick size arrives from instrument configuration and from user code, so a bad
 one is bad input, not a broken invariant, and it is reported rather than

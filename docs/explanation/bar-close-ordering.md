@@ -6,7 +6,7 @@ This page is about ordering *between* aggregators. For the ordering *inside* one
 
 ## Rule
 
-flox dispatches bars in **aggregator registration order**. The first aggregator added to a `MultiTimeframeAggregator` (or subscribed to a `BarBus`) emits its tied-timestamp bar first; the next emits next; and so on.
+lrvx dispatches bars in **aggregator registration order**. The first aggregator added to a `MultiTimeframeAggregator` (or subscribed to a `BarBus`) emits its tied-timestamp bar first; the next emits next; and so on.
 
 For multi-TF strategies, this gives a simple authoring contract:
 
@@ -15,7 +15,7 @@ For multi-TF strategies, this gives a simple authoring contract:
 ```cpp
 using namespace std::chrono_literals;
 
-flox::MultiTimeframeAggregator<3> agg(&bus);
+lrvx::MultiTimeframeAggregator<3> agg(&bus);
 agg.addTimeInterval(4h);    // coarsest first → emits first on tied closes
 agg.addTimeInterval(1h);
 agg.addTimeInterval(5min);  // finest last → emits last on tied closes
@@ -29,8 +29,8 @@ A strategy that does
 void onSymbolBar(SymbolContext& c, const BarEvent& ev) override {
   // barTypeParam is nanoseconds for Time bars; timeframe::H4.param is the
   // matching constant.
-  if (ev.barTypeParam == flox::timeframe::H4.param) cacheTrend(ev.bar);
-  else if (ev.barTypeParam == flox::timeframe::M5.param) maybeEnter(c, ev, lastH4Trend());
+  if (ev.barTypeParam == lrvx::timeframe::H4.param) cacheTrend(ev.bar);
+  else if (ev.barTypeParam == lrvx::timeframe::M5.param) maybeEnter(c, ev, lastH4Trend());
 }
 ```
 

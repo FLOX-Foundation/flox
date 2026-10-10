@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,10 +16,10 @@
 // This test reproduces that topology directly: two publisher threads, one bus,
 // one shared pool.
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/util/eventing/event_bus.h"
-#include "flox/util/memory/pool.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/util/eventing/event_bus.h"
+#include "lrvx/util/memory/pool.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -30,7 +30,7 @@
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 constexpr size_t kRingCapacity = 64;
 constexpr size_t kPoolCapacity = 255;

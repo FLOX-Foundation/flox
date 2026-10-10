@@ -1,0 +1,919 @@
+# GENERATED — do not edit by hand.
+# Source: include/lrvx/capi/lrvx_capi_spec.hpp
+# Tool:   tools/codegen/lrvx_codegen/emit_codon.py
+#
+# Codon `from C import ...` declarations for the lrvx C API.
+# Re-exported through `codon/lrvx/<module>.codon` files; this
+# file is the flat reference, not directly imported by user code.
+
+# ── macro: abi_version ──
+LRVX_CAPI_ABI_VERSION: int = 4
+
+# ── macro: feature_flags ──
+LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE: int = 1
+
+# ── macro: signal_type ──
+LRVX_SIGNAL_TYPE_MARKET: int = 0
+LRVX_SIGNAL_TYPE_LIMIT: int = 1
+LRVX_SIGNAL_TYPE_STOP_MARKET: int = 2
+LRVX_SIGNAL_TYPE_STOP_LIMIT: int = 3
+LRVX_SIGNAL_TYPE_TAKE_PROFIT_MARKET: int = 4
+LRVX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT: int = 5
+LRVX_SIGNAL_TYPE_TRAILING_STOP: int = 6
+LRVX_SIGNAL_TYPE_CANCEL: int = 7
+LRVX_SIGNAL_TYPE_CANCEL_ALL: int = 8
+LRVX_SIGNAL_TYPE_MODIFY: int = 9
+LRVX_SIGNAL_TYPE_ICEBERG: int = 10
+LRVX_SIGNAL_TYPE_OCO: int = 11
+LRVX_SIGNAL_TYPE_PROVIDE_LIQUIDITY: int = 12
+LRVX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY: int = 13
+
+# ── account ──
+from C import lrvx_account_create(u64, float) -> cobj
+from C import lrvx_account_destroy(cobj)
+from C import lrvx_account_id(cobj) -> u64
+from C import lrvx_account_equity(cobj) -> float
+from C import lrvx_account_set_equity(cobj, float)
+from C import lrvx_account_add_equity(cobj, float)
+from C import lrvx_account_margin_mode(cobj) -> u8
+from C import lrvx_account_set_margin_mode(cobj, u8)
+from C import lrvx_account_open_position(cobj, u32, float, float)
+from C import lrvx_account_open_position_isolated(cobj, u32, float, float, float)
+from C import lrvx_account_close_position(cobj, u32)
+from C import lrvx_account_position_count(cobj) -> u32
+from C import lrvx_account_set_mark(cobj, u32, float)
+from C import lrvx_account_set_mark_at(cobj, u32, float, i64)
+from C import lrvx_account_mark_ts(cobj, u32) -> i64
+from C import lrvx_account_has_stale_marks(cobj, i64, i64) -> u8
+from C import lrvx_account_total_notional(cobj) -> float
+from C import lrvx_account_total_unrealised_pnl(cobj) -> float
+from C import lrvx_account_record_fill(cobj, i64, float)
+from C import lrvx_account_record_fill_ex(cobj, i64, float, u32)
+from C import lrvx_account_rolling_notional_by_symbol_size(cobj) -> u32
+from C import lrvx_account_rolling_notional_by_symbol_copy(cobj, Ptr[u32], Ptr[float], u32) -> u32
+from C import lrvx_account_rolling_notional_30d(cobj) -> float
+from C import lrvx_account_reset_rolling(cobj)
+
+# ── additional_bar ──
+from C import lrvx_aggregate_range_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+from C import lrvx_aggregate_renko_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+
+# ── additional_stats ──
+from C import lrvx_stat_permutation_test(Ptr[float], int, Ptr[float], int, u32) -> float
+from C import lrvx_stat_bootstrap_ci(Ptr[float], int, float, u32, Ptr[float], Ptr[float], Ptr[float])
+from C import lrvx_stat_whites_reality_check(Ptr[float], int, int, u32, float, Ptr[float], Ptr[float], Ptr[i32])
+
+# ── amm_curve ──
+from C import lrvx_curve_constant_product(cobj, cobj, u64, u64) -> cobj
+from C import lrvx_curve_raydium_cp(cobj, cobj, u64, u64, u8) -> cobj
+from C import lrvx_curve_uniswap_v3(cobj, cobj, u32, Ptr[cobj], Ptr[cobj], int) -> cobj
+from C import lrvx_curve_token_count(cobj) -> int
+from C import lrvx_curve_amount_out(cobj, int, int, cobj, cobj, int) -> u8
+from C import lrvx_curve_apply_swap(cobj, int, int, cobj, cobj, int) -> u8
+from C import lrvx_curve_balance(cobj, int, cobj, int) -> u8
+from C import lrvx_curve_sqrt_price(cobj, cobj, int) -> u8
+from C import lrvx_curve_liquidity(cobj, cobj, int) -> u8
+from C import lrvx_curve_clone(cobj) -> cobj
+from C import lrvx_curve_destroy(cobj)
+
+# ── backtest_slippage ──
+from C import lrvx_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
+from C import lrvx_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
+from C import lrvx_simulated_executor_set_queue_model(cobj, i32, u32)
+from C import lrvx_simulated_executor_set_queue_fifo_top_n(cobj, u32)
+from C import lrvx_simulated_executor_set_top_priority_share(cobj, float)
+from C import lrvx_simulated_executor_set_lmm_orders(cobj, Ptr[u64], u32)
+from C import lrvx_simulated_executor_set_lmm_bonus_multiplier(cobj, float)
+from C import lrvx_simulated_executor_set_order_priority_multiplier(cobj, u64, float)
+from C import lrvx_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
+from C import lrvx_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
+from C import lrvx_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
+from C import lrvx_simulated_executor_apply_latency_profile(cobj, cobj) -> int
+from C import lrvx_simulated_executor_set_stp_mode(cobj, u8)
+from C import lrvx_simulated_executor_set_fok_mode(cobj, u8)
+from C import lrvx_simulated_executor_fok_mode(cobj) -> u8
+from C import lrvx_simulated_executor_set_stp_group_membership(cobj, u64, u64)
+from C import lrvx_simulated_executor_stp_group_for(cobj, u64) -> u64
+from C import lrvx_latency_distribution_create() -> cobj
+from C import lrvx_latency_distribution_destroy(cobj)
+from C import lrvx_latency_distribution_set_constant(cobj, i64)
+from C import lrvx_latency_distribution_set_uniform(cobj, i64, i64)
+from C import lrvx_latency_distribution_set_lognormal(cobj, i64, float)
+from C import lrvx_latency_distribution_set_empirical(cobj, Ptr[i64], u32)
+from C import lrvx_latency_distribution_set_burst_correlation(cobj, float)
+from C import lrvx_latency_distribution_median_ns(cobj) -> i64
+from C import lrvx_simulated_executor_set_submit_ack_latency_distribution(cobj, cobj)
+from C import lrvx_simulated_executor_set_cancel_ack_latency_distribution(cobj, cobj)
+from C import lrvx_simulated_executor_set_replace_ack_latency_distribution(cobj, cobj)
+from C import lrvx_simulated_executor_on_trade_qty(cobj, u32, float, float, u8)
+from C import lrvx_simulated_executor_on_best_levels(cobj, u32, float, float, float, float)
+from C import lrvx_simulated_executor_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32)
+from C import lrvx_backtest_result_create(float, float, u8, float, float, float) -> cobj
+from C import lrvx_backtest_result_destroy(cobj)
+from C import lrvx_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
+from C import lrvx_backtest_result_ingest_executor(cobj, cobj)
+from C import lrvx_backtest_result_stats(cobj, cobj)
+from C import lrvx_backtest_result_equity_curve(cobj, cobj, u32) -> u32
+from C import lrvx_backtest_result_write_equity_curve_csv(cobj, cobj) -> u8
+from C import lrvx_backtest_result_trades(cobj, cobj, u32) -> u32
+
+# ── backtestrunner_replay ──
+from C import lrvx_backtest_runner_create(cobj, float, float) -> cobj
+from C import lrvx_backtest_runner_destroy(cobj)
+from C import lrvx_backtest_runner_set_strategy(cobj, cobj)
+from C import lrvx_backtest_runner_run_csv(cobj, cobj, cobj, cobj) -> int
+from C import lrvx_backtest_runner_run_tape(cobj, cobj, cobj) -> int
+from C import lrvx_backtest_runner_run_tapes(cobj, Ptr[cobj], u32, cobj) -> int
+from C import lrvx_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, cobj) -> int
+from C import lrvx_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64], Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], u32, cobj, u8, u64, cobj) -> int
+from C import lrvx_backtest_runner_run_replay_source(cobj, cobj, cobj) -> int
+from C import lrvx_backtest_runner_take_result(cobj) -> cobj
+from C import lrvx_backtest_runner_set_risk_manager(cobj, cobj)
+from C import lrvx_backtest_runner_set_kill_switch(cobj, cobj)
+from C import lrvx_backtest_runner_set_order_validator(cobj, cobj)
+from C import lrvx_backtest_runner_set_pnl_tracker(cobj, cobj)
+
+# ── bar_aggregation ──
+from C import lrvx_aggregate_time_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+from C import lrvx_aggregate_tick_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, u32, cobj, u32) -> u32
+from C import lrvx_aggregate_volume_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+
+# ── bar_dispatch ──
+from C import lrvx_bar_dispatch_recorder_create() -> cobj
+from C import lrvx_bar_dispatch_recorder_destroy(cobj)
+from C import lrvx_bar_dispatch_recorder_add_time_seconds(cobj, u32) -> u32
+from C import lrvx_bar_dispatch_recorder_on_trade(cobj, u32, float, float, i64)
+from C import lrvx_bar_dispatch_recorder_finalize(cobj)
+from C import lrvx_bar_dispatch_recorder_count(cobj) -> u32
+from C import lrvx_bar_dispatch_recorder_type_at(cobj, u32) -> u8
+from C import lrvx_bar_dispatch_recorder_param_at(cobj, u32) -> u64
+
+# ── binary_log_recorder_hook ──
+from C import lrvx_binary_log_recorder_hook_create(cobj, u64, u8, u8) -> cobj
+from C import lrvx_binary_log_recorder_hook_create_ex(cobj, u64, u8, u8, cobj, cobj) -> cobj
+from C import lrvx_binary_log_recorder_hook_destroy(cobj)
+from C import lrvx_binary_log_recorder_hook_as_recorder(cobj) -> cobj
+from C import lrvx_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
+from C import lrvx_binary_log_recorder_hook_flush(cobj)
+from C import lrvx_binary_log_recorder_hook_stats(cobj) -> cobj
+
+# ── capi_diagnostics ──
+from C import lrvx_capi_abi_version() -> u32
+from C import lrvx_last_error_code() -> int
+from C import lrvx_last_error_message() -> cobj
+from C import lrvx_clear_last_error()
+
+# ── composite_book ──
+from C import lrvx_composite_book_create() -> cobj
+from C import lrvx_composite_book_destroy(cobj)
+from C import lrvx_composite_book_best_bid(cobj, u32, Ptr[float], Ptr[float]) -> u8
+from C import lrvx_composite_book_best_ask(cobj, u32, Ptr[float], Ptr[float]) -> u8
+from C import lrvx_composite_book_has_arb(cobj, u32) -> u8
+from C import lrvx_composite_book_mark_stale(cobj, u32, u32)
+from C import lrvx_composite_book_check_staleness(cobj, i64, i64)
+from C import lrvx_composite_book_apply_snapshot(cobj, u32, u32, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int, i64)
+from C import lrvx_composite_book_apply_delta(cobj, u32, u32, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int, i64)
+
+# ── context_queries ──
+from C import lrvx_position_raw(cobj, u32) -> i64
+from C import lrvx_last_trade_price_raw(cobj, u32) -> i64
+from C import lrvx_best_bid_raw(cobj, u32) -> i64
+from C import lrvx_best_ask_raw(cobj, u32) -> i64
+from C import lrvx_mid_price_raw(cobj, u32) -> i64
+from C import lrvx_best_bid_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import lrvx_best_ask_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import lrvx_mid_price_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import lrvx_get_symbol_context(cobj, u32, cobj)
+from C import lrvx_get_order_status(cobj, u64) -> i32
+
+# ── data_reader ──
+from C import lrvx_data_reader_create(cobj) -> cobj
+from C import lrvx_data_reader_destroy(cobj)
+from C import lrvx_data_reader_count(cobj) -> u64
+from C import lrvx_data_reader_set_progress_callback(cobj, cobj, cobj, u32)
+from C import lrvx_data_reader_clear_progress_callback(cobj)
+
+# ── data_writer ──
+from C import lrvx_data_writer_create(cobj, u64, u8) -> cobj
+from C import lrvx_data_writer_destroy(cobj)
+from C import lrvx_data_writer_write_trade(cobj, i64, i64, float, float, u64, u32, u8) -> u8
+from C import lrvx_data_writer_write_book(cobj, i64, i64, i64, u32, u8, cobj, u32, cobj, u32) -> u8
+from C import lrvx_data_writer_flush(cobj)
+from C import lrvx_data_writer_close(cobj)
+
+# ── datareader ──
+from C import lrvx_data_reader_create_filtered(cobj, i64, i64, Ptr[u32], u32) -> cobj
+from C import lrvx_data_reader_create_ordered(cobj, i64, i64, Ptr[u32], u32, i64, i32) -> cobj
+from C import lrvx_data_reader_summary(cobj) -> cobj
+from C import lrvx_data_reader_stats(cobj) -> cobj
+from C import lrvx_data_reader_read_trades(cobj, cobj, u64) -> u64
+from C import lrvx_data_reader_read_bbo(cobj, cobj, u64) -> u64
+from C import lrvx_data_reader_count_book_updates(cobj, Ptr[u64]) -> u64
+from C import lrvx_data_reader_read_book_updates(cobj, cobj, u64, cobj, u64) -> u64
+from C import lrvx_data_reader_read_trades_from(cobj, i64, cobj, u64) -> u64
+from C import lrvx_data_reader_read_bbo_from(cobj, i64, cobj, u64) -> u64
+from C import lrvx_data_reader_count_book_updates_from(cobj, i64, Ptr[u64]) -> u64
+from C import lrvx_data_reader_read_book_updates_from(cobj, i64, cobj, u64, cobj, u64) -> u64
+
+# ── datawriter ──
+from C import lrvx_data_writer_stats(cobj) -> cobj
+from C import lrvx_data_writer_write_books(cobj, cobj, u64, cobj, u64) -> u64
+
+# ── delta_book ──
+from C import lrvx_delta_book_encoder_create(u32) -> cobj
+from C import lrvx_delta_book_encoder_destroy(cobj)
+from C import lrvx_delta_book_encoder_reset(cobj, u32)
+from C import lrvx_delta_book_encoder_reset_all(cobj)
+from C import lrvx_delta_book_encoder_encode(cobj, u32, cobj, int, cobj, int, Ptr[u8], Ptr[u64], Ptr[u64])
+from C import lrvx_delta_book_encoder_copy_bids(cobj, cobj, u64) -> u64
+from C import lrvx_delta_book_encoder_copy_asks(cobj, cobj, u64) -> u64
+from C import lrvx_delta_book_replayer_create() -> cobj
+from C import lrvx_delta_book_replayer_destroy(cobj)
+from C import lrvx_delta_book_replayer_reset(cobj, u32)
+from C import lrvx_delta_book_replayer_apply(cobj, u8, u32, cobj, int, cobj, int, Ptr[u64], Ptr[u64])
+from C import lrvx_delta_book_replayer_copy_bids(cobj, cobj, u64) -> u64
+from C import lrvx_delta_book_replayer_copy_asks(cobj, cobj, u64) -> u64
+
+# ── dex_amount ──
+from C import lrvx_u256_roundtrip(cobj, cobj, int) -> u8
+from C import lrvx_i256_roundtrip(cobj, cobj, int) -> u8
+from C import lrvx_u256_from_hex(cobj, cobj, int) -> u8
+from C import lrvx_u256_to_words(cobj, Ptr[u64]) -> u8
+from C import lrvx_u256_from_words(Ptr[u64], cobj, int) -> u8
+
+# ── execution ──
+from C import lrvx_execution_listener_create(cobj) -> cobj
+from C import lrvx_execution_listener_create_p(cobj) -> cobj
+from C import lrvx_execution_listener_destroy(cobj)
+from C import lrvx_executor_create(cobj) -> cobj
+from C import lrvx_executor_create_p(cobj) -> cobj
+from C import lrvx_executor_destroy(cobj)
+from C import lrvx_executor_get_capabilities(cobj, cobj)
+from C import lrvx_live_engine_set_executor(cobj, cobj)
+from C import lrvx_runner_set_executor(cobj, cobj)
+from C import lrvx_backtest_runner_add_execution_listener(cobj, cobj)
+from C import lrvx_backtest_runner_set_executor(cobj, cobj)
+
+# ── execution_algos ──
+from C import lrvx_exec_twap_create(float, u8, u32, u8, float, i64, u32, i64) -> cobj
+from C import lrvx_exec_vwap_create(float, u8, u32, u8, float, Ptr[i64], Ptr[float], int) -> cobj
+from C import lrvx_exec_iceberg_create(float, u8, u32, u8, float, float) -> cobj
+from C import lrvx_exec_pov_create(float, u8, u32, u8, float, float, float) -> cobj
+from C import lrvx_exec_destroy(cobj)
+from C import lrvx_exec_step(cobj, i64)
+from C import lrvx_exec_report_fill(cobj, float)
+from C import lrvx_exec_observe_volume(cobj, float)
+from C import lrvx_exec_pending_count(cobj) -> int
+from C import lrvx_exec_pending_at(cobj, int, cobj) -> u8
+from C import lrvx_exec_clear_pending(cobj)
+from C import lrvx_exec_target_qty(cobj) -> float
+from C import lrvx_exec_submitted_qty(cobj) -> float
+from C import lrvx_exec_filled_qty(cobj) -> float
+from C import lrvx_exec_remaining_qty(cobj) -> float
+from C import lrvx_exec_is_done(cobj) -> u8
+
+# ── executor_fill ──
+from C import lrvx_simulated_executor_get_fills(cobj, cobj, u32) -> u32
+
+# ── fee_schedule ──
+from C import lrvx_fee_schedule_create() -> cobj
+from C import lrvx_fee_schedule_destroy(cobj)
+from C import lrvx_fee_schedule_add_tier(cobj, float, float, float)
+from C import lrvx_fee_schedule_load_profile(cobj, cobj) -> int
+from C import lrvx_fee_schedule_record_fill(cobj, i64, float)
+from C import lrvx_fee_schedule_fee_for(cobj, i64, float, u8) -> float
+from C import lrvx_fee_schedule_current_tier(cobj) -> u32
+from C import lrvx_fee_schedule_rolling_notional(cobj) -> float
+from C import lrvx_fee_schedule_tier_transitions(cobj, Ptr[i64], u32) -> u32
+from C import lrvx_fee_schedule_reset_rolling(cobj)
+from C import lrvx_fee_schedule_bind_account(cobj, cobj)
+from C import lrvx_fee_schedule_clear_account_binding(cobj)
+
+# ── feed_clock ──
+from C import lrvx_feed_clock_create(Ptr[u32], u32, u8, i64, u32, i64) -> cobj
+from C import lrvx_feed_clock_destroy(cobj)
+from C import lrvx_feed_clock_symbol_count(cobj) -> u32
+from C import lrvx_feed_clock_symbol_at(cobj, u32) -> u32
+from C import lrvx_feed_clock_tick(cobj, i64, u32) -> u8
+from C import lrvx_feed_clock_last_fired(cobj) -> u8
+from C import lrvx_feed_clock_last_triggered_by(cobj) -> u32
+from C import lrvx_feed_clock_last_seen_at(cobj, u32) -> i64
+from C import lrvx_feed_clock_staleness_at(cobj, u32) -> i64
+from C import lrvx_feed_clock_reset(cobj)
+
+# ── fixed_point ──
+from C import lrvx_price_from_double(float) -> i64
+from C import lrvx_price_to_double(i64) -> float
+from C import lrvx_quantity_from_double(float) -> i64
+from C import lrvx_quantity_to_double(i64) -> float
+
+# ── footprint_bar ──
+from C import lrvx_footprint_create(float) -> cobj
+from C import lrvx_footprint_destroy(cobj)
+from C import lrvx_footprint_add_trade(cobj, float, float, u8)
+from C import lrvx_footprint_total_delta(cobj) -> float
+from C import lrvx_footprint_total_volume(cobj) -> float
+from C import lrvx_footprint_num_levels(cobj) -> u32
+from C import lrvx_footprint_clear(cobj)
+
+# ── funding_schedule ──
+from C import lrvx_funding_schedule_create() -> cobj
+from C import lrvx_funding_schedule_destroy(cobj)
+from C import lrvx_funding_schedule_set_constant(cobj, i64, float)
+from C import lrvx_funding_schedule_set_tape(cobj, Ptr[i64], Ptr[float], u32)
+from C import lrvx_funding_schedule_set_tape_by_symbol(cobj, Ptr[i64], Ptr[u32], Ptr[float], u32)
+from C import lrvx_funding_schedule_load_tape(cobj, cobj) -> u8
+from C import lrvx_funding_schedule_load_profile(cobj, cobj) -> int
+from C import lrvx_funding_schedule_set_constant_rate(cobj, float)
+from C import lrvx_funding_schedule_reset(cobj)
+from C import lrvx_funding_schedule_tick(cobj, i64, Ptr[u32], Ptr[float], Ptr[float], u32, Ptr[float], u32) -> u32
+
+# ── grid_search ──
+from C import lrvx_grid_search_create() -> cobj
+from C import lrvx_grid_search_destroy(cobj)
+from C import lrvx_grid_search_add_axis(cobj, Ptr[float], u32)
+from C import lrvx_grid_search_total(cobj) -> u64
+from C import lrvx_grid_search_params_for_index(cobj, u64, Ptr[float], u32) -> u32
+from C import lrvx_grid_search_run(cobj, cobj, cobj, cobj, u32) -> u64
+
+# ── heatmap ──
+from C import lrvx_render_heatmap_html(cobj, cobj, u64) -> u64
+
+# ── heikin_ashi ──
+from C import lrvx_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+
+# ── indicator_functions ──
+from C import lrvx_indicator_ema(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_sma(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_rsi(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_atr(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_macd(Ptr[float], int, int, int, int, Ptr[float], Ptr[float], Ptr[float])
+from C import lrvx_indicator_bollinger(Ptr[float], int, int, float, Ptr[float], Ptr[float], Ptr[float])
+from C import lrvx_indicator_rma(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_dema(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_tema(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_kama(Ptr[float], int, int, int, int, Ptr[float])
+from C import lrvx_indicator_slope(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_adx(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float], Ptr[float], Ptr[float])
+from C import lrvx_indicator_cci(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_stochastic(Ptr[float], Ptr[float], Ptr[float], int, int, int, Ptr[float], Ptr[float])
+from C import lrvx_indicator_chop(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_obv(Ptr[float], Ptr[float], int, Ptr[float])
+from C import lrvx_indicator_vwap(Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_cvd(Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], int, Ptr[float])
+from C import lrvx_indicator_skewness(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_kurtosis(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_parkinson_vol(Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_rogers_satchell_vol(Ptr[float], Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_rolling_zscore(Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_shannon_entropy(Ptr[float], int, int, int, Ptr[float])
+from C import lrvx_indicator_correlation(Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import lrvx_indicator_adf(Ptr[float], int, int, cobj, Ptr[float], Ptr[float], Ptr[int])
+from C import lrvx_indicator_autocorrelation(Ptr[float], int, int, int, Ptr[float])
+
+# ── indicatorgraph ──
+from C import lrvx_indicator_graph_create() -> cobj
+from C import lrvx_indicator_graph_destroy(cobj)
+from C import lrvx_indicator_graph_set_bars(cobj, u32, Ptr[float], Ptr[float], Ptr[float], Ptr[float], int)
+from C import lrvx_indicator_graph_add_node(cobj, cobj, Ptr[cobj], int, cobj, cobj)
+from C import lrvx_indicator_graph_require(cobj, u32, cobj, Ptr[int]) -> Ptr[float]
+from C import lrvx_indicator_graph_get(cobj, u32, cobj, Ptr[int]) -> Ptr[float]
+from C import lrvx_indicator_graph_close(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_indicator_graph_high(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_indicator_graph_low(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_indicator_graph_volume(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_indicator_graph_invalidate(cobj, u32)
+from C import lrvx_indicator_graph_invalidate_all(cobj)
+from C import lrvx_indicator_graph_step(cobj, u32, float, float, float, float, float)
+from C import lrvx_indicator_graph_current(cobj, u32, cobj) -> float
+from C import lrvx_indicator_graph_bar_count(cobj, u32) -> u32
+from C import lrvx_indicator_graph_reset(cobj, u32)
+from C import lrvx_indicator_graph_reset_all(cobj)
+from C import lrvx_streaming_graph_create() -> cobj
+from C import lrvx_streaming_graph_destroy(cobj)
+from C import lrvx_streaming_graph_add_node(cobj, cobj, Ptr[cobj], int, cobj, cobj)
+from C import lrvx_streaming_graph_step(cobj, u32, float, float, float, float, float)
+from C import lrvx_streaming_graph_current(cobj, u32, cobj) -> float
+from C import lrvx_streaming_graph_bar_count(cobj, u32) -> u32
+from C import lrvx_streaming_graph_reset(cobj, u32)
+from C import lrvx_streaming_graph_reset_all(cobj)
+from C import lrvx_streaming_graph_close(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_streaming_graph_high(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_streaming_graph_low(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import lrvx_streaming_graph_volume(cobj, u32, Ptr[int]) -> Ptr[float]
+
+# ── l3_order ──
+from C import lrvx_l3_book_create() -> cobj
+from C import lrvx_l3_book_destroy(cobj)
+from C import lrvx_l3_book_add_order(cobj, u64, float, float, u8) -> i32
+from C import lrvx_l3_book_remove_order(cobj, u64) -> i32
+from C import lrvx_l3_book_modify_order(cobj, u64, float) -> i32
+from C import lrvx_l3_book_best_bid(cobj, Ptr[float]) -> u8
+from C import lrvx_l3_book_best_ask(cobj, Ptr[float]) -> u8
+from C import lrvx_l3_book_bid_at_price(cobj, float) -> float
+from C import lrvx_l3_book_ask_at_price(cobj, float) -> float
+
+# ── latency_models ──
+from C import lrvx_latency_constant_create(i64, i64, i64) -> cobj
+from C import lrvx_latency_gaussian_create(float, float, float, float, float, float, u64) -> cobj
+from C import lrvx_latency_exponential_create(float, float, float, u64) -> cobj
+from C import lrvx_latency_empirical_create(Ptr[i64], int, Ptr[i64], int, Ptr[i64], int, u64) -> cobj
+from C import lrvx_latency_destroy(cobj)
+from C import lrvx_latency_feed_delay(cobj) -> i64
+from C import lrvx_latency_order_delay(cobj) -> i64
+from C import lrvx_latency_fill_delay(cobj) -> i64
+from C import lrvx_latency_sample(cobj, cobj)
+from C import lrvx_latency_reset(cobj, u64)
+
+# ── liquidation_engine ──
+from C import lrvx_liquidation_engine_create() -> cobj
+from C import lrvx_liquidation_engine_destroy(cobj)
+from C import lrvx_liquidation_engine_add_tier(cobj, float, float)
+from C import lrvx_liquidation_engine_set_insurance_fund_capital(cobj, float)
+from C import lrvx_liquidation_engine_insurance_fund_balance(cobj) -> float
+from C import lrvx_liquidation_engine_set_adl_enabled(cobj, u8)
+from C import lrvx_liquidation_engine_set_adl_ranking(cobj, u8)
+from C import lrvx_liquidation_engine_adl_ranking(cobj) -> u8
+from C import lrvx_liquidation_engine_set_liquidation_slippage_bps(cobj, float)
+from C import lrvx_liquidation_engine_open_position(cobj, u64, u32, float, float, float)
+from C import lrvx_liquidation_engine_close_position(cobj, u64, u32)
+from C import lrvx_liquidation_engine_on_mark(cobj, u32, float) -> u32
+from C import lrvx_liquidation_engine_on_marks(cobj, u32, Ptr[u32], Ptr[float], i64) -> u32
+from C import lrvx_liquidation_engine_liquidations_count(cobj) -> u64
+from C import lrvx_liquidation_engine_insurance_payments_count(cobj) -> u64
+from C import lrvx_liquidation_engine_adl_closeouts_count(cobj) -> u64
+from C import lrvx_liquidation_engine_load_profile(cobj, u8)
+from C import lrvx_liquidation_engine_set_executor(cobj, cobj)
+from C import lrvx_liquidation_engine_deficits_paid_by_fund_size(cobj) -> u32
+from C import lrvx_liquidation_engine_deficits_paid_by_fund_copy(cobj, Ptr[float], u32) -> u32
+from C import lrvx_liquidation_engine_deficits_paid_by_adl_size(cobj) -> u32
+from C import lrvx_liquidation_engine_deficits_paid_by_adl_copy(cobj, Ptr[float], u32) -> u32
+from C import lrvx_liquidation_engine_cascade_sizes_size(cobj) -> u32
+from C import lrvx_liquidation_engine_cascade_sizes_copy(cobj, Ptr[u32], u32) -> u32
+from C import lrvx_liquidation_engine_fund_balance_history_size(cobj) -> u32
+from C import lrvx_liquidation_engine_fund_balance_history_copy(cobj, Ptr[float], u32) -> u32
+from C import lrvx_liquidation_engine_ticks_to_first_adl(cobj) -> u64
+from C import lrvx_liquidation_engine_reset_stats(cobj)
+from C import lrvx_liquidation_engine_set_mark_impact_model(cobj, u8, float)
+from C import lrvx_liquidation_engine_mark_impact_model(cobj) -> u8
+from C import lrvx_liquidation_engine_mark_impact_weight(cobj) -> float
+from C import lrvx_liquidation_engine_set_max_cascade_depth(cobj, u32)
+from C import lrvx_liquidation_engine_max_cascade_depth(cobj) -> u32
+from C import lrvx_liquidation_engine_attach_account(cobj, cobj)
+from C import lrvx_liquidation_engine_detach_account(cobj, u64)
+
+# ── live_queue_position ──
+from C import lrvx_live_queue_position_create() -> cobj
+from C import lrvx_live_queue_position_destroy(cobj)
+from C import lrvx_live_queue_position_set_confidence_half_life_ns(cobj, i64)
+from C import lrvx_live_queue_position_set_shrink_factor(cobj, float)
+from C import lrvx_live_queue_position_on_order_placed(cobj, u32, u8, i64, u64, i64, i64, i64)
+from C import lrvx_live_queue_position_on_order_cancelled(cobj, u64, i64)
+from C import lrvx_live_queue_position_on_order_filled(cobj, u64, i64, i64)
+from C import lrvx_live_queue_position_on_trade(cobj, u32, i64, i64, i64)
+from C import lrvx_live_queue_position_on_trade_with_flag(cobj, u32, i64, i64, i64, u8)
+from C import lrvx_live_queue_position_set_hidden_order_policy(cobj, u8)
+from C import lrvx_live_queue_position_on_level_update(cobj, u32, u8, i64, i64, i64)
+from C import lrvx_live_queue_position_snapshot(cobj, u64, i64, Ptr[i64]) -> u8
+from C import lrvx_live_queue_position_tracked_count(cobj) -> u32
+
+# ── logger ──
+from C import lrvx_set_log_callback(cobj, cobj)
+
+# ── lrvxliveengine_disruptor ──
+from C import lrvx_live_engine_create(cobj) -> cobj
+from C import lrvx_live_engine_destroy(cobj)
+from C import lrvx_live_engine_add_strategy(cobj, cobj, cobj, cobj)
+from C import lrvx_live_engine_start(cobj)
+from C import lrvx_live_engine_stop(cobj)
+from C import lrvx_live_engine_publish_trade(cobj, u32, float, float, u8, i64)
+from C import lrvx_live_engine_publish_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32, i64)
+from C import lrvx_live_engine_publish_bar(cobj, u32, u8, u64, float, float, float, float, float, float, i64, i64, u8)
+
+# ── lrvxrun ──
+from C import lrvx_run_recorder_create(cobj, cobj, cobj, i64) -> cobj
+from C import lrvx_run_recorder_destroy(cobj)
+from C import lrvx_run_recorder_add_tape_ref(cobj, cobj, cobj, i64, i64)
+from C import lrvx_run_recorder_set_run_ended_ns(cobj, i64)
+from C import lrvx_run_recorder_write_signal(cobj, i64, i64, u32, u32, i64, cobj, int, Ptr[u32], int, Ptr[u8], int)
+from C import lrvx_run_recorder_write_order_event(cobj, i64, i64, u64, u64, i64, i64, u32, u8, u8, u8, u32, cobj, int)
+from C import lrvx_run_recorder_write_fill(cobj, i64, i64, u64, u64, i64, i64, i64, u32, u8, u8)
+from C import lrvx_run_recorder_close(cobj)
+from C import lrvx_run_reader_open(cobj) -> cobj
+from C import lrvx_run_reader_close(cobj)
+from C import lrvx_run_reader_strategy_id(cobj, cobj, u64) -> u64
+from C import lrvx_run_reader_strategy_hash(cobj, cobj, u64) -> u64
+from C import lrvx_run_reader_run_started_ns(cobj) -> i64
+from C import lrvx_run_reader_run_ended_ns(cobj) -> i64
+from C import lrvx_run_reader_tape_ref_count(cobj) -> u64
+from C import lrvx_run_reader_tape_ref_path(cobj, u64, cobj, u64) -> u64
+from C import lrvx_run_reader_signal_count(cobj) -> u64
+from C import lrvx_run_reader_order_event_count(cobj) -> u64
+from C import lrvx_run_reader_fill_count(cobj) -> u64
+from C import lrvx_run_reader_signal_header(cobj, u64, Ptr[i64], Ptr[i64], Ptr[u32], Ptr[u32], Ptr[i64], Ptr[u64], Ptr[u64], Ptr[u64])
+from C import lrvx_run_reader_signal_name(cobj, u64, cobj, u64) -> u64
+from C import lrvx_run_reader_signal_symbol_ids(cobj, u64, Ptr[u32], u64) -> u64
+from C import lrvx_run_reader_signal_payload(cobj, u64, Ptr[u8], u64) -> u64
+from C import lrvx_run_reader_order_event_header(cobj, u64, Ptr[i64], Ptr[i64], Ptr[u64], Ptr[u64], Ptr[i64], Ptr[i64], Ptr[u32], Ptr[u8], Ptr[u8], Ptr[u8], Ptr[u32], Ptr[u64])
+from C import lrvx_run_reader_order_event_reason(cobj, u64, cobj, u64) -> u64
+from C import lrvx_run_reader_fill(cobj, u64, Ptr[i64], Ptr[i64], Ptr[u64], Ptr[u64], Ptr[i64], Ptr[i64], Ptr[i64], Ptr[u32], Ptr[u8], Ptr[u8])
+
+# ── market_profile ──
+from C import lrvx_market_profile_create(float, u32, i64) -> cobj
+from C import lrvx_market_profile_destroy(cobj)
+from C import lrvx_market_profile_add_trade(cobj, i64, float, float, u8)
+from C import lrvx_market_profile_poc(cobj) -> float
+from C import lrvx_market_profile_vah(cobj) -> float
+from C import lrvx_market_profile_val(cobj) -> float
+from C import lrvx_market_profile_ib_high(cobj) -> float
+from C import lrvx_market_profile_ib_low(cobj) -> float
+from C import lrvx_market_profile_is_poor_high(cobj) -> u8
+from C import lrvx_market_profile_is_poor_low(cobj) -> u8
+from C import lrvx_market_profile_num_levels(cobj) -> u32
+from C import lrvx_market_profile_clear(cobj)
+
+# ── merged_tape_reader ──
+from C import lrvx_merged_tape_reader_create(Ptr[cobj], u32, i64, i64, Ptr[u32], u32) -> cobj
+from C import lrvx_merged_tape_reader_destroy(cobj)
+from C import lrvx_merged_tape_reader_symbol_count(cobj) -> u32
+from C import lrvx_merged_tape_reader_get_symbols(cobj, cobj, u32) -> u32
+from C import lrvx_merged_tape_reader_tape_count(cobj) -> u32
+from C import lrvx_merged_tape_reader_get_tape_stats(cobj, cobj, u32) -> u32
+from C import lrvx_merged_tape_reader_time_range(cobj, Ptr[i64], Ptr[i64])
+from C import lrvx_merged_tape_reader_count_trades(cobj) -> u64
+from C import lrvx_merged_tape_reader_read_trades(cobj, cobj, u64) -> u64
+from C import lrvx_merged_tape_reader_count_books(cobj, Ptr[u64]) -> u64
+from C import lrvx_merged_tape_reader_read_books(cobj, cobj, u64, cobj, u64) -> u64
+
+# ── metrics ──
+from C import lrvx_pnl_tracker_create(cobj) -> cobj
+from C import lrvx_pnl_tracker_create_p(cobj) -> cobj
+from C import lrvx_pnl_tracker_destroy(cobj)
+from C import lrvx_live_engine_set_pnl_tracker(cobj, cobj)
+from C import lrvx_runner_set_pnl_tracker(cobj, cobj)
+
+# ── multi_tf_helpers ──
+from C import lrvx_strategy_last_closed_bar(cobj, u32, u8, u64, cobj) -> u8
+from C import lrvx_strategy_last_n_closed_bars(cobj, u32, u8, u64, cobj, u32) -> u32
+from C import lrvx_strategy_get_bar_ring_capacity(cobj) -> u32
+from C import lrvx_strategy_set_bar_ring_capacity(cobj, u32)
+
+# ── order_book ──
+from C import lrvx_book_create(float) -> cobj
+from C import lrvx_book_destroy(cobj)
+from C import lrvx_book_apply_snapshot(cobj, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int)
+from C import lrvx_book_apply_delta(cobj, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int)
+from C import lrvx_book_best_bid(cobj, Ptr[float]) -> u8
+from C import lrvx_book_best_ask(cobj, Ptr[float]) -> u8
+from C import lrvx_book_mid(cobj, Ptr[float]) -> u8
+from C import lrvx_book_spread(cobj, Ptr[float]) -> u8
+from C import lrvx_book_bid_at_price(cobj, float) -> float
+from C import lrvx_book_ask_at_price(cobj, float) -> float
+from C import lrvx_book_is_crossed(cobj) -> u8
+from C import lrvx_book_clear(cobj)
+from C import lrvx_book_get_bids(cobj, Ptr[float], Ptr[float], u32) -> u32
+from C import lrvx_book_get_asks(cobj, Ptr[float], Ptr[float], u32) -> u32
+
+# ── order_group ──
+from C import lrvx_order_group_create(u64, u8) -> cobj
+from C import lrvx_order_group_destroy(cobj)
+from C import lrvx_order_group_add_market_leg(cobj, u32, u8, i64) -> u32
+from C import lrvx_order_group_add_limit_leg(cobj, u32, u8, i64, i64) -> u32
+from C import lrvx_order_group_leg_count(cobj) -> u32
+from C import lrvx_order_group_leg_state(cobj, u32) -> u8
+from C import lrvx_order_group_leg_filled_raw(cobj, u32) -> i64
+from C import lrvx_order_group_leg_order_id(cobj, u32) -> u64
+from C import lrvx_order_group_record_submit(cobj, u32, u64)
+from C import lrvx_order_group_record_fill(cobj, u32, i64)
+from C import lrvx_order_group_record_cancel(cobj, u32)
+from C import lrvx_order_group_record_failure(cobj, u32)
+from C import lrvx_order_group_record_replace_accepted(cobj, u32, u64)
+from C import lrvx_order_group_record_replace_rejected(cobj, u32)
+from C import lrvx_order_group_find_leg_by_order_id(cobj, u64) -> u32
+from C import lrvx_order_group_state(cobj) -> u8
+from C import lrvx_order_group_recommended_actions(cobj, Ptr[i64], u32) -> u32
+from C import lrvx_order_group_mark_action_dispatched(cobj, u32, u8)
+from C import lrvx_order_group_set_risk_limits(cobj, i64, float, i64)
+from C import lrvx_order_group_precheck_submission(cobj, float, Ptr[i64], u32, cobj, int, cobj, int) -> u8
+from C import lrvx_order_group_set_pair_latency_budget_ns(cobj, i64)
+from C import lrvx_order_group_pair_latency_decision(cobj, i64, i64, u8) -> u8
+
+# ── order_journey_tracer ──
+from C import lrvx_order_journey_tracer_create(u64, u64, float, u64) -> cobj
+from C import lrvx_order_journey_tracer_destroy(cobj)
+from C import lrvx_order_journey_tracer_order_count(cobj) -> u64
+from C import lrvx_order_journey_tracer_record_count(cobj) -> u64
+from C import lrvx_order_journey_tracer_median_ack_latency_ns(cobj) -> float
+from C import lrvx_order_journey_tracer_median_time_to_first_fill_ns(cobj) -> float
+from C import lrvx_order_journey_tracer_maker_fill_ratio(cobj) -> float
+from C import lrvx_order_journey_tracer_cancel_race_loss_rate(cobj) -> float
+from C import lrvx_order_journey_tracer_result(cobj, cobj, u64) -> u64
+from C import lrvx_order_journey_tracer_journey(cobj, u64, cobj, u64) -> u64
+from C import lrvx_order_journey_tracer_clear(cobj)
+from C import lrvx_backtest_runner_add_journey_tracer(cobj, cobj)
+
+# ── order_tracker ──
+from C import lrvx_order_tracker_create() -> cobj
+from C import lrvx_order_tracker_destroy(cobj)
+from C import lrvx_order_tracker_on_submitted(cobj, u64, u32, u8, float, float) -> u8
+from C import lrvx_order_tracker_on_filled(cobj, u64, float) -> u8
+from C import lrvx_order_tracker_on_canceled(cobj, u64) -> u8
+from C import lrvx_order_tracker_is_active(cobj, u64) -> u8
+from C import lrvx_order_tracker_active_count(cobj) -> u32
+from C import lrvx_order_tracker_total_count(cobj) -> u32
+from C import lrvx_order_tracker_prune(cobj)
+
+# ── partitioner ──
+from C import lrvx_partitioner_create(cobj) -> cobj
+from C import lrvx_partitioner_destroy(cobj)
+from C import lrvx_partitioner_by_time(cobj, u32, i64, cobj, u32) -> u32
+from C import lrvx_partitioner_by_duration(cobj, i64, i64, cobj, u32) -> u32
+from C import lrvx_partitioner_by_calendar(cobj, u8, i64, cobj, u32) -> u32
+from C import lrvx_partitioner_by_symbol(cobj, u32, cobj, u32) -> u32
+from C import lrvx_partitioner_per_symbol(cobj, cobj, u32) -> u32
+from C import lrvx_partitioner_by_event_count(cobj, u32, cobj, u32) -> u32
+
+# ── pointer_out ──
+from C import lrvx_data_reader_summary_p(cobj, cobj)
+from C import lrvx_data_reader_stats_p(cobj, cobj)
+from C import lrvx_data_writer_stats_p(cobj, cobj)
+from C import lrvx_binary_log_recorder_hook_stats_p(cobj, cobj)
+from C import lrvx_segment_merge_full_p(cobj, int, cobj, cobj, u8, cobj)
+from C import lrvx_segment_merge_dir_p(cobj, cobj, cobj)
+from C import lrvx_segment_split_p(cobj, cobj, u8, i64, u64, cobj)
+from C import lrvx_segment_export_p(cobj, cobj, u8, i64, i64, Ptr[u32], u32, cobj)
+from C import lrvx_segment_validate_full_p(cobj, u8, u8, cobj)
+from C import lrvx_dataset_validate_p(cobj, cobj)
+
+# ── pool_tape ──
+from C import lrvx_pool_tape_create() -> cobj
+from C import lrvx_pool_tape_descriptor_constant_product(cobj, u64, u64, u8, u8)
+from C import lrvx_pool_tape_descriptor_raydium_cp(cobj, u64, u64, u8, u8, u8)
+from C import lrvx_pool_tape_descriptor_clmm(cobj, u8, u32, u8, u8)
+from C import lrvx_pool_tape_checkpoint(cobj, i64, cobj, cobj) -> u8
+from C import lrvx_pool_tape_checkpoint_clmm(cobj, i64, cobj, cobj, Ptr[cobj], Ptr[cobj], int) -> u8
+from C import lrvx_pool_tape_swap(cobj, i64, u8, cobj) -> u8
+from C import lrvx_pool_tape_destroy(cobj)
+from C import lrvx_pool_tape_replay(cobj, int, int, u8, u8) -> cobj
+from C import lrvx_pool_replay_drift_count(cobj) -> int
+from C import lrvx_pool_replay_trade_count(cobj) -> int
+from C import lrvx_pool_replay_curve(cobj) -> cobj
+from C import lrvx_pool_replay_destroy(cobj)
+
+# ── portfolio_risk ──
+from C import lrvx_portfolio_risk_create(cobj, float) -> cobj
+from C import lrvx_portfolio_risk_destroy(cobj)
+from C import lrvx_portfolio_risk_update(cobj, cobj, cobj, u8)
+from C import lrvx_portfolio_risk_remove(cobj, cobj)
+from C import lrvx_portfolio_risk_reset_kill_switch(cobj)
+from C import lrvx_portfolio_risk_check_order(cobj, cobj, float, cobj, cobj) -> u8
+from C import lrvx_portfolio_risk_total_daily_pnl(cobj) -> float
+from C import lrvx_portfolio_risk_total_gross_exposure(cobj) -> float
+from C import lrvx_portfolio_risk_current_equity(cobj) -> float
+from C import lrvx_portfolio_risk_drawdown_pct(cobj) -> float
+from C import lrvx_portfolio_risk_kill_switch_active(cobj) -> u8
+from C import lrvx_portfolio_risk_breach_count(cobj) -> u64
+from C import lrvx_portfolio_risk_breach_at(cobj, u64, cobj) -> u8
+from C import lrvx_portfolio_risk_account_count(cobj) -> u64
+
+# ── position ──
+from C import lrvx_position_tracker_create(u8) -> cobj
+from C import lrvx_position_tracker_destroy(cobj)
+from C import lrvx_position_tracker_on_fill(cobj, u32, u8, float, float)
+from C import lrvx_position_tracker_position(cobj, u32) -> float
+from C import lrvx_position_tracker_avg_entry(cobj, u32) -> float
+from C import lrvx_position_tracker_realized_pnl(cobj, u32) -> float
+from C import lrvx_position_tracker_total_pnl(cobj) -> float
+
+# ── position_group ──
+from C import lrvx_position_group_create() -> cobj
+from C import lrvx_position_group_destroy(cobj)
+from C import lrvx_position_group_open(cobj, u64, u32, u8, float, float) -> u64
+from C import lrvx_position_group_close(cobj, u64, float)
+from C import lrvx_position_group_partial_close(cobj, u64, float, float)
+from C import lrvx_position_group_net_position(cobj, u32) -> float
+from C import lrvx_position_group_realized_pnl(cobj, u32) -> float
+from C import lrvx_position_group_total_pnl(cobj) -> float
+from C import lrvx_position_group_open_count(cobj, u32) -> u32
+from C import lrvx_position_group_prune(cobj)
+
+# ── rate_limit ──
+from C import lrvx_rate_limit_policy_create() -> cobj
+from C import lrvx_rate_limit_policy_destroy(cobj)
+from C import lrvx_rate_limit_policy_add_bucket(cobj, cobj, i64, u32, u32, u32, u32)
+from C import lrvx_rate_limit_policy_add_bucket_family(cobj, cobj, i64, u32, u32, u32, u32, u8, u32)
+from C import lrvx_rate_limit_policy_set_ban(cobj, u32, i64)
+from C import lrvx_rate_limit_policy_load_profile(cobj, cobj) -> int
+from C import lrvx_rate_limit_policy_ban_until_ns(cobj) -> i64
+from C import lrvx_rate_limit_policy_consecutive_rejects(cobj) -> u32
+from C import lrvx_rate_limit_policy_bucket_state(cobj, i64, Ptr[i64], u32) -> u32
+from C import lrvx_simulated_executor_set_rate_limit_policy(cobj, cobj)
+from C import lrvx_simulated_executor_clear_rate_limit_policy(cobj)
+
+# ── recorder ──
+from C import lrvx_market_data_recorder_create(cobj) -> cobj
+from C import lrvx_market_data_recorder_create_p(cobj) -> cobj
+from C import lrvx_market_data_recorder_destroy(cobj)
+from C import lrvx_live_engine_set_market_data_recorder(cobj, cobj)
+from C import lrvx_runner_set_market_data_recorder(cobj, cobj)
+
+# ── replay ──
+from C import lrvx_replay_source_create(cobj) -> cobj
+from C import lrvx_replay_source_create_p(cobj) -> cobj
+from C import lrvx_replay_source_destroy(cobj)
+from C import lrvx_replay_source_seek_to(cobj, i64) -> u8
+
+# ── risk ──
+from C import lrvx_risk_manager_create(cobj) -> cobj
+from C import lrvx_risk_manager_create_p(cobj) -> cobj
+from C import lrvx_risk_manager_destroy(cobj)
+from C import lrvx_kill_switch_create(cobj) -> cobj
+from C import lrvx_kill_switch_create_p(cobj) -> cobj
+from C import lrvx_kill_switch_destroy(cobj)
+from C import lrvx_order_validator_create(cobj) -> cobj
+from C import lrvx_order_validator_create_p(cobj) -> cobj
+from C import lrvx_order_validator_destroy(cobj)
+from C import lrvx_live_engine_set_risk_manager(cobj, cobj)
+from C import lrvx_live_engine_set_kill_switch(cobj, cobj)
+from C import lrvx_live_engine_set_order_validator(cobj, cobj)
+from C import lrvx_runner_set_risk_manager(cobj, cobj)
+from C import lrvx_runner_set_kill_switch(cobj, cobj)
+from C import lrvx_runner_set_order_validator(cobj, cobj)
+
+# ── segment ──
+from C import lrvx_segment_validate(cobj) -> u8
+from C import lrvx_segment_merge(cobj, cobj) -> u8
+from C import lrvx_segment_merge_full(cobj, int, cobj, cobj, u8) -> cobj
+from C import lrvx_segment_merge_dir(cobj, cobj) -> cobj
+from C import lrvx_segment_split(cobj, cobj, u8, i64, u64) -> cobj
+from C import lrvx_segment_export(cobj, cobj, u8, i64, i64, Ptr[u32], u32) -> cobj
+from C import lrvx_segment_recompress(cobj, cobj, u8) -> u8
+from C import lrvx_segment_extract_symbols(cobj, cobj, Ptr[u32], u32) -> u64
+from C import lrvx_segment_extract_time_range(cobj, cobj, i64, i64) -> u64
+
+# ── signal_emission ──
+from C import lrvx_emit_market_buy(cobj, u32, i64) -> u64
+from C import lrvx_emit_market_sell(cobj, u32, i64) -> u64
+from C import lrvx_emit_limit_buy(cobj, u32, i64, i64) -> u64
+from C import lrvx_emit_limit_sell(cobj, u32, i64, i64) -> u64
+from C import lrvx_emit_cancel(cobj, u64)
+from C import lrvx_emit_cancel_all(cobj, u32)
+from C import lrvx_emit_modify(cobj, u64, i64, i64)
+from C import lrvx_emit_stop_market(cobj, u32, u8, i64, i64) -> u64
+from C import lrvx_emit_stop_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import lrvx_emit_take_profit_market(cobj, u32, u8, i64, i64) -> u64
+from C import lrvx_emit_trailing_stop(cobj, u32, u8, i64, i64) -> u64
+from C import lrvx_emit_trailing_stop_percent(cobj, u32, u8, i32, i64) -> u64
+from C import lrvx_emit_take_profit_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import lrvx_emit_limit_buy_tif(cobj, u32, i64, i64, u8) -> u64
+from C import lrvx_emit_limit_sell_tif(cobj, u32, i64, i64, u8) -> u64
+from C import lrvx_emit_close_position(cobj, u32) -> u64
+
+# ── simulated_executor ──
+from C import lrvx_simulated_executor_create() -> cobj
+from C import lrvx_simulated_executor_destroy(cobj)
+from C import lrvx_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import lrvx_simulated_executor_submit_order_ex(cobj, u64, u8, float, float, u8, u32, u8, u8, i64)
+from C import lrvx_simulated_executor_submit_bracket(cobj, u64, u32, u8, u8, float, float, u8, u8, float, u8, u8, float)
+from C import lrvx_simulated_executor_cancel_bracket(cobj, u64)
+from C import lrvx_simulated_executor_bracket_state(cobj, u64) -> u8
+from C import lrvx_simulated_executor_set_bracket_child_arm_mode(cobj, u8)
+from C import lrvx_simulated_executor_submit_iceberg(cobj, u64, u8, float, float, float, u32)
+from C import lrvx_simulated_executor_set_iceberg_refresh_latency(cobj, i64)
+from C import lrvx_simulated_executor_iceberg_hidden_remaining_raw(cobj, u64) -> i64
+from C import lrvx_simulated_executor_set_iceberg_size_randomisation_pct(cobj, float)
+from C import lrvx_simulated_executor_set_iceberg_priority_mode(cobj, u8)
+from C import lrvx_simulated_executor_set_iceberg_jitter_seed(cobj, u64)
+from C import lrvx_simulated_executor_cancel_order(cobj, u64)
+from C import lrvx_simulated_executor_cancel_all(cobj, u32)
+from C import lrvx_simulated_executor_on_bar(cobj, u32, float)
+from C import lrvx_simulated_executor_on_bar_ohlc(cobj, u32, float, float, float, float)
+from C import lrvx_simulated_executor_begin_bar_callback_window(cobj)
+from C import lrvx_simulated_executor_end_bar_callback_window(cobj)
+from C import lrvx_simulated_executor_reset(cobj)
+from C import lrvx_simulated_executor_on_trade(cobj, u32, float, u8)
+from C import lrvx_simulated_executor_advance_clock(cobj, i64)
+from C import lrvx_simulated_executor_fill_count(cobj) -> u32
+
+# ── statistics ──
+from C import lrvx_stat_correlation(Ptr[float], Ptr[float], int) -> float
+from C import lrvx_stat_profit_factor(Ptr[float], int) -> float
+from C import lrvx_stat_win_rate(Ptr[float], int) -> float
+
+# ── storage ──
+from C import lrvx_storage_sink_create(cobj) -> cobj
+from C import lrvx_storage_sink_create_p(cobj) -> cobj
+from C import lrvx_storage_sink_destroy(cobj)
+from C import lrvx_live_engine_set_storage_sink(cobj, cobj)
+from C import lrvx_runner_set_storage_sink(cobj, cobj)
+
+# ── strategy_lifecycle ──
+from C import lrvx_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import lrvx_strategy_destroy(cobj)
+from C import lrvx_strategy_replace_callbacks(cobj, cobj)
+from C import lrvx_strategy_create_p(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import lrvx_strategy_replace_callbacks_p(cobj, cobj)
+
+# ── strategyrunner_synchronous ──
+from C import lrvx_runner_create(cobj, cobj, cobj) -> cobj
+from C import lrvx_runner_destroy(cobj)
+from C import lrvx_runner_add_strategy(cobj, cobj)
+from C import lrvx_runner_start(cobj)
+from C import lrvx_runner_stop(cobj)
+from C import lrvx_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import lrvx_runner_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32, i64)
+from C import lrvx_runner_on_bar(cobj, u32, u8, u64, float, float, float, float, float, float, i64, i64, u8)
+
+# ── symbol_registry ──
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_destroy(cobj)
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import lrvx_registry_get_symbol_id(cobj, cobj, cobj, Ptr[u32]) -> u8
+from C import lrvx_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
+from C import lrvx_registry_symbol_count(cobj) -> u32
+
+# ── tape_aggregator ──
+from C import lrvx_event_type_stats_aggregator_create(cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_bin_count_aggregator_create(i64, u8, u8, cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_volume_bin_aggregator_create(i64, u8, u8, cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_ohlc_bin_aggregator_create(i64, u8, cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_peak_aggregator_create(Ptr[i64], u32, u32, u32, cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_quantile_aggregator_create(Ptr[i64], u32, Ptr[float], u32, cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_book_snapshot_bin_aggregator_create(i64, u16, cobj, Ptr[u32], u32) -> cobj
+from C import lrvx_aggregator_destroy(cobj)
+from C import lrvx_data_reader_run(cobj, cobj, u32, u32) -> u8
+from C import lrvx_merged_tape_reader_run(cobj, cobj, u32, u32) -> u8
+from C import lrvx_event_type_stats_read_result(cobj, cobj, u32) -> u32
+from C import lrvx_bin_count_read_result(cobj, cobj, u32) -> u32
+from C import lrvx_volume_bin_read_result(cobj, cobj, u32) -> u32
+from C import lrvx_ohlc_bin_read_result(cobj, cobj, u32) -> u32
+from C import lrvx_peak_read_result(cobj, cobj, u32) -> u32
+from C import lrvx_quantile_read_result(cobj, cobj, u32) -> u32
+from C import lrvx_book_snapshot_bin_read_result(cobj, cobj, u32) -> u32
+
+# ── tape_diff ──
+from C import lrvx_tape_diff_create(cobj, cobj, u32, i64) -> cobj
+from C import lrvx_tape_diff_destroy(cobj)
+from C import lrvx_tape_diff_left_count(cobj) -> u64
+from C import lrvx_tape_diff_right_count(cobj) -> u64
+from C import lrvx_tape_diff_first_divergence(cobj, Ptr[u64]) -> u8
+from C import lrvx_tape_diff_equal(cobj) -> u8
+from C import lrvx_tape_diff_mismatch_count(cobj) -> u64
+from C import lrvx_tape_diff_copy_mismatches(cobj, cobj, u64) -> u64
+
+# ── targets ──
+from C import lrvx_target_future_return(Ptr[float], int, int, Ptr[float])
+from C import lrvx_target_future_ctc_volatility(Ptr[float], int, int, Ptr[float])
+from C import lrvx_target_future_linear_slope(Ptr[float], int, int, Ptr[float])
+
+# ── trace_attach ──
+from C import lrvx_runner_attach_trace_recorder(cobj, cobj)
+from C import lrvx_runner_set_trace_feed_ts_ns(cobj, i64)
+from C import lrvx_runner_trace_order_event(cobj, u64, u64, u32, u8, u8, u8, i64, i64, u32)
+from C import lrvx_runner_trace_fill(cobj, u64, u64, i64, i64, i64, u32, u8, u8)
+
+# ── validation ──
+from C import lrvx_segment_validate_full(cobj, u8, u8) -> cobj
+from C import lrvx_dataset_validate(cobj) -> cobj
+
+# ── venue_availability ──
+from C import lrvx_venue_availability_create() -> cobj
+from C import lrvx_venue_availability_destroy(cobj)
+from C import lrvx_venue_availability_schedule_outage(cobj, i64, i64, u8, i64)
+from C import lrvx_venue_availability_schedule_outage_ex(cobj, i64, i64, u8, u8, i64, float, float)
+from C import lrvx_venue_availability_submits_allowed(cobj, i64) -> u8
+from C import lrvx_venue_availability_cancels_allowed(cobj, i64) -> u8
+from C import lrvx_venue_availability_book_updates_allowed(cobj, i64) -> u8
+from C import lrvx_venue_availability_trades_allowed(cobj, i64) -> u8
+from C import lrvx_venue_availability_latency_multiplier(cobj, i64) -> float
+from C import lrvx_venue_availability_consume_wrong_side_recovery_bps(cobj) -> float
+from C import lrvx_venue_availability_auto_random_outages(cobj, float, i64, u8, u64)
+from C import lrvx_venue_availability_is_up(cobj, i64) -> u8
+from C import lrvx_simulated_executor_set_venue_availability(cobj, cobj)
+
+# ── venue_stack ──
+from C import lrvx_venue_stack_create(u8, u64, float) -> cobj
+from C import lrvx_venue_stack_destroy(cobj)
+from C import lrvx_venue_stack_executor(cobj) -> cobj
+from C import lrvx_venue_stack_account(cobj) -> cobj
+from C import lrvx_venue_stack_liquidation(cobj) -> cobj
+from C import lrvx_venue_stack_fees(cobj) -> cobj
+from C import lrvx_venue_stack_funding(cobj) -> cobj
+from C import lrvx_venue_stack_venue(cobj) -> cobj
+from C import lrvx_venue_stack_venue_name(cobj) -> cobj
+
+# ── volume_profile ──
+from C import lrvx_volume_profile_create(float) -> cobj
+from C import lrvx_volume_profile_destroy(cobj)
+from C import lrvx_volume_profile_add_trade(cobj, float, float, u8)
+from C import lrvx_volume_profile_poc(cobj) -> float
+from C import lrvx_volume_profile_vah(cobj) -> float
+from C import lrvx_volume_profile_val(cobj) -> float
+from C import lrvx_volume_profile_total_volume(cobj) -> float
+from C import lrvx_volume_profile_total_delta(cobj) -> float
+from C import lrvx_volume_profile_num_levels(cobj) -> u32
+from C import lrvx_volume_profile_clear(cobj)
+
+# ── walk_forward ──
+from C import lrvx_walk_forward_run_csv(cobj, cobj, cobj, float, float, cobj, cobj, cobj, cobj, u32) -> u32
+

@@ -1,13 +1,13 @@
 # Submit a multi-leg order group
 
-A pair-trade or basket signal needs to send several related orders. The bookkeeping (track each leg's id, query status, unwind on partial fill, cancel the rest on reject) repeats in every strategy that does it. `flox_py.OrderGroup` ships that bookkeeping as a single state machine.
+A pair-trade or basket signal needs to send several related orders. The bookkeeping (track each leg's id, query status, unwind on partial fill, cancel the rest on reject) repeats in every strategy that does it. `lrvx.OrderGroup` ships that bookkeeping as a single state machine.
 
-The group is a passive state machine: legs + policy + recorded events go in; aggregate state + recommended actions come out. The strategy wires the recommended cancels / reverts into its executor — `OrderGroup` does no I/O itself. The C++ primitive lives in `include/flox/execution/order_group.h` and every binding (pybind11 / NAPI / QuickJS / Codon) wraps the same C ABI, so a strategy in any language gets the same semantics.
+The group is a passive state machine: legs + policy + recorded events go in; aggregate state + recommended actions come out. The strategy wires the recommended cancels / reverts into its executor — `OrderGroup` does no I/O itself. The C++ primitive lives in `include/lrvx/execution/order_group.h` and every binding (pybind11 / NAPI / QuickJS / Codon) wraps the same C ABI, so a strategy in any language gets the same semantics.
 
 ```python
-import flox_py
+import lrvx
 
-g = flox_py.OrderGroup(parent_signal_id=42, policy=flox_py.OrderGroupPolicy.ALL_OR_NOTHING)
+g = lrvx.OrderGroup(parent_signal_id=42, policy=lrvx.OrderGroupPolicy.ALL_OR_NOTHING)
 g.add_market_leg(symbol=btc, side=0, qty=0.1)   # long BTC
 g.add_market_leg(symbol=eth, side=1, qty=2.0)   # short ETH
 g.record_submit(0, order_id=100)
@@ -31,13 +31,13 @@ for action in g.recommended_actions():
 - **`AllOrNothing`**. If any leg fails (cancel or rejection), the group enters `Reverting` state and recommends: *cancel* every still-open leg, *revert* every filled leg with an opposite-side market order in the matching quantity.
 - **`OneSided`**. Once the first leg fills, the group recommends *cancelling* every remaining open leg.
 
-Policies and states are exposed as named string constants in JS bindings and as enums (`flox_py.OrderGroupPolicy` / `flox_py.OrderGroupState`) in Python. Hand-writing integer codes is never the right path.
+Policies and states are exposed as named string constants in JS bindings and as enums (`lrvx.OrderGroupPolicy` / `lrvx.OrderGroupState`) in Python. Hand-writing integer codes is never the right path.
 
 ## Cross-binding
 
 ```javascript
 // node
-const { OrderGroup, OrderGroupPolicy } = require('@flox-foundation/flox');
+const { OrderGroup, OrderGroupPolicy } = require('@lrvx/lrvx');
 const g = new OrderGroup({ parentSignalId: 42, policy: OrderGroupPolicy.AllOrNothing });
 g.addMarketLeg(btc, 0, 0.1);
 g.addMarketLeg(eth, 1, 2.0);
@@ -56,9 +56,9 @@ g.addMarketLeg(btc, 0, 0.1);
 g.addMarketLeg(eth, 1, 2.0);
 ```
 
-```python
+```codon
 # codon
-from flox.order_group import OrderGroup, ALL_OR_NOTHING
+from lrvx.order_group import OrderGroup, ALL_OR_NOTHING
 
 g = OrderGroup(parent_signal_id=42, policy=ALL_OR_NOTHING)
 g.add_market_leg(btc, 0, 0.1)
@@ -125,7 +125,7 @@ If you dispatch by hand instead of through `auto_dispatch`, call `mark_action_di
 
 ```python
 # pybind11
-g = flox_py.OrderGroup()
+g = lrvx.OrderGroup()
 g.add_market_leg(symbol=btc, side=0, qty=0.1)
 g.add_market_leg(symbol=eth, side=1, qty=2.0)
 g.set_risk_limits(max_concentration_pct=0.05)  # cap at 5% of equity
@@ -139,7 +139,7 @@ g.auto_dispatch(strategy)
 
 ```javascript
 // node
-const g = new flox.OrderGroup();
+const g = new lrvx.OrderGroup();
 g.addMarketLeg(btc, 0, 0.1);
 g.addMarketLeg(eth, 1, 2.0);
 g.setRiskLimits({ maxConcentrationPct: 0.05 });
@@ -175,7 +175,7 @@ A pair-trade where the second leg only makes sense once the first one is live ne
 
 ```python
 # pybind11
-g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ONE_SIDED)
 g.add_limit_leg(btc, 0, 50_000.0, 0.1)
 g.add_limit_leg(eth, 1, 3_000.0, 1.5)
 g.set_pair_latency_budget_ns(50_000_000)  # 50 ms
@@ -190,7 +190,7 @@ elif decision == "cancel_leader":
 
 ```javascript
 // node
-const g = new flox.OrderGroup({ policy: 'OneSided' });
+const g = new lrvx.OrderGroup({ policy: 'OneSided' });
 g.setPairLatencyBudgetNs(50_000_000);
 const d = g.pairLatencyDecision({
   leaderSubmitTsNs: submitTs,

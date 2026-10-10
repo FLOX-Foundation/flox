@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-venue/matching_book.h"
-#include "flox/book/ladder_book.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx/book/ladder_book.h"
 
 #include <gtest/gtest.h>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -53,7 +53,7 @@ void expectAgree(const A& a, const B& b)
 
 // The map-reference MatchingBook and the O(1) LadderBook must be observationally
 // identical across add / cancel / reduce / fillBest -- the property the venue
-// relies on and differentially fuzzes. This is the in-flox equivalence smoke.
+// relies on and differentially fuzzes. This is the in-lrvx equivalence smoke.
 TEST(MatchingBook, LadderAndMapAgreeAcrossOps)
 {
   MatchingBook m;

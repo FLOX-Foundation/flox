@@ -1,0 +1,306 @@
+{
+  "examples": [
+    {
+      "language": "codon",
+      "path": "docs/examples/codon_backtest_vs_live.codon",
+      "sha256": "cd93a5425e2caa3e41e92b44af17bd8766553d473540a30934935efc2d0c3261",
+      "size_bytes": 4730,
+      "topic": "backtest"
+    },
+    {
+      "language": "codon",
+      "path": "docs/examples/codon_full_backtest.codon",
+      "sha256": "9d818217f3d1a9a5daa90b5e19fdf3ab8acfeb66b4cc7d9625a143782aa8554f",
+      "size_bytes": 7343,
+      "topic": "backtest"
+    },
+    {
+      "language": "cpp",
+      "path": "docs/examples/cpp_sma_backtest.cpp",
+      "sha256": "d3205991e9801ba82e4c868bac1f4cb916d5c7eb36eda44b190e2cfd00765f2e",
+      "size_bytes": 3435,
+      "topic": "backtest"
+    },
+    {
+      "language": "node",
+      "path": "docs/examples/node_backtest_vs_live.js",
+      "sha256": "19c51694135b6c52deac9534d912dd831c34dd209b05912f5c3ce2c3321f7319",
+      "size_bytes": 4342,
+      "topic": "backtest"
+    },
+    {
+      "language": "node",
+      "path": "docs/examples/node_threaded_runner_lifetime.js",
+      "sha256": "757a52c57b4393104ab40fbd6b9f76fbb9df09c0d899692bcfd4dde83a16323b",
+      "size_bytes": 1223,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_apply_latency_profile.py",
+      "sha256": "ee126b5c1756951f745725be81c21d3c0e098fd11eaed1c31b4c42ef4dc075e3",
+      "size_bytes": 377,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_backtest_vs_live.py",
+      "sha256": "feb3adc52bcc89b5b5a891179a6da8dc69f99a7fd3f8fcfd9b6ac0a588f6dcb5",
+      "size_bytes": 4605,
+      "topic": "backtest"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_binance_archive.py",
+      "sha256": "27fcff010ee0270b5b5b06b08b0b96d81fe6d01f54093e92eab76fc6b3faced8",
+      "size_bytes": 2499,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_binance_book_archive.py",
+      "sha256": "5bb8a2a9a3f0d709db356a90dee7441effa14169eccf7e7ac40d5d4f3a7d3ffc",
+      "size_bytes": 3214,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_bitget_archive.py",
+      "sha256": "610a5ef850eaec8e1c6b8fa0ba61792236c629c1f89c46fb7bfc3a4a2d587f3c",
+      "size_bytes": 1880,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_bracket_orders.py",
+      "sha256": "e936ef42569adddf456aabaf83aa3e1ec0bc803c04fff01b1476e87f922c24e4",
+      "size_bytes": 824,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_bybit_archive.py",
+      "sha256": "8df3f63d4c00c3afee5d5cc0848e7664ef5872cf69eb6ef822bf418a804ce3b1",
+      "size_bytes": 2200,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_ccxt_live.py",
+      "sha256": "bba3030ca3673136c7dfcb68ff5021c21cfbcc25e4b4f6a143963ea4522b7b6b",
+      "size_bytes": 3028,
+      "topic": "connector"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_deribit_archive.py",
+      "sha256": "756820b82e2062a7b93a8a5357140f929483790fb68f257dc62cd6a6421c3aa6",
+      "size_bytes": 2673,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_extended_tif.py",
+      "sha256": "bf30fc123f272e1eceec31c36950fb917c36b574c551670d5cd6f48d43a81773",
+      "size_bytes": 1224,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_fee_schedule.py",
+      "sha256": "e513f6de2471baccda7c1f13678448e4c1d089992ba6a3c89f4c93019276d5a6",
+      "size_bytes": 1280,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_funding_aware_perp_strategy.py",
+      "sha256": "cd6f6e26b7fb6e030487b0246d1e2abd67ec65161b579a2c2b7b0306c0c42200",
+      "size_bytes": 1672,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_funding_schedule.py",
+      "sha256": "55d7c2ca95374404e06f96f7be548bb078ef39cf23977647b5c611a3e52a3b33",
+      "size_bytes": 954,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_hidden_order_attribution.py",
+      "sha256": "bd7e94856d52714fe8ddacb905c1e59dd9a1edb124b3e40fe364074a8f4639f4",
+      "size_bytes": 1523,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_iceberg_orders.py",
+      "sha256": "4d65ec49d4b57abfa51c44ebb5fadb7b930e5471a02d1f2ce67442db51a1be10",
+      "size_bytes": 687,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_latency_distribution.py",
+      "sha256": "f36fe8aaaef719c669582f7e773383c6f01f4b0163730e39e75b0dfc99e76035",
+      "size_bytes": 990,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_liquidation_engine.py",
+      "sha256": "6c4399e001d214099ca7b0cd938386dbd2efb8b5731fd0d700fff6dcd0cfc8dd",
+      "size_bytes": 1556,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_live_queue_calibration.py",
+      "sha256": "29d7c7c920df1199e8263a1cbe2cf15cbd75e7b0e4d58c31cbe9ba9660b734d7",
+      "size_bytes": 1372,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_live_queue_position.py",
+      "sha256": "ff40068eae27c37c4f018f2ee7a0ac920481e4b496bbba0d5b6cebc240b3251d",
+      "size_bytes": 1103,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_market_position.py",
+      "sha256": "62b5d0eb8aa249673eab999efccd87e837f864b6fb9835bb163cb57690706db3",
+      "size_bytes": 655,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_multi_symbol.py",
+      "sha256": "72c850011685c3a18e94473bf24f3ba2b0da6751018eafb570484c6faada2879",
+      "size_bytes": 3280,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_multi_symbol_cross_margin.py",
+      "sha256": "125ad36da82919ced273cbb7c0836981f8f0e1955467dbaa0bdeb09b912f297b",
+      "size_bytes": 2275,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_okx_archive.py",
+      "sha256": "e8ec7223367b9728e9d8d0e4bcae246c82eebd8a2368c3e1fc3e64f572d524ba",
+      "size_bytes": 1910,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_options_greeks.py",
+      "sha256": "67816baca3b41803f6d081f6d1031b1bd4b0ac1394faf0eab82db191352fd38e",
+      "size_bytes": 1439,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_options_pricing.py",
+      "sha256": "33a2464e7cad18cd1a6827b456349d8805f9c8c06267400999fad3470d53a053",
+      "size_bytes": 1674,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_order_journey_forensics.py",
+      "sha256": "006640f8e1f82a721f7e9c829d6c497ba3267d323247d4848ff1c001ad1fe644",
+      "size_bytes": 1257,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_orderbook_iterator.py",
+      "sha256": "6ce1f1b77c50ba357dbe4dd64ff8e089a89b542e11c8460bb1abccf6ffdb3e74",
+      "size_bytes": 2512,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_pro_rata_matching.py",
+      "sha256": "168f925f13f53811452c642cae5bdd9d66e8d2ccb6b8e488bff9b16476edc387",
+      "size_bytes": 505,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_rate_limit_aware_market_maker.py",
+      "sha256": "5d75fd926bada2f15964f37f0a352773c674011e4239a713dae43dea7edabd95",
+      "size_bytes": 1918,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_rate_limit_policy.py",
+      "sha256": "8543771ec9660c06e3a9e73cea6ab5d3eaaf8540015afc20c89a2d1d2d811877",
+      "size_bytes": 711,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_realistic_backtest.py",
+      "sha256": "c3c2350e83fc6797281cddea6a49b5527912d9d6f8414b7d8c2ec6b40975e4ba",
+      "size_bytes": 2242,
+      "topic": "backtest"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_rolling_top_k.py",
+      "sha256": "e5e23b5cbf15fd97408f16ffe5421770533fc99b8d524aa6b8995600a8294d5d",
+      "size_bytes": 1833,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_stp_modes.py",
+      "sha256": "cc816a51ea04e354dbffb29695939cd42294ceb847a1e4f2f8dcb0f8cf89b9b6",
+      "size_bytes": 782,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_submit_latency_watcher.py",
+      "sha256": "4fe459a7353b5b2cbf46e707eccb311a950de1239521fcbb0ea957e316c26e50",
+      "size_bytes": 396,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_tape_roundtrip.py",
+      "sha256": "825fb4e47bb63c6471e5c8721b102812b1f32e1e033fe7289f28bfe5ec2ca1dd",
+      "size_bytes": 2432,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_venue_downtime.py",
+      "sha256": "2a845ace59ad850d70372ec07455f3acf074423d31c5781e3c928f364896649d",
+      "size_bytes": 1282,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_venue_stack_backtest.py",
+      "sha256": "112cbc9981a437ea78b0656a0a80340532bc8d22df2d185571a3c9c549c7ec8a",
+      "size_bytes": 1986,
+      "topic": "backtest"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_xs_panel.py",
+      "sha256": "2d68505ffb21530f04c4f2ab06079f04a096706f7a0b5db81752d06c49f529a7",
+      "size_bytes": 2670,
+      "topic": "strategy"
+    }
+  ],
+  "version": 1
+}

@@ -1,14 +1,14 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/log/log.h"
-#include "flox/util/base/time.h"
+#include "lrvx/log/log.h"
+#include "lrvx/util/base/time.h"
 
 #define NO_COUT 1
 
@@ -22,14 +22,14 @@ demo::LatencyCollector collector;
 
 int main()
 {
-  flox::init_timebase_mapping();
+  lrvx::init_timebase_mapping();
 
   demo::EngineConfig cfg{};
   demo::DemoBuilder builder(cfg);
   auto engine = builder.build();
 
 #if NO_COUT
-  FLOX_LOG_OFF();
+  LRVX_LOG_OFF();
 #endif
 
   engine->start();
@@ -39,10 +39,10 @@ int main()
   engine->stop();
 
 #if NO_COUT
-  FLOX_LOG_ON();
+  LRVX_LOG_ON();
 #endif
 
-  FLOX_LOG("demo finished");
+  LRVX_LOG("demo finished");
 
   collector.report();
 }

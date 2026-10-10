@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-// flox_backtest_runner_run_bars() and flox_backtest_runner_run_ohlcv() take
+// lrvx_backtest_runner_run_bars() and lrvx_backtest_runner_run_ohlcv() take
 // timestamps that are documented and named as already-nanoseconds
 // (start_time_ns / end_time_ns, timestamps_ns). BacktestRunnerImpl used to
 // run every one of them back through normalizeTs(), a unit-guessing helper
@@ -19,7 +19,7 @@
 //
 // No sanitizer needed to see this: the corrupted value is just wrong.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -29,14 +29,14 @@ namespace
 
 struct BarState
 {
-  FloxStrategyHandle strategy{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
   uint32_t symbol{0};
   int64_t last_start_ns{-1};
   int64_t last_end_ns{-1};
   int bar_count{0};
 };
 
-void on_bar(void* ud, const FloxSymbolContext*, const FloxBarData* bar)
+void on_bar(void* ud, const LrvxSymbolContext*, const LrvxBarData* bar)
 {
   auto* st = static_cast<BarState*>(ud);
   st->last_start_ns = bar->start_time_ns;
@@ -50,7 +50,7 @@ struct TradeState
   int trade_count{0};
 };
 
-void on_trade(void* ud, const FloxSymbolContext*, const FloxTradeData* trade)
+void on_trade(void* ud, const LrvxSymbolContext*, const LrvxTradeData* trade)
 {
   auto* st = static_cast<TradeState*>(ud);
   st->last_ts_ns = trade->exchange_ts_ns;
@@ -67,24 +67,24 @@ TEST(CapiBacktestTimestamps, RunBarsPassesNanosecondsThroughUnmodified)
   constexpr int64_t kStartNs = 60'000'000'000LL;
   constexpr int64_t kEndNs = 119'999'999'999LL;
 
-  auto* registry = flox_registry_create();
+  auto* registry = lrvx_registry_create();
   ASSERT_NE(registry, nullptr);
-  uint32_t sym = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
+  uint32_t sym = lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
 
   BarState state;
   state.symbol = sym;
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_bar = on_bar;
   cb.user_data = &state;
   uint32_t syms[] = {sym};
-  auto* strat = flox_strategy_create(/*id=*/1, syms, 1, registry, cb);
+  auto* strat = lrvx_strategy_create(/*id=*/1, syms, 1, registry, cb);
   ASSERT_NE(strat, nullptr);
   state.strategy = strat;
 
-  auto* btr = flox_backtest_runner_create(registry, /*fee=*/0.0, /*initial_capital=*/10000.0);
+  auto* btr = lrvx_backtest_runner_create(registry, /*fee=*/0.0, /*initial_capital=*/10000.0);
   ASSERT_NE(btr, nullptr);
-  flox_backtest_runner_set_strategy(btr, strat);
+  lrvx_backtest_runner_set_strategy(btr, strat);
 
   int64_t starts[1] = {kStartNs};
   int64_t ends[1] = {kEndNs};
@@ -94,8 +94,8 @@ TEST(CapiBacktestTimestamps, RunBarsPassesNanosecondsThroughUnmodified)
   double closes[1] = {100.5};
   double volumes[1] = {10.0};
 
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows, closes,
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows, closes,
                                          volumes, 1, "BTC", /*bar_type=*/0,
                                          /*bar_type_param=*/0, &stats);
   EXPECT_EQ(rc, 1);
@@ -104,45 +104,45 @@ TEST(CapiBacktestTimestamps, RunBarsPassesNanosecondsThroughUnmodified)
       << "run_bars must not rescale a value that is already nanoseconds by contract";
   EXPECT_EQ(state.last_end_ns, kEndNs);
 
-  flox_strategy_destroy(strat);
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
+  lrvx_strategy_destroy(strat);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
 }
 
 TEST(CapiBacktestTimestamps, RunOhlcvPassesNanosecondsThroughUnmodified)
 {
-  // Same hazard, run_ohlcv's timestamps_ns parameter: flox_backtest_
+  // Same hazard, run_ohlcv's timestamps_ns parameter: lrvx_backtest_
   // runner_run_ohlcv documents nanoseconds explicitly.
   constexpr int64_t kTsNs = 60'000'000'000LL;
 
-  auto* registry = flox_registry_create();
+  auto* registry = lrvx_registry_create();
   ASSERT_NE(registry, nullptr);
-  uint32_t sym = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
+  uint32_t sym = lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
 
   TradeState state;
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_trade = on_trade;
   cb.user_data = &state;
   uint32_t syms[] = {sym};
-  auto* strat = flox_strategy_create(/*id=*/1, syms, 1, registry, cb);
+  auto* strat = lrvx_strategy_create(/*id=*/1, syms, 1, registry, cb);
   ASSERT_NE(strat, nullptr);
 
-  auto* btr = flox_backtest_runner_create(registry, /*fee=*/0.0, /*initial_capital=*/10000.0);
+  auto* btr = lrvx_backtest_runner_create(registry, /*fee=*/0.0, /*initial_capital=*/10000.0);
   ASSERT_NE(btr, nullptr);
-  flox_backtest_runner_set_strategy(btr, strat);
+  lrvx_backtest_runner_set_strategy(btr, strat);
 
   int64_t timestamps[1] = {kTsNs};
   double closes[1] = {100.5};
 
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_ohlcv(btr, timestamps, closes, 1, "BTC", &stats);
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_ohlcv(btr, timestamps, closes, 1, "BTC", &stats);
   EXPECT_EQ(rc, 1);
   ASSERT_EQ(state.trade_count, 1);
   EXPECT_EQ(state.last_ts_ns, kTsNs)
       << "run_ohlcv must not rescale a value that is already nanoseconds by contract";
 
-  flox_strategy_destroy(strat);
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
+  lrvx_strategy_destroy(strat);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
 }

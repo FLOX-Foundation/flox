@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,17 +16,17 @@
 #include <tuple>
 #include <vector>
 
-#include "flox/common.h"
-#include "flox/pricing/american.h"
-#include "flox/pricing/black_scholes.h"
-#include "flox/pricing/carry.h"
-#include "flox/pricing/greeks.h"
-#include "flox/pricing/svi.h"
-#include "flox/pricing/vol_cone.h"
+#include "lrvx/common.h"
+#include "lrvx/pricing/american.h"
+#include "lrvx/pricing/black_scholes.h"
+#include "lrvx/pricing/carry.h"
+#include "lrvx/pricing/greeks.h"
+#include "lrvx/pricing/svi.h"
+#include "lrvx/pricing/vol_cone.h"
 
 namespace py = pybind11;
 
-// Option pricing primitives (flox::pricing). Pure functions, exposed as
+// Option pricing primitives (lrvx::pricing). Pure functions, exposed as
 // top-level module functions like the batch indicators (adf, hurst_dfa) — not
 // C ABI exports, so no IDL group / cross-binding parity requirement.
 //
@@ -37,16 +37,16 @@ inline void bindPricing(py::module_& m)
 {
   if (!py::hasattr(m, "OptionType"))
   {
-    py::enum_<flox::OptionType>(m, "OptionType")
-        .value("CALL", flox::OptionType::CALL)
-        .value("PUT", flox::OptionType::PUT);
+    py::enum_<lrvx::OptionType>(m, "OptionType")
+        .value("CALL", lrvx::OptionType::CALL)
+        .value("PUT", lrvx::OptionType::PUT);
   }
 
   m.def(
       "bs_price",
-      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+      [](lrvx::OptionType type, double spot, double strike, double t, double vol, double rate,
          double carry) -> double
-      { return flox::pricing::bsPrice(type, spot, strike, t, rate, carry, vol); },
+      { return lrvx::pricing::bsPrice(type, spot, strike, t, rate, carry, vol); },
       py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
       py::arg("rate") = 0.0, py::arg("carry") = 0.0,
       "Generalized Black-Scholes-Merton price. t in years; rate=discount r; "
@@ -56,16 +56,16 @@ inline void bindPricing(py::module_& m)
   m.def(
       "bs_vega",
       [](double spot, double strike, double t, double vol, double rate, double carry) -> double
-      { return flox::pricing::bsVega(spot, strike, t, rate, carry, vol); },
+      { return lrvx::pricing::bsVega(spot, strike, t, rate, carry, vol); },
       py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"), py::arg("rate") = 0.0,
       py::arg("carry") = 0.0, "Black-Scholes vega (call/put identical).");
 
   m.def(
       "implied_vol",
-      [](flox::OptionType type, double price, double spot, double strike, double t, double rate,
+      [](lrvx::OptionType type, double price, double spot, double strike, double t, double rate,
          double carry) -> py::dict
       {
-        const auto r = flox::pricing::impliedVol(type, price, spot, strike, t, rate, carry);
+        const auto r = lrvx::pricing::impliedVol(type, price, spot, strike, t, rate, carry);
         py::dict d;
         d["vol"] = r.vol;
         d["converged"] = r.converged;
@@ -81,16 +81,16 @@ inline void bindPricing(py::module_& m)
   m.def(
       "forward_price",
       [](double spot, double t, double carry) -> double
-      { return flox::pricing::forwardPrice(spot, t, carry); },
+      { return lrvx::pricing::forwardPrice(spot, t, carry); },
       py::arg("spot"), py::arg("t"), py::arg("carry"),
       "Forward price spot * exp(carry * t).");
 
   m.def(
       "binomial_price",
-      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+      [](lrvx::OptionType type, double spot, double strike, double t, double vol, double rate,
          double carry, int steps, bool american) -> double
       {
-        return flox::pricing::binomialPrice(type, spot, strike, t, rate, carry, vol, steps,
+        return lrvx::pricing::binomialPrice(type, spot, strike, t, rate, carry, vol, steps,
                                             american);
       },
       py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
@@ -102,9 +102,9 @@ inline void bindPricing(py::module_& m)
 
   m.def(
       "baw_price",
-      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+      [](lrvx::OptionType type, double spot, double strike, double t, double vol, double rate,
          double carry) -> double
-      { return flox::pricing::bawPrice(type, spot, strike, t, rate, carry, vol); },
+      { return lrvx::pricing::bawPrice(type, spot, strike, t, rate, carry, vol); },
       py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
       py::arg("rate") = 0.0, py::arg("carry") = 0.0,
       "Barone-Adesi-Whaley American price: European value plus a closed-form "
@@ -114,10 +114,10 @@ inline void bindPricing(py::module_& m)
 
   m.def(
       "greeks",
-      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+      [](lrvx::OptionType type, double spot, double strike, double t, double vol, double rate,
          double carry) -> py::dict
       {
-        const auto g = flox::pricing::greeks(type, spot, strike, t, rate, carry, vol);
+        const auto g = lrvx::pricing::greeks(type, spot, strike, t, rate, carry, vol);
         py::dict d;
         d["delta"] = g.delta;
         d["gamma"] = g.gamma;
@@ -134,10 +134,10 @@ inline void bindPricing(py::module_& m)
 
   m.def(
       "second_order_greeks",
-      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+      [](lrvx::OptionType type, double spot, double strike, double t, double vol, double rate,
          double carry) -> py::dict
       {
-        const auto s = flox::pricing::secondOrderGreeks(type, spot, strike, t, rate, carry, vol);
+        const auto s = lrvx::pricing::secondOrderGreeks(type, spot, strike, t, rate, carry, vol);
         py::dict d;
         d["vanna"] = s.vanna;  // d(delta)/d(vol)
         d["volga"] = s.volga;  // d(vega)/d(vol)
@@ -153,7 +153,7 @@ inline void bindPricing(py::module_& m)
   m.def(
       "cost_of_carry",
       [](double rate, double dividend_yield, double borrow_rate) -> double
-      { return flox::pricing::costOfCarry(rate, dividend_yield, borrow_rate); },
+      { return lrvx::pricing::costOfCarry(rate, dividend_yield, borrow_rate); },
       py::arg("rate"), py::arg("dividend_yield") = 0.0, py::arg("borrow_rate") = 0.0,
       "Cost-of-carry b = rate - dividend_yield - borrow_rate. Crypto/Black-76 "
       "pass all zero; equity nets the financing pieces; FX passes the foreign "
@@ -161,16 +161,16 @@ inline void bindPricing(py::module_& m)
 
   m.def(
       "bs_price_discrete_dividends",
-      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+      [](lrvx::OptionType type, double spot, double strike, double t, double vol, double rate,
          const std::vector<std::tuple<double, double>>& dividends) -> double
       {
-        std::vector<flox::pricing::Dividend> divs;
+        std::vector<lrvx::pricing::Dividend> divs;
         divs.reserve(dividends.size());
         for (const auto& d : dividends)
         {
           divs.push_back({std::get<0>(d), std::get<1>(d)});
         }
-        return flox::pricing::bsPriceDiscreteDividends(type, spot, strike, t, rate, vol, divs);
+        return lrvx::pricing::bsPriceDiscreteDividends(type, spot, strike, t, rate, vol, divs);
       },
       py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
       py::arg("rate"), py::arg("dividends"),
@@ -183,7 +183,7 @@ inline void bindPricing(py::module_& m)
       "calibrate_svi",
       [](const std::vector<double>& k, const std::vector<double>& w) -> py::dict
       {
-        const auto p = flox::pricing::calibrateSVI(k, w);
+        const auto p = lrvx::pricing::calibrateSVI(k, w);
         py::dict d;
         d["a"] = p.a;
         d["b"] = p.b;
@@ -199,40 +199,40 @@ inline void bindPricing(py::module_& m)
 
   if (!py::hasattr(m, "VolSurface"))
   {
-    py::class_<flox::pricing::VolSurface>(m, "VolSurface",
+    py::class_<lrvx::pricing::VolSurface>(m, "VolSurface",
                                           "SVI implied-volatility surface: a term structure of "
                                           "calibrated slices that interpolates vol in total-variance "
                                           "space. Mark a backtest to this instead of a flat vol.")
         .def(py::init<>())
         .def(
             "add_slice",
-            [](flox::pricing::VolSurface& s, double t, double a, double b, double rho, double mm,
+            [](lrvx::pricing::VolSurface& s, double t, double a, double b, double rho, double mm,
                double sigma)
-            { s.addSlice(t, flox::pricing::SVIParams{a, b, rho, mm, sigma}); },
+            { s.addSlice(t, lrvx::pricing::SVIParams{a, b, rho, mm, sigma}); },
             py::arg("t"), py::arg("a"), py::arg("b"), py::arg("rho"), py::arg("m"), py::arg("sigma"),
             "Add a calibrated SVI slice at expiry t (years).")
-        .def("implied_vol", &flox::pricing::VolSurface::impliedVol, py::arg("log_moneyness"),
+        .def("implied_vol", &lrvx::pricing::VolSurface::impliedVol, py::arg("log_moneyness"),
              py::arg("t"), "Black-Scholes implied vol at (log-moneyness, expiry).")
-        .def("total_variance", &flox::pricing::VolSurface::totalVariance, py::arg("log_moneyness"),
+        .def("total_variance", &lrvx::pricing::VolSurface::totalVariance, py::arg("log_moneyness"),
              py::arg("t"), "Total implied variance at (log-moneyness, expiry).")
-        .def("is_calendar_free", &flox::pricing::VolSurface::isCalendarFree,
+        .def("is_calendar_free", &lrvx::pricing::VolSurface::isCalendarFree,
              py::arg("k_lo") = -1.5, py::arg("k_hi") = 1.5, py::arg("samples") = 50,
              "True when total variance is non-decreasing in time (no calendar arbitrage).")
-        .def("slice_count", &flox::pricing::VolSurface::sliceCount);
+        .def("slice_count", &lrvx::pricing::VolSurface::sliceCount);
   }
 
   m.def(
       "build_surface_as_of",
       [](const std::vector<std::tuple<int64_t, double, double, double>>& quotes,
-         int64_t asof_ns) -> flox::pricing::VolSurface
+         int64_t asof_ns) -> lrvx::pricing::VolSurface
       {
-        std::vector<flox::pricing::DatedVolQuote> dq;
+        std::vector<lrvx::pricing::DatedVolQuote> dq;
         dq.reserve(quotes.size());
         for (const auto& q : quotes)
         {
           dq.push_back({std::get<0>(q), std::get<1>(q), std::get<2>(q), std::get<3>(q)});
         }
-        return flox::pricing::buildSurfaceAsOf(dq, asof_ns);
+        return lrvx::pricing::buildSurfaceAsOf(dq, asof_ns);
       },
       py::arg("quotes"), py::arg("asof_ns"),
       "Build a point-in-time VolSurface from (ts_ns, t, log_moneyness, iv) "
@@ -243,7 +243,7 @@ inline void bindPricing(py::module_& m)
   m.def(
       "realized_vol",
       [](const std::vector<double>& returns, double periods_per_year) -> double
-      { return flox::pricing::realizedVol(returns, periods_per_year); },
+      { return lrvx::pricing::realizedVol(returns, periods_per_year); },
       py::arg("returns"), py::arg("periods_per_year"),
       "Annualized realized vol from log returns: sample stdev * sqrt(periods_per_year).");
 
@@ -252,7 +252,7 @@ inline void bindPricing(py::module_& m)
       [](const std::vector<double>& prices, const std::vector<size_t>& horizons,
          double periods_per_year) -> py::list
       {
-        const auto cone = flox::pricing::volCone(prices, horizons, periods_per_year);
+        const auto cone = lrvx::pricing::volCone(prices, horizons, periods_per_year);
         py::list out;
         for (const auto& c : cone)
         {
@@ -277,7 +277,7 @@ inline void bindPricing(py::module_& m)
   m.def(
       "implied_percentile_in_cone",
       [](const std::vector<double>& realized_samples, double implied_vol) -> double
-      { return flox::pricing::impliedPercentileInCone(realized_samples, implied_vol); },
+      { return lrvx::pricing::impliedPercentileInCone(realized_samples, implied_vol); },
       py::arg("realized_samples"), py::arg("implied_vol"),
       "Fraction of realized-vol samples at or below implied_vol (0..1). High = "
       "options rich vs realized history; low = cheap. NaN on empty samples.");

@@ -45,8 +45,8 @@ Read side, now `BigInt`:
 - backtest stats `startTimeNs` / `endTimeNs`, equity-point `timestampNs`
 - trace reader run bounds, partition `fromNs` / `toNs` / `warmupFromNs`,
   merged-tape `firstEventNs` / `lastEventNs`
-- `bar.ts` on every bar object: the aggregators (`flox.timeBars` and the
-  rest) and `flox.loadCsv` / `Engine.loadCsv`
+- `bar.ts` on every bar object: the aggregators (`lrvx.timeBars` and the
+  rest) and `lrvx.loadCsv` / `Engine.loadCsv`
 
 `bar.ts` from `loadCsv` changed unit as well as type. It used to be a
 millisecond `Number`, while every other bar source reported nanoseconds,
@@ -146,8 +146,8 @@ and the process died.
 
 ```javascript
 // Each of these used to be a segmentation fault. Each now throws.
-new flox.DataWriter(Symbol('out'));
-new flox.DataReader({ toString: function () { throw new Error('no'); } });
+new lrvx.DataWriter(Symbol('out'));
+new lrvx.DataReader({ toString: function () { throw new Error('no'); } });
 graph.addNode(Symbol('ema'), [], function () { return []; });
 ```
 

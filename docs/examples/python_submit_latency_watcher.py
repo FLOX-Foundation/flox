@@ -1,8 +1,8 @@
 """Detect submit-side late-cross rejections from a strategy."""
-import flox_py as flox
+import lrvx
 
 
-class Watcher(flox.Strategy):
+class Watcher(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self.post_only_failures = 0

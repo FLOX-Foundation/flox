@@ -1,9 +1,9 @@
 # The Disruptor Pattern
 
 !!! info "Internals — for context only"
-    This page describes how the C++ engine delivers events between threads. If you write strategies in Python, Node.js, or Codon, you don't see any of this directly — you just receive events in your callbacks. Read this if you want to understand *why* FLOX scales the way it does, not because you need it to write code.
+    This page describes how the C++ engine delivers events between threads. If you write strategies in Python, Node.js, or Codon, you don't see any of this directly — you just receive events in your callbacks. Read this if you want to understand *why* lrvx scales the way it does, not because you need it to write code.
 
-Why FLOX uses ring buffers for event delivery.
+Why lrvx uses ring buffers for event delivery.
 
 ## The Problem
 
@@ -44,9 +44,9 @@ Key insights:
 3. **Cache-line padding** — False sharing eliminated
 4. **Batching** — Consumers can process multiple events
 
-## FLOX Implementation
+## lrvx Implementation
 
-FLOX's `EventBus` implements a Disruptor-style ring buffer:
+lrvx's `EventBus` implements a Disruptor-style ring buffer:
 
 ```cpp
 template <typename Event,
@@ -152,7 +152,7 @@ alignas(64) std::atomic<int64_t> producer_seq;
 alignas(64) std::atomic<int64_t> consumer_seq;
 ```
 
-FLOX uses `alignas(64)` throughout `EventBus`:
+lrvx uses `alignas(64)` throughout `EventBus`:
 
 ```cpp
 alignas(64) std::atomic<bool> _running{false};
@@ -311,7 +311,7 @@ one mutex, one waiter count, however many rings hang off it. Point every bus
 the thread steps at the same set, and a publisher into any of them wakes it.
 
 ```cpp
-flox::WakeSet set;
+lrvx::WakeSet set;
 
 for (auto& bus : buses) {
   bus->setOwnConsumerThreads(false);
@@ -361,10 +361,10 @@ bounds the sleep only by the net, and a 50 ms net under a cadence measured in
 single-digit milliseconds is not a net, it is the schedule.
 
 ```cpp
-int64_t nextSweep = flox::venue::venueMonoNs();
+int64_t nextSweep = lrvx::venue::venueMonoNs();
 
 while (running) {
-  const int64_t now = flox::venue::venueMonoNs();
+  const int64_t now = lrvx::venue::venueMonoNs();
   if (now >= nextSweep) {
     nextSweep = now + cadenceNs;
     sweep();
@@ -414,7 +414,7 @@ consumers, and a bus with neither pays one predictable branch.
 
 ## Multiple Consumers
 
-FLOX supports multiple consumers per bus:
+lrvx supports multiple consumers per bus:
 
 ```mermaid
 flowchart LR
@@ -710,5 +710,5 @@ happened, so `lastChange` moves only together with `lastSeen`.
 ## Further Reading
 
 - [LMAX Disruptor Paper](https://lmax-exchange.github.io/disruptor/disruptor.html)
-- [Memory Model](memory-model.md) — How FLOX handles event ownership
+- [Memory Model](memory-model.md) — How lrvx handles event ownership
 - [Architecture Overview](architecture.md) — Full system design

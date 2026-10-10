@@ -3,7 +3,7 @@
 // exercised via the Python pytest suite where the engine drives signals
 // through the runner.
 
-const flox = require('..');
+const lrvx = require('..');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,18 +13,18 @@ function check(label, ok) {
   console.log('ok: ' + label);
 }
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flox-trace-attach-'));
-const runPath = path.join(tmp, 'run.floxrun');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrvx-trace-attach-'));
+const runPath = path.join(tmp, 'run.lrvxrun');
 
-const rec = new flox.TraceRecorder({
+const rec = new lrvx.TraceRecorder({
   path: runPath,
   strategyId: 'node-attach-test',
   strategyHash: 'sha256:test',
   runStartedNs: Date.now() * 1000000,
 });
 
-const reg = new flox.SymbolRegistry();
-const runner = new flox.Runner(reg, () => {});
+const reg = new lrvx.SymbolRegistry();
+const runner = new lrvx.Runner(reg, () => {});
 
 runner.attachTraceRecorder(rec);
 check('attach a recorder', true);
@@ -54,7 +54,7 @@ check('traceFill accepts opts object', true);
 rec.close();
 
 // Read back through TraceReader to confirm the events landed.
-const reader = new flox.TraceReader(runPath);
+const reader = new lrvx.TraceReader(runPath);
 const orderCount = reader.readAllOrderEvents().length;
 const fillCount = reader.readAllFills().length;
 check('1 order event written', orderCount === 1);

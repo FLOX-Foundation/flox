@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/aggregators/quantile.h"
+#include "lrvx/replay/aggregators/quantile.h"
 
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <vector>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 QuantileAggregator::QuantileAggregator(std::vector<int64_t> window_ns_list,
@@ -208,4 +208,4 @@ void QuantileAggregator::merge(const IAggregator& other)
   }
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

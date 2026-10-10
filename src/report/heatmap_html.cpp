@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/report/heatmap_html.h"
+#include "lrvx/report/heatmap_html.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,7 +15,7 @@
 #include <limits>
 #include <sstream>
 
-namespace flox::report
+namespace lrvx::report
 {
 
 namespace
@@ -213,7 +213,7 @@ std::string renderHeatmapHtml(const HeatmapData& d)
   std::ostringstream html;
   html << "<!doctype html>\n<html lang=\"en\">\n<head>\n"
        << "<meta charset=\"utf-8\">\n"
-       << "<title>" << escape(d.title.empty() ? "FLOX heatmap" : d.title)
+       << "<title>" << escape(d.title.empty() ? "lrvx heatmap" : d.title)
        << "</title>\n"
        << "<style>\n"
        << "  body{margin:0;background:#0e1116;color:#e6edf3;"
@@ -226,4 +226,4 @@ std::string renderHeatmapHtml(const HeatmapData& d)
   return html.str();
 }
 
-}  // namespace flox::report
+}  // namespace lrvx::report

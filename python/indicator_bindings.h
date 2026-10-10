@@ -5,7 +5,7 @@
 
 #include <pybind11/stl.h>
 #include "bindings_common.h"
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,33 +13,33 @@
 #include <optional>
 #include <string>
 
-#include "flox/indicator/adf.h"
-#include "flox/indicator/adx.h"
-#include "flox/indicator/atr.h"
-#include "flox/indicator/autocorrelation.h"
-#include "flox/indicator/bollinger.h"
-#include "flox/indicator/cci.h"
-#include "flox/indicator/chop.h"
-#include "flox/indicator/correlation.h"
-#include "flox/indicator/cvd.h"
-#include "flox/indicator/dema.h"
-#include "flox/indicator/ema.h"
-#include "flox/indicator/hurst.h"
-#include "flox/indicator/kama.h"
-#include "flox/indicator/kurtosis.h"
-#include "flox/indicator/macd.h"
-#include "flox/indicator/obv.h"
-#include "flox/indicator/parkinson_vol.h"
-#include "flox/indicator/rma.h"
-#include "flox/indicator/rogers_satchell_vol.h"
-#include "flox/indicator/rolling_zscore.h"
-#include "flox/indicator/rsi.h"
-#include "flox/indicator/shannon_entropy.h"
-#include "flox/indicator/skewness.h"
-#include "flox/indicator/slope.h"
-#include "flox/indicator/sma.h"
-#include "flox/indicator/stochastic.h"
-#include "flox/indicator/vwap.h"
+#include "lrvx/indicator/adf.h"
+#include "lrvx/indicator/adx.h"
+#include "lrvx/indicator/atr.h"
+#include "lrvx/indicator/autocorrelation.h"
+#include "lrvx/indicator/bollinger.h"
+#include "lrvx/indicator/cci.h"
+#include "lrvx/indicator/chop.h"
+#include "lrvx/indicator/correlation.h"
+#include "lrvx/indicator/cvd.h"
+#include "lrvx/indicator/dema.h"
+#include "lrvx/indicator/ema.h"
+#include "lrvx/indicator/hurst.h"
+#include "lrvx/indicator/kama.h"
+#include "lrvx/indicator/kurtosis.h"
+#include "lrvx/indicator/macd.h"
+#include "lrvx/indicator/obv.h"
+#include "lrvx/indicator/parkinson_vol.h"
+#include "lrvx/indicator/rma.h"
+#include "lrvx/indicator/rogers_satchell_vol.h"
+#include "lrvx/indicator/rolling_zscore.h"
+#include "lrvx/indicator/rsi.h"
+#include "lrvx/indicator/shannon_entropy.h"
+#include "lrvx/indicator/skewness.h"
+#include "lrvx/indicator/slope.h"
+#include "lrvx/indicator/sma.h"
+#include "lrvx/indicator/stochastic.h"
+#include "lrvx/indicator/vwap.h"
 
 namespace py = pybind11;
 
@@ -62,7 +62,7 @@ inline void checkPeriodPositive(size_t period, const char* name)
 {
   if (period == 0)
   {
-    throw flox::FloxError("E_IND_001", std::string(name) + ": period must be > 0, got 0.");
+    throw lrvx::LrvxError("E_IND_001", std::string(name) + ": period must be > 0, got 0.");
   }
 }
 
@@ -274,19 +274,19 @@ inline void bindIndicators(py::module_& m)
 {
   m.def(
       "ema", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::EMA(period), input); },
+      { return computeSingle(lrvx::indicator::EMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
       "sma", [](contiguous_double input, size_t period)
       {
         checkPeriodPositive(period, "sma");
-        return computeSingle(flox::indicator::SMA(period), input); },
+        return computeSingle(lrvx::indicator::SMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
       "rsi", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::RSI(period), input); },
+      { return computeSingle(lrvx::indicator::RSI(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
@@ -304,7 +304,7 @@ inline void bindIndicators(py::module_& m)
         auto* o = result.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::ATR(period).compute(
+          lrvx::indicator::ATR(period).compute(
               std::span<const double>(h, n), std::span<const double>(l, n),
               std::span<const double>(c, n), std::span<double>(o, n));
         }
@@ -324,7 +324,7 @@ inline void bindIndicators(py::module_& m)
         auto* hp = hist.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::MACD(fast, slow, signal)
+          lrvx::indicator::MACD(fast, slow, signal)
               .compute(std::span<const double>(inp, n),
                        std::span<double>(lp, n), std::span<double>(sp, n), std::span<double>(hp, n));
         }
@@ -338,12 +338,12 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "slope", [](contiguous_double input, size_t length)
-      { return computeSingle(flox::indicator::Slope(length), input); },
+      { return computeSingle(lrvx::indicator::Slope(length), input); },
       py::arg("input"), py::arg("length") = 1);
 
   m.def(
       "kama", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::KAMA(period), input); },
+      { return computeSingle(lrvx::indicator::KAMA(period), input); },
       py::arg("input"), py::arg("period") = 10);
 
   m.def(
@@ -358,7 +358,7 @@ inline void bindIndicators(py::module_& m)
         auto* o = result.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::OBV().compute(
+          lrvx::indicator::OBV().compute(
               std::span<const double>(c, n), std::span<const double>(v, n), std::span<double>(o, n));
         }
         return result;
@@ -376,10 +376,10 @@ inline void bindIndicators(py::module_& m)
         auto* h = high.data();
         auto* l = low.data();
         auto* c = close.data();
-        flox::indicator::AdxResult result;
+        lrvx::indicator::AdxResult result;
         {
           py::gil_scoped_release release;
-          result = flox::indicator::ADX(period).compute(
+          result = lrvx::indicator::ADX(period).compute(
               std::span<const double>(h, n), std::span<const double>(l, n),
               std::span<const double>(c, n));
         }
@@ -409,7 +409,7 @@ inline void bindIndicators(py::module_& m)
         std::vector<double> result;
         {
           py::gil_scoped_release release;
-          result = flox::indicator::CHOP(period).compute(
+          result = lrvx::indicator::CHOP(period).compute(
               std::span<const double>(h, n), std::span<const double>(l, n),
               std::span<const double>(c, n));
         }
@@ -426,10 +426,10 @@ inline void bindIndicators(py::module_& m)
         checkPeriodPositive(period, "bollinger");
         size_t n = input.request().shape[0];
         auto* inp = input.data();
-        flox::indicator::BollingerResult result;
+        lrvx::indicator::BollingerResult result;
         {
           py::gil_scoped_release release;
-          result = flox::indicator::Bollinger(period, stddev)
+          result = lrvx::indicator::Bollinger(period, stddev)
                        .compute(std::span<const double>(inp, n));
         }
         py::array_t<double> upper(n), middle(n), lower(n);
@@ -562,7 +562,7 @@ inline void bindIndicators(py::module_& m)
       "rma", [](contiguous_double input, size_t period)
       {
         checkPeriodPositive(period, "rma");
-        return computeSingle(flox::indicator::RMA(period), input); },
+        return computeSingle(lrvx::indicator::RMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
@@ -572,7 +572,7 @@ inline void bindIndicators(py::module_& m)
         size_t n = buf.shape[0];
         auto* ptr = static_cast<const double*>(buf.ptr);
         std::vector<double> result;
-        { py::gil_scoped_release r; result = flox::indicator::DEMA(period).compute(std::span<const double>(ptr, n)); }
+        { py::gil_scoped_release r; result = lrvx::indicator::DEMA(period).compute(std::span<const double>(ptr, n)); }
         py::array_t<double> out(n);
         fillArray(out.mutable_data(), result.data(), n);
         return out; },
@@ -585,7 +585,7 @@ inline void bindIndicators(py::module_& m)
         size_t n = buf.shape[0];
         auto* ptr = static_cast<const double*>(buf.ptr);
         std::vector<double> result;
-        { py::gil_scoped_release r; result = flox::indicator::TEMA(period).compute(std::span<const double>(ptr, n)); }
+        { py::gil_scoped_release r; result = lrvx::indicator::TEMA(period).compute(std::span<const double>(ptr, n)); }
         py::array_t<double> out(n);
         fillArray(out.mutable_data(), result.data(), n);
         return out; },
@@ -602,10 +602,10 @@ inline void bindIndicators(py::module_& m)
         auto* h = high.data();
         auto* l = low.data();
         auto* c = close.data();
-        flox::indicator::StochasticResult result;
+        lrvx::indicator::StochasticResult result;
         {
           py::gil_scoped_release r;
-          result = flox::indicator::Stochastic(k_period, d_period).compute(std::span<const double>(h, n), std::span<const double>(l, n), std::span<const double>(c, n));
+          result = lrvx::indicator::Stochastic(k_period, d_period).compute(std::span<const double>(h, n), std::span<const double>(l, n), std::span<const double>(c, n));
         }
         py::array_t<double> ko(n), dout(n);
         fillArray(ko.mutable_data(), result.k.data(), n);
@@ -632,7 +632,7 @@ inline void bindIndicators(py::module_& m)
         std::vector<double> result;
         {
           py::gil_scoped_release r;
-          result = flox::indicator::CCI(period).compute(
+          result = lrvx::indicator::CCI(period).compute(
               std::span<const double>(h, n), std::span<const double>(l, n), std::span<const double>(c, n));
         }
         py::array_t<double> out(n);
@@ -653,7 +653,7 @@ inline void bindIndicators(py::module_& m)
         std::vector<double> result;
         {
           py::gil_scoped_release r;
-          result = flox::indicator::VWAP(window).compute(
+          result = lrvx::indicator::VWAP(window).compute(
               std::span<const double>(c, n), std::span<const double>(v, n));
         }
         py::array_t<double> out(n);
@@ -680,7 +680,7 @@ inline void bindIndicators(py::module_& m)
         std::vector<double> result;
         {
           py::gil_scoped_release r;
-          result = flox::indicator::CVD().compute(
+          result = lrvx::indicator::CVD().compute(
               std::span<const double>(o, n), std::span<const double>(h, n),
               std::span<const double>(l, n), std::span<const double>(c, n),
               std::span<const double>(v, n));
@@ -693,22 +693,22 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "skewness", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::Skewness(period), input); },
+      { return computeSingle(lrvx::indicator::Skewness(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
       "kurtosis", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::Kurtosis(period), input); },
+      { return computeSingle(lrvx::indicator::Kurtosis(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
       "rolling_zscore", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::RollingZScore(period), input); },
+      { return computeSingle(lrvx::indicator::RollingZScore(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
       "shannon_entropy", [](contiguous_double input, size_t period, size_t bins)
-      { return computeSingle(flox::indicator::ShannonEntropy(period, bins), input); },
+      { return computeSingle(lrvx::indicator::ShannonEntropy(period, bins), input); },
       py::arg("input"), py::arg("period"), py::arg("bins") = 10);
 
   m.def(
@@ -723,7 +723,7 @@ inline void bindIndicators(py::module_& m)
         auto* o = result.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::ParkinsonVol(period).compute(
+          lrvx::indicator::ParkinsonVol(period).compute(
               std::span<const double>(h, n), std::span<const double>(l, n), std::span<double>(o, n));
         }
         return result;
@@ -747,7 +747,7 @@ inline void bindIndicators(py::module_& m)
         auto* out = result.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::RogersSatchellVol(period).compute(
+          lrvx::indicator::RogersSatchellVol(period).compute(
               std::span<const double>(o, n), std::span<const double>(h, n),
               std::span<const double>(l, n), std::span<const double>(c, n),
               std::span<double>(out, n));
@@ -763,10 +763,10 @@ inline void bindIndicators(py::module_& m)
         auto buf = input.request();
         size_t n = buf.shape[0];
         const auto* p = static_cast<const double*>(buf.ptr);
-        flox::indicator::AdfResult r;
+        lrvx::indicator::AdfResult r;
         {
           py::gil_scoped_release release;
-          r = flox::indicator::adf(std::span<const double>(p, n), max_lag, regression);
+          r = lrvx::indicator::adf(std::span<const double>(p, n), max_lag, regression);
         }
         py::dict d;
         d["test_stat"] = r.test_stat;
@@ -803,7 +803,7 @@ inline void bindIndicators(py::module_& m)
         double h;
         {
           py::gil_scoped_release release;
-          h = flox::indicator::hurst_dfa(std::span<const double>(p, n), scalesSpan);
+          h = lrvx::indicator::hurst_dfa(std::span<const double>(p, n), scalesSpan);
         }
         return h;
       },
@@ -825,7 +825,7 @@ inline void bindIndicators(py::module_& m)
         auto* o = result.mutable_data();
         {
           py::gil_scoped_release release;
-          auto out = flox::indicator::rolling_hurst(std::span<const double>(p, n), window);
+          auto out = lrvx::indicator::rolling_hurst(std::span<const double>(p, n), window);
           std::copy(out.begin(), out.end(), o);
         }
         return result;
@@ -845,7 +845,7 @@ inline void bindIndicators(py::module_& m)
         auto* o = result.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::AutoCorrelation(window, lag)
+          lrvx::indicator::AutoCorrelation(window, lag)
               .compute(std::span<const double>(p, n), std::span<double>(o, n));
         }
         return result;
@@ -867,63 +867,63 @@ inline void bindIndicators(py::module_& m)
         auto* o = result.mutable_data();
         {
           py::gil_scoped_release release;
-          flox::indicator::Correlation(period).compute(
+          lrvx::indicator::Correlation(period).compute(
               std::span<const double>(xp, n), std::span<const double>(yp, n), std::span<double>(o, n));
         }
         return result;
       },
       py::arg("x"), py::arg("y"), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::SMA>(m, "SMA")
+  bindSingleIndicator<lrvx::indicator::SMA>(m, "SMA")
       .def(py::init(
                [](size_t period)
                {
                  checkPeriodPositive(period, "SMA");
-                 return new flox::indicator::SMA(period);
+                 return new lrvx::indicator::SMA(period);
                }),
            py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::EMA>(m, "EMA")
+  bindSingleIndicator<lrvx::indicator::EMA>(m, "EMA")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::RMA>(m, "RMA")
+  bindSingleIndicator<lrvx::indicator::RMA>(m, "RMA")
       .def(py::init(
                [](size_t period)
                {
                  checkPeriodPositive(period, "RMA");
-                 return new flox::indicator::RMA(period);
+                 return new lrvx::indicator::RMA(period);
                }),
            py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::RSI>(m, "RSI")
+  bindSingleIndicator<lrvx::indicator::RSI>(m, "RSI")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindBarIndicator<flox::indicator::ATR>(m, "ATR")
+  bindBarIndicator<lrvx::indicator::ATR>(m, "ATR")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::DEMA>(m, "DEMA")
+  bindSingleIndicator<lrvx::indicator::DEMA>(m, "DEMA")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::TEMA>(m, "TEMA")
+  bindSingleIndicator<lrvx::indicator::TEMA>(m, "TEMA")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::KAMA>(m, "KAMA")
+  bindSingleIndicator<lrvx::indicator::KAMA>(m, "KAMA")
       .def(py::init<size_t, size_t, size_t>(), py::arg("period"), py::arg("fast") = 2,
            py::arg("slow") = 30);
 
-  bindSingleIndicator<flox::indicator::Slope>(m, "Slope")
+  bindSingleIndicator<lrvx::indicator::Slope>(m, "Slope")
       .def(py::init<size_t>(), py::arg("length"));
 
-  py::class_<flox::indicator::MACD>(m, "MACD")
+  py::class_<lrvx::indicator::MACD>(m, "MACD")
       .def(py::init<size_t, size_t, size_t>(), py::arg("fast") = 12, py::arg("slow") = 26,
            py::arg("signal") = 9)
       .def("compute",
-           [](const flox::indicator::MACD& self, contiguous_double input)
+           [](const lrvx::indicator::MACD& self, contiguous_double input)
            {
              auto buf = input.request();
              auto* p = static_cast<const double*>(buf.ptr);
              size_t n = buf.shape[0];
-             flox::indicator::MacdResult r;
+             lrvx::indicator::MacdResult r;
              {
                py::gil_scoped_release release;
                r = self.compute(std::span<const double>(p, n));
@@ -938,35 +938,35 @@ inline void bindIndicators(py::module_& m)
              d["histogram"] = hist;
              return d;
            })
-      .def("update", [](flox::indicator::MACD& self, double v) -> std::optional<double>
+      .def("update", [](lrvx::indicator::MACD& self, double v) -> std::optional<double>
            { self.update(v); return optFloat(self.value()); }, py::arg("value"))
-      .def("reset", &flox::indicator::MACD::reset)
-      .def_property_readonly("value", [](const flox::indicator::MACD& self)
+      .def("reset", &lrvx::indicator::MACD::reset)
+      .def_property_readonly("value", [](const lrvx::indicator::MACD& self)
                              { return optFloat(self.value()); })
-      .def_property_readonly("line", [](const flox::indicator::MACD& self)
+      .def_property_readonly("line", [](const lrvx::indicator::MACD& self)
                              { return optFloat(self.value()); })
-      .def_property_readonly("signal", [](const flox::indicator::MACD& self)
+      .def_property_readonly("signal", [](const lrvx::indicator::MACD& self)
                              { return optFloat(self.signalValue()); })
-      .def_property_readonly("histogram", [](const flox::indicator::MACD& self)
+      .def_property_readonly("histogram", [](const lrvx::indicator::MACD& self)
                              { return optFloat(self.histogramValue()); })
-      .def_property_readonly("ready", &flox::indicator::MACD::ready)
-      .def_property_readonly("count", &flox::indicator::MACD::count);
+      .def_property_readonly("ready", &lrvx::indicator::MACD::ready)
+      .def_property_readonly("count", &lrvx::indicator::MACD::count);
 
-  py::class_<flox::indicator::Bollinger>(m, "Bollinger")
+  py::class_<lrvx::indicator::Bollinger>(m, "Bollinger")
       .def(py::init(
                [](size_t period, double multiplier)
                {
                  checkPeriodPositive(period, "Bollinger");
-                 return new flox::indicator::Bollinger(period, multiplier);
+                 return new lrvx::indicator::Bollinger(period, multiplier);
                }),
            py::arg("period") = 20, py::arg("multiplier") = 2.0)
       .def("compute",
-           [](const flox::indicator::Bollinger& self, contiguous_double input)
+           [](const lrvx::indicator::Bollinger& self, contiguous_double input)
            {
              auto buf = input.request();
              auto* p = static_cast<const double*>(buf.ptr);
              size_t n = buf.shape[0];
-             flox::indicator::BollingerResult r;
+             lrvx::indicator::BollingerResult r;
              {
                py::gil_scoped_release release;
                r = self.compute(std::span<const double>(p, n));
@@ -981,30 +981,30 @@ inline void bindIndicators(py::module_& m)
              d["lower"] = lower;
              return d;
            })
-      .def("update", [](flox::indicator::Bollinger& self, double v) -> std::optional<double>
+      .def("update", [](lrvx::indicator::Bollinger& self, double v) -> std::optional<double>
            { self.update(v); return optFloat(self.value()); }, py::arg("value"))
-      .def("reset", &flox::indicator::Bollinger::reset)
-      .def_property_readonly("value", [](const flox::indicator::Bollinger& self)
+      .def("reset", &lrvx::indicator::Bollinger::reset)
+      .def_property_readonly("value", [](const lrvx::indicator::Bollinger& self)
                              { return optFloat(self.value()); })
-      .def_property_readonly("middle", [](const flox::indicator::Bollinger& self)
+      .def_property_readonly("middle", [](const lrvx::indicator::Bollinger& self)
                              { return optFloat(self.middleValue()); })
-      .def_property_readonly("upper", [](const flox::indicator::Bollinger& self)
+      .def_property_readonly("upper", [](const lrvx::indicator::Bollinger& self)
                              { return optFloat(self.upperValue()); })
-      .def_property_readonly("lower", [](const flox::indicator::Bollinger& self)
+      .def_property_readonly("lower", [](const lrvx::indicator::Bollinger& self)
                              { return optFloat(self.lowerValue()); })
-      .def_property_readonly("ready", &flox::indicator::Bollinger::ready)
-      .def_property_readonly("count", &flox::indicator::Bollinger::count);
+      .def_property_readonly("ready", &lrvx::indicator::Bollinger::ready)
+      .def_property_readonly("count", &lrvx::indicator::Bollinger::count);
 
-  py::class_<flox::indicator::Stochastic>(m, "Stochastic")
+  py::class_<lrvx::indicator::Stochastic>(m, "Stochastic")
       .def(py::init<size_t, size_t>(), py::arg("k_period") = 14, py::arg("d_period") = 3)
       .def("compute",
-           [](const flox::indicator::Stochastic& self, contiguous_double high,
+           [](const lrvx::indicator::Stochastic& self, contiguous_double high,
               contiguous_double low, contiguous_double close)
            {
              size_t n = high.request().shape[0];
              checkSameSize(n, low.request().shape[0], "stochastic size");
              checkSameSize(n, close.request().shape[0], "stochastic size");
-             flox::indicator::StochasticResult r;
+             lrvx::indicator::StochasticResult r;
              {
                py::gil_scoped_release release;
                r = self.compute(std::span<const double>(high.data(), n),
@@ -1019,65 +1019,65 @@ inline void bindIndicators(py::module_& m)
              d["d"] = dArr;
              return d;
            })
-      .def("update", [](flox::indicator::Stochastic& self, double high, double low, double close) -> std::optional<double>
+      .def("update", [](lrvx::indicator::Stochastic& self, double high, double low, double close) -> std::optional<double>
            { self.update(high, low, close); return optFloat(self.value()); }, py::arg("high"), py::arg("low"), py::arg("close"))
-      .def("reset", &flox::indicator::Stochastic::reset)
-      .def_property_readonly("value", [](const flox::indicator::Stochastic& self)
+      .def("reset", &lrvx::indicator::Stochastic::reset)
+      .def_property_readonly("value", [](const lrvx::indicator::Stochastic& self)
                              { return optFloat(self.value()); })
-      .def_property_readonly("k", [](const flox::indicator::Stochastic& self)
+      .def_property_readonly("k", [](const lrvx::indicator::Stochastic& self)
                              { return optFloat(self.kValue()); })
-      .def_property_readonly("d", [](const flox::indicator::Stochastic& self)
+      .def_property_readonly("d", [](const lrvx::indicator::Stochastic& self)
                              { return optFloat(self.dValue()); })
-      .def_property_readonly("ready", &flox::indicator::Stochastic::ready)
-      .def_property_readonly("count", &flox::indicator::Stochastic::count);
+      .def_property_readonly("ready", &lrvx::indicator::Stochastic::ready)
+      .def_property_readonly("count", &lrvx::indicator::Stochastic::count);
 
-  bindBarIndicator<flox::indicator::CCI>(m, "CCI")
+  bindBarIndicator<lrvx::indicator::CCI>(m, "CCI")
       .def(py::init(
                [](size_t period)
                {
                  checkPeriodPositive(period, "CCI");
-                 return new flox::indicator::CCI(period);
+                 return new lrvx::indicator::CCI(period);
                }),
            py::arg("period") = 20);
 
   // OBV/VWAP/CVD: batch-only (top-level functions registered above);
   // streaming wrappers can be added in a follow-up if needed.
 
-  bindSingleIndicator<flox::indicator::Skewness>(m, "Skewness")
+  bindSingleIndicator<lrvx::indicator::Skewness>(m, "Skewness")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::Kurtosis>(m, "Kurtosis")
+  bindSingleIndicator<lrvx::indicator::Kurtosis>(m, "Kurtosis")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::RollingZScore>(m, "RollingZScore")
+  bindSingleIndicator<lrvx::indicator::RollingZScore>(m, "RollingZScore")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::ShannonEntropy>(m, "ShannonEntropy")
+  bindSingleIndicator<lrvx::indicator::ShannonEntropy>(m, "ShannonEntropy")
       .def(py::init<size_t, size_t>(), py::arg("period"), py::arg("bins") = 10);
 
-  bindHighLowIndicator<flox::indicator::ParkinsonVol>(m, "ParkinsonVol")
+  bindHighLowIndicator<lrvx::indicator::ParkinsonVol>(m, "ParkinsonVol")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindOhlcIndicator<flox::indicator::RogersSatchellVol>(m, "RogersSatchellVol")
+  bindOhlcIndicator<lrvx::indicator::RogersSatchellVol>(m, "RogersSatchellVol")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindPairIndicator<flox::indicator::Correlation>(m, "Correlation")
+  bindPairIndicator<lrvx::indicator::Correlation>(m, "Correlation")
       .def(py::init<size_t>(), py::arg("period"));
 
-  bindSingleIndicator<flox::indicator::AutoCorrelation>(m, "AutoCorrelation")
+  bindSingleIndicator<lrvx::indicator::AutoCorrelation>(m, "AutoCorrelation")
       .def(py::init<size_t, size_t>(), py::arg("window"), py::arg("lag"));
 
   // ── Discovery API ────────────────────────────────────────────────
-  // Generated from include/flox/indicator/registry.def. Adding an indicator
+  // Generated from include/lrvx/indicator/registry.def. Adding an indicator
   // there makes it appear in list_indicators() automatically.
   m.def(
       "list_indicators",
       []()
       {
         py::list out;
-#define FLOX_INDICATOR(Cls, name, Kind, Args) out.append(#Cls);
-#include "flox/indicator/registry.def"
-#undef FLOX_INDICATOR
+#define LRVX_INDICATOR(Cls, name, Kind, Args) out.append(#Cls);
+#include "lrvx/indicator/registry.def"
+#undef LRVX_INDICATOR
         return out;
       },
       "Return the list of indicator names registered in this build "

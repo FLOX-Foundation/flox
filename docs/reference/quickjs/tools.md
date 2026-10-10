@@ -102,56 +102,56 @@ fp.totalVolume();
 ## Statistics
 
 ```javascript
-flox.correlation([1, 2, 3], [1, 2, 3]);
-flox.profitFactor([100, -50, 200, -30]);
-flox.winRate([100, -50, 200, -30]);
-flox.bootstrapCI([1, 2, 3, 4, 5], 0.95, 10000);  // { lower, median, upper }
-flox.permutationTest([1, 2, 3], [4, 5, 6], 10000); // p-value
+lrvx.correlation([1, 2, 3], [1, 2, 3]);
+lrvx.profitFactor([100, -50, 200, -30]);
+lrvx.winRate([100, -50, 200, -30]);
+lrvx.bootstrapCI([1, 2, 3, 4, 5], 0.95, 10000);  // { lower, median, upper }
+lrvx.permutationTest([1, 2, 3], [4, 5, 6], 10000); // p-value
 ```
 
 ---
 
 ## Segment operations
 
-Segment directories use the `.floxlog` extension.
+Segment directories use the `.lrvx` extension.
 
 ```javascript
-flox.validateSegment('/path/to/segment.floxlog');
+lrvx.validateSegment('/path/to/segment.lrvx');
 
 // Second argument is an OUTPUT FILE PATH, not a directory.
-flox.mergeSegments('/path/to/input_dir', '/path/to/merged.floxlog');
+lrvx.mergeSegments('/path/to/input_dir', '/path/to/merged.lrvx');
 ```
 
 Extended operations:
 
 | Call | Description |
 |------|-------------|
-| `flox.mergeDir(inputDir, outputDir)` | Merge a directory into an output directory |
-| `flox.splitSegment(inputPath, outputDir, mode, timeIntervalNs, eventsPerFile)` | Split one segment into many |
-| `flox.exportSegment(inputPath, outputPath, format, fromNs, toNs, symbols)` | Export a range to another format |
-| `flox.validateSegmentFull(path, verifyCrc, verifyTimestamps)` | Full validation, optional CRC and timestamp checks |
-| `flox.validateDataset(dataDir)` | Validate every segment in a dataset directory |
-| `flox.recompressSegment(inputPath, outputPath, level)` | Recompress at a different level |
-| `flox.extractSymbols(inputPath, outputDir, symbols)` | Extract selected symbols |
-| `flox.extractTimeRange(inputPath, outputPath, fromNs, toNs)` | Extract a time window |
+| `lrvx.mergeDir(inputDir, outputDir)` | Merge a directory into an output directory |
+| `lrvx.splitSegment(inputPath, outputDir, mode, timeIntervalNs, eventsPerFile)` | Split one segment into many |
+| `lrvx.exportSegment(inputPath, outputPath, format, fromNs, toNs, symbols)` | Export a range to another format |
+| `lrvx.validateSegmentFull(path, verifyCrc, verifyTimestamps)` | Full validation, optional CRC and timestamp checks |
+| `lrvx.validateDataset(dataDir)` | Validate every segment in a dataset directory |
+| `lrvx.recompressSegment(inputPath, outputPath, level)` | Recompress at a different level |
+| `lrvx.extractSymbols(inputPath, outputDir, symbols)` | Extract selected symbols |
+| `lrvx.extractTimeRange(inputPath, outputPath, fromNs, toNs)` | Extract a time window |
 
 ---
 
 ## Bar aggregation
 
-Each helper takes `(timestamps, prices, quantities, sides, param)`. `flox.renkoBars` can return
+Each helper takes `(timestamps, prices, quantities, sides, param)`. `lrvx.renkoBars` can return
 more bars than there were input trades: a trade that gaps past more than one brick width closes
 the brick that was forming and synthesizes the bricks in between (see [bar types](../../explanation/bar-types.md#renko-bars)).
 Every other helper here closes at most one bar per input trade.
 
 | Call | `param` |
 |------|---------|
-| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |
-| `flox.tickBars(ts, px, qty, sides, ticksPerBar)` | Trades per bar |
-| `flox.volumeBars(ts, px, qty, sides, volumePerBar)` | Volume per bar |
-| `flox.rangeBars(ts, px, qty, sides, rangeSize)` | High-low range |
-| `flox.renkoBars(ts, px, qty, sides, brickSize)` | Brick size |
-| `flox.heikinBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+| `lrvx.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |
+| `lrvx.tickBars(ts, px, qty, sides, ticksPerBar)` | Trades per bar |
+| `lrvx.volumeBars(ts, px, qty, sides, volumePerBar)` | Volume per bar |
+| `lrvx.rangeBars(ts, px, qty, sides, rangeSize)` | High-low range |
+| `lrvx.renkoBars(ts, px, qty, sides, brickSize)` | Brick size |
+| `lrvx.heikinBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
 
 A nanosecond interval may be a `Number` or a `BigInt`. Each bar comes back
 with `ts` (the bar start, a nanosecond `BigInt`), `open`, `high`, `low`,

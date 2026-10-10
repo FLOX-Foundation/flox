@@ -33,10 +33,10 @@ one of these is written by someone who did not know the rule existed, and the
 five seconds it takes to write the comment is when they find out whether their
 order is observable.
 
-Scope is venue/include, plus include/flox/position and include/flox/backtest:
+Scope is venue/include, plus include/lrvx/position and include/lrvx/backtest:
 a backtest is expected to reproduce bit-for-bit on another machine, and
 an audit found a float fold over unordered_* there that libc++ and libstdc++
-walk in different orders (include/flox/position/portfolio_greeks.h) and
+walk in different orders (include/lrvx/position/portfolio_greeks.h) and
 audited the rest of both directories for the same shape of bug. Each root is
 scanned as headers and the *.inl fragments they include alike -- a fragment
 declares no members of its own, so it inherits the declarations of the header
@@ -60,8 +60,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCAN_ROOTS = [
     ROOT / "venue" / "include",
-    ROOT / "include" / "flox" / "position",
-    ROOT / "include" / "flox" / "backtest",
+    ROOT / "include" / "lrvx" / "position",
+    ROOT / "include" / "lrvx" / "backtest",
 ]
 
 UNORDERED = r"std::unordered_(?:map|set|multimap|multiset)"

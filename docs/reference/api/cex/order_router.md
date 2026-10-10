@@ -5,12 +5,12 @@ Smart order routing across multiple exchanges.
 ## Header
 
 ```cpp
-#include "flox/execution/order_router.h"
+#include "lrvx/execution/order_router.h"
 ```
 
 !!! note "`IRoutableExecutor` is not `IOrderExecutor`"
     `execution/order_router.h` declares its own narrow order sink,
-    `flox::IRoutableExecutor`:
+    `lrvx::IRoutableExecutor`:
 
     ```cpp
     virtual void submit(SymbolId, Side, Price, Quantity, OrderId) = 0;
@@ -18,7 +18,7 @@ Smart order routing across multiple exchanges.
     ```
 
     `execution/abstract_executor.h` declares the full executor interface,
-    `flox::IOrderExecutor` (`submitOrder`, `cancelOrder`, `cancelAllOrders`,
+    `lrvx::IOrderExecutor` (`submitOrder`, `cancelOrder`, `cancelAllOrders`,
     `replaceOrder`, `submitOCO`, `capabilities`), which is what
     `SimulatedExecutor` implements.
 
@@ -53,7 +53,7 @@ enum class RoutingError : uint8_t {
 };
 
 // The router's own narrow order sink. Deliberately NOT the
-// flox::IOrderExecutor of execution/abstract_executor.h: that is the full
+// lrvx::IOrderExecutor of execution/abstract_executor.h: that is the full
 // executor interface, and two classes with the same fully-qualified name in
 // one program is an ODR violation, so this one carries a distinct name.
 class IRoutableExecutor

@@ -36,26 +36,26 @@ change the knob for a `BacktestRunner`.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    ex = flox.SimulatedExecutor()
+    ex = lrvx.SimulatedExecutor()
     ex.set_submit_ack_latency(5_000_000, 2_000_000)   # 5 ms ± 2 ms
     ```
 
 === "Node.js"
 
     ```javascript
-    const ex = new flox.SimulatedExecutor();
+    const ex = new lrvx.SimulatedExecutor();
     ex.setSubmitAckLatency(5_000_000, 2_000_000);
     ```
 
 === "C++"
 
     ```cpp
-    flox::BacktestConfig cfg;
+    lrvx::BacktestConfig cfg;
     cfg.submitAckLatencyNs = 5'000'000;
     cfg.submitAckJitterNs  = 2'000'000;
-    flox::BacktestRunner runner(cfg);
+    lrvx::BacktestRunner runner(cfg);
     ```
 
 ## Detect the race from a strategy

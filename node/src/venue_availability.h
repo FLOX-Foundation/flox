@@ -1,6 +1,6 @@
 // node/src/venue_availability.h — VenueAvailability wrap.
 //
-// Thin NAPI wrap over flox_venue_availability_* C ABI. Build a
+// Thin NAPI wrap over lrvx_venue_availability_* C ABI. Build a
 // downtime schedule (manual outages + Poisson random outages) and
 // attach to a SimulatedExecutor via executor.setVenueAvailability(va).
 
@@ -10,9 +10,9 @@
 
 #include <string>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 inline uint8_t parseOnOutage(const std::string& s)
@@ -77,17 +77,17 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
 
   VenueAvailabilityWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<VenueAvailabilityWrap>(info),
-        _h(flox_venue_availability_create())
+        _h(lrvx_venue_availability_create())
   {
   }
   ~VenueAvailabilityWrap()
   {
     if (_h)
     {
-      flox_venue_availability_destroy(_h);
+      lrvx_venue_availability_destroy(_h);
     }
   }
-  FloxVenueAvailabilityHandle handle() const { return _h; }
+  LrvxVenueAvailabilityHandle handle() const { return _h; }
 
  private:
   void ScheduleOutage(const Napi::CallbackInfo& info)
@@ -98,7 +98,7 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
                              ? info[2].As<Napi::String>().Utf8Value()
                              : "cancel_all";
     int64_t ttl = info.Length() > 3 ? info[3].As<Napi::Number>().Int64Value() : 0;
-    flox_venue_availability_schedule_outage(_h, start, duration, parseOnOutage(policy),
+    lrvx_venue_availability_schedule_outage(_h, start, duration, parseOnOutage(policy),
                                             ttl);
   }
   void AutoRandomOutages(const Napi::CallbackInfo& info)
@@ -109,13 +109,13 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
                              ? info[2].As<Napi::String>().Utf8Value()
                              : "cancel_all";
     uint64_t seed = info.Length() > 3 ? info[3].As<Napi::Number>().Int64Value() : 0xC0FFEEULL;
-    flox_venue_availability_auto_random_outages(_h, perDay, meanDur,
+    lrvx_venue_availability_auto_random_outages(_h, perDay, meanDur,
                                                 parseOnOutage(policy), seed);
   }
   Napi::Value IsUp(const Napi::CallbackInfo& info)
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
-    return Napi::Boolean::New(info.Env(), flox_venue_availability_is_up(_h, nowNs) != 0);
+    return Napi::Boolean::New(info.Env(), lrvx_venue_availability_is_up(_h, nowNs) != 0);
   }
   void ScheduleOutageEx(const Napi::CallbackInfo& info)
   {
@@ -130,7 +130,7 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
     int64_t ttl = info.Length() > 4 ? info[4].As<Napi::Number>().Int64Value() : 0;
     double degr = info.Length() > 5 ? info[5].As<Napi::Number>().DoubleValue() : 1.0;
     double wsBps = info.Length() > 6 ? info[6].As<Napi::Number>().DoubleValue() : 0.0;
-    flox_venue_availability_schedule_outage_ex(
+    lrvx_venue_availability_schedule_outage_ex(
         _h, start, duration, parseOutageType(outageType), parseOnOutage(policy),
         ttl, degr, wsBps);
   }
@@ -138,39 +138,39 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
     return Napi::Boolean::New(
-        info.Env(), flox_venue_availability_submits_allowed(_h, nowNs) != 0);
+        info.Env(), lrvx_venue_availability_submits_allowed(_h, nowNs) != 0);
   }
   Napi::Value CancelsAllowed(const Napi::CallbackInfo& info)
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
     return Napi::Boolean::New(
-        info.Env(), flox_venue_availability_cancels_allowed(_h, nowNs) != 0);
+        info.Env(), lrvx_venue_availability_cancels_allowed(_h, nowNs) != 0);
   }
   Napi::Value BookUpdatesAllowed(const Napi::CallbackInfo& info)
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
     return Napi::Boolean::New(
-        info.Env(), flox_venue_availability_book_updates_allowed(_h, nowNs) != 0);
+        info.Env(), lrvx_venue_availability_book_updates_allowed(_h, nowNs) != 0);
   }
   Napi::Value TradesAllowed(const Napi::CallbackInfo& info)
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
     return Napi::Boolean::New(
-        info.Env(), flox_venue_availability_trades_allowed(_h, nowNs) != 0);
+        info.Env(), lrvx_venue_availability_trades_allowed(_h, nowNs) != 0);
   }
   Napi::Value LatencyMultiplier(const Napi::CallbackInfo& info)
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
     return Napi::Number::New(info.Env(),
-                             flox_venue_availability_latency_multiplier(_h, nowNs));
+                             lrvx_venue_availability_latency_multiplier(_h, nowNs));
   }
   Napi::Value ConsumeWrongSideRecoveryBps(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(
-        info.Env(), flox_venue_availability_consume_wrong_side_recovery_bps(_h));
+        info.Env(), lrvx_venue_availability_consume_wrong_side_recovery_bps(_h));
   }
 
-  FloxVenueAvailabilityHandle _h;
+  LrvxVenueAvailabilityHandle _h;
 };
 
 inline void registerVenueAvailability(Napi::Env env, Napi::Object exports)
@@ -178,4 +178,4 @@ inline void registerVenueAvailability(Napi::Env env, Napi::Object exports)
   exports.Set("VenueAvailability", VenueAvailabilityWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 
-#include "flox/position/hedge_templates.h"
+#include "lrvx/position/hedge_templates.h"
 
 #include <cmath>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

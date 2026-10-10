@@ -1,6 +1,6 @@
 # Aggregate tape events in a single pass
 
-`DataReader.run([...])` walks a `.floxlog` once and forwards every event to a panel of streaming aggregators. The aggregators run entirely in C++; the dispatch loop never crosses into Python or JS during the walk.
+`DataReader.run([...])` walks a `.lrvx` once and forwards every event to a panel of streaming aggregators. The aggregators run entirely in C++; the dispatch loop never crosses into Python or JS during the walk.
 
 The seven native aggregators:
 
@@ -26,31 +26,31 @@ The filter parameters work the same way on all seven:
 ## Python
 
 ```python
-import flox_py
+import lrvx
 
-reader = flox_py.DataReader("./tape")
+reader = lrvx.DataReader("./tape")
 
-stats = flox_py.EventTypeStatsAggregator()
-counts = flox_py.BinCountAggregator(
+stats = lrvx.EventTypeStatsAggregator()
+counts = lrvx.BinCountAggregator(
     bucket_ns=60_000_000_000,  # 1-minute buckets
     by_side=True,
 )
-volume = flox_py.VolumeBinAggregator(
+volume = lrvx.VolumeBinAggregator(
     bucket_ns=60_000_000_000,
     by_side=True,
 )
-ohlc = flox_py.OHLCBinAggregator(
+ohlc = lrvx.OHLCBinAggregator(
     bucket_ns=60_000_000_000,
 )
-book = flox_py.BookSnapshotBinAggregator(
+book = lrvx.BookSnapshotBinAggregator(
     bucket_ns=60_000_000_000,
     levels=20,                 # rows per side per bucket; default 20
 )
-peaks = flox_py.PeakAggregator(
+peaks = lrvx.PeakAggregator(
     window_ns_list=[1_000_000, 10_000_000, 100_000_000, 1_000_000_000],
     top_n=10,
 )
-quantiles = flox_py.QuantileAggregator(
+quantiles = lrvx.QuantileAggregator(
     window_ns_list=[1_000_000, 100_000_000],
     quantiles=[0.5, 0.95, 0.99],
 )
@@ -78,7 +78,7 @@ The tabular aggregators (stats, counts, volume, ohlc, book) return structured nu
 import { DataReader, EventTypeStatsAggregator, BinCountAggregator,
          VolumeBinAggregator, OHLCBinAggregator, BookSnapshotBinAggregator,
          PeakAggregator, QuantileAggregator, AggregatorEventFilter }
-    from '@flox-foundation/flox';
+    from '@lrvx/lrvx';
 
 const reader = new DataReader('./tape');
 
@@ -115,8 +115,8 @@ Node returns BigInt for ns timestamps and 64-bit counters, so values past `2^53`
 `MergedTapeReader.run([...])` takes the same aggregator panel and walks the merged stream from N input tapes in a single pass. Aggregators see events with global-rewritten symbol ids; the originating tape index is not surfaced. Use `streamEvents()` directly when the tape index matters.
 
 ```python
-merged = flox_py.MergedTapeReader(["./tape-bybit", "./tape-bitget"])
-peaks = flox_py.PeakAggregator(window_ns_list=[1_000_000_000], top_n=20)
+merged = lrvx.MergedTapeReader(["./tape-bybit", "./tape-bitget"])
+peaks = lrvx.PeakAggregator(window_ns_list=[1_000_000_000], top_n=20)
 merged.run([peaks])
 ```
 
@@ -207,7 +207,7 @@ For segments without the `Sorted` flag (tapes produced by external writers such 
 `reorder_window_ns` is a constructor argument on `DataReader`:
 
 ```python
-reader = flox_py.DataReader(
+reader = lrvx.DataReader(
     "./tape",
     reorder_window_ns=30_000_000_000,  # 30s
 )
@@ -228,10 +228,10 @@ if dropped:
 
 The symbol filter runs before that check, so an event belonging to a symbol you did not ask to replay neither moves the watermark nor counts as late. The watermark also carries across segment boundaries within one walk, so an inversion straddling two segments is caught instead of disappearing when the watermark restarts.
 
-Set `strict_ordering=True` to raise `FloxError(code="E_DATA_002")` on the first late event instead. Byte-for-byte reproducibility gates want that, because there a dropped frame is a silent difference between two runs. Everywhere else dropping is the better trade. On a five-day bybit capture of 12.9 million frames, fifteen events sit deeper than ten seconds; raising on them ended the walk at the halfway mark with aggregators already fed half a dataset.
+Set `strict_ordering=True` to raise `LrvxError(code="E_DATA_002")` on the first late event instead. Byte-for-byte reproducibility gates want that, because there a dropped frame is a silent difference between two runs. Everywhere else dropping is the better trade. On a five-day bybit capture of 12.9 million frames, fifteen events sit deeper than ten seconds; raising on them ended the walk at the halfway mark with aggregators already fed half a dataset.
 
 ```python
-reader = flox_py.DataReader("./tape", strict_ordering=True)
+reader = lrvx.DataReader("./tape", strict_ordering=True)
 ```
 
 The other two options are unchanged: raise `reorder_window_ns`, or pre-sort the tape through `BinaryLogWriter`, which sets the `Sorted` flag and bypasses the reorder buffer.
@@ -280,6 +280,6 @@ reader.run([agg], {
 
 ## See also
 
-- [Record and replay market data with `flox tape`](tape-record.md) for capturing the `.floxlog`.
+- [Record and replay market data with `lrvx tape`](tape-record.md) for capturing the `.lrvx`.
 - [Merged tape consumption](multi-tape.md) for `MergedTapeReader` reference when streaming `run()` is not enough.
 - [Iterate the order book](iterate-orderbook.md) for the event-by-event Python reconstruction `BookSnapshotBinAggregator` replaces on the hot path.

@@ -1,7 +1,7 @@
 """Submit a native bracket order (entry + take-profit + stop) and walk its states."""
-import flox_py as flox
+import lrvx
 
-exec = flox.SimulatedExecutor()
+exec = lrvx.SimulatedExecutor()
 
 # Buy at 100, take profit at 110, stop at 90.
 exec.submit_bracket(bracket_id=1, symbol=1,

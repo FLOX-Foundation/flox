@@ -1,23 +1,23 @@
 # Detect lookahead bias in a strategy
 
-Lookahead bias is the most common backtest bug in algorithmic trading: a strategy reads tomorrow's price by accident, claims a profit it could never have realized live, and quietly fails the moment it ships. The `flox lint lookahead` tool walks a strategy's AST and flags the obvious patterns. It is a heuristic, not a proof; run it before trusting any backtest, and treat clean output as necessary, not sufficient.
+Lookahead bias is the most common backtest bug in algorithmic trading: a strategy reads tomorrow's price by accident, claims a profit it could never have realized live, and quietly fails the moment it ships. The `lrvx lint lookahead` tool walks a strategy's AST and flags the obvious patterns. It is a heuristic, not a proof; run it before trusting any backtest, and treat clean output as necessary, not sufficient.
 
 ## Quick start
 
 ```bash
-flox lint lookahead path/to/my_strategy.py
+lrvx lint lookahead path/to/my_strategy.py
 ```
 
 Sample output for a clean file:
 
 ```
-flox lint lookahead: OK (path/to/my_strategy.py); no patterns flagged
+lrvx lint lookahead: OK (path/to/my_strategy.py); no patterns flagged
 ```
 
 For a file with a bug:
 
 ```
-flox lint lookahead: 1 finding(s) in path/to/my_strategy.py
+lrvx lint lookahead: 1 finding(s) in path/to/my_strategy.py
   17:24 [shift_negative] `.shift(-1)` reads from the future. ...
       next_close = df['close'].shift(-1)
 ```
@@ -79,7 +79,7 @@ Attributes named `next_*`, `future_*`, or `lookahead_*` look like deliberate fut
 
 ## Use it from an AI client
 
-The same logic is exposed as the `validate_strategy_no_lookahead` MCP tool. Paste a strategy into Cursor / Claude Code with `flox-mcp` connected and the agent can call the tool to triage before suggesting changes.
+The same logic is exposed as the `validate_strategy_no_lookahead` MCP tool. Paste a strategy into Cursor / Claude Code with `lrvx-mcp` connected and the agent can call the tool to triage before suggesting changes.
 
 ## What it does not catch
 
@@ -102,13 +102,13 @@ A strategy that needs a hard guarantee should pair this lint with an integration
   run: |
     set -e
     for f in strategies/*.py; do
-      flox lint lookahead "$f"
+      lrvx lint lookahead "$f"
     done
 ```
 
-`flox` is the console script installed with `flox-py`. Without it on
-`PATH`, call the module directly: `python3 -m flox_py.cli lint
-lookahead "$f"` (`flox_py` itself has no `__main__`).
+`lrvx` is the console script installed with `lrvx`. Without it on
+`PATH`, call the module directly: `python3 -m lrvx.cli lint
+lookahead "$f"` (`lrvx` itself has no `__main__`).
 
 `--json` lets you aggregate findings across many strategies if you have a fleet. Exit code is `0` when clean, `1` when the lint flags anything, `2` when the file is missing.
 

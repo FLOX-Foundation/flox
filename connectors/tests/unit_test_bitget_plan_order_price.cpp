@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -27,16 +27,16 @@
  * that string is the entire contract with the venue.
  */
 
-#include "flox-connectors/bitget/authenticated_rest_client.h"
-#include "flox-connectors/bitget/bitget_order_executor.h"
+#include "lrvx-connectors/bitget/authenticated_rest_client.h"
+#include "lrvx-connectors/bitget/bitget_order_executor.h"
 
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/execution/abstract_execution_listener.h>
-#include <flox/execution/bus/order_execution_bus.h>
-#include <flox/execution/events/order_event.h>
-#include <flox/execution/order.h>
-#include <flox/execution/order_tracker.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/abstract_execution_listener.h>
+#include <lrvx/execution/bus/order_execution_bus.h>
+#include <lrvx/execution/events/order_event.h>
+#include <lrvx/execution/order.h>
+#include <lrvx/execution/order_tracker.h>
 
 #include <gtest/gtest.h>
 
@@ -45,7 +45,7 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

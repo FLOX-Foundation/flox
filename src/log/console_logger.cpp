@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/log/console_logger.h"
+#include "lrvx/log/console_logger.h"
 
 #include <chrono>
 #include <cstdio>
 #include <ctime>
 
-namespace flox
+namespace lrvx
 {
 
 ConsoleLogger::ConsoleLogger(LogLevel minLevel) : _minLevel(minLevel) {}
@@ -63,4 +63,4 @@ void ConsoleLogger::log(LogLevel level, std::string_view msg)
   std::fflush(out);
 }
 
-}  // namespace flox
+}  // namespace lrvx

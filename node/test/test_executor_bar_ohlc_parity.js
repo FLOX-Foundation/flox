@@ -19,7 +19,7 @@
 // Sister cases: tests/test_capi_executor_bar_ohlc.cpp and
 // python/tests/test_executor_bar_ohlc_parity.py, on the same tape.
 
-const flox = require('..');
+const lrvx = require('..');
 
 const failures = [];
 function check(label, ok, detail) {
@@ -73,9 +73,9 @@ function barArrays() {
 
 // The reference: what the runner does with the same orders on the same tape.
 function runnerRun() {
-  const registry = new flox.SymbolRegistry();
+  const registry = new lrvx.SymbolRegistry();
   const symbol = registry.addSymbol('backtest', 'BTCUSDT', 0.01);
-  const runner = new flox.BacktestRunner(registry, 0.0, 100000.0);
+  const runner = new lrvx.BacktestRunner(registry, 0.0, 100000.0);
 
   const fills = [];
   let bars = 0;
@@ -115,7 +115,7 @@ function driveByHand(exec) {
 }
 
 function netPnlOf(exec) {
-  const result = new flox.BacktestResult(100000.0, 0.0);
+  const result = new lrvx.BacktestResult(100000.0, 0.0);
   result.ingestExecutor(exec);
   return result.stats().netPnl;
 }
@@ -136,7 +136,7 @@ check(
 
 // ── the surface ────────────────────────────────────────────────────────────
 
-const probe = new flox.SimulatedExecutor();
+const probe = new lrvx.SimulatedExecutor();
 const missing = missingApi(probe);
 check('SimulatedExecutor has onBar, the close-only form', typeof probe.onBar === 'function');
 check(
@@ -150,7 +150,7 @@ check(
 
 if (missing.length === 0) {
   {
-    const exec = new flox.SimulatedExecutor();
+    const exec = new lrvx.SimulatedExecutor();
     driveByHand(exec);
     check('the hand-driven run fills twice', exec.fillCount === 2, 'fillCount=' + exec.fillCount);
     check(
@@ -163,7 +163,7 @@ if (missing.length === 0) {
   {
     // The mutation this is shaped against: onBarOhlc forwarding the close
     // where the open belongs. The held buy would then pay 107, not 106.
-    const exec = new flox.SimulatedExecutor();
+    const exec = new lrvx.SimulatedExecutor();
     driveByHand(exec);
     const pnl = netPnlOf(exec);
     check(
@@ -176,7 +176,7 @@ if (missing.length === 0) {
   {
     // Without the window the order is not held at all: it matches inside the
     // bar it was submitted from, at the close.
-    const exec = new flox.SimulatedExecutor();
+    const exec = new lrvx.SimulatedExecutor();
     const [open, high, low, close] = TAPE[0];
     exec.advanceClock(MINUTE_NS);
     exec.onBarOhlc(SYMBOL, open, high, low, close);
@@ -190,7 +190,7 @@ if (missing.length === 0) {
 
   {
     // reset() is what makes a second hand-driven run report that run.
-    const exec = new flox.SimulatedExecutor();
+    const exec = new lrvx.SimulatedExecutor();
     driveByHand(exec);
     const first = netPnlOf(exec);
     exec.reset();
@@ -239,9 +239,9 @@ function bracketBarArrays() {
 }
 
 function runnerEntryFill() {
-  const registry = new flox.SymbolRegistry();
+  const registry = new lrvx.SymbolRegistry();
   const symbol = registry.addSymbol('backtest', 'BTCUSDT', 0.01);
-  const runner = new flox.BacktestRunner(registry, 0.0, 100000.0);
+  const runner = new lrvx.BacktestRunner(registry, 0.0, 100000.0);
   const fills = [];
   let bars = 0;
   runner.setStrategy({
@@ -294,7 +294,7 @@ if (missing.length === 0) {
     JSON.stringify(entry),
   );
 
-  const exec = new flox.SimulatedExecutor();
+  const exec = new lrvx.SimulatedExecutor();
   driveBracket(exec);
 
   check(
@@ -322,7 +322,7 @@ if (missing.length === 0) {
   const px = Float64Array.from([100.0, 101.0, 102.0, 103.0, 104.0]);
   const qty = Float64Array.from([1, 1, 1, 1, 1]);
   const isBuy = Uint8Array.from([1, 1, 1, 1, 1]);
-  const bars = flox.aggregateTimeBars(ts, px, qty, isBuy, 60.0);
+  const bars = lrvx.aggregateTimeBars(ts, px, qty, isBuy, 60.0);
 
   check('the tape aggregates into at least one bar', bars.length >= 1);
   const hasField = bars.length >= 1 && Object.hasOwn(bars[0], 'closeReason');
@@ -361,7 +361,7 @@ const THRESHOLD = 0;
 const MAX_GAP_BRICKS = 1024;
 
 function renko(jumpTo, brick) {
-  return flox.aggregateRenkoBars(
+  return lrvx.aggregateRenkoBars(
     Float64Array.from([0, 1e9]),
     Float64Array.from([100.0, jumpTo]),
     Float64Array.from([1, 1]),
@@ -386,7 +386,7 @@ function renko(jumpTo, brick) {
     'the brick that absorbed the jump reports the gap reason',
     reasons[reasons.length - 1] === GAP,
     'last closeReason=' + reasons[reasons.length - 1] +
-      '; closeReason is not carrying flox::Bar::reason',
+      '; closeReason is not carrying lrvx::Bar::reason',
   );
   // Exactly one, and it is the last: a field wired to a constant would report
   // that constant for all 1024.

@@ -1,6 +1,6 @@
-#include "flox/capi/flox_capi.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -13,44 +13,44 @@
 
 TEST(CapiBookTest, CreateAndQuery)
 {
-  FloxBookHandle book = flox_book_create(0.01);
+  LrvxBookHandle book = lrvx_book_create(0.01);
   ASSERT_NE(book, nullptr);
 
   double p = 0;
-  EXPECT_EQ(flox_book_best_bid(book, &p), 0);
-  EXPECT_EQ(flox_book_best_ask(book, &p), 0);
+  EXPECT_EQ(lrvx_book_best_bid(book, &p), 0);
+  EXPECT_EQ(lrvx_book_best_ask(book, &p), 0);
 
   double bids_p[] = {100.0, 99.99};
   double bids_q[] = {1.5, 2.0};
   double asks_p[] = {100.01, 100.02};
   double asks_q[] = {0.5, 1.0};
-  flox_book_apply_snapshot(book, bids_p, bids_q, 2, asks_p, asks_q, 2);
+  lrvx_book_apply_snapshot(book, bids_p, bids_q, 2, asks_p, asks_q, 2);
 
-  EXPECT_EQ(flox_book_best_bid(book, &p), 1);
+  EXPECT_EQ(lrvx_book_best_bid(book, &p), 1);
   EXPECT_NEAR(p, 100.0, 0.001);
 
-  EXPECT_EQ(flox_book_best_ask(book, &p), 1);
+  EXPECT_EQ(lrvx_book_best_ask(book, &p), 1);
   EXPECT_NEAR(p, 100.01, 0.001);
 
   double mid = 0;
-  EXPECT_EQ(flox_book_mid(book, &mid), 1);
+  EXPECT_EQ(lrvx_book_mid(book, &mid), 1);
   EXPECT_NEAR(mid, 100.005, 0.001);
 
   double spread = 0;
-  EXPECT_EQ(flox_book_spread(book, &spread), 1);
+  EXPECT_EQ(lrvx_book_spread(book, &spread), 1);
   EXPECT_NEAR(spread, 0.01, 0.001);
 
-  EXPECT_EQ(flox_book_is_crossed(book), 0);
+  EXPECT_EQ(lrvx_book_is_crossed(book), 0);
 
   double prices[10], qtys[10];
-  uint32_t n = flox_book_get_bids(book, prices, qtys, 10);
+  uint32_t n = lrvx_book_get_bids(book, prices, qtys, 10);
   EXPECT_GE(n, 1u);
   EXPECT_NEAR(prices[0], 100.0, 0.001);
 
-  flox_book_clear(book);
-  EXPECT_EQ(flox_book_best_bid(book, &p), 0);
+  lrvx_book_clear(book);
+  EXPECT_EQ(lrvx_book_best_bid(book, &p), 0);
 
-  flox_book_destroy(book);
+  lrvx_book_destroy(book);
 }
 
 // ============================================================
@@ -59,15 +59,15 @@ TEST(CapiBookTest, CreateAndQuery)
 
 TEST(CapiExecutorTest, SubmitAndFill)
 {
-  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
 
-  flox_simulated_executor_submit_order(exec, 1, 0, 100.0, 1.0, 0, 1);
-  flox_simulated_executor_on_bar(exec, 1, 100.0);
+  lrvx_simulated_executor_submit_order(exec, 1, 0, 100.0, 1.0, 0, 1);
+  lrvx_simulated_executor_on_bar(exec, 1, 100.0);
 
-  EXPECT_GE(flox_simulated_executor_fill_count(exec), 0u);
+  EXPECT_GE(lrvx_simulated_executor_fill_count(exec), 0u);
 
-  flox_simulated_executor_destroy(exec);
+  lrvx_simulated_executor_destroy(exec);
 }
 
 // ============================================================
@@ -76,18 +76,18 @@ TEST(CapiExecutorTest, SubmitAndFill)
 
 TEST(CapiPositionTest, TrackFills)
 {
-  FloxPositionTrackerHandle tracker = flox_position_tracker_create(0);
+  LrvxPositionTrackerHandle tracker = lrvx_position_tracker_create(0);
   ASSERT_NE(tracker, nullptr);
 
-  flox_position_tracker_on_fill(tracker, 1, 0, 100.0, 1.0);
-  EXPECT_NEAR(flox_position_tracker_position(tracker, 1), 1.0, 0.001);
-  EXPECT_NEAR(flox_position_tracker_avg_entry(tracker, 1), 100.0, 0.01);
+  lrvx_position_tracker_on_fill(tracker, 1, 0, 100.0, 1.0);
+  EXPECT_NEAR(lrvx_position_tracker_position(tracker, 1), 1.0, 0.001);
+  EXPECT_NEAR(lrvx_position_tracker_avg_entry(tracker, 1), 100.0, 0.01);
 
-  flox_position_tracker_on_fill(tracker, 1, 1, 110.0, 1.0);
-  EXPECT_NEAR(flox_position_tracker_position(tracker, 1), 0.0, 0.001);
-  EXPECT_GT(flox_position_tracker_realized_pnl(tracker, 1), 0.0);
+  lrvx_position_tracker_on_fill(tracker, 1, 1, 110.0, 1.0);
+  EXPECT_NEAR(lrvx_position_tracker_position(tracker, 1), 0.0, 0.001);
+  EXPECT_GT(lrvx_position_tracker_realized_pnl(tracker, 1), 0.0);
 
-  flox_position_tracker_destroy(tracker);
+  lrvx_position_tracker_destroy(tracker);
 }
 
 // ============================================================
@@ -96,20 +96,20 @@ TEST(CapiPositionTest, TrackFills)
 
 TEST(CapiProfileTest, VolumeProfile)
 {
-  FloxVolumeProfileHandle vp = flox_volume_profile_create(0.01);
+  LrvxVolumeProfileHandle vp = lrvx_volume_profile_create(0.01);
   ASSERT_NE(vp, nullptr);
 
-  flox_volume_profile_add_trade(vp, 100.0, 10.0, 1);
-  flox_volume_profile_add_trade(vp, 100.0, 5.0, 0);
-  flox_volume_profile_add_trade(vp, 101.0, 3.0, 1);
+  lrvx_volume_profile_add_trade(vp, 100.0, 10.0, 1);
+  lrvx_volume_profile_add_trade(vp, 100.0, 5.0, 0);
+  lrvx_volume_profile_add_trade(vp, 101.0, 3.0, 1);
 
-  EXPECT_GT(flox_volume_profile_total_volume(vp), 0.0);
-  EXPECT_GT(flox_volume_profile_num_levels(vp), 0u);
+  EXPECT_GT(lrvx_volume_profile_total_volume(vp), 0.0);
+  EXPECT_GT(lrvx_volume_profile_num_levels(vp), 0u);
 
-  flox_volume_profile_clear(vp);
-  EXPECT_EQ(flox_volume_profile_num_levels(vp), 0u);
+  lrvx_volume_profile_clear(vp);
+  EXPECT_EQ(lrvx_volume_profile_num_levels(vp), 0u);
 
-  flox_volume_profile_destroy(vp);
+  lrvx_volume_profile_destroy(vp);
 }
 
 // ============================================================
@@ -120,24 +120,24 @@ TEST(CapiStatsTest, Correlation)
 {
   double x[] = {1, 2, 3, 4, 5};
   double y[] = {1, 2, 3, 4, 5};
-  EXPECT_NEAR(flox_stat_correlation(x, y, 5), 1.0, 0.001);
+  EXPECT_NEAR(lrvx_stat_correlation(x, y, 5), 1.0, 0.001);
 
   double z[] = {5, 4, 3, 2, 1};
-  EXPECT_NEAR(flox_stat_correlation(x, z, 5), -1.0, 0.001);
+  EXPECT_NEAR(lrvx_stat_correlation(x, z, 5), -1.0, 0.001);
 }
 
 TEST(CapiStatsTest, ProfitFactorAndWinRate)
 {
   double pnl[] = {100, -50, 200, -30};
-  EXPECT_GT(flox_stat_profit_factor(pnl, 4), 1.0);
-  EXPECT_NEAR(flox_stat_win_rate(pnl, 4), 0.5, 0.001);
+  EXPECT_GT(lrvx_stat_profit_factor(pnl, 4), 1.0);
+  EXPECT_NEAR(lrvx_stat_win_rate(pnl, 4), 0.5, 0.001);
 }
 
 TEST(CapiStatsTest, BootstrapCI)
 {
   double data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   double lo, med, hi;
-  flox_stat_bootstrap_ci(data, 10, 0.95, 1000, &lo, &med, &hi);
+  lrvx_stat_bootstrap_ci(data, 10, 0.95, 1000, &lo, &med, &hi);
   EXPECT_LT(lo, med);
   EXPECT_LT(med, hi);
   EXPECT_NEAR(med, 5.5, 1.0);
@@ -148,13 +148,13 @@ TEST(CapiStatsTest, PermutationTest)
   // Very different groups — should be significant
   double g1[] = {1, 2, 3, 4, 5};
   double g2[] = {100, 200, 300, 400, 500};
-  double pval = flox_stat_permutation_test(g1, 5, g2, 5, 5000);
+  double pval = lrvx_stat_permutation_test(g1, 5, g2, 5, 5000);
   EXPECT_LT(pval, 0.05);
 
   // Same distribution — should NOT be significant
   double g3[] = {1, 2, 3, 4, 5};
   double g4[] = {1, 2, 3, 4, 5};
-  double pval2 = flox_stat_permutation_test(g3, 5, g4, 5, 5000);
+  double pval2 = lrvx_stat_permutation_test(g3, 5, g4, 5, 5000);
   EXPECT_GT(pval2, 0.5);
 }
 
@@ -164,23 +164,23 @@ TEST(CapiStatsTest, PermutationTest)
 
 TEST(CapiL3BookTest, AddRemoveQuery)
 {
-  FloxL3BookHandle book = flox_l3_book_create();
+  LrvxL3BookHandle book = lrvx_l3_book_create();
   ASSERT_NE(book, nullptr);
 
-  flox_l3_book_add_order(book, 1, 100.0, 1.0, 0);
-  flox_l3_book_add_order(book, 2, 101.0, 0.5, 1);
+  lrvx_l3_book_add_order(book, 1, 100.0, 1.0, 0);
+  lrvx_l3_book_add_order(book, 2, 101.0, 0.5, 1);
 
   double p = 0;
-  EXPECT_EQ(flox_l3_book_best_bid(book, &p), 1);
+  EXPECT_EQ(lrvx_l3_book_best_bid(book, &p), 1);
   EXPECT_NEAR(p, 100.0, 0.01);
 
-  EXPECT_EQ(flox_l3_book_best_ask(book, &p), 1);
+  EXPECT_EQ(lrvx_l3_book_best_ask(book, &p), 1);
   EXPECT_NEAR(p, 101.0, 0.01);
 
-  flox_l3_book_remove_order(book, 1);
-  EXPECT_EQ(flox_l3_book_best_bid(book, &p), 0);
+  lrvx_l3_book_remove_order(book, 1);
+  EXPECT_EQ(lrvx_l3_book_best_bid(book, &p), 0);
 
-  flox_l3_book_destroy(book);
+  lrvx_l3_book_destroy(book);
 }
 
 // ============================================================
@@ -189,27 +189,27 @@ TEST(CapiL3BookTest, AddRemoveQuery)
 
 TEST(CapiCompositeBookTest, ApplySnapshotThenQuery)
 {
-  FloxCompositeBookHandle book = flox_composite_book_create();
+  LrvxCompositeBookHandle book = lrvx_composite_book_create();
   ASSERT_NE(book, nullptr);
 
   double p = 0, q = 0;
-  EXPECT_EQ(flox_composite_book_best_bid(book, 1, &p, &q), 0);
+  EXPECT_EQ(lrvx_composite_book_best_bid(book, 1, &p, &q), 0);
 
   double bid_p[] = {100.0};
   double bid_q[] = {1.5};
   double ask_p[] = {100.02};
   double ask_q[] = {0.5};
-  flox_composite_book_apply_snapshot(book, /*exchange=*/1, /*symbol=*/1, bid_p, bid_q, 1, ask_p,
+  lrvx_composite_book_apply_snapshot(book, /*exchange=*/1, /*symbol=*/1, bid_p, bid_q, 1, ask_p,
                                      ask_q, 1, /*recv_ns=*/1'000);
 
-  EXPECT_EQ(flox_composite_book_best_bid(book, 1, &p, &q), 1);
+  EXPECT_EQ(lrvx_composite_book_best_bid(book, 1, &p, &q), 1);
   EXPECT_NEAR(p, 100.0, 0.001);
   EXPECT_NEAR(q, 1.5, 0.001);
 
-  EXPECT_EQ(flox_composite_book_best_ask(book, 1, &p, &q), 1);
+  EXPECT_EQ(lrvx_composite_book_best_ask(book, 1, &p, &q), 1);
   EXPECT_NEAR(p, 100.02, 0.001);
 
-  flox_composite_book_destroy(book);
+  lrvx_composite_book_destroy(book);
 }
 
 TEST(CapiCompositeBookTest, BidOnlyDeltaDoesNotWipeAskSide)
@@ -218,39 +218,39 @@ TEST(CapiCompositeBookTest, BidOnlyDeltaDoesNotWipeAskSide)
   // (CompositeBookMatrixTest.BidOnlyDeltaDoesNotWipeAskSide): a delta that
   // carries only the bid side must leave a previously-set ask side intact,
   // not zero it out.
-  FloxCompositeBookHandle book = flox_composite_book_create();
+  LrvxCompositeBookHandle book = lrvx_composite_book_create();
   ASSERT_NE(book, nullptr);
 
   double bid_p[] = {100.0};
   double bid_q[] = {1.0};
   double ask_p[] = {100.05};
   double ask_q[] = {2.0};
-  flox_composite_book_apply_snapshot(book, 1, 7, bid_p, bid_q, 1, ask_p, ask_q, 1, 0);
+  lrvx_composite_book_apply_snapshot(book, 1, 7, bid_p, bid_q, 1, ask_p, ask_q, 1, 0);
 
   double new_bid_p[] = {100.01};
   double new_bid_q[] = {3.0};
-  flox_composite_book_apply_delta(book, 1, 7, new_bid_p, new_bid_q, 1, nullptr, nullptr, 0, 0);
+  lrvx_composite_book_apply_delta(book, 1, 7, new_bid_p, new_bid_q, 1, nullptr, nullptr, 0, 0);
 
   double p = 0, q = 0;
-  EXPECT_EQ(flox_composite_book_best_bid(book, 7, &p, &q), 1);
+  EXPECT_EQ(lrvx_composite_book_best_bid(book, 7, &p, &q), 1);
   EXPECT_NEAR(p, 100.01, 0.001);
 
-  EXPECT_EQ(flox_composite_book_best_ask(book, 7, &p, &q), 1);
+  EXPECT_EQ(lrvx_composite_book_best_ask(book, 7, &p, &q), 1);
   EXPECT_NEAR(p, 100.05, 0.001);  // unchanged by the bid-only delta
 
-  flox_composite_book_destroy(book);
+  lrvx_composite_book_destroy(book);
 }
 
 TEST(CapiCompositeBookTest, ArbitrageAcrossExchanges)
 {
-  FloxCompositeBookHandle book = flox_composite_book_create();
+  LrvxCompositeBookHandle book = lrvx_composite_book_create();
   ASSERT_NE(book, nullptr);
 
   double bid_p1[] = {101.0};
   double bid_q1[] = {1.0};
   double ask_p1[] = {101.5};
   double ask_q1[] = {1.0};
-  flox_composite_book_apply_snapshot(book, /*exchange=*/1, /*symbol=*/3, bid_p1, bid_q1, 1, ask_p1,
+  lrvx_composite_book_apply_snapshot(book, /*exchange=*/1, /*symbol=*/3, bid_p1, bid_q1, 1, ask_p1,
                                      ask_q1, 1, 0);
 
   // A second exchange bids above the first exchange's ask -- an arbitrage.
@@ -258,12 +258,12 @@ TEST(CapiCompositeBookTest, ArbitrageAcrossExchanges)
   double bid_q2[] = {1.0};
   double ask_p2[] = {103.0};
   double ask_q2[] = {1.0};
-  flox_composite_book_apply_snapshot(book, /*exchange=*/2, /*symbol=*/3, bid_p2, bid_q2, 1, ask_p2,
+  lrvx_composite_book_apply_snapshot(book, /*exchange=*/2, /*symbol=*/3, bid_p2, bid_q2, 1, ask_p2,
                                      ask_q2, 1, 0);
 
-  EXPECT_EQ(flox_composite_book_has_arb(book, 3), 1);
+  EXPECT_EQ(lrvx_composite_book_has_arb(book, 3), 1);
 
-  flox_composite_book_destroy(book);
+  lrvx_composite_book_destroy(book);
 }
 
 // ============================================================
@@ -272,20 +272,20 @@ TEST(CapiCompositeBookTest, ArbitrageAcrossExchanges)
 
 TEST(CapiOrderTrackerTest, Lifecycle)
 {
-  FloxOrderTrackerHandle tracker = flox_order_tracker_create();
+  LrvxOrderTrackerHandle tracker = lrvx_order_tracker_create();
   ASSERT_NE(tracker, nullptr);
 
-  EXPECT_EQ(flox_order_tracker_active_count(tracker), 0u);
+  EXPECT_EQ(lrvx_order_tracker_active_count(tracker), 0u);
 
-  flox_order_tracker_on_submitted(tracker, 1, 1, 0, 100.0, 1.0);
-  EXPECT_EQ(flox_order_tracker_active_count(tracker), 1u);
-  EXPECT_EQ(flox_order_tracker_is_active(tracker, 1), 1);
+  lrvx_order_tracker_on_submitted(tracker, 1, 1, 0, 100.0, 1.0);
+  EXPECT_EQ(lrvx_order_tracker_active_count(tracker), 1u);
+  EXPECT_EQ(lrvx_order_tracker_is_active(tracker, 1), 1);
 
-  flox_order_tracker_on_filled(tracker, 1, 1.0);
-  EXPECT_EQ(flox_order_tracker_is_active(tracker, 1), 0);
-  EXPECT_EQ(flox_order_tracker_active_count(tracker), 0u);
+  lrvx_order_tracker_on_filled(tracker, 1, 1.0);
+  EXPECT_EQ(lrvx_order_tracker_is_active(tracker, 1), 0);
+  EXPECT_EQ(lrvx_order_tracker_active_count(tracker), 0u);
 
-  flox_order_tracker_destroy(tracker);
+  lrvx_order_tracker_destroy(tracker);
 }
 
 // ============================================================
@@ -294,9 +294,9 @@ TEST(CapiOrderTrackerTest, Lifecycle)
 
 TEST(CapiReplayTest, ReadBboAndBookUpdates)
 {
-  using namespace flox::replay;
+  using namespace lrvx::replay;
 
-  auto dir = std::filesystem::temp_directory_path() / "flox_test_capi_replay";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_test_capi_replay";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
 
@@ -337,14 +337,14 @@ TEST(CapiReplayTest, ReadBboAndBookUpdates)
   }
 
   // BBO read.
-  FloxDataReaderHandle r = flox_data_reader_create(dir.string().c_str());
+  LrvxDataReaderHandle r = lrvx_data_reader_create(dir.string().c_str());
   ASSERT_NE(r, nullptr);
 
-  uint64_t bbo_count = flox_data_reader_read_bbo(r, nullptr, 0);
+  uint64_t bbo_count = lrvx_data_reader_read_bbo(r, nullptr, 0);
   EXPECT_EQ(bbo_count, static_cast<uint64_t>(kEvents));
 
-  std::vector<FloxBBO> bbos(bbo_count);
-  uint64_t got = flox_data_reader_read_bbo(r, bbos.data(), bbo_count);
+  std::vector<LrvxBBO> bbos(bbo_count);
+  uint64_t got = lrvx_data_reader_read_bbo(r, bbos.data(), bbo_count);
   EXPECT_EQ(got, bbo_count);
   for (uint64_t i = 0; i < got; ++i)
   {
@@ -356,13 +356,13 @@ TEST(CapiReplayTest, ReadBboAndBookUpdates)
 
   // Full book updates (headers + flat levels).
   uint64_t total_levels = 0;
-  uint64_t event_count = flox_data_reader_count_book_updates(r, &total_levels);
+  uint64_t event_count = lrvx_data_reader_count_book_updates(r, &total_levels);
   EXPECT_EQ(event_count, static_cast<uint64_t>(kEvents));
   EXPECT_EQ(total_levels, static_cast<uint64_t>(kEvents) * (kBidCount + kAskCount));
 
-  std::vector<FloxBookUpdateHeader> headers(event_count);
-  std::vector<FloxLevel> levels(total_levels);
-  uint64_t events_got = flox_data_reader_read_book_updates(
+  std::vector<LrvxBookUpdateHeader> headers(event_count);
+  std::vector<LrvxLevel> levels(total_levels);
+  uint64_t events_got = lrvx_data_reader_read_book_updates(
       r, headers.data(), event_count, levels.data(), total_levels);
   EXPECT_EQ(events_got, event_count);
 
@@ -384,7 +384,7 @@ TEST(CapiReplayTest, ReadBboAndBookUpdates)
     }
   }
 
-  flox_data_reader_destroy(r);
+  lrvx_data_reader_destroy(r);
   std::filesystem::remove_all(dir);
 }
 
@@ -395,12 +395,12 @@ TEST(CapiReplayTest, ReadBboAndBookUpdates)
 namespace
 {
 // Test fixture: a node fn that returns the close array * 2.
-static const double* doubleClose(void* user_data, FloxIndicatorGraphHandle g, uint32_t sym,
+static const double* doubleClose(void* user_data, LrvxIndicatorGraphHandle g, uint32_t sym,
                                  size_t* out_len)
 {
   auto* state = static_cast<std::vector<double>*>(user_data);
   size_t n = 0;
-  const double* c = flox_indicator_graph_close(g, sym, &n);
+  const double* c = lrvx_indicator_graph_close(g, sym, &n);
   state->resize(n);
   for (size_t i = 0; i < n; ++i)
   {
@@ -411,14 +411,14 @@ static const double* doubleClose(void* user_data, FloxIndicatorGraphHandle g, ui
 }
 
 // dependent: returns close + parent
-static const double* sumWithDouble(void* user_data, FloxIndicatorGraphHandle g, uint32_t sym,
+static const double* sumWithDouble(void* user_data, LrvxIndicatorGraphHandle g, uint32_t sym,
                                    size_t* out_len)
 {
   auto* state = static_cast<std::vector<double>*>(user_data);
   size_t n = 0;
-  const double* c = flox_indicator_graph_close(g, sym, &n);
+  const double* c = lrvx_indicator_graph_close(g, sym, &n);
   size_t pn = 0;
-  const double* p = flox_indicator_graph_get(g, sym, "double_close", &pn);
+  const double* p = lrvx_indicator_graph_get(g, sym, "double_close", &pn);
   if (!p || pn != n)
   {
     *out_len = 0;
@@ -436,19 +436,19 @@ static const double* sumWithDouble(void* user_data, FloxIndicatorGraphHandle g, 
 
 TEST(CapiGraphTest, BasicComputeAndDeps)
 {
-  auto g = flox_indicator_graph_create();
+  auto g = lrvx_indicator_graph_create();
   ASSERT_NE(g, nullptr);
 
   std::vector<double> close = {1.0, 2.0, 3.0, 4.0, 5.0};
-  flox_indicator_graph_set_bars(g, 0, close.data(), nullptr, nullptr, nullptr, close.size());
+  lrvx_indicator_graph_set_bars(g, 0, close.data(), nullptr, nullptr, nullptr, close.size());
 
   std::vector<double> stateA, stateB;
-  flox_indicator_graph_add_node(g, "double_close", nullptr, 0, doubleClose, &stateA);
+  lrvx_indicator_graph_add_node(g, "double_close", nullptr, 0, doubleClose, &stateA);
   const char* deps[] = {"double_close"};
-  flox_indicator_graph_add_node(g, "sum", deps, 1, sumWithDouble, &stateB);
+  lrvx_indicator_graph_add_node(g, "sum", deps, 1, sumWithDouble, &stateB);
 
   size_t len = 0;
-  const double* out = flox_indicator_graph_require(g, 0, "sum", &len);
+  const double* out = lrvx_indicator_graph_require(g, 0, "sum", &len);
   ASSERT_NE(out, nullptr);
   ASSERT_EQ(len, 5u);
   for (size_t i = 0; i < 5; ++i)
@@ -458,17 +458,17 @@ TEST(CapiGraphTest, BasicComputeAndDeps)
 
   // get on cached node returns the same pointer.
   size_t cl = 0;
-  const double* cached = flox_indicator_graph_get(g, 0, "double_close", &cl);
+  const double* cached = lrvx_indicator_graph_get(g, 0, "double_close", &cl);
   ASSERT_NE(cached, nullptr);
   EXPECT_EQ(cl, 5u);
 
   // Unknown node -> nullptr.
   size_t l2 = 999;
-  const double* missing = flox_indicator_graph_require(g, 0, "nope", &l2);
+  const double* missing = lrvx_indicator_graph_require(g, 0, "nope", &l2);
   EXPECT_EQ(missing, nullptr);
   EXPECT_EQ(l2, 0u);
 
-  flox_indicator_graph_destroy(g);
+  lrvx_indicator_graph_destroy(g);
 }
 
 // ============================================================
@@ -477,32 +477,32 @@ TEST(CapiGraphTest, BasicComputeAndDeps)
 
 TEST(CapiStreamingGraphTest, StepAndCurrent)
 {
-  auto sg = flox_streaming_graph_create();
+  auto sg = lrvx_streaming_graph_create();
   ASSERT_NE(sg, nullptr);
 
   std::vector<double> stateA, stateB;
-  flox_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
+  lrvx_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
   const char* deps[] = {"double_close"};
-  flox_streaming_graph_add_node(sg, "sum", deps, 1, sumWithDouble, &stateB);
+  lrvx_streaming_graph_add_node(sg, "sum", deps, 1, sumWithDouble, &stateB);
 
   // Before any steps current returns NaN.
-  EXPECT_TRUE(std::isnan(flox_streaming_graph_current(sg, 0, "double_close")));
-  EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), 0u);
+  EXPECT_TRUE(std::isnan(lrvx_streaming_graph_current(sg, 0, "double_close")));
+  EXPECT_EQ(lrvx_streaming_graph_bar_count(sg, 0), 0u);
 
   std::vector<double> closes = {1.0, 2.0, 3.0, 4.0, 5.0};
   for (size_t i = 0; i < closes.size(); ++i)
   {
     double c = closes[i];
-    flox_streaming_graph_step(sg, 0, c, c, c, c, 0.0);
-    EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), i + 1);
+    lrvx_streaming_graph_step(sg, 0, c, c, c, c, 0.0);
+    EXPECT_EQ(lrvx_streaming_graph_bar_count(sg, 0), i + 1);
 
     // double_close node: returns close * 2 for the last bar
-    EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "double_close"), c * 2.0, 1e-12);
+    EXPECT_NEAR(lrvx_streaming_graph_current(sg, 0, "double_close"), c * 2.0, 1e-12);
     // sum node: returns close + double_close = close * 3
-    EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "sum"), c * 3.0, 1e-12);
+    EXPECT_NEAR(lrvx_streaming_graph_current(sg, 0, "sum"), c * 3.0, 1e-12);
   }
 
-  flox_streaming_graph_destroy(sg);
+  lrvx_streaming_graph_destroy(sg);
 }
 
 TEST(CapiStreamingGraphTest, ParityWithBatch)
@@ -510,54 +510,54 @@ TEST(CapiStreamingGraphTest, ParityWithBatch)
   // Verify streaming current values after N steps == batch result[N-1].
   std::vector<double> stateA, stateB;
 
-  auto sg = flox_streaming_graph_create();
-  flox_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
+  auto sg = lrvx_streaming_graph_create();
+  lrvx_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
   const char* deps[] = {"double_close"};
-  flox_streaming_graph_add_node(sg, "sum", deps, 1, sumWithDouble, &stateB);
+  lrvx_streaming_graph_add_node(sg, "sum", deps, 1, sumWithDouble, &stateB);
 
   std::vector<double> closes = {10.0, 20.0, 30.0, 40.0, 50.0};
   for (double c : closes)
   {
-    flox_streaming_graph_step(sg, 0, c, c, c, c, 0.0);
+    lrvx_streaming_graph_step(sg, 0, c, c, c, c, 0.0);
   }
 
   // Batch run on the same data.
   std::vector<double> batchStateA, batchStateB;
-  auto bg = flox_indicator_graph_create();
-  flox_indicator_graph_add_node(bg, "double_close", nullptr, 0, doubleClose, &batchStateA);
-  flox_indicator_graph_add_node(bg, "sum", deps, 1, sumWithDouble, &batchStateB);
-  flox_indicator_graph_set_bars(bg, 0, closes.data(), nullptr, nullptr, nullptr, closes.size());
+  auto bg = lrvx_indicator_graph_create();
+  lrvx_indicator_graph_add_node(bg, "double_close", nullptr, 0, doubleClose, &batchStateA);
+  lrvx_indicator_graph_add_node(bg, "sum", deps, 1, sumWithDouble, &batchStateB);
+  lrvx_indicator_graph_set_bars(bg, 0, closes.data(), nullptr, nullptr, nullptr, closes.size());
 
   size_t len = 0;
-  const double* batchSum = flox_indicator_graph_require(bg, 0, "sum", &len);
+  const double* batchSum = lrvx_indicator_graph_require(bg, 0, "sum", &len);
   ASSERT_EQ(len, closes.size());
 
   // Streaming current == batch last element.
-  EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "sum"), batchSum[len - 1], 1e-12);
+  EXPECT_NEAR(lrvx_streaming_graph_current(sg, 0, "sum"), batchSum[len - 1], 1e-12);
 
-  flox_indicator_graph_destroy(bg);
-  flox_streaming_graph_destroy(sg);
+  lrvx_indicator_graph_destroy(bg);
+  lrvx_streaming_graph_destroy(sg);
 }
 
 TEST(CapiStreamingGraphTest, Reset)
 {
   std::vector<double> stateA;
-  auto sg = flox_streaming_graph_create();
-  flox_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
+  auto sg = lrvx_streaming_graph_create();
+  lrvx_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
 
-  flox_streaming_graph_step(sg, 0, 5.0, 5.0, 5.0, 5.0, 0.0);
-  EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "double_close"), 10.0, 1e-12);
-  EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), 1u);
+  lrvx_streaming_graph_step(sg, 0, 5.0, 5.0, 5.0, 5.0, 0.0);
+  EXPECT_NEAR(lrvx_streaming_graph_current(sg, 0, "double_close"), 10.0, 1e-12);
+  EXPECT_EQ(lrvx_streaming_graph_bar_count(sg, 0), 1u);
 
-  flox_streaming_graph_reset(sg, 0);
-  EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), 0u);
-  EXPECT_TRUE(std::isnan(flox_streaming_graph_current(sg, 0, "double_close")));
+  lrvx_streaming_graph_reset(sg, 0);
+  EXPECT_EQ(lrvx_streaming_graph_bar_count(sg, 0), 0u);
+  EXPECT_TRUE(std::isnan(lrvx_streaming_graph_current(sg, 0, "double_close")));
 
   // Can resume stepping after reset.
-  flox_streaming_graph_step(sg, 0, 7.0, 7.0, 7.0, 7.0, 0.0);
-  EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "double_close"), 14.0, 1e-12);
+  lrvx_streaming_graph_step(sg, 0, 7.0, 7.0, 7.0, 7.0, 0.0);
+  EXPECT_NEAR(lrvx_streaming_graph_current(sg, 0, "double_close"), 14.0, 1e-12);
 
-  flox_streaming_graph_destroy(sg);
+  lrvx_streaming_graph_destroy(sg);
 }
 
 // ============================================================
@@ -568,48 +568,48 @@ TEST(CapiStreamingGraphTest, Reset)
 // against before it trusts a struct layout, and the only test that touched it
 // compared the macro with the function the same header compiled -- true
 // whatever the number says. Anchoring it to a shape the header itself declares
-// makes the number falsifiable: FloxBar gained close_reason at 3, so a header
+// makes the number falsifiable: LrvxBar gained close_reason at 3, so a header
 // that has the field and calls itself 2 is describing a struct it does not
-// have. FloxBookSnapshot gained has_bid and has_ask at 4, by the same rule.
+// have. LrvxBookSnapshot gained has_bid and has_ask at 4, by the same rule.
 template <typename T>
-concept FloxBarCarriesCloseReason = requires(T bar) { bar.close_reason; };
+concept LrvxBarCarriesCloseReason = requires(T bar) { bar.close_reason; };
 
 template <typename T>
-concept FloxBookSnapshotCarriesPresence = requires(T snap) {
+concept LrvxBookSnapshotCarriesPresence = requires(T snap) {
   snap.has_bid;
   snap.has_ask;
 };
 
 TEST(CapiAbiVersion, TheNumberMovedWithTheStructShape)
 {
-  EXPECT_EQ(flox_capi_abi_version(), FLOX_CAPI_ABI_VERSION);
-  EXPECT_GT(flox_capi_abi_version(), 0u);
+  EXPECT_EQ(lrvx_capi_abi_version(), LRVX_CAPI_ABI_VERSION);
+  EXPECT_GT(lrvx_capi_abi_version(), 0u);
 
-  if constexpr (FloxBarCarriesCloseReason<FloxBar>)
+  if constexpr (LrvxBarCarriesCloseReason<LrvxBar>)
   {
-    EXPECT_GE(flox_capi_abi_version(), 3u)
-        << "FloxBar carries close_reason, which is the change ABI 3 names; a "
+    EXPECT_GE(lrvx_capi_abi_version(), 3u)
+        << "LrvxBar carries close_reason, which is the change ABI 3 names; a "
            "library reporting "
-        << flox_capi_abi_version()
+        << lrvx_capi_abi_version()
         << " tells a consumer to read the struct it had before the field existed";
   }
   else
   {
-    EXPECT_LT(flox_capi_abi_version(), 3u)
-        << "the header claims ABI 3 or later but FloxBar has no close_reason";
+    EXPECT_LT(lrvx_capi_abi_version(), 3u)
+        << "the header claims ABI 3 or later but LrvxBar has no close_reason";
   }
 
-  if constexpr (FloxBookSnapshotCarriesPresence<FloxBookSnapshot>)
+  if constexpr (LrvxBookSnapshotCarriesPresence<LrvxBookSnapshot>)
   {
-    EXPECT_GE(flox_capi_abi_version(), 4u)
-        << "FloxBookSnapshot carries has_bid and has_ask, which is the change ABI 4 "
+    EXPECT_GE(lrvx_capi_abi_version(), 4u)
+        << "LrvxBookSnapshot carries has_bid and has_ask, which is the change ABI 4 "
            "names; a library reporting "
-        << flox_capi_abi_version()
+        << lrvx_capi_abi_version()
         << " tells a consumer to read the struct it had before the flags existed";
   }
   else
   {
-    EXPECT_LT(flox_capi_abi_version(), 4u)
-        << "the header claims ABI 4 or later but FloxBookSnapshot has no presence flags";
+    EXPECT_LT(lrvx_capi_abi_version(), 4u)
+        << "the header claims ABI 4 or later but LrvxBookSnapshot has no presence flags";
   }
 }

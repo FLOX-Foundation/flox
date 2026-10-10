@@ -1,6 +1,6 @@
 """Tests for the OrderGroup state machine.
 
-`flox_py.OrderGroup` is bound from `include/flox/execution/order_group.h`
+`lrvx.OrderGroup` is bound from `include/lrvx/execution/order_group.h`
 and is the same primitive every binding (pybind11 / NAPI / QuickJS /
 Codon) reaches through the C ABI.
 """
@@ -8,26 +8,26 @@ from __future__ import annotations
 
 import pytest
 
-import flox_py
+import lrvx
 
 
 def test_best_effort_recommends_nothing() -> None:
-    g = flox_py.OrderGroup(parent_signal_id=1, policy=flox_py.OrderGroupPolicy.BEST_EFFORT)
+    g = lrvx.OrderGroup(parent_signal_id=1, policy=lrvx.OrderGroupPolicy.BEST_EFFORT)
     a = g.add_market_leg(symbol=1, side=0, qty=0.1)
     b = g.add_market_leg(symbol=2, side=1, qty=2.0)
     assert g.leg_count() == 2
-    assert g.state() == flox_py.OrderGroupState.PENDING
+    assert g.state() == lrvx.OrderGroupState.PENDING
     g.record_submit(a, 100)
     g.record_submit(b, 101)
-    assert g.state() == flox_py.OrderGroupState.SUBMITTED
+    assert g.state() == lrvx.OrderGroupState.SUBMITTED
     g.record_fill(a, 0.1)
     g.record_failure(b)
-    assert g.state() == flox_py.OrderGroupState.PARTIALLY_FILLED
+    assert g.state() == lrvx.OrderGroupState.PARTIALLY_FILLED
     assert g.recommended_actions() == []
 
 
 def test_one_sided_cancels_remaining_on_first_fill() -> None:
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ONE_SIDED)
     g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
     g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
     g.record_submit(0, 200)
@@ -42,7 +42,7 @@ def test_one_sided_cancels_remaining_on_first_fill() -> None:
 
 
 def test_all_or_nothing_reverts_filled_legs_on_failure() -> None:
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ALL_OR_NOTHING)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ALL_OR_NOTHING)
     g.add_market_leg(1, 0, 0.1)
     g.add_market_leg(2, 1, 2.0)
     g.record_submit(0, 300)
@@ -50,7 +50,7 @@ def test_all_or_nothing_reverts_filled_legs_on_failure() -> None:
     g.record_fill(0, 0.1)
     g.record_failure(1)
 
-    assert g.state() == flox_py.OrderGroupState.REVERTING
+    assert g.state() == lrvx.OrderGroupState.REVERTING
     actions = g.recommended_actions()
     assert len(actions) == 1
     assert actions[0]["kind"] == "revert"
@@ -82,7 +82,7 @@ def test_auto_dispatch_fires_actions_through_strategy() -> None:
             self.market_sells.append((symbol, qty))
 
     s = FakeStrat()
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ALL_OR_NOTHING)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ALL_OR_NOTHING)
     g.add_market_leg(symbol=1, side=0, qty=0.1)  # buy BTC
     g.add_market_leg(symbol=2, side=1, qty=2.0)  # sell ETH
     g.record_submit(0, 100)
@@ -103,7 +103,7 @@ def test_auto_dispatch_fires_actions_through_strategy() -> None:
 def test_risk_gate_denies_basket_over_concentration_cap() -> None:
     """Group-level risk gate: basket gross notional exceeding the
     concentration cap (% of equity) must deny submission."""
-    g = flox_py.OrderGroup()
+    g = lrvx.OrderGroup()
     g.add_market_leg(symbol=1, side=0, qty=0.1)  # BTC
     g.add_market_leg(symbol=2, side=1, qty=2.0)  # ETH
     g.set_risk_limits(max_concentration_pct=0.05)
@@ -115,7 +115,7 @@ def test_risk_gate_denies_basket_over_concentration_cap() -> None:
     assert breach["rule"] == "maxConcentrationPct"
 
     # Smaller basket: 0.001 * 50k + 0.001 * 3k = 53 → well under 5%.
-    g2 = flox_py.OrderGroup()
+    g2 = lrvx.OrderGroup()
     g2.add_market_leg(symbol=1, side=0, qty=0.001)
     g2.add_market_leg(symbol=2, side=1, qty=0.001)
     g2.set_risk_limits(max_concentration_pct=0.05)
@@ -124,7 +124,7 @@ def test_risk_gate_denies_basket_over_concentration_cap() -> None:
 
 
 def test_risk_gate_per_leg_cap_denies_oversized_leg() -> None:
-    g = flox_py.OrderGroup()
+    g = lrvx.OrderGroup()
     g.add_market_leg(symbol=1, side=0, qty=10.0)
     g.set_risk_limits(max_leg_qty=1.0)
     breach = g.precheck_submission()
@@ -149,7 +149,7 @@ def test_auto_dispatch_one_sided_cancels_remaining_legs() -> None:
             self.market_sells.append((symbol, qty))
 
     s = FakeStrat()
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ONE_SIDED)
     g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
     g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
     g.record_submit(0, 200)
@@ -161,14 +161,14 @@ def test_auto_dispatch_one_sided_cancels_remaining_legs() -> None:
 
 
 def test_pair_latency_decision_returns_wait_when_unset() -> None:
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ONE_SIDED)
     g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
     g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
     assert g.pair_latency_decision(0, 0, False) == "wait"
 
 
 def test_pair_latency_decision_paths() -> None:
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.ONE_SIDED)
     g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
     g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
     g.set_pair_latency_budget_ns(50_000_000)  # 50 ms
@@ -185,10 +185,10 @@ def test_pair_latency_decision_paths() -> None:
 
 
 def test_partial_fill_marks_leg_partially_filled() -> None:
-    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.BEST_EFFORT)
+    g = lrvx.OrderGroup(policy=lrvx.OrderGroupPolicy.BEST_EFFORT)
     g.add_market_leg(1, 0, 0.5)
     g.record_submit(0, 400)
     g.record_fill(0, 0.2)  # half of target
-    assert g.leg_state(0) == flox_py.LegState.PARTIALLY_FILLED
+    assert g.leg_state(0) == lrvx.LegState.PARTIALLY_FILLED
     g.record_fill(0, 0.5)
-    assert g.leg_state(0) == flox_py.LegState.FILLED
+    assert g.leg_state(0) == lrvx.LegState.FILLED

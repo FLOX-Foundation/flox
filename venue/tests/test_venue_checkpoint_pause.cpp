@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -24,10 +24,10 @@
  * inside the pause, so the distance between them is consumer-thread time and
  * nothing else.
  */
-#include "flox-venue/checkpoint_lane.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
+#include "lrvx-venue/checkpoint_lane.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -48,9 +48,9 @@
 #include <type_traits>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
@@ -484,12 +484,12 @@ TEST(VenueCheckpointPause, TheGaugeStaysBoundedByTheWallClockAndAccumulates)
 // create would fail the control rather than pass the assertion.
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-#define FLOX_TEST_HAS_BIRTHTIME 1
+#define LRVX_TEST_HAS_BIRTHTIME 1
 #endif
 
 namespace
 {
-#if defined(FLOX_TEST_HAS_BIRTHTIME)
+#if defined(LRVX_TEST_HAS_BIRTHTIME)
 // Nanoseconds between a file's creation and its last modification. Zero for a
 // file nothing has written to since it was made.
 int64_t writtenSinceCreatedNs(const std::string& path)
@@ -510,7 +510,7 @@ int64_t writtenSinceCreatedNs(const std::string& path)
 
 TEST(VenueCheckpointPause, AFreshSegmentGetsItsFirstBlockWhenItIsOpened)
 {
-#if !defined(FLOX_TEST_HAS_BIRTHTIME)
+#if !defined(LRVX_TEST_HAS_BIRTHTIME)
   GTEST_SKIP() << "no creation timestamp in struct stat here, so this platform cannot be "
                   "asked whether the new segment was written to at open";
 #else

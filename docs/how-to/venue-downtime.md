@@ -2,7 +2,7 @@
 
 Real exchanges go down — scheduled maintenance, surprise outages,
 matching-engine restarts. A strategy that ignores this is brittle
-in production. flox models planned and random outages inside the
+in production. lrvx models planned and random outages inside the
 backtest, so you can measure the PnL cost and fix the recovery path
 before going live.
 
@@ -36,9 +36,9 @@ A worked example (Python):
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    va = flox.VenueAvailability()
+    va = lrvx.VenueAvailability()
     # 2-minute maintenance window, kill every resting order on disconnect
     va.schedule_outage(start_ns=t0 + 3600 * 10**9,
                        duration_ns=120 * 10**9,
@@ -49,14 +49,14 @@ A worked example (Python):
                            on_open_orders="hold",
                            seed=42)
 
-    exec = flox.SimulatedExecutor()
+    exec = lrvx.SimulatedExecutor()
     exec.set_venue_availability(va)
     ```
 
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor, VenueAvailability } from "@flox-foundation/flox";
+    import { SimulatedExecutor, VenueAvailability } from "@lrvx/lrvx";
 
     const va = new VenueAvailability();
     va.scheduleOutage(t0 + 3600 * 1e9, 120 * 1e9, "cancel_all");
@@ -80,7 +80,7 @@ A worked example (Python):
 === "Codon"
 
     ```python
-    from flox.backtest import (SimulatedExecutor, VenueAvailability,
+    from lrvx.backtest import (SimulatedExecutor, VenueAvailability,
                                OUTAGE_CANCEL_ALL, OUTAGE_HOLD)
 
     va = VenueAvailability()
@@ -94,17 +94,17 @@ A worked example (Python):
 === "C"
 
     ```c
-    FloxVenueAvailabilityHandle va = flox_venue_availability_create();
-    flox_venue_availability_schedule_outage(va, t0 + 3600e9, 120e9,
+    LrvxVenueAvailabilityHandle va = lrvx_venue_availability_create();
+    lrvx_venue_availability_schedule_outage(va, t0 + 3600e9, 120e9,
                                             /*policy=*/0, /*gtc_ttl_ns=*/0);
-    flox_venue_availability_auto_random_outages(va, 0.5, 30e9,
+    lrvx_venue_availability_auto_random_outages(va, 0.5, 30e9,
                                                 /*policy=*/1, /*seed=*/42);
 
-    FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
-    flox_simulated_executor_set_venue_availability(exec, va);
+    LrvxSimulatedExecutorHandle exec = lrvx_simulated_executor_create();
+    lrvx_simulated_executor_set_venue_availability(exec, va);
     /* later: */
-    flox_simulated_executor_set_venue_availability(exec, NULL);
-    flox_venue_availability_destroy(va);
+    lrvx_simulated_executor_set_venue_availability(exec, NULL);
+    lrvx_venue_availability_destroy(va);
     ```
 
 ## What this catches

@@ -1,7 +1,7 @@
 # Codon smoke for cross-binding bar-close ordering parity.
 # Sister tests in pybind11 / NAPI / QuickJS assert the same.
 
-from flox.bar_dispatch import BarDispatchRecorder
+from lrvx.bar_dispatch import BarDispatchRecorder
 
 
 def check(label: str, ok: bool):

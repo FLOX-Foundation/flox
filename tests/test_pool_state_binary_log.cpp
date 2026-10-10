@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/constant_product_curve.h"
-#include "flox/connector/amm_dex_connector.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/pool_state_tape.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/backtest/constant_product_curve.h"
+#include "lrvx/connector/amm_dex_connector.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/pool_state_tape.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -20,8 +20,8 @@
 #include <filesystem>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -63,7 +63,7 @@ std::vector<uint8_t> framed(Build&& build)
 // state, the same result as replaying a standalone tape.
 TEST(PoolStateBinaryLogTest, PoolRecordsShareTheTradeTimeline)
 {
-  const auto dir = std::filesystem::temp_directory_path() / "flox_pool_timeline";
+  const auto dir = std::filesystem::temp_directory_path() / "lrvx_pool_timeline";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
 
@@ -172,7 +172,7 @@ TEST(PoolStateBinaryLogTest, PoolRecordsShareTheTradeTimeline)
 // tape reconstructs the pool state identically.
 TEST(PoolStateBinaryLogTest, CompressedTapeRoundTrips)
 {
-  const auto dir = std::filesystem::temp_directory_path() / "flox_pool_timeline_lz4";
+  const auto dir = std::filesystem::temp_directory_path() / "lrvx_pool_timeline_lz4";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
 

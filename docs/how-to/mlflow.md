@@ -1,6 +1,6 @@
 # Log a backtest to MLflow
 
-`flox_py.mlflow` writes FLOX backtest output into [MLflow](https://mlflow.org)
+`lrvx.mlflow` writes lrvx backtest output into [MLflow](https://mlflow.org)
 runs so they show up in the MLflow UI. `mlflow` is an optional
 dependency:
 
@@ -17,17 +17,17 @@ MLflow client (REST API, language SDK).
 Run a backtest, then log it.
 
 ```python
-import flox_py as flox
-from flox_py import mlflow as flox_mlflow
+import lrvx
+from lrvx import mlflow as lrvx_mlflow
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("exchange", "BTCUSDT", tick_size=0.01)
 
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(MyStrategy([btc]))
 stats = bt.run_csv("btcusdt_1m.csv", symbol="BTCUSDT")
 
-run_id = flox_mlflow.log_backtest(
+run_id = lrvx_mlflow.log_backtest(
     stats=stats,
     equity_curve=bt.equity_curve(),
     trades=bt.trades(),
@@ -60,7 +60,7 @@ block exit. Use it when you want extra params, tags, or artifacts in
 the same run.
 
 ```python
-with flox_mlflow.log_to_mlflow(
+with lrvx_mlflow.log_to_mlflow(
     run_name="grid-cell-fast=10-slow=30",
     experiment="my-strategy",
 ) as run:
@@ -87,7 +87,7 @@ any prior `mlflow.set_tracking_uri(...)` call.
 Inline override:
 
 ```python
-flox_mlflow.log_backtest(
+lrvx_mlflow.log_backtest(
     stats=stats,
     tracking_uri="http://localhost:5000",
     experiment="my-strategy",
@@ -110,16 +110,16 @@ The UI at <http://localhost:5000> picks the runs up.
 sweep in a parent run and each cell in a nested child run:
 
 ```python
-import flox_py as flox
-from flox_py import mlflow as flox_mlflow
+import lrvx
+from lrvx import mlflow as lrvx_mlflow
 
-with flox_mlflow.log_to_mlflow(run_name="grid-2025-01",
+with lrvx_mlflow.log_to_mlflow(run_name="grid-2025-01",
                                experiment="my-strategy") as parent:
     parent.log_params({"data": "btcusdt_1m_2024Q4"})
 
     results = grid.run()  # list of {params, stats}
     for cell in results:
-        with flox_mlflow.log_to_mlflow(
+        with lrvx_mlflow.log_to_mlflow(
             run_name=f"cell-{cell['params']}",
             experiment="my-strategy",
             nested=True,

@@ -1,6 +1,6 @@
 # SMA crossover backtest from CSV -- Codon implementation.
 #
-# Demonstrates the Codon flox API:
+# Demonstrates the Codon lrvx API:
 #   - Engine: load CSV, iterate OhlcvBars
 #   - Streaming SMA for signal generation
 #   - SignalBuilder: accumulate buy/sell signals
@@ -10,7 +10,7 @@
 #   cd codon/
 #   LIBRARY_PATH=../build/src/capi \
 #   CODON_PATH=. \
-#   ~/.codon/bin/codon build -exe -release -l flox_capi \
+#   ~/.codon/bin/codon build -exe -release -l lrvx_capi \
 #     examples/backtest_from_csv.codon \
 #     -o examples/backtest_from_csv
 #
@@ -19,8 +19,8 @@
 #   ./examples/backtest_from_csv ../examples/data/btcusdt_1m.csv
 
 import sys
-from flox.engine import Engine, SignalBuilder
-from flox.indicators import SMA
+from lrvx.engine import Engine, SignalBuilder
+from lrvx.indicators import SMA
 
 
 def sma_crossover(path: str, fast: int = 10, slow: int = 30,

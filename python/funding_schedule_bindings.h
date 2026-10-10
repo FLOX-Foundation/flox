@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,59 +12,59 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/backtest/funding_schedule.h"
+#include "lrvx/backtest/funding_schedule.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 inline void bindFundingSchedule(py::module_& m)
 {
-  py::class_<flox::FundingPayment>(m, "FundingPayment")
+  py::class_<lrvx::FundingPayment>(m, "FundingPayment")
       // UnixNanos has no pybind caster on purpose; Python keeps integer ns.
-      .def_property_readonly("timestamp_ns", [](const flox::FundingPayment& p)
+      .def_property_readonly("timestamp_ns", [](const lrvx::FundingPayment& p)
                              { return p.timestampNs.raw(); })
-      .def_readonly("symbol", &flox::FundingPayment::symbol)
-      .def_readonly("rate", &flox::FundingPayment::rate)
-      .def_readonly("mark_price", &flox::FundingPayment::markPrice)
-      .def_readonly("position_signed", &flox::FundingPayment::positionSigned)
-      .def_readonly("amount", &flox::FundingPayment::amount);
+      .def_readonly("symbol", &lrvx::FundingPayment::symbol)
+      .def_readonly("rate", &lrvx::FundingPayment::rate)
+      .def_readonly("mark_price", &lrvx::FundingPayment::markPrice)
+      .def_readonly("position_signed", &lrvx::FundingPayment::positionSigned)
+      .def_readonly("amount", &lrvx::FundingPayment::amount);
 
-  py::class_<flox::FundingTapeEntry>(m, "FundingTapeEntry")
+  py::class_<lrvx::FundingTapeEntry>(m, "FundingTapeEntry")
       .def(py::init<>())
       .def_property(
-          "timestamp_ns", [](const flox::FundingTapeEntry& e)
+          "timestamp_ns", [](const lrvx::FundingTapeEntry& e)
           { return e.timestampNs.raw(); },
-          [](flox::FundingTapeEntry& e, int64_t v)
-          { e.timestampNs = flox::UnixNanos::fromRaw(v); })
-      .def_readwrite("symbol", &flox::FundingTapeEntry::symbol)
-      .def_readwrite("rate", &flox::FundingTapeEntry::rate);
+          [](lrvx::FundingTapeEntry& e, int64_t v)
+          { e.timestampNs = lrvx::UnixNanos::fromRaw(v); })
+      .def_readwrite("symbol", &lrvx::FundingTapeEntry::symbol)
+      .def_readwrite("rate", &lrvx::FundingTapeEntry::rate);
 
-  py::class_<flox::FundingSchedule>(m, "FundingSchedule")
+  py::class_<lrvx::FundingSchedule>(m, "FundingSchedule")
       .def(py::init<>())
-      .def_static("constant", &flox::FundingSchedule::constant, py::arg("interval_ns"),
+      .def_static("constant", &lrvx::FundingSchedule::constant, py::arg("interval_ns"),
                   py::arg("rate"))
-      .def_static("tape", &flox::FundingSchedule::tape, py::arg("events"))
-      .def_static("tape_by_symbol", &flox::FundingSchedule::tapeBySymbol,
+      .def_static("tape", &lrvx::FundingSchedule::tape, py::arg("events"))
+      .def_static("tape_by_symbol", &lrvx::FundingSchedule::tapeBySymbol,
                   py::arg("entries"))
-      .def_static("binance_um_futures", &flox::FundingSchedule::binance_um_futures)
-      .def_static("bybit_linear", &flox::FundingSchedule::bybit_linear)
-      .def_static("okx_swap", &flox::FundingSchedule::okx_swap)
-      .def_static("bitget_hourly", &flox::FundingSchedule::bitget_hourly)
-      .def("load_tape", &flox::FundingSchedule::loadTape, py::arg("path"),
+      .def_static("binance_um_futures", &lrvx::FundingSchedule::binance_um_futures)
+      .def_static("bybit_linear", &lrvx::FundingSchedule::bybit_linear)
+      .def_static("okx_swap", &lrvx::FundingSchedule::okx_swap)
+      .def_static("bitget_hourly", &lrvx::FundingSchedule::bitget_hourly)
+      .def("load_tape", &lrvx::FundingSchedule::loadTape, py::arg("path"),
            "Read CSV with columns timestamp_ns, symbol, funding_rate. "
            "Returns True on success.")
-      .def("set_constant_rate", &flox::FundingSchedule::setConstantRate,
+      .def("set_constant_rate", &lrvx::FundingSchedule::setConstantRate,
            py::arg("rate"))
-      .def("reset", &flox::FundingSchedule::reset)
-      .def("interval_ns", &flox::FundingSchedule::intervalNs)
-      .def("constant_rate", &flox::FundingSchedule::constantRate)
-      .def("last_tick_ns", &flox::FundingSchedule::lastTickNs)
-      .def("settlement_timestamps", &flox::FundingSchedule::settlementTimestamps)
-      .def("per_symbol_tape", &flox::FundingSchedule::perSymbolTape)
-      .def("tick", &flox::FundingSchedule::tick, py::arg("now_ns"), py::arg("symbols"),
+      .def("reset", &lrvx::FundingSchedule::reset)
+      .def("interval_ns", &lrvx::FundingSchedule::intervalNs)
+      .def("constant_rate", &lrvx::FundingSchedule::constantRate)
+      .def("last_tick_ns", &lrvx::FundingSchedule::lastTickNs)
+      .def("settlement_timestamps", &lrvx::FundingSchedule::settlementTimestamps)
+      .def("per_symbol_tape", &lrvx::FundingSchedule::perSymbolTape)
+      .def("tick", &lrvx::FundingSchedule::tick, py::arg("now_ns"), py::arg("symbols"),
            py::arg("positions"), py::arg("mark_prices"));
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

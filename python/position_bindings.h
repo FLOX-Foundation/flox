@@ -5,10 +5,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/common.h"
-#include "flox/execution/order_tracker.h"
-#include "flox/position/position_group.h"
-#include "flox/position/position_tracker.h"
+#include "lrvx/common.h"
+#include "lrvx/execution/order_tracker.h"
+#include "lrvx/position/position_group.h"
+#include "lrvx/position/position_tracker.h"
 
 namespace py = pybind11;
 
@@ -17,7 +17,7 @@ namespace
 
 class PyPositionTracker
 {
-  flox::PositionTracker _tracker;
+  lrvx::PositionTracker _tracker;
 
  public:
   PyPositionTracker(const std::string& method)
@@ -28,11 +28,11 @@ class PyPositionTracker
   // Record a fill - create a minimal Order and call onOrderFilled
   void onFill(uint32_t symbol, const std::string& side, double price, double quantity)
   {
-    flox::Order order;
+    lrvx::Order order;
     order.symbol = symbol;
-    order.side = (side == "buy") ? flox::Side::BUY : flox::Side::SELL;
-    order.price = flox::Price::fromDouble(price);
-    order.quantity = flox::Quantity::fromDouble(quantity);
+    order.side = (side == "buy") ? lrvx::Side::BUY : lrvx::Side::SELL;
+    order.price = lrvx::Price::fromDouble(price);
+    order.quantity = lrvx::Quantity::fromDouble(quantity);
     order.id = ++_nextOrderId;
     _tracker.onOrderFilled(order);
   }
@@ -60,43 +60,43 @@ class PyPositionTracker
  private:
   uint64_t _nextOrderId = 0;
 
-  static flox::CostBasisMethod parseCostBasis(const std::string& s)
+  static lrvx::CostBasisMethod parseCostBasis(const std::string& s)
   {
     if (s == "lifo")
     {
-      return flox::CostBasisMethod::LIFO;
+      return lrvx::CostBasisMethod::LIFO;
     }
     if (s == "average")
     {
-      return flox::CostBasisMethod::AVERAGE;
+      return lrvx::CostBasisMethod::AVERAGE;
     }
-    return flox::CostBasisMethod::FIFO;
+    return lrvx::CostBasisMethod::FIFO;
   }
 };
 
 class PyPositionGroupTracker
 {
-  flox::PositionGroupTracker _tracker;
+  lrvx::PositionGroupTracker _tracker;
 
  public:
   uint64_t openPosition(uint64_t orderId, uint32_t symbol, const std::string& side,
                         double price, double qty)
   {
     return _tracker.openPosition(orderId, symbol,
-                                 (side == "buy") ? flox::Side::BUY : flox::Side::SELL,
-                                 flox::Price::fromDouble(price),
-                                 flox::Quantity::fromDouble(qty));
+                                 (side == "buy") ? lrvx::Side::BUY : lrvx::Side::SELL,
+                                 lrvx::Price::fromDouble(price),
+                                 lrvx::Quantity::fromDouble(qty));
   }
 
   void closePosition(uint64_t pid, double exitPrice)
   {
-    _tracker.closePosition(pid, flox::Price::fromDouble(exitPrice));
+    _tracker.closePosition(pid, lrvx::Price::fromDouble(exitPrice));
   }
 
   void partialClose(uint64_t pid, double qty, double exitPrice)
   {
-    _tracker.partialClose(pid, flox::Quantity::fromDouble(qty),
-                          flox::Price::fromDouble(exitPrice));
+    _tracker.partialClose(pid, lrvx::Quantity::fromDouble(qty),
+                          lrvx::Price::fromDouble(exitPrice));
   }
 
   uint64_t createGroup(uint64_t parentId = 0)
@@ -120,7 +120,7 @@ class PyPositionGroupTracker
     d["position_id"] = p->positionId;
     d["order_id"] = p->originOrderId;
     d["symbol"] = p->symbol;
-    d["side"] = (p->side == flox::Side::BUY) ? "buy" : "sell";
+    d["side"] = (p->side == lrvx::Side::BUY) ? "buy" : "sell";
     d["entry_price"] = p->entryPrice.toDouble();
     d["quantity"] = p->quantity.toDouble();
     d["realized_pnl"] = p->realizedPnl.toDouble();
@@ -156,7 +156,7 @@ class PyPositionGroupTracker
 
   double groupUnrealizedPnl(uint64_t gid, double currentPrice) const
   {
-    return _tracker.groupUnrealizedPnl(gid, flox::Price::fromDouble(currentPrice)).toDouble();
+    return _tracker.groupUnrealizedPnl(gid, lrvx::Price::fromDouble(currentPrice)).toDouble();
   }
 
   py::list openPositions(uint32_t symbol) const
@@ -169,7 +169,7 @@ class PyPositionGroupTracker
       d["position_id"] = p->positionId;
       d["order_id"] = p->originOrderId;
       d["symbol"] = p->symbol;
-      d["side"] = (p->side == flox::Side::BUY) ? "buy" : "sell";
+      d["side"] = (p->side == lrvx::Side::BUY) ? "buy" : "sell";
       d["entry_price"] = p->entryPrice.toDouble();
       d["quantity"] = p->quantity.toDouble();
       d["realized_pnl"] = p->realizedPnl.toDouble();
@@ -197,20 +197,20 @@ class PyPositionGroupTracker
 
 class PyOrderTracker
 {
-  flox::OrderTracker _tracker;
+  lrvx::OrderTracker _tracker;
 
  public:
   bool onSubmitted(uint64_t orderId, const std::string& exchangeOrderId,
                    const std::string& clientOrderId = "")
   {
-    flox::Order order;
+    lrvx::Order order;
     order.id = orderId;
     return _tracker.onSubmitted(order, exchangeOrderId, clientOrderId);
   }
 
   bool onFilled(uint64_t orderId, double fillQty)
   {
-    return _tracker.onFilled(orderId, flox::Quantity::fromDouble(fillQty));
+    return _tracker.onFilled(orderId, lrvx::Quantity::fromDouble(fillQty));
   }
 
   bool onCanceled(uint64_t orderId)
@@ -261,35 +261,35 @@ class PyOrderTracker
   }
 
  private:
-  static std::string statusToStr(flox::OrderEventStatus s)
+  static std::string statusToStr(lrvx::OrderEventStatus s)
   {
     switch (s)
     {
-      case flox::OrderEventStatus::NEW:
+      case lrvx::OrderEventStatus::NEW:
         return "new";
-      case flox::OrderEventStatus::SUBMITTED:
+      case lrvx::OrderEventStatus::SUBMITTED:
         return "submitted";
-      case flox::OrderEventStatus::ACCEPTED:
+      case lrvx::OrderEventStatus::ACCEPTED:
         return "accepted";
-      case flox::OrderEventStatus::PARTIALLY_FILLED:
+      case lrvx::OrderEventStatus::PARTIALLY_FILLED:
         return "partially_filled";
-      case flox::OrderEventStatus::FILLED:
+      case lrvx::OrderEventStatus::FILLED:
         return "filled";
-      case flox::OrderEventStatus::PENDING_CANCEL:
+      case lrvx::OrderEventStatus::PENDING_CANCEL:
         return "pending_cancel";
-      case flox::OrderEventStatus::CANCELED:
+      case lrvx::OrderEventStatus::CANCELED:
         return "canceled";
-      case flox::OrderEventStatus::EXPIRED:
+      case lrvx::OrderEventStatus::EXPIRED:
         return "expired";
-      case flox::OrderEventStatus::REJECTED:
+      case lrvx::OrderEventStatus::REJECTED:
         return "rejected";
-      case flox::OrderEventStatus::REPLACED:
+      case lrvx::OrderEventStatus::REPLACED:
         return "replaced";
-      case flox::OrderEventStatus::PENDING_TRIGGER:
+      case lrvx::OrderEventStatus::PENDING_TRIGGER:
         return "pending_trigger";
-      case flox::OrderEventStatus::TRIGGERED:
+      case lrvx::OrderEventStatus::TRIGGERED:
         return "triggered";
-      case flox::OrderEventStatus::TRAILING_UPDATED:
+      case lrvx::OrderEventStatus::TRAILING_UPDATED:
         return "trailing_updated";
       default:
         return "unknown";

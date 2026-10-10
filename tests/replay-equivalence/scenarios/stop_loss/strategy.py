@@ -13,10 +13,10 @@ triggered-market fill.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 
 
-class StopLossScenario(flox.Strategy):
+class StopLossScenario(lrvx.Strategy):
     def __init__(self, symbols, qty: float = 0.25):
         super().__init__(symbols)
         self.qty = qty

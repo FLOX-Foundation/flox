@@ -1,6 +1,6 @@
 # Contributing
 
-Guidelines for contributing to FLOX.
+Guidelines for contributing to lrvx.
 
 ## Code Style
 
@@ -50,7 +50,7 @@ chmod +x .git/hooks/pre-commit
 
 ## What to Contribute
 
-FLOX welcomes contributions in these areas:
+lrvx welcomes contributions in these areas:
 
 - **Features** — New functionality and capabilities
 - **Connectors** — New exchange integrations
@@ -61,37 +61,35 @@ FLOX welcomes contributions in these areas:
 
 ## Build Options Reference
 
-Artefact selection uses the `FLOX_BUILD_*` prefix; behaviour switches keep `FLOX_ENABLE_*`.
+Artefact selection uses the `LRVX_BUILD_*` prefix; behaviour switches keep `LRVX_ENABLE_*`.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `FLOX_BUILD_TESTS` | `OFF` | Build unit tests |
-| `FLOX_BUILD_BENCHMARKS` | `OFF` | Build benchmark binaries |
-| `FLOX_BUILD_DEMO` | `OFF` | Build demo application |
-| `FLOX_BUILD_TOOLS` | `OFF` | Build command-line tools (preagg_bars, etc.) |
-| `FLOX_BUILD_PYTHON` | `OFF` | Build Python bindings |
-| `FLOX_BUILD_NODE` | `OFF` | Build Node.js bindings (out-of-tree via npm; CMake does not invoke npm) |
-| `FLOX_BUILD_CAPI` | `OFF` | Build the C API shared library (implies `FLOX_ENABLE_BACKTEST`) |
-| `FLOX_BUILD_CODON` | `OFF` | Build Codon strategy support (requires `FLOX_BUILD_CAPI=ON`) |
-| `FLOX_BUILD_QUICKJS` | `OFF` | Build QuickJS strategy support (requires `FLOX_BUILD_CAPI=ON`) |
-| `FLOX_BUILD_CONNECTORS` | `OFF` | Build the native exchange connectors module |
-| `FLOX_CONNECTORS` | `""` | Semicolon-separated venue subset; empty = every venue under `connectors/src/` |
-| `FLOX_ENABLE_BACKTEST` | `OFF` | Build backtest module (simulated execution) |
-| `FLOX_ENABLE_LZ4` | `ON` | Enable LZ4 compression for binary logs |
-| `FLOX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity and NUMA functionality |
-| `FLOX_ENABLE_TRACY` | `OFF` | Enable Tracy profiler integration |
-| `FLOX_ENABLE_DEV_SETUP` | `OFF` | Install pre-commit hook automatically |
-| `FLOX_NATIVE` | `ON` | Compile Release with `-march=native`. Turn OFF for distributable artifacts |
+| `LRVX_BUILD_TESTS` | `OFF` | Build unit tests |
+| `LRVX_BUILD_BENCHMARKS` | `OFF` | Build benchmark binaries |
+| `LRVX_BUILD_DEMO` | `OFF` | Build demo application |
+| `LRVX_BUILD_TOOLS` | `OFF` | Build command-line tools (preagg_bars, etc.) |
+| `LRVX_BUILD_PYTHON` | `OFF` | Build Python bindings |
+| `LRVX_BUILD_NODE` | `OFF` | Build Node.js bindings (out-of-tree via npm; CMake does not invoke npm) |
+| `LRVX_BUILD_CAPI` | `OFF` | Build the C API shared library (implies `LRVX_ENABLE_BACKTEST`) |
+| `LRVX_BUILD_CODON` | `OFF` | Build Codon strategy support (requires `LRVX_BUILD_CAPI=ON`) |
+| `LRVX_BUILD_QUICKJS` | `OFF` | Build QuickJS strategy support (requires `LRVX_BUILD_CAPI=ON`) |
+| `LRVX_BUILD_CONNECTORS` | `OFF` | Build the native exchange connectors module |
+| `LRVX_CONNECTORS` | `""` | Semicolon-separated venue subset; empty = every venue under `connectors/src/` |
+| `LRVX_ENABLE_BACKTEST` | `OFF` | Build backtest module (simulated execution) |
+| `LRVX_ENABLE_LZ4` | `ON` | Enable LZ4 compression for binary logs |
+| `LRVX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity and NUMA functionality |
+| `LRVX_ENABLE_TRACY` | `OFF` | Enable Tracy profiler integration |
+| `LRVX_ENABLE_DEV_SETUP` | `OFF` | Install pre-commit hook automatically |
+| `LRVX_NATIVE` | `ON` | Compile Release with `-march=native`. Turn OFF for distributable artifacts |
 
 Enable with:
 
 ```bash
-cmake .. -DFLOX_BUILD_TESTS=ON -DFLOX_BUILD_BENCHMARKS=ON
+cmake .. -DLRVX_BUILD_TESTS=ON -DLRVX_BUILD_BENCHMARKS=ON
 ```
-
-The legacy `FLOX_ENABLE_BENCHMARKS`, `FLOX_ENABLE_TESTS`, `FLOX_ENABLE_DEMO`, `FLOX_ENABLE_TOOLS`, `FLOX_ENABLE_PYTHON`, `FLOX_ENABLE_CAPI`, `FLOX_ENABLE_CODON` and `FLOX_ENABLE_QUICKJS` names still work as aliases but emit a CMake deprecation warning and will be removed.
 
 ## See Also
 
-- [Quickstart](../tutorials/quickstart.md) — Build and run FLOX
+- [Quickstart](../tutorials/quickstart.md) — Build and run lrvx
 - [Architecture](../explanation/architecture.md) — Understand the codebase

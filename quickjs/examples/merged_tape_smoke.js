@@ -14,7 +14,7 @@ function check(cond, msg) {
     else { failed++; console.log('  FAIL  ' + msg); }
 }
 
-var tmpRoot = '/tmp/flox-merged-tape-qjs-smoke-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
+var tmpRoot = '/tmp/lrvx-merged-tape-qjs-smoke-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
 var dirA = tmpRoot + '/a';
 var dirB = tmpRoot + '/b';
 
@@ -28,13 +28,13 @@ function writeTape(dir, exchangeName, symId, symName, trades) {
     var h = new BinaryLogRecorderHook(dir, 0, 0, 'none', exchangeName, 'perpetual');
     h.addSymbol(symId, symName, '', '', 2, 6);
     var rec = h._asRecorderHandle();
-    __flox_recorder_on_start(rec);
+    __lrvx_recorder_on_start(rec);
     for (var i = 0; i < trades.length; i++) {
         var t = trades[i];
-        __flox_recorder_on_trade(rec, symId, t.price, t.qty,
+        __lrvx_recorder_on_trade(rec, symId, t.price, t.qty,
                                  t.side === 'buy', t.tsNs);
     }
-    __flox_recorder_on_stop(rec);
+    __lrvx_recorder_on_stop(rec);
     h.destroy();
 }
 

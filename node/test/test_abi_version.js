@@ -3,8 +3,8 @@
  * node/test/test_abi_version.js — the addon must check the C ABI version
  * when it loads.
  *
- * include/flox/capi/flox_capi.h asks every caller to "compare
- * FLOX_CAPI_ABI_VERSION against flox_capi_abi_version() once at startup
+ * include/lrvx/capi/lrvx_capi.h asks every caller to "compare
+ * LRVX_CAPI_ABI_VERSION against lrvx_capi_abi_version() once at startup
  * and refuse the mismatch": the structs on that boundary carry no
  * reserved tail, so a header/library skew shows up as wrong numbers
  * rather than a failed load. No binding did the comparison.
@@ -19,7 +19,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -30,19 +30,19 @@ function check(cond, msg) {
 
 console.log('── C ABI version handshake');
 
-check(typeof flox.CAPI_ABI_VERSION === 'number',
-  `CAPI_ABI_VERSION is exported as a number (got ${typeof flox.CAPI_ABI_VERSION})`);
-check(flox.CAPI_ABI_VERSION > 0,
-  `CAPI_ABI_VERSION is positive (${flox.CAPI_ABI_VERSION})`);
-check(typeof flox.capiAbiVersion === 'function',
-  `capiAbiVersion() is exported (got ${typeof flox.capiAbiVersion})`);
+check(typeof lrvx.CAPI_ABI_VERSION === 'number',
+  `CAPI_ABI_VERSION is exported as a number (got ${typeof lrvx.CAPI_ABI_VERSION})`);
+check(lrvx.CAPI_ABI_VERSION > 0,
+  `CAPI_ABI_VERSION is positive (${lrvx.CAPI_ABI_VERSION})`);
+check(typeof lrvx.capiAbiVersion === 'function',
+  `capiAbiVersion() is exported (got ${typeof lrvx.capiAbiVersion})`);
 
-if (typeof flox.capiAbiVersion === 'function') {
-  const runtime = flox.capiAbiVersion();
+if (typeof lrvx.capiAbiVersion === 'function') {
+  const runtime = lrvx.capiAbiVersion();
   check(typeof runtime === 'number' && runtime > 0,
     `capiAbiVersion() returns a positive number (${runtime})`);
-  check(runtime === flox.CAPI_ABI_VERSION,
-    `the addon was built against ABI ${flox.CAPI_ABI_VERSION} and links a ` +
+  check(runtime === lrvx.CAPI_ABI_VERSION,
+    `the addon was built against ABI ${lrvx.CAPI_ABI_VERSION} and links a ` +
     `library reporting ${runtime}`);
 }
 
@@ -70,16 +70,16 @@ console.log('\n── which number each export carries');
 
 const compiledBlock = exportBlock('CAPI_ABI_VERSION');
 check(compiledBlock !== '', 'node/src/abi.h exports CAPI_ABI_VERSION');
-check(compiledBlock.includes('FLOX_CAPI_ABI_VERSION'),
+check(compiledBlock.includes('LRVX_CAPI_ABI_VERSION'),
   'CAPI_ABI_VERSION is the compiled-against macro');
-check(!compiledBlock.includes('flox_capi_abi_version('),
+check(!compiledBlock.includes('lrvx_capi_abi_version('),
   'CAPI_ABI_VERSION is not a second read of the runtime function');
 
 const runtimeBlock = exportBlock('capiAbiVersion');
-check(runtimeBlock.includes('flox_capi_abi_version('),
+check(runtimeBlock.includes('lrvx_capi_abi_version('),
   'capiAbiVersion() asks the loaded library');
 
-const checkAt = abiSource.indexOf('checkAbiVersion(FLOX_CAPI_ABI_VERSION');
+const checkAt = abiSource.indexOf('checkAbiVersion(LRVX_CAPI_ABI_VERSION');
 check(checkAt >= 0, 'the addon compares the two versions when it loads');
 check(abiSource.slice(checkAt, checkAt + 300).includes('ThrowAsJavaScriptException'),
   'a mismatch fails the require instead of being reported and ignored');

@@ -7,7 +7,7 @@ confirm "the close went through" has nothing to hang on.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 import numpy as np
 
 
@@ -22,7 +22,7 @@ def _make_bars(n: int):
     return start_ns, end_ns, open_, high, low, close, volume
 
 
-class FillRecorder(flox.Strategy):
+class FillRecorder(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self.fills = []
@@ -53,9 +53,9 @@ class FillRecorder(flox.Strategy):
 
 
 def test_on_fill_fires_after_market_buy() -> None:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, fee_rate=0.0004,
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0004,
                                   initial_capital=100_000.0)
     strat = FillRecorder([sym])
     runner.set_strategy(strat)
@@ -76,9 +76,9 @@ def test_on_fill_fires_after_market_buy() -> None:
 
 def test_on_order_update_fires_for_non_fill_events() -> None:
     """Submitted/Accepted/Rejected/etc go to on_order_update, not on_fill."""
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, fee_rate=0.0004,
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0004,
                                   initial_capital=100_000.0)
     strat = FillRecorder([sym])
     runner.set_strategy(strat)

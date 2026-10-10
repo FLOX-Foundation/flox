@@ -43,8 +43,8 @@ spikes.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
-    const dist = new flox.LatencyDistribution();
+    const lrvx = require('@lrvx/lrvx');
+    const dist = new lrvx.LatencyDistribution();
     dist.setLognormal(5_000_000, 0.7);
     dist.setBurstCorrelation(0.4);
     exec.setSubmitAckLatencyDistribution(dist);
@@ -53,7 +53,7 @@ spikes.
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor, LatencyDistribution
+    from lrvx.backtest import SimulatedExecutor, LatencyDistribution
 
     dist = LatencyDistribution.lognormal(5_000_000, 0.7)
     dist.set_burst_correlation(0.4)
@@ -64,17 +64,17 @@ spikes.
 === "QuickJS"
 
     ```javascript
-    const dist = __flox_latency_distribution_create();
-    __flox_latency_distribution_set_lognormal(dist, 5000000n, 0.7);
-    __flox_latency_distribution_set_burst_correlation(dist, 0.4);
-    __flox_simulated_executor_set_submit_ack_latency_distribution(exec, dist);
+    const dist = __lrvx_latency_distribution_create();
+    __lrvx_latency_distribution_set_lognormal(dist, 5000000n, 0.7);
+    __lrvx_latency_distribution_set_burst_correlation(dist, 0.4);
+    __lrvx_simulated_executor_set_submit_ack_latency_distribution(exec, dist);
     ```
 
 === "C++"
 
     ```cpp
-    #include "flox/backtest/latency_distribution.h"
-    auto dist = flox::LatencyDistribution::lognormal(5'000'000, 0.7);
+    #include "lrvx/backtest/latency_distribution.h"
+    auto dist = lrvx::LatencyDistribution::lognormal(5'000'000, 0.7);
     dist.setBurstCorrelation(0.4);
     sim.setSubmitAckLatencyDistribution(dist);
     ```

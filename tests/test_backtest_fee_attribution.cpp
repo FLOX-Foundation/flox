@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -17,13 +17,13 @@
 // summary card and the equity-curve timeline on the same report page printed
 // different numbers.
 
-#include "flox/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_result.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

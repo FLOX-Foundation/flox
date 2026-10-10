@@ -6,9 +6,9 @@
 
 #include <vector>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
@@ -30,22 +30,22 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
 
   FundingScheduleWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<FundingScheduleWrap>(info),
-        _h(flox_funding_schedule_create())
+        _h(lrvx_funding_schedule_create())
   {
   }
   ~FundingScheduleWrap()
   {
     if (_h)
     {
-      flox_funding_schedule_destroy(_h);
+      lrvx_funding_schedule_destroy(_h);
     }
   }
-  FloxFundingScheduleHandle handle() const { return _h; }
+  LrvxFundingScheduleHandle handle() const { return _h; }
 
  private:
   void SetConstant(const Napi::CallbackInfo& info)
   {
-    flox_funding_schedule_set_constant(_h, info[0].As<Napi::Number>().Int64Value(),
+    lrvx_funding_schedule_set_constant(_h, info[0].As<Napi::Number>().Int64Value(),
                                        info[1].As<Napi::Number>().DoubleValue());
   }
   void SetTape(const Napi::CallbackInfo& info)
@@ -62,7 +62,7 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
     {
       rates[i] = rateArr.Get(i).As<Napi::Number>().DoubleValue();
     }
-    flox_funding_schedule_set_tape(_h, ts.data(), rates.data(),
+    lrvx_funding_schedule_set_tape(_h, ts.data(), rates.data(),
                                    static_cast<uint32_t>(ts.size()));
   }
   void SetTapeBySymbol(const Napi::CallbackInfo& info)
@@ -81,12 +81,12 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
       sy[i] = symArr.Get(i).As<Napi::Number>().Uint32Value();
       rates[i] = rateArr.Get(i).As<Napi::Number>().DoubleValue();
     }
-    flox_funding_schedule_set_tape_by_symbol(_h, ts.data(), sy.data(), rates.data(), n);
+    lrvx_funding_schedule_set_tape_by_symbol(_h, ts.data(), sy.data(), rates.data(), n);
   }
   Napi::Value LoadTape(const Napi::CallbackInfo& info)
   {
     std::string path = info[0].As<Napi::String>().Utf8Value();
-    const uint8_t ok = flox_funding_schedule_load_tape(_h, path.c_str());
+    const uint8_t ok = lrvx_funding_schedule_load_tape(_h, path.c_str());
     return Napi::Boolean::New(info.Env(), ok != 0);
   }
   void LoadProfile(const Napi::CallbackInfo& info)
@@ -95,7 +95,7 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
     // A typo used to be a silent no-op, leaving default funding schedule
     // values in place -- a zero-fee or unthrottled backtest that
     // looks perfectly healthy.
-    if (flox_funding_schedule_load_profile(_h, name.c_str()) == 0)
+    if (lrvx_funding_schedule_load_profile(_h, name.c_str()) == 0)
     {
       Napi::Error::New(info.Env(), "unknown funding schedule profile: " + name +
                                        ". known: binance_um_futures, bybit_linear, okx_swap, bitget_hourly")
@@ -104,9 +104,9 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
   }
   void SetConstantRate(const Napi::CallbackInfo& info)
   {
-    flox_funding_schedule_set_constant_rate(_h, info[0].As<Napi::Number>().DoubleValue());
+    lrvx_funding_schedule_set_constant_rate(_h, info[0].As<Napi::Number>().DoubleValue());
   }
-  void Reset(const Napi::CallbackInfo&) { flox_funding_schedule_reset(_h); }
+  void Reset(const Napi::CallbackInfo&) { lrvx_funding_schedule_reset(_h); }
 
   Napi::Value Tick(const Napi::CallbackInfo& info)
   {
@@ -124,10 +124,10 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
       ps[i] = positions.Get(i).As<Napi::Number>().DoubleValue();
       mk[i] = marks.Get(i).As<Napi::Number>().DoubleValue();
     }
-    uint32_t count = flox_funding_schedule_tick(_h, nowNs, sy.data(), ps.data(),
+    uint32_t count = lrvx_funding_schedule_tick(_h, nowNs, sy.data(), ps.data(),
                                                 mk.data(), n, nullptr, 0);
     std::vector<double> buf(count * 6, 0.0);
-    flox_funding_schedule_tick(_h, nowNs, sy.data(), ps.data(), mk.data(), n, buf.data(),
+    lrvx_funding_schedule_tick(_h, nowNs, sy.data(), ps.data(), mk.data(), n, buf.data(),
                                count);
     Napi::Array out = Napi::Array::New(info.Env(), count);
     for (uint32_t i = 0; i < count; ++i)
@@ -144,7 +144,7 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
     return out;
   }
 
-  FloxFundingScheduleHandle _h;
+  LrvxFundingScheduleHandle _h;
 };
 
 inline void registerFundingSchedule(Napi::Env env, Napi::Object exports)
@@ -152,4 +152,4 @@ inline void registerFundingSchedule(Napi::Env env, Napi::Object exports)
   exports.Set("FundingSchedule", FundingScheduleWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

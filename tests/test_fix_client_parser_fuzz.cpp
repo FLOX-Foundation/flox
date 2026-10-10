@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -21,9 +21,9 @@
  * UndefinedBehaviorSanitizer, where an out-of-bounds read is a failure rather
  * than a wrong answer. A clean run without them proves much less.
  */
-#include "flox/connector/fix/fix_client_codec.h"
-#include "flox/connector/fix/fix_initiator.h"
-#include "flox/connector/fix/fix_wire.h"
+#include "lrvx/connector/fix/fix_client_codec.h"
+#include "lrvx/connector/fix/fix_initiator.h"
+#include "lrvx/connector/fix/fix_wire.h"
 
 #include <gtest/gtest.h>
 
@@ -33,7 +33,7 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

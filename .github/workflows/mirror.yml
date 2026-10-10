@@ -1,7 +1,7 @@
 name: Mirror venue-core
 
 # Publishes the venue core, with its history, to the read-only mirror
-# FLOX-Foundation/venue-core after every merge into main. What is cut and
+# lrvx/venue-core after every merge into main. What is cut and
 # how is scripts/publish_mirror.sh; the list of files is
 # scripts/mirror_paths.py, the same list scripts/lite_standalone_check.sh
 # proves builds on its own in ci.yml's venue-lite-standalone job.
@@ -86,6 +86,6 @@ jobs:
       run: |
         set -euo pipefail
         scripts/publish_mirror.sh --push \
-          --remote git@github.com:FLOX-Foundation/venue-core.git \
+          --remote git@github.com:lrvx/venue-core.git \
           --denylist "$RUNNER_TEMP/denylist.txt" \
           --work "$RUNNER_TEMP/mirror"

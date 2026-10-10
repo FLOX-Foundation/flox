@@ -1,14 +1,14 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/engine/symbol_registry.h"
-#include "flox/util/performance/profile.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/util/performance/profile.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -18,7 +18,7 @@
 #include <span>
 #include <stdexcept>
 
-namespace flox
+namespace lrvx
 {
 
 // =============================================================================
@@ -329,7 +329,7 @@ SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
 std::optional<SymbolId> SymbolRegistry::getSymbolId(const std::string& exchange,
                                                     const std::string& symbol) const
 {
-  FLOX_PROFILE_SCOPE("SymbolRegistry::getSymbolId");
+  LRVX_PROFILE_SCOPE("SymbolRegistry::getSymbolId");
 
   std::scoped_lock lock(_mutex);
   std::string key = exchange + ":" + symbol;
@@ -349,7 +349,7 @@ std::pair<std::string, std::string> SymbolRegistry::getSymbolName(SymbolId id) c
 
 std::optional<SymbolInfo> SymbolRegistry::getSymbolInfo(SymbolId id) const
 {
-  FLOX_PROFILE_SCOPE("SymbolRegistry::getSymbolInfo");
+  LRVX_PROFILE_SCOPE("SymbolRegistry::getSymbolInfo");
 
   std::lock_guard lock(_mutex);
 
@@ -926,4 +926,4 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
   return true;
 }
 
-}  // namespace flox
+}  // namespace lrvx

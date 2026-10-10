@@ -24,7 +24,7 @@ import sys
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox
+import lrvx
 
 _passed = 0
 _failed = 0
@@ -44,7 +44,7 @@ def check(cond, msg):
 
 
 def make_runner_with_strategy():
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym_id = reg.add_symbol("test", "BTC", 0.01)
 
     fired_signal = []
@@ -52,12 +52,12 @@ def make_runner_with_strategy():
     def on_signal(sig):
         fired_signal.append(sig)
 
-    runner = flox.Runner(reg, on_signal, threaded=False)
+    runner = lrvx.Runner(reg, on_signal, threaded=False)
 
     # Minimal strategy that fires a market buy on first trade.
     fired = [False]
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_trade(self, ctx, trade):
             if fired[0]:
                 return
@@ -75,7 +75,7 @@ def test_pnl_tracker():
 
     seen = []
 
-    class P(flox.PnLTracker):
+    class P(lrvx.PnLTracker):
         def on_signal(self, sig):
             seen.append((sig.symbol, sig.side, sig.quantity))
 
@@ -93,7 +93,7 @@ def test_storage_sink():
     reg, runner, strat, sym_id, _ = make_runner_with_strategy()
     seen = []
 
-    class Sink(flox.StorageSink):
+    class Sink(lrvx.StorageSink):
         def store(self, sig):
             seen.append(sig)
 
@@ -108,7 +108,7 @@ def test_risk_manager_drops_signal():
     print("test_risk_manager_drops_signal")
     reg, runner, strat, sym_id, fired_signal = make_runner_with_strategy()
 
-    class RM(flox.RiskManager):
+    class RM(lrvx.RiskManager):
         def allow(self, sig):
             return False  # always deny
 
@@ -124,7 +124,7 @@ def test_kill_switch_drops_signal():
     print("test_kill_switch_drops_signal")
     reg, runner, strat, sym_id, fired_signal = make_runner_with_strategy()
 
-    class KS(flox.KillSwitch):
+    class KS(lrvx.KillSwitch):
         def check(self, sig):
             return False
 
@@ -139,7 +139,7 @@ def test_order_validator_drops_signal():
     print("test_order_validator_drops_signal")
     reg, runner, strat, sym_id, fired_signal = make_runner_with_strategy()
 
-    class V(flox.OrderValidator):
+    class V(lrvx.OrderValidator):
         def validate(self, sig):
             return False
 
@@ -157,7 +157,7 @@ def test_executor_receives_signals():
     starts = [0]
     stops = [0]
 
-    class E(flox.Executor):
+    class E(lrvx.Executor):
         def submit(self, order):
             submits.append((order.symbol, order.side, order.quantity, order.order_type))
 
@@ -180,11 +180,11 @@ def test_executor_receives_signals():
 
 def test_market_data_recorder():
     print("test_market_data_recorder")
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym_id = reg.add_symbol("test", "BTC", 0.01)
-    runner = flox.Runner(reg, lambda sig: None, threaded=False)
+    runner = lrvx.Runner(reg, lambda sig: None, threaded=False)
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         pass
 
     runner.add_strategy(S(symbols=[sym_id]))
@@ -193,7 +193,7 @@ def test_market_data_recorder():
     book_calls = [0]
     starts = [0]
 
-    class R(flox.MarketDataRecorderHook):
+    class R(lrvx.MarketDataRecorderHook):
         def on_trade(self, t):
             trades.append((t.symbol, t.price, t.is_buy))
 
@@ -218,14 +218,14 @@ def test_execution_listener_with_backtest():
     print("test_execution_listener_with_backtest")
     import numpy as np
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym_id = reg.add_symbol("test", "BTC", 0.01)
-    btr = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=10_000.0)
+    btr = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=10_000.0)
 
     fills = []
     submits = []
 
-    class L(flox.ExecutionListener):
+    class L(lrvx.ExecutionListener):
         def on_filled(self, order):
             fills.append((order.symbol, order.side, order.price, order.quantity))
 
@@ -236,7 +236,7 @@ def test_execution_listener_with_backtest():
 
     fired = [False]
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_bar(self, ctx, bar):
             if fired[0]:
                 return
@@ -263,13 +263,13 @@ def test_executor_with_backtest():
     print("test_executor_with_backtest")
     import numpy as np
 
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym_id = reg.add_symbol("test", "BTC", 0.01)
-    btr = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=10_000.0)
+    btr = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=10_000.0)
 
     submits = []
 
-    class E(flox.Executor):
+    class E(lrvx.Executor):
         def submit(self, order):
             submits.append((order.symbol, order.side, order.quantity, order.order_type))
 
@@ -277,7 +277,7 @@ def test_executor_with_backtest():
 
     fired = [False]
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_bar(self, ctx, bar):
             if fired[0]:
                 return
@@ -302,7 +302,7 @@ def test_executor_with_backtest():
 
 def test_lp_signal_fields():
     print("test_lp_signal_fields")
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     sym_id = reg.add_symbol("test", "ETH-USDC", 0.01)
 
     seen = []
@@ -310,11 +310,11 @@ def test_lp_signal_fields():
     def on_signal(sig):
         seen.append(sig)
 
-    runner = flox.Runner(reg, on_signal, threaded=False)
+    runner = lrvx.Runner(reg, on_signal, threaded=False)
 
     fired = [False]
 
-    class S(flox.Strategy):
+    class S(lrvx.Strategy):
         def on_trade(self, ctx, trade):
             if fired[0]:
                 return
@@ -351,18 +351,18 @@ def test_log_callback():
     def cb(level, msg):
         msgs.append((level, msg))
 
-    flox.set_log_callback(cb)
+    lrvx.set_log_callback(cb)
     # Emit a log line — for now just detach to prove the wiring doesn't
     # crash. The C ABI lacks a public Python-driven log emitter.
-    flox.set_log_callback(None)
+    lrvx.set_log_callback(None)
     check(True, "set_log_callback wires + detaches without crash")
 
 
 # ── Pre-trade gates must fail closed ─────────────────────────────────
 #
-# include/flox/capi/flox_capi_spec.hpp:2306 — "Returning 0 (deny) drops
+# include/lrvx/capi/lrvx_capi_spec.hpp:2306 — "Returning 0 (deny) drops
 # the signal entirely; returning 1 (allow) lets it propagate."
-# include/flox/capi/flox_capi.h:47 — a call the engine had to stop
+# include/lrvx/capi/lrvx_capi.h:47 — a call the engine had to stop
 # "returns its failure value and leaves a description behind". A gate
 # that raised never answered, so its failure value is deny.
 #
@@ -390,7 +390,7 @@ def _gate_denies_on_raise(name, hook, attach):
 def test_risk_manager_denies_when_it_raises():
     print("test_risk_manager_denies_when_it_raises")
 
-    class RM(flox.RiskManager):
+    class RM(lrvx.RiskManager):
         def allow(self, sig):
             raise RuntimeError("risk gate is broken")
 
@@ -401,7 +401,7 @@ def test_risk_manager_denies_when_it_raises():
 def test_kill_switch_denies_when_it_raises():
     print("test_kill_switch_denies_when_it_raises")
 
-    class KS(flox.KillSwitch):
+    class KS(lrvx.KillSwitch):
         def check(self, sig):
             raise RuntimeError("kill switch is broken")
 
@@ -412,7 +412,7 @@ def test_kill_switch_denies_when_it_raises():
 def test_order_validator_denies_when_it_raises():
     print("test_order_validator_denies_when_it_raises")
 
-    class OV(flox.OrderValidator):
+    class OV(lrvx.OrderValidator):
         def validate(self, sig):
             raise RuntimeError("validator is broken")
 

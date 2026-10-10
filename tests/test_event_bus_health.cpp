@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -17,7 +17,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "flox/util/eventing/event_bus.h"
+#include "lrvx/util/eventing/event_bus.h"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -29,7 +29,7 @@
 #include <windows.h>
 #endif
 
-namespace flox
+namespace lrvx
 {
 
 struct HealthTestEvent
@@ -53,12 +53,12 @@ struct EventDispatcher<HealthTestEvent>
   }
 };
 
-}  // namespace flox
+}  // namespace lrvx
 
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 constexpr size_t kCapacity = 64;
 using SmallBus = EventBus<HealthTestEvent, kCapacity, 4>;

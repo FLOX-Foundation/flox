@@ -1,6 +1,6 @@
-"""Tests for ``flox_py.report.heatmap_html`` / ``write_heatmap``.
+"""Tests for ``lrvx.report.heatmap_html`` / ``write_heatmap``.
 
-The render lives in C++ (``flox::report::renderHeatmapHtml``); these
+The render lives in C++ (``lrvx::report::renderHeatmapHtml``); these
 tests just exercise the Python wrapper, asserting the HTML structure
 is well-formed and labels / metric names land where expected.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-from flox_py.report import heatmap_html, write_heatmap  # noqa: E402
+from lrvx.report import heatmap_html, write_heatmap  # noqa: E402
 
 
 _Z = [

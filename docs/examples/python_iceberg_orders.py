@@ -1,7 +1,7 @@
 """Submit a native iceberg order and watch its hidden remainder drain."""
-import flox_py as flox
+import lrvx
 
-exec = flox.SimulatedExecutor()
+exec = lrvx.SimulatedExecutor()
 
 # Instant refresh is the default; set non-zero for venues with refresh delay.
 exec.set_iceberg_refresh_latency(0)

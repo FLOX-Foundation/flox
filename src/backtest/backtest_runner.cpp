@@ -1,23 +1,23 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/backtest_runner.h"
+#include "lrvx/backtest/backtest_runner.h"
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/log/log.h"
-#include "flox/replay/merged_tape_reader.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/log/log.h"
+#include "lrvx/replay/merged_tape_reader.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <memory_resource>
 
-namespace flox
+namespace lrvx
 {
 
 BacktestRunner::BacktestRunner(const BacktestConfig& config)
@@ -103,7 +103,7 @@ void BacktestRunner::setStrategy(IStrategy* strategy)
     // Every other use of _strategy is already null-checked, so a runner with
     // no strategy replays the data and reports an empty result. Refusing the
     // null here keeps that behaviour instead of dereferencing it.
-    FLOX_LOG_ERROR("BacktestRunner: setStrategy(nullptr) ignored");
+    LRVX_LOG_ERROR("BacktestRunner: setStrategy(nullptr) ignored");
     return;
   }
   _strategy = strategy;
@@ -197,7 +197,7 @@ BacktestResult BacktestRunner::runTape(const std::filesystem::path& data_dir)
   if (!reader)
   {
     throw std::runtime_error(
-        "BacktestRunner.runTape: cannot open `.floxlog` directory: " +
+        "BacktestRunner.runTape: cannot open `.lrvx` directory: " +
         data_dir.string());
   }
   return run(*reader);
@@ -440,7 +440,7 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     // these records does not look like it was fully replayed.
     if (_skippedRecordCount++ == 0)
     {
-      FLOX_LOG_WARN(
+      LRVX_LOG_WARN(
           "[BacktestRunner] tape contains OptionQuote/PoolState records "
           "that this runner does not dispatch; they are counted in "
           "skippedRecordCount, not delivered to the strategy");
@@ -798,4 +798,4 @@ Order BacktestRunner::signalToOrder(const Signal& sig)
                .trailingCallbackRate = sig.trailingCallbackRate};
 }
 
-}  // namespace flox
+}  // namespace lrvx

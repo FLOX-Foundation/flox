@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/hyperliquid/hyperliquid_order_executor.h"
-#include "flox-connectors/execution/order_tif.h"
-#include "flox-connectors/hyperliquid/hl_signer.h"
-#include "flox-connectors/net/curl_transport.h"
-#include "flox-connectors/util/safe_parse.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_order_executor.h"
+#include "lrvx-connectors/execution/order_tif.h"
+#include "lrvx-connectors/hyperliquid/hl_signer.h"
+#include "lrvx-connectors/net/curl_transport.h"
+#include "lrvx-connectors/util/safe_parse.h"
 
-#include <flox/execution/events/order_event.h>
-#include <flox/log/log.h>
+#include <lrvx/execution/events/order_event.h>
+#include <lrvx/log/log.h>
 
 #include <simdjson.h>
 
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace flox
+namespace lrvx
 {
 
 template <typename Policies>
@@ -339,7 +339,7 @@ template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::publishRejection(const Order& order,
                                                            const std::string& reason)
 {
-  FLOX_LOG_ERROR("[HL] " << reason << " (orderId=" << order.id << ")");
+  LRVX_LOG_ERROR("[HL] " << reason << " (orderId=" << order.id << ")");
   if (!_orderBus)
   {
     return;
@@ -360,7 +360,7 @@ void HyperliquidOrderExecutorT<Policies>::publishRejection(const Order& order,
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::publishRateLimited(const Order& order)
 {
-  FLOX_LOG_WARN("[HL] client-side rate limit refused orderId=" << order.id);
+  LRVX_LOG_WARN("[HL] client-side rate limit refused orderId=" << order.id);
   if (!_orderBus)
   {
     return;
@@ -455,20 +455,20 @@ void HyperliquidOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[HL] unknown symbol id");
+    LRVX_LOG_ERROR("[HL] unknown symbol id");
     return;
   }
   int asset = assetIdFor(info->symbol);
   if (asset < 0)
   {
-    FLOX_LOG_ERROR("[HL] assetId not cached for " << info->symbol);
+    LRVX_LOG_ERROR("[HL] assetId not cached for " << info->symbol);
     return;
   }
 
   auto tifToken = hlOrderTifOrReject(order);
   if (!tifToken)
   {
-    FLOX_LOG_ERROR("[HL] order type " << static_cast<int>(order.type)
+    LRVX_LOG_ERROR("[HL] order type " << static_cast<int>(order.type)
                                       << " is not supported by this connector (id=" << order.id
                                       << ")");
     return;
@@ -512,7 +512,7 @@ void HyperliquidOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
   auto sigOpt = hl::hl_sign_with_sdk(sp);
   if (!sigOpt)
   {
-    FLOX_LOG_ERROR("[HL] sign via SDK helper failed");
+    LRVX_LOG_ERROR("[HL] sign via SDK helper failed");
     return;
   }
 
@@ -654,7 +654,7 @@ void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
   auto target = _orderTracker->get(localId);
   if (!target)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no orderState for localId " << localId);
+    LRVX_LOG_ERROR("[HL] cancelOrder: no orderState for localId " << localId);
     return;
   }
 
@@ -677,12 +677,12 @@ void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
   auto orderState = _orderTracker->get(localId);
   if (!orderState)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no orderState for localId " << localId);
+    LRVX_LOG_ERROR("[HL] cancelOrder: no orderState for localId " << localId);
     return;
   }
   if (orderState->clientOrderId.empty())
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no clientOrderId for localId " << localId);
+    LRVX_LOG_ERROR("[HL] cancelOrder: no clientOrderId for localId " << localId);
     return;
   }
 
@@ -690,14 +690,14 @@ void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
   auto info = _registry->getSymbolInfo(symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no symbolInfo for " << symbol);
+    LRVX_LOG_ERROR("[HL] cancelOrder: no symbolInfo for " << symbol);
     return;
   }
 
   int asset = assetIdFor(info->symbol);
   if (asset < 0)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no assetId for " << info->symbol);
+    LRVX_LOG_ERROR("[HL] cancelOrder: no assetId for " << info->symbol);
     return;
   }
 
@@ -717,7 +717,7 @@ void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
   auto sigOpt = hl_sign_with_sdk(sp);
   if (!sigOpt)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: signing failed");
+    LRVX_LOG_ERROR("[HL] cancelOrder: signing failed");
     return;
   }
 
@@ -751,13 +751,13 @@ void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
         }
         else
         {
-          FLOX_LOG_ERROR("[HL] cancel failed: " << resp);
+          LRVX_LOG_ERROR("[HL] cancel failed: " << resp);
         }
       },
       [this, localId](std::string_view err)
       {
         _policies.timeout.clearPending(localId);
-        FLOX_LOG_ERROR("[HL] cancel error: " << err);
+        LRVX_LOG_ERROR("[HL] cancel error: " << err);
       });
 }
 
@@ -767,7 +767,7 @@ void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const
   auto target = _orderTracker->get(oldLocalId);
   if (!target)
   {
-    FLOX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
+    LRVX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
     return;
   }
 
@@ -790,7 +790,7 @@ void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, c
   auto orderState = _orderTracker->get(oldLocalId);
   if (!orderState)
   {
-    FLOX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
+    LRVX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
     return;
   }
 
@@ -800,20 +800,20 @@ void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, c
   auto info = _registry->getSymbolInfo(n.symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[HL] unknown symbol id in replaceOrder");
+    LRVX_LOG_ERROR("[HL] unknown symbol id in replaceOrder");
     return;
   }
   int asset = assetIdFor(info->symbol);
   if (asset < 0)
   {
-    FLOX_LOG_ERROR("[HL] assetId not cached for " << info->symbol);
+    LRVX_LOG_ERROR("[HL] assetId not cached for " << info->symbol);
     return;
   }
 
   auto tifToken = hlOrderTifOrReject(n);
   if (!tifToken)
   {
-    FLOX_LOG_ERROR("[HL] replaceOrder: order type "
+    LRVX_LOG_ERROR("[HL] replaceOrder: order type "
                    << static_cast<int>(n.type)
                    << " is not supported by this connector (oldLocalId=" << oldLocalId << ")");
     return;
@@ -845,7 +845,7 @@ void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, c
   auto sigOpt = hl_sign_with_sdk(sp);
   if (!sigOpt)
   {
-    FLOX_LOG_ERROR("[HL] replaceOrder: signing failed");
+    LRVX_LOG_ERROR("[HL] replaceOrder: signing failed");
     return;
   }
 
@@ -886,13 +886,13 @@ void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, c
         }
         else
         {
-          FLOX_LOG_ERROR("[HL] modify error: " << status);
+          LRVX_LOG_ERROR("[HL] modify error: " << status);
         }
       },
       [this, oldLocalId](std::string_view err)
       {
         _policies.timeout.clearPending(oldLocalId);
-        FLOX_LOG_ERROR("[HL] modify error: " << err);
+        LRVX_LOG_ERROR("[HL] modify error: " << err);
       });
 }
 
@@ -901,4 +901,4 @@ template class HyperliquidOrderExecutorT<WithRateLimit>;
 template class HyperliquidOrderExecutorT<WithTimeout>;
 template class HyperliquidOrderExecutorT<FullPolicies>;
 
-}  // namespace flox
+}  // namespace lrvx

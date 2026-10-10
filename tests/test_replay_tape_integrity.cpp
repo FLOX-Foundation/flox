@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/error/flox_error.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/ops/segment_ops.h"
-#include "flox/replay/ops/validator.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/readers/parallel_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/ops/segment_ops.h"
+#include "lrvx/replay/ops/validator.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/readers/parallel_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -176,7 +176,7 @@ class ReplayTapeIntegrityTest : public ::testing::Test
   void SetUp() override
   {
     _dir = std::filesystem::temp_directory_path() /
-           ("flox_replay_integrity_" +
+           ("lrvx_replay_integrity_" +
             std::to_string(reinterpret_cast<uintptr_t>(this)));
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
@@ -201,13 +201,13 @@ class ReplayTapeIntegrityTest : public ::testing::Test
 TEST_F(ReplayTapeIntegrityTest, FilterKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "src.floxlog");
+  writeMixedTape(in, "src.lrvx");
 
-  auto out = sub("out") / "out.floxlog";
+  auto out = sub("out") / "out.lrvx";
   WriterConfig wc{.output_dir = out.parent_path(),
                   .output_filename = out.filename().string(),
                   .create_index = false};
-  uint64_t written = SegmentOps::extractTimeRange(in / "src.floxlog", out, 0, kSec, wc);
+  uint64_t written = SegmentOps::extractTimeRange(in / "src.lrvx", out, 0, kSec, wc);
 
   EXPECT_EQ(written, 5u);
   expectMixedTapeIntact(readSegment(out), "extractTimeRange");
@@ -216,14 +216,14 @@ TEST_F(ReplayTapeIntegrityTest, FilterKeepsEveryRecordType)
 TEST_F(ReplayTapeIntegrityTest, ExtractSymbolsKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "src.floxlog");
+  writeMixedTape(in, "src.lrvx");
 
-  auto out = sub("out") / "out.floxlog";
+  auto out = sub("out") / "out.lrvx";
   WriterConfig wc{.output_dir = out.parent_path(),
                   .output_filename = out.filename().string(),
                   .create_index = false};
   uint64_t written =
-      SegmentOps::extractSymbols(in / "src.floxlog", out, {1u, 7u, 9u}, wc);
+      SegmentOps::extractSymbols(in / "src.lrvx", out, {1u, 7u, 9u}, wc);
 
   EXPECT_EQ(written, 5u);
   expectMixedTapeIntact(readSegment(out), "extractSymbols");
@@ -232,21 +232,21 @@ TEST_F(ReplayTapeIntegrityTest, ExtractSymbolsKeepsEveryRecordType)
 TEST_F(ReplayTapeIntegrityTest, RecompressKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "src.floxlog");
+  writeMixedTape(in, "src.lrvx");
 
-  auto out = sub("out") / "out.floxlog";
-  ASSERT_TRUE(SegmentOps::recompress(in / "src.floxlog", out, CompressionType::None));
+  auto out = sub("out") / "out.lrvx";
+  ASSERT_TRUE(SegmentOps::recompress(in / "src.lrvx", out, CompressionType::None));
   expectMixedTapeIntact(readSegment(out), "recompress");
 }
 
 TEST_F(ReplayTapeIntegrityTest, MergeKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "src.floxlog");
+  writeMixedTape(in, "src.lrvx");
 
   auto out_dir = sub("out");
-  MergeConfig mc{.output_dir = out_dir, .output_name = "merged.floxlog", .create_index = false};
-  auto res = SegmentOps::merge({in / "src.floxlog"}, mc);
+  MergeConfig mc{.output_dir = out_dir, .output_name = "merged.lrvx", .create_index = false};
+  auto res = SegmentOps::merge({in / "src.lrvx"}, mc);
 
   ASSERT_TRUE(res.success);
   EXPECT_EQ(res.events_written, 5u);
@@ -256,15 +256,15 @@ TEST_F(ReplayTapeIntegrityTest, MergeKeepsEveryRecordType)
 TEST_F(ReplayTapeIntegrityTest, SortingMergeKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "a.floxlog");
-  writeMixedTape(in, "b.floxlog");
+  writeMixedTape(in, "a.lrvx");
+  writeMixedTape(in, "b.lrvx");
 
   auto out_dir = sub("out");
   MergeConfig mc{.output_dir = out_dir,
-                 .output_name = "merged.floxlog",
+                 .output_name = "merged.lrvx",
                  .create_index = false,
                  .sort_by_timestamp = true};
-  auto res = SegmentOps::merge({in / "a.floxlog", in / "b.floxlog"}, mc);
+  auto res = SegmentOps::merge({in / "a.lrvx", in / "b.lrvx"}, mc);
 
   ASSERT_TRUE(res.success);
   EXPECT_EQ(res.events_written, 10u);
@@ -283,14 +283,14 @@ TEST_F(ReplayTapeIntegrityTest, SortingMergeKeepsEveryRecordType)
 TEST_F(ReplayTapeIntegrityTest, SplitKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "src.floxlog");
+  writeMixedTape(in, "src.lrvx");
 
   auto out_dir = sub("out");
   SplitConfig sc{.output_dir = out_dir,
                  .mode = SplitMode::ByEventCount,
                  .events_per_file = 100,
                  .create_index = false};
-  auto res = SegmentOps::split(in / "src.floxlog", sc);
+  auto res = SegmentOps::split(in / "src.lrvx", sc);
 
   ASSERT_TRUE(res.success);
   ASSERT_EQ(res.output_paths.size(), 1u);
@@ -301,11 +301,11 @@ TEST_F(ReplayTapeIntegrityTest, SplitKeepsEveryRecordType)
 TEST_F(ReplayTapeIntegrityTest, SplitBySymbolKeepsEveryRecordType)
 {
   auto in = sub("in");
-  writeMixedTape(in, "src.floxlog");
+  writeMixedTape(in, "src.lrvx");
 
   auto out_dir = sub("out");
   SplitConfig sc{.output_dir = out_dir, .mode = SplitMode::BySymbol, .create_index = false};
-  auto res = SegmentOps::split(in / "src.floxlog", sc);
+  auto res = SegmentOps::split(in / "src.lrvx", sc);
 
   ASSERT_TRUE(res.success);
   EXPECT_EQ(res.events_written, 5u);
@@ -342,13 +342,13 @@ TEST_F(ReplayTapeIntegrityTest, SplitBySymbolKeepsEveryRecordType)
 // The Sorted flag must describe the file, not the arrival order.
 // --------------------------------------------------------------------------
 
-#if FLOX_LZ4_ENABLED
+#if LRVX_LZ4_ENABLED
 TEST_F(ReplayTapeIntegrityTest, SortedFlagNotSetWhenLaterBlockStartsEarlier)
 {
   auto dir = sub("sorted");
   {
     WriterConfig cfg{.output_dir = dir,
-                     .output_filename = "seg.floxlog",
+                     .output_filename = "seg.lrvx",
                      .create_index = true,
                      .index_interval = 4,
                      .compression = CompressionType::LZ4};
@@ -367,7 +367,7 @@ TEST_F(ReplayTapeIntegrityTest, SortedFlagNotSetWhenLaterBlockStartsEarlier)
     w.close();
   }
 
-  BinaryLogIterator iter(dir / "seg.floxlog");
+  BinaryLogIterator iter(dir / "seg.lrvx");
   ASSERT_TRUE(iter.isValid());
   EXPECT_FALSE(iter.header().isSorted());
 
@@ -393,7 +393,7 @@ TEST_F(ReplayTapeIntegrityTest, SortedFlagStillSetWhenBlocksAreOrdered)
   auto dir = sub("sorted_ok");
   {
     WriterConfig cfg{.output_dir = dir,
-                     .output_filename = "seg.floxlog",
+                     .output_filename = "seg.lrvx",
                      .create_index = true,
                      .index_interval = 4,
                      .compression = CompressionType::LZ4};
@@ -411,7 +411,7 @@ TEST_F(ReplayTapeIntegrityTest, SortedFlagStillSetWhenBlocksAreOrdered)
     w.close();
   }
 
-  BinaryLogIterator iter(dir / "seg.floxlog");
+  BinaryLogIterator iter(dir / "seg.lrvx");
   ASSERT_TRUE(iter.isValid());
   EXPECT_TRUE(iter.header().isSorted());
 }
@@ -425,7 +425,7 @@ TEST_F(ReplayTapeIntegrityTest, SeekOnCompressedSegmentDiscardsStaleBlock)
   auto dir = sub("seek");
   {
     WriterConfig cfg{.output_dir = dir,
-                     .output_filename = "seg.floxlog",
+                     .output_filename = "seg.lrvx",
                      .create_index = true,
                      .index_interval = 4,
                      .compression = CompressionType::LZ4};
@@ -437,7 +437,7 @@ TEST_F(ReplayTapeIntegrityTest, SeekOnCompressedSegmentDiscardsStaleBlock)
     w.close();
   }
 
-  BinaryLogIterator iter(dir / "seg.floxlog");
+  BinaryLogIterator iter(dir / "seg.lrvx");
   ASSERT_TRUE(iter.isValid());
   ASSERT_TRUE(iter.loadIndex());
 
@@ -463,7 +463,7 @@ TEST_F(ReplayTapeIntegrityTest, IteratorReportsIndexBeforeLoadIndex)
   auto dir = sub("hasindex");
   {
     WriterConfig cfg{.output_dir = dir,
-                     .output_filename = "seg.floxlog",
+                     .output_filename = "seg.lrvx",
                      .create_index = true,
                      .index_interval = 4,
                      .compression = CompressionType::LZ4};
@@ -475,12 +475,12 @@ TEST_F(ReplayTapeIntegrityTest, IteratorReportsIndexBeforeLoadIndex)
     w.close();
   }
 
-  BinaryLogIterator iter(dir / "seg.floxlog");
+  BinaryLogIterator iter(dir / "seg.lrvx");
   ASSERT_TRUE(iter.isValid());
   EXPECT_TRUE(iter.hasIndex());
   EXPECT_TRUE(iter.seekToTimestamp(18 * kSec));
 }
-#endif  // FLOX_LZ4_ENABLED
+#endif  // LRVX_LZ4_ENABLED
 
 // --------------------------------------------------------------------------
 // An uncompressed segment with a zeroed header still has to be readable.
@@ -490,7 +490,7 @@ TEST_F(ReplayTapeIntegrityTest, UncompressedLiveTailRecoversMetadata)
 {
   auto dir = sub("livetail");
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t ts = 1; ts <= 20; ++ts)
     {
@@ -498,7 +498,7 @@ TEST_F(ReplayTapeIntegrityTest, UncompressedLiveTailRecoversMetadata)
     }
     w.close();
   }
-  zeroSegmentHeaderCounters(dir / "seg.floxlog");
+  zeroSegmentHeaderCounters(dir / "seg.lrvx");
 
   auto summary = BinaryLogReader::inspect(dir);
   EXPECT_EQ(summary.total_events, 20u);
@@ -527,7 +527,7 @@ TEST_F(ReplayTapeIntegrityTest, SummaryIgnoresUnknownSegmentStart)
 {
   auto dir = sub("summary");
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "a.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "a.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t ts = 100; ts <= 105; ++ts)
     {
@@ -551,7 +551,7 @@ TEST_F(ReplayTapeIntegrityTest, ValidatorRejectsEventCountMismatch)
 {
   auto dir = sub("validate");
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t ts = 1; ts <= 10; ++ts)
     {
@@ -559,23 +559,23 @@ TEST_F(ReplayTapeIntegrityTest, ValidatorRejectsEventCountMismatch)
     }
     w.close();
   }
-  zeroSegmentHeaderCounters(dir / "seg.floxlog");
+  zeroSegmentHeaderCounters(dir / "seg.lrvx");
 
   SegmentValidator validator;
-  auto result = validator.validate(dir / "seg.floxlog");
+  auto result = validator.validate(dir / "seg.lrvx");
 
   EXPECT_EQ(result.reported_event_count, 0u);
   EXPECT_EQ(result.actual_event_count, 10u);
   EXPECT_TRUE(result.hasErrors());
   EXPECT_FALSE(result.valid);
-  EXPECT_FALSE(isValidSegment(dir / "seg.floxlog"));
+  EXPECT_FALSE(isValidSegment(dir / "seg.lrvx"));
 }
 
 TEST_F(ReplayTapeIntegrityTest, ValidatorRejectsIndexFlagWithoutIndex)
 {
   auto dir = sub("badindex");
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t ts = 1; ts <= 10; ++ts)
     {
@@ -586,7 +586,7 @@ TEST_F(ReplayTapeIntegrityTest, ValidatorRejectsIndexFlagWithoutIndex)
 
   // Claim an index that sits exactly at EOF: the flag is on, the bytes are not
   // there. This is what the closed production segments carry.
-  const auto path = dir / "seg.floxlog";
+  const auto path = dir / "seg.lrvx";
   const auto size = std::filesystem::file_size(path);
   {
     std::FILE* f = std::fopen(path.string().c_str(), "r+b");
@@ -611,7 +611,7 @@ TEST_F(ReplayTapeIntegrityTest, ValidatorAcceptsIntactSegment)
 {
   auto dir = sub("good");
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = true};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = true};
     BinaryLogWriter w(cfg);
     for (int64_t ts = 1; ts <= 10; ++ts)
     {
@@ -621,9 +621,9 @@ TEST_F(ReplayTapeIntegrityTest, ValidatorAcceptsIntactSegment)
   }
 
   SegmentValidator validator;
-  auto result = validator.validate(dir / "seg.floxlog");
+  auto result = validator.validate(dir / "seg.lrvx");
   EXPECT_TRUE(result.valid) << (result.issues.empty() ? "" : result.issues.front().message);
-  EXPECT_TRUE(isValidSegment(dir / "seg.floxlog"));
+  EXPECT_TRUE(isValidSegment(dir / "seg.lrvx"));
 }
 
 // --------------------------------------------------------------------------
@@ -651,7 +651,7 @@ void writeLaggingTape(const std::filesystem::path& dir, const std::string& name)
 TEST_F(ReplayTapeIntegrityTest, FilteredSymbolDoesNotTripTheReorderWindow)
 {
   auto dir = sub("lag");
-  writeLaggingTape(dir, "seg.floxlog");
+  writeLaggingTape(dir, "seg.lrvx");
 
   ReaderConfig rc{.data_dir = dir, .symbols = {1u}, .reorder_window_ns = 10 * kSec};
   BinaryLogReader reader(std::move(rc));
@@ -672,7 +672,7 @@ TEST_F(ReplayTapeIntegrityTest, FilteredSymbolDoesNotTripTheReorderWindow)
 TEST_F(ReplayTapeIntegrityTest, LateEventIsDroppedAndCountedByDefault)
 {
   auto dir = sub("late");
-  writeLaggingTape(dir, "seg.floxlog");
+  writeLaggingTape(dir, "seg.lrvx");
 
   ReaderConfig rc{.data_dir = dir, .reorder_window_ns = 10 * kSec};
   BinaryLogReader reader(std::move(rc));
@@ -694,7 +694,7 @@ TEST_F(ReplayTapeIntegrityTest, LateEventIsDroppedAndCountedByDefault)
 TEST_F(ReplayTapeIntegrityTest, StrictOrderingStillThrows)
 {
   auto dir = sub("strict");
-  writeLaggingTape(dir, "seg.floxlog");
+  writeLaggingTape(dir, "seg.lrvx");
 
   ReaderConfig rc{
       .data_dir = dir, .reorder_window_ns = 10 * kSec, .strict_ordering = true};
@@ -702,7 +702,7 @@ TEST_F(ReplayTapeIntegrityTest, StrictOrderingStillThrows)
 
   EXPECT_THROW(reader.streamForEach([](const ReplayEvent&)
                                     { return true; }),
-               flox::FloxError);
+               lrvx::LrvxError);
 }
 
 // The watermark spans the segments of one streaming walk, so an inversion
@@ -738,7 +738,7 @@ TEST_F(ReplayTapeIntegrityTest, WatermarkCarriesAcrossSegments)
   };
 
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "a.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "a.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t s : unsortedRun(1000))
     {
@@ -747,7 +747,7 @@ TEST_F(ReplayTapeIntegrityTest, WatermarkCarriesAcrossSegments)
     w.close();
   }
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "b.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "b.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     // Starts 900s before the first segment ended: invisible while the
     // watermark restarts per segment.
@@ -784,9 +784,9 @@ TEST_F(ReplayTapeIntegrityTest, WatermarkCarriesAcrossSegments)
 TEST_F(ReplayTapeIntegrityTest, UnknownFrameTypeIsSkippedNotTreatedAsEof)
 {
   auto dir = sub("unknown");
-  const auto path = dir / "seg.floxlog";
+  const auto path = dir / "seg.lrvx";
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     ASSERT_TRUE(w.writeTrade(makeTrade(100, 1)));
     w.close();
@@ -815,9 +815,9 @@ TEST_F(ReplayTapeIntegrityTest, UnknownFrameTypeIsSkippedNotTreatedAsEof)
 TEST_F(ReplayTapeIntegrityTest, CrcMismatchIsCounted)
 {
   auto dir = sub("crc");
-  const auto path = dir / "seg.floxlog";
+  const auto path = dir / "seg.lrvx";
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     ASSERT_TRUE(w.writeTrade(makeTrade(100, 1)));
     w.close();
@@ -844,7 +844,7 @@ TEST_F(ReplayTapeIntegrityTest, CrcMismatchIsCounted)
 TEST_F(ReplayTapeIntegrityTest, SegmentsListedBeforeFirstRead)
 {
   auto dir = sub("segs");
-  for (const char* name : {"a.floxlog", "b.floxlog"})
+  for (const char* name : {"a.lrvx", "b.lrvx"})
   {
     WriterConfig cfg{.output_dir = dir, .output_filename = name, .create_index = false};
     BinaryLogWriter w(cfg);
@@ -865,7 +865,7 @@ TEST_F(ReplayTapeIntegrityTest, OpsOutputStaysInTheNamedFile)
 {
   auto in = sub("rot_in");
   {
-    WriterConfig cfg{.output_dir = in, .output_filename = "src.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = in, .output_filename = "src.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t i = 0; i < 2000; ++i)
     {
@@ -875,21 +875,21 @@ TEST_F(ReplayTapeIntegrityTest, OpsOutputStaysInTheNamedFile)
   }
 
   auto out_dir = sub("rot_out");
-  auto out = out_dir / "out.floxlog";
+  auto out = out_dir / "out.lrvx";
   // A rotation limit small enough that the whole result cannot fit: the op
   // still owes the caller one file at the path it was given.
   WriterConfig wc{.output_dir = out_dir,
-                  .output_filename = "out.floxlog",
+                  .output_filename = "out.lrvx",
                   .max_segment_bytes = 4096,
                   .create_index = false};
   uint64_t written =
-      SegmentOps::extractTimeRange(in / "src.floxlog", out, 0, 100000 * kSec, wc);
+      SegmentOps::extractTimeRange(in / "src.lrvx", out, 0, 100000 * kSec, wc);
   EXPECT_EQ(written, 2000u);
 
   size_t files = 0;
   for (const auto& e : std::filesystem::directory_iterator(out_dir))
   {
-    if (e.path().extension() == ".floxlog")
+    if (e.path().extension() == ".lrvx")
     {
       ++files;
     }
@@ -903,7 +903,7 @@ TEST_F(ReplayTapeIntegrityTest, RotatedSegmentNamesFollowTheRequestedName)
   auto dir = sub("rotname");
   {
     WriterConfig cfg{.output_dir = dir,
-                     .output_filename = "2025-12-22_001.floxlog",
+                     .output_filename = "2025-12-22_001.lrvx",
                      .max_segment_bytes = 4096,
                      .create_index = false};
     BinaryLogWriter w(cfg);
@@ -917,14 +917,14 @@ TEST_F(ReplayTapeIntegrityTest, RotatedSegmentNamesFollowTheRequestedName)
   std::vector<std::string> names;
   for (const auto& e : std::filesystem::directory_iterator(dir))
   {
-    if (e.path().extension() == ".floxlog")
+    if (e.path().extension() == ".lrvx")
     {
       names.push_back(e.path().filename().string());
     }
   }
   ASSERT_GT(names.size(), 1u);
   std::sort(names.begin(), names.end());
-  EXPECT_EQ(names.front(), "2025-12-22_001.floxlog");
+  EXPECT_EQ(names.front(), "2025-12-22_001.lrvx");
   for (size_t i = 1; i < names.size(); ++i)
   {
     EXPECT_EQ(names[i].rfind("2025-12-22_001_", 0), 0u)
@@ -950,7 +950,7 @@ TEST_F(ReplayTapeIntegrityTest, ExtractTimeRangeReportsRangeMismatch)
 {
   auto in = sub("range_in");
   {
-    WriterConfig cfg{.output_dir = in, .output_filename = "src.floxlog", .create_index = true};
+    WriterConfig cfg{.output_dir = in, .output_filename = "src.lrvx", .create_index = true};
     BinaryLogWriter w(cfg);
     for (int64_t ts = 100; ts <= 200; ++ts)
     {
@@ -960,14 +960,14 @@ TEST_F(ReplayTapeIntegrityTest, ExtractTimeRangeReportsRangeMismatch)
   }
 
   auto out_dir = sub("range_out");
-  auto out = out_dir / "out.floxlog";
+  auto out = out_dir / "out.lrvx";
   WriterConfig wc{.output_dir = out_dir,
-                  .output_filename = "out.floxlog",
+                  .output_filename = "out.lrvx",
                   .create_index = false};
 
   RangeExtractStats stats;
   uint64_t written =
-      SegmentOps::extractTimeRange(in / "src.floxlog", out, 10 * kSec, 500 * kSec, wc, &stats);
+      SegmentOps::extractTimeRange(in / "src.lrvx", out, 10 * kSec, 500 * kSec, wc, &stats);
 
   EXPECT_EQ(written, 101u);
   EXPECT_EQ(stats.input_first_ns, 100 * kSec);
@@ -976,12 +976,12 @@ TEST_F(ReplayTapeIntegrityTest, ExtractTimeRangeReportsRangeMismatch)
   EXPECT_TRUE(stats.requested_to_after_data);
 
   RangeExtractStats inside;
-  auto out2 = out_dir / "out2.floxlog";
+  auto out2 = out_dir / "out2.lrvx";
   WriterConfig wc2{.output_dir = out_dir,
-                   .output_filename = "out2.floxlog",
+                   .output_filename = "out2.lrvx",
                    .create_index = false};
   uint64_t written2 =
-      SegmentOps::extractTimeRange(in / "src.floxlog", out2, 150 * kSec, 160 * kSec, wc2, &inside);
+      SegmentOps::extractTimeRange(in / "src.lrvx", out2, 150 * kSec, 160 * kSec, wc2, &inside);
   EXPECT_EQ(written2, 11u);
   EXPECT_FALSE(inside.requested_from_before_data);
   EXPECT_FALSE(inside.requested_to_after_data);
@@ -996,7 +996,7 @@ TEST_F(ReplayTapeIntegrityTest, ParallelReaderMatchesSingleThreadOnUnsortedSegme
 {
   auto dir = sub("par");
   {
-    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.floxlog", .create_index = false};
+    WriterConfig cfg{.output_dir = dir, .output_filename = "seg.lrvx", .create_index = false};
     BinaryLogWriter w(cfg);
     for (int64_t ts : {10, 20, 30, 100, 40, 50})
     {

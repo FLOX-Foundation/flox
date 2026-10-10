@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -19,10 +19,10 @@
 #include <thread>
 #include <vector>
 
-#include "flox/net/receive_path.h"
+#include "lrvx/net/receive_path.h"
 
-using flox::net::Datagram;
-using flox::net::UdpSocketReceivePath;
+using lrvx::net::Datagram;
+using lrvx::net::UdpSocketReceivePath;
 
 namespace
 {
@@ -53,7 +53,7 @@ TEST(UdpSocketReceivePath, BindsAndReportsTimestampMode)
   // macOS delivers SOFTWARE (SO_TIMESTAMP); Linux SOFTWARE or HARDWARE
   // (hardware means requested-and-accepted; software stamps are always
   // requested alongside as the per-packet fallback).
-  EXPECT_NE(rx.timestampMode(), flox::net::RxTimestampMode::NONE);
+  EXPECT_NE(rx.timestampMode(), lrvx::net::RxTimestampMode::NONE);
 }
 
 TEST(UdpSocketReceivePath, DeliversDatagramsWithTimestamps)

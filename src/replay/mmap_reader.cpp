@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/readers/mmap_reader.h"
+#include "lrvx/replay/readers/mmap_reader.h"
 
 #include <algorithm>
 #include <cstring>
@@ -25,7 +25,7 @@
 #include <unistd.h>
 #endif
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 MmapSegmentReader::MmapSegmentReader(const std::filesystem::path& segment_path)
@@ -693,4 +693,4 @@ uint64_t MmapReader::totalEvents() const
   return total;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

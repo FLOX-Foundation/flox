@@ -14,11 +14,11 @@ already declared to be in nanoseconds.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 import numpy as np
 
 
-class _BuyThenSell(flox.Strategy):
+class _BuyThenSell(lrvx.Strategy):
     """Emits on bar 1 and bar 2, so a single closed trade pins both
     entry_time_ns and exit_time_ns against the exact bar timestamps that
     produced them. The two orders fill one bar later than they are emitted;
@@ -51,9 +51,9 @@ def _make_minute_bars(n: int):
 
 
 def test_run_bars_preserves_exact_nanosecond_timestamps() -> None:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, initial_capital=100_000.0)
     strat = _BuyThenSell([sym])
     runner.set_strategy(strat)
 

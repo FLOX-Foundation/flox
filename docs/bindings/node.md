@@ -1,27 +1,27 @@
 # Node.js Bindings
 
-Event-driven live trading and backtesting from Node.js using `@flox-foundation/flox`.
+Event-driven live trading and backtesting from Node.js using `lrvx`.
 
 ## Install / Build
 
 ```bash
-npm install @flox-foundation/flox
+npm install @lrvx/lrvx
 # or build from source:
 cd node && npm install && npm run build
 ```
 
-The addon is built out of tree by npm, not by CMake. `FLOX_BUILD_NODE` exists for parity with the other binding flags but does not invoke npm. The compiled addon lands at `node/build/Release/flox_node.node`.
+The addon is built out of tree by npm, not by CMake. `LRVX_BUILD_NODE` exists for parity with the other binding flags but does not invoke npm. The compiled addon lands at `node/build/Release/lrvx_node.node`.
 
 ```javascript
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 // or, if building from source:
-const flox = require('../node');
+const lrvx = require('../node');
 ```
 
 ## SymbolRegistry and Symbol
 
 ```javascript
-const registry = new flox.SymbolRegistry();
+const registry = new lrvx.SymbolRegistry();
 const btc = registry.addSymbol('binance', 'BTCUSDT', 0.01);
 
 btc.id        // 1
@@ -94,8 +94,8 @@ function onSignal(sig) {
     // sig.orderId
 }
 
-const runner = new flox.Runner(registry, onSignal);        // synchronous
-const runner = new flox.Runner(registry, onSignal, true);  // Disruptor background thread
+const runner = new lrvx.Runner(registry, onSignal);        // synchronous
+const runner = new lrvx.Runner(registry, onSignal, true);  // Disruptor background thread
 
 runner.addStrategy(strategy);
 runner.start();
@@ -112,7 +112,7 @@ runner.stop();
 ## Backtest
 
 ```javascript
-const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
+const bt = new lrvx.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
 
 const stats = bt.runCsv('/path/to/btcusdt_1m.csv', 'BTCUSDT');
@@ -144,7 +144,7 @@ Every producer uses the same names: `sharpeRatio`, `sortinoRatio` and `calmarRat
 `VenueStack` is a separate venue simulation with its own flat proxy surface. It is not an argument to `BacktestRunner` and does not attach to one.
 
 ```javascript
-const stack = flox.VenueStack.binanceUmFutures(42, 10_000);
+const stack = lrvx.VenueStack.binanceUmFutures(42, 10_000);
 
 stack.accountOpenPosition(btc, 5.0, 50_000);
 stack.accountSetMark(btc, 47_000);
@@ -159,9 +159,9 @@ Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-ba
 ## Full Example — SMA Crossover
 
 ```javascript
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 
-const registry = new flox.SymbolRegistry();
+const registry = new lrvx.SymbolRegistry();
 const btc = registry.addSymbol('binance', 'BTCUSDT', 0.01);
 
 // Simple SMA helper
@@ -202,14 +202,14 @@ function onSignal(sig) {
     // forward to exchange
 }
 
-const runner = new flox.Runner(registry, onSignal);
+const runner = new lrvx.Runner(registry, onSignal);
 runner.addStrategy(strategy);
 runner.start();
 // runner.onTrade(btc, price, qty, isBuy, tsNs)  ← from your market data feed
 // runner.stop()
 
 // --- Backtest ---
-const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
+const bt = new lrvx.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
 const stats = bt.runCsv('./data/btcusdt_1m.csv', 'BTCUSDT');
 console.log(stats);

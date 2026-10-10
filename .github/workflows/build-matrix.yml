@@ -1,6 +1,6 @@
 name: Build matrix
 
-# Configures + builds FLOX in nine flag combinations on ubuntu-24.04.
+# Configures + builds lrvx in eight flag combinations on ubuntu-24.04.
 # Each row exercises one option (or a small combination) in isolation
 # so a default-OFF assumption can't silently rot. It cancels in progress
 # on rapid pushes.
@@ -39,37 +39,31 @@ jobs:
             needs_gtest: false
             needs_pybind: false
           - name: tests-only
-            flags: "-DFLOX_BUILD_TESTS=ON"
+            flags: "-DLRVX_BUILD_TESTS=ON"
             needs_gtest: true
             needs_pybind: false
           - name: python-only
-            flags: "-DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON"
+            flags: "-DLRVX_BUILD_PYTHON=ON -DLRVX_ENABLE_BACKTEST=ON"
             needs_gtest: false
             needs_pybind: true
           - name: capi-only
-            flags: "-DFLOX_BUILD_CAPI=ON"
+            flags: "-DLRVX_BUILD_CAPI=ON"
             needs_gtest: false
             needs_pybind: false
           - name: codon-only
-            flags: "-DFLOX_BUILD_CODON=ON -DFLOX_BUILD_CAPI=ON"
+            flags: "-DLRVX_BUILD_CODON=ON -DLRVX_BUILD_CAPI=ON"
             needs_gtest: false
             needs_pybind: false
           - name: quickjs-only
-            flags: "-DFLOX_BUILD_QUICKJS=ON -DFLOX_BUILD_CAPI=ON"
+            flags: "-DLRVX_BUILD_QUICKJS=ON -DLRVX_BUILD_CAPI=ON"
             needs_gtest: false
             needs_pybind: false
           - name: connectors-bybit-only
-            flags: "-DFLOX_BUILD_CONNECTORS=ON -DFLOX_CONNECTORS=bybit -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF"
+            flags: "-DLRVX_BUILD_CONNECTORS=ON -DLRVX_CONNECTORS=bybit -DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF"
             needs_gtest: false
             needs_pybind: false
           - name: production-typical
-            flags: "-DFLOX_BUILD_PYTHON=ON -DFLOX_BUILD_CONNECTORS=ON -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DFLOX_ENABLE_BACKTEST=ON -DFLOX_ENABLE_LZ4=ON"
-            needs_gtest: false
-            needs_pybind: true
-          - name: legacy-alias
-            # Confirms the FLOX_ENABLE_* aliases still flip their
-            # FLOX_BUILD_* counterparts (one warning per legacy use).
-            flags: "-DFLOX_ENABLE_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON"
+            flags: "-DLRVX_BUILD_PYTHON=ON -DLRVX_BUILD_CONNECTORS=ON -DLRVX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DLRVX_ENABLE_BACKTEST=ON -DLRVX_ENABLE_LZ4=ON"
             needs_gtest: false
             needs_pybind: true
     name: ${{ matrix.name }}

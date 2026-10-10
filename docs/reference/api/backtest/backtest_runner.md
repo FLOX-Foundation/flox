@@ -72,8 +72,8 @@ public:
 |--------|-------|-------|
 | `run(reader)` | An `IMultiSegmentReader` | The general path |
 | `runBars(bars)` | A `std::vector<BarEvent>` | Each bar updates the `SimulatedExecutor` — open first, then low, high and close, so resting orders and SL/TP match against the intrabar extremes — and is then dispatched to `Strategy::onBar` and any registered subscriber. An order the callback emits is held for the next bar's open (see below). Bars must be in non-decreasing `endTime` order |
-| `runTape(dir)` | One `.floxlog` directory | Opens the tape via `replay::createMultiSegmentReader`. Throws if `dir` is not a `.floxlog` directory or holds no segments |
-| `runTapes(dirs)` | N `.floxlog` directories, merged on read | Symbols are rekeyed into the engine registry via `(metadata.exchange, name)`, so strategies that pre-resolved venue-tagged symbols see the merger's ids. Throws if any input is not `.floxlog`, or if two inputs declare overlapping book streams for the same symbol (`OverlappingBookStreamError`). `runTapes({t})` equals `runTape(t)` modulo the rekey |
+| `runTape(dir)` | One `.lrvx` directory | Opens the tape via `replay::createMultiSegmentReader`. Throws if `dir` is not a `.lrvx` directory or holds no segments |
+| `runTapes(dirs)` | N `.lrvx` directories, merged on read | Symbols are rekeyed into the engine registry via `(metadata.exchange, name)`, so strategies that pre-resolved venue-tagged symbols see the merger's ids. Throws if any input is not `.lrvx`, or if two inputs declare overlapping book streams for the same symbol (`OverlappingBookStreamError`). `runTapes({t})` equals `runTape(t)` modulo the rekey |
 
 ## Bar callbacks fill at the next open
 

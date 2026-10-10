@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -23,15 +23,15 @@
  * IExchangeConnector::emitDisconnect(reason).
  */
 
-#include "flox-connectors/bitget/bitget_exchange_connector.h"
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
-#include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
-#include "flox-connectors/polymarket/polymarket_exchange_connector.h"
+#include "lrvx-connectors/bitget/bitget_exchange_connector.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_exchange_connector.h"
+#include "lrvx-connectors/polymarket/polymarket_exchange_connector.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/common.h>
-#include <flox/log/atomic_logger.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/common.h>
+#include <lrvx/log/atomic_logger.h>
 
 // ix's own header-only Sec-WebSocket-Accept generator: the listener below has
 // to complete a real handshake before a close means anything, and using ix's
@@ -54,14 +54,14 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
 
 std::shared_ptr<AtomicLogger> makeLogger(const char* basename)
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_conn_disconnect_test_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_conn_disconnect_test_logs";
   std::filesystem::create_directories(dir);
   AtomicLoggerOptions opts;
   opts.directory = dir.string();

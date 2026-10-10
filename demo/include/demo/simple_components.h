@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -11,17 +11,17 @@
 
 #include "demo/latency_collector.h"
 
-#include "flox/common.h"
-#include "flox/engine/abstract_subscriber.h"
-#include "flox/execution/abstract_executor.h"
-#include "flox/execution/bus/order_execution_bus.h"
-#include "flox/killswitch/abstract_killswitch.h"
-#include "flox/metrics/abstract_execution_tracker.h"
-#include "flox/metrics/abstract_pnl_tracker.h"
-#include "flox/position/abstract_position_manager.h"
-#include "flox/risk/abstract_risk_manager.h"
-#include "flox/sink/abstract_storage_sink.h"
-#include "flox/validation/abstract_order_validator.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/abstract_subscriber.h"
+#include "lrvx/execution/abstract_executor.h"
+#include "lrvx/execution/bus/order_execution_bus.h"
+#include "lrvx/killswitch/abstract_killswitch.h"
+#include "lrvx/metrics/abstract_execution_tracker.h"
+#include "lrvx/metrics/abstract_pnl_tracker.h"
+#include "lrvx/position/abstract_position_manager.h"
+#include "lrvx/risk/abstract_risk_manager.h"
+#include "lrvx/sink/abstract_storage_sink.h"
+#include "lrvx/validation/abstract_order_validator.h"
 
 #include <chrono>
 #include <random>
@@ -29,46 +29,46 @@
 
 namespace demo
 {
-using namespace flox;
+using namespace lrvx;
 
 class ConsoleExecutionTracker final : public IExecutionTracker
 {
  public:
   void onOrderSubmitted(const Order& order, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] submitted " << order.id << " at " << ts.time_since_epoch().count());
+    LRVX_LOG("[tracker] submitted " << order.id << " at " << ts.time_since_epoch().count());
   }
   void onOrderAccepted(const Order& order, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] accepted " << order.id << " at " << ts.time_since_epoch().count());
+    LRVX_LOG("[tracker] accepted " << order.id << " at " << ts.time_since_epoch().count());
   }
 
   void onOrderPartiallyFilled(const Order& order, Quantity qty, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] partial fill " << order.id << " qty=" << qty.toDouble()
+    LRVX_LOG("[tracker] partial fill " << order.id << " qty=" << qty.toDouble()
                                        << " at " << ts.time_since_epoch().count());
   }
   void onOrderFilled(const Order& order, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] filled " << order.id << " after " << ts.time_since_epoch().count());
+    LRVX_LOG("[tracker] filled " << order.id << " after " << ts.time_since_epoch().count());
   }
   void onOrderCanceled(const Order& order, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] canceled " << order.id << " at " << ts.time_since_epoch().count());
+    LRVX_LOG("[tracker] canceled " << order.id << " at " << ts.time_since_epoch().count());
   }
 
   void onOrderExpired(const Order& order, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] expired " << order.id << " at " << ts.time_since_epoch().count());
+    LRVX_LOG("[tracker] expired " << order.id << " at " << ts.time_since_epoch().count());
   }
   void onOrderRejected(const Order& order, const std::string& reason, TimePoint) override
   {
-    FLOX_LOG("[tracker] rejected " << order.id << " reason=" << reason);
+    LRVX_LOG("[tracker] rejected " << order.id << " reason=" << reason);
   }
 
   void onOrderReplaced(const Order& oldOrder, const Order& newOrder, TimePoint ts) override
   {
-    FLOX_LOG("[tracker] replaced old=" << oldOrder.id << " new=" << newOrder.id
+    LRVX_LOG("[tracker] replaced old=" << oldOrder.id << " new=" << newOrder.id
                                        << " at " << ts.time_since_epoch().count());
   }
 };
@@ -80,7 +80,7 @@ class SimplePnLTracker final : public IPnLTracker
   {
     double value = order.price.toDouble() * order.quantity.toDouble();
     _pnl += (order.side == Side::BUY ? -value : value);
-    FLOX_LOG("[pnl] " << _pnl);
+    LRVX_LOG("[pnl] " << _pnl);
   }
 
  private:
@@ -90,7 +90,7 @@ class SimplePnLTracker final : public IPnLTracker
 class StdoutStorageSink final : public IStorageSink
 {
  public:
-  void store(const Order& order) override { FLOX_LOG("[storage] order " << order.id); }
+  void store(const Order& order) override { LRVX_LOG("[storage] order " << order.id); }
 };
 
 class SimpleOrderValidator final : public IOrderValidator
@@ -152,7 +152,7 @@ class SimpleRiskManager final : public IRiskManager
 
     if (dist(rng) < 0.05)
     {
-      FLOX_LOG("[risk] rejected order id=" << order.id << " (random)");
+      LRVX_LOG("[risk] rejected order id=" << order.id << " (random)");
       return false;
     }
 
@@ -172,24 +172,24 @@ class SimplePositionManager : public IPositionManager
 
   void onOrderSubmitted(const Order& order) override
   {
-    FLOX_LOG("[position] order submitted: id=" << order.id);
+    LRVX_LOG("[position] order submitted: id=" << order.id);
   }
 
   void onOrderAccepted(const Order& order) override
   {
-    FLOX_LOG("[position] order accepted: id=" << order.id);
+    LRVX_LOG("[position] order accepted: id=" << order.id);
   }
 
   void onOrderPartiallyFilled(const Order& order, Quantity qty) override
   {
-    FLOX_LOG("[position] order partially filled: id=" << order.id
+    LRVX_LOG("[position] order partially filled: id=" << order.id
                                                       << ", qty=" << qty.toDouble());
     update(order, qty);
   }
 
   void onOrderFilled(const Order& order) override
   {
-    FLOX_LOG("[position] order filled: id=" << order.id
+    LRVX_LOG("[position] order filled: id=" << order.id
                                             << ", qty=" << order.quantity.toDouble());
 
     update(order, order.quantity);
@@ -197,27 +197,27 @@ class SimplePositionManager : public IPositionManager
 
   void onOrderPendingCancel(const Order& order) override
   {
-    FLOX_LOG("[position] order pending cancel: id=" << order.id);
+    LRVX_LOG("[position] order pending cancel: id=" << order.id);
   }
 
   void onOrderCanceled(const Order& order) override
   {
-    FLOX_LOG("[position] order canceled: id=" << order.id);
+    LRVX_LOG("[position] order canceled: id=" << order.id);
   }
 
   void onOrderExpired(const Order& order) override
   {
-    FLOX_LOG("[position] order expired: id=" << order.id);
+    LRVX_LOG("[position] order expired: id=" << order.id);
   }
 
   void onOrderRejected(const Order& order, const std::string& reason) override
   {
-    FLOX_LOG("[position] order rejected: id=" << order.id << " reason: " << reason);
+    LRVX_LOG("[position] order rejected: id=" << order.id << " reason: " << reason);
   }
 
   void onOrderReplaced(const Order& oldOrder, const Order& newOrder) override
   {
-    FLOX_LOG("[position] order replaced: old_id=" << oldOrder.id
+    LRVX_LOG("[position] order replaced: old_id=" << oldOrder.id
                                                   << ", new_id=" << newOrder.id);
   }
 
@@ -232,7 +232,7 @@ class SimplePositionManager : public IPositionManager
     {
       if (!_positions[i].isZero())
       {
-        FLOX_LOG("Symbol " << i << ": " << _positions[i].toDouble() << "\n");
+        LRVX_LOG("Symbol " << i << ": " << _positions[i].toDouble() << "\n");
       }
     }
   }
@@ -263,7 +263,7 @@ class SimpleOrderExecutor final : public IOrderExecutor
 
   void submitOrder(const Order& order) override
   {
-    FLOX_PROFILE_SCOPE("SimpleOrderExecutor::submitOrder");
+    LRVX_PROFILE_SCOPE("SimpleOrderExecutor::submitOrder");
 
     // accepted
     OrderEvent ev{OrderEventStatus::ACCEPTED};

@@ -1,50 +1,50 @@
 # Build feature flags
 
-CMake options for tailoring a FLOX build to a specific use case. Two prefixes, by purpose:
+CMake options for tailoring a lrvx build to a specific use case. Two prefixes, by purpose:
 
-- `FLOX_ENABLE_*` — capabilities of the core library (backtest module, LZ4 compression, Tracy profiler, CPU affinity).
-- `FLOX_BUILD_*` — optional build artefacts (binding wheels, demo, tools, tests, benchmarks, connectors).
+- `LRVX_ENABLE_*` — capabilities of the core library (backtest module, LZ4 compression, Tracy profiler, CPU affinity).
+- `LRVX_BUILD_*` — optional build artefacts (binding wheels, demo, tools, tests, benchmarks, connectors).
 
-Most options default to OFF unless noted. The exceptions default ON: `FLOX_NATIVE`, `FLOX_ENABLE_LZ4`, and **`FLOX_BUILD_VENUE`** — and because `FLOX_BUILD_VENUE=ON` force-enables `FLOX_ENABLE_BACKTEST`, a bare `cmake -B build` builds the core library **plus the venue and backtest modules** (venue is disabled automatically on MSVC/clang-cl, which lack native 128-bit ints). To get only the core library, pass `-DFLOX_BUILD_VENUE=OFF`. `FLOX_ENABLE_ONNX` and `FLOX_ENABLE_AF_XDP` default OFF and hard-fail if their libraries are absent.
+Most options default to OFF unless noted. The exceptions default ON: `LRVX_NATIVE`, `LRVX_ENABLE_LZ4`, and **`LRVX_BUILD_VENUE`** — and because `LRVX_BUILD_VENUE=ON` force-enables `LRVX_ENABLE_BACKTEST`, a bare `cmake -B build` builds the core library **plus the venue and backtest modules** (venue is disabled automatically on MSVC/clang-cl, which lack native 128-bit ints). To get only the core library, pass `-DLRVX_BUILD_VENUE=OFF`. `LRVX_ENABLE_ONNX` and `LRVX_ENABLE_AF_XDP` default OFF and hard-fail if their libraries are absent.
 
 A third prefix gates compiler/portability flags rather than features:
 
-- `FLOX_NATIVE` — controls whether Release builds target the build host's exact ISA (`-march=native`) or a portable baseline. Default ON for fastest local builds; flip OFF when shipping artefacts to machines whose CPUs you do not control (e.g. `flox-py` wheels do this automatically).
+- `LRVX_NATIVE` — controls whether Release builds target the build host's exact ISA (`-march=native`) or a portable baseline. Default ON for fastest local builds; flip OFF when shipping artefacts to machines whose CPUs you do not control (e.g. `lrvx` wheels do this automatically).
 
 ## Capabilities
 
 | Flag | Default | Effect |
 |---|---|---|
-| `FLOX_ENABLE_BACKTEST` | OFF | Compile `src/backtest/` into the core library. Required for `BacktestRunner`, `WalkForwardRunner`, `GridSearch`. |
-| `FLOX_ENABLE_LZ4` | **ON** | Link LZ4 for replay-log compression. Tries `find_package(lz4 CONFIG)` first, then `find_library`, then pkg-config, then a vendored LZ4 source via FetchContent — so the dependency self-resolves on every supported platform. Set to OFF only if you specifically need an LZ4-free build. |
-| `FLOX_ENABLE_ONNX` | OFF | Compiles the ONNX Runtime inference nodes (`flox/ml/`) into the core library, plus `test_onnx_inference` once tests are on. Hard-fails at configure time when the onnxruntime library or headers are missing; there is no bundled fallback. No CI workflow turns this on: none of the runners carry the onnxruntime C++ SDK. Check it locally with `-DFLOX_ENABLE_ONNX=ON -DFLOX_BUILD_TESTS=ON` after installing onnxruntime. |
-| `FLOX_ENABLE_AF_XDP` | OFF | Compiles the AF_XDP receive-path backend (`flox/net/af_xdp_receive_path.h`). Linux only; hard-fails at configure time when libxdp/libbpf are missing. No test is gated on this flag, and no CI runner has the kernel or library support it needs. |
-| `FLOX_ENABLE_TRACY` | OFF | Links the Tracy profiler client for runtime instrumentation; off in production builds. No test is gated on this flag, so CI never builds with it on. |
-| `FLOX_ENABLE_CPU_AFFINITY` | OFF | Compiles pthread / NUMA-aware affinity helpers. Linux only; the calls are no-ops on macOS and Windows. **Warning:** can hurt performance on busy or shared systems — use it only on isolated, dedicated hardware. The gated `test_cpu_affinity` suite runs in the `affinity-tests` job, but only on the Sunday 3am schedule, not on pull requests. |
-| `FLOX_ENABLE_DEV_SETUP` | OFF | Install the project's pre-commit hook into `.git/hooks/` at configure time. Developer-only. |
+| `LRVX_ENABLE_BACKTEST` | OFF | Compile `src/backtest/` into the core library. Required for `BacktestRunner`, `WalkForwardRunner`, `GridSearch`. |
+| `LRVX_ENABLE_LZ4` | **ON** | Link LZ4 for replay-log compression. Tries `find_package(lz4 CONFIG)` first, then `find_library`, then pkg-config, then a vendored LZ4 source via FetchContent — so the dependency self-resolves on every supported platform. Set to OFF only if you specifically need an LZ4-free build. |
+| `LRVX_ENABLE_ONNX` | OFF | Compiles the ONNX Runtime inference nodes (`lrvx/ml/`) into the core library, plus `test_onnx_inference` once tests are on. Hard-fails at configure time when the onnxruntime library or headers are missing; there is no bundled fallback. No CI workflow turns this on: none of the runners carry the onnxruntime C++ SDK. Check it locally with `-DLRVX_ENABLE_ONNX=ON -DLRVX_BUILD_TESTS=ON` after installing onnxruntime. |
+| `LRVX_ENABLE_AF_XDP` | OFF | Compiles the AF_XDP receive-path backend (`lrvx/net/af_xdp_receive_path.h`). Linux only; hard-fails at configure time when libxdp/libbpf are missing. No test is gated on this flag, and no CI runner has the kernel or library support it needs. |
+| `LRVX_ENABLE_TRACY` | OFF | Links the Tracy profiler client for runtime instrumentation; off in production builds. No test is gated on this flag, so CI never builds with it on. |
+| `LRVX_ENABLE_CPU_AFFINITY` | OFF | Compiles pthread / NUMA-aware affinity helpers. Linux only; the calls are no-ops on macOS and Windows. **Warning:** can hurt performance on busy or shared systems — use it only on isolated, dedicated hardware. The gated `test_cpu_affinity` suite runs in the `affinity-tests` job, but only on the Sunday 3am schedule, not on pull requests. |
+| `LRVX_ENABLE_DEV_SETUP` | OFF | Install the project's pre-commit hook into `.git/hooks/` at configure time. Developer-only. |
 
 ## Artefacts
 
 | Flag | Default | Effect | Depends on |
 |---|---|---|---|
-| `FLOX_BUILD_TESTS` | OFF | Build the GoogleTest suite under `tests/`. | `find_package(GTest)` |
-| `FLOX_BUILD_BENCHMARKS` | OFF | Build the Google Benchmark suite under `benchmarks/`. | benchmark, optionally `FLOX_ENABLE_BACKTEST` |
-| `FLOX_BUILD_DEMO` | OFF | Build the `flox_demo` executable. | optionally `FLOX_ENABLE_BACKTEST` |
-| `FLOX_BUILD_TOOLS` | OFF | Build the CLI tools under `tools/`. | optionally `FLOX_ENABLE_BACKTEST` |
-| `FLOX_BUILD_PYTHON` | OFF | Build `flox_py` pybind11 binding. | pybind11, Python 3.10+ |
-| `FLOX_BUILD_NODE` | OFF | Documentation flag. The Node addon is built out-of-tree by `npm run build`; this flag exists for parity in the CI matrix. CMake itself does not invoke npm. | npm, Node 20+ |
-| `FLOX_BUILD_CAPI` | OFF | Build the `libflox_capi.so` shared library — the integration point for any other language. Forces the static `flox` library to be position-independent, and force-enables `FLOX_ENABLE_BACKTEST` (the C API exposes the backtest module). | — |
-| `FLOX_BUILD_CODON` | OFF | Build the Codon strategy support layer under `codon/`. | `FLOX_BUILD_CAPI=ON`, Codon compiler |
-| `FLOX_BUILD_QUICKJS` | OFF | Build the embedded JS strategy runtime. | `FLOX_BUILD_CAPI=ON` |
-| `FLOX_BUILD_CONNECTORS` | OFF | Build the native exchange connectors module under `connectors/`. | OpenSSL / zlib / libcurl, plus `ixwebsocket` and `simdjson` via FetchContent |
+| `LRVX_BUILD_TESTS` | OFF | Build the GoogleTest suite under `tests/`. | `find_package(GTest)` |
+| `LRVX_BUILD_BENCHMARKS` | OFF | Build the Google Benchmark suite under `benchmarks/`. | benchmark, optionally `LRVX_ENABLE_BACKTEST` |
+| `LRVX_BUILD_DEMO` | OFF | Build the `lrvx_demo` executable. | optionally `LRVX_ENABLE_BACKTEST` |
+| `LRVX_BUILD_TOOLS` | OFF | Build the CLI tools under `tools/`. | optionally `LRVX_ENABLE_BACKTEST` |
+| `LRVX_BUILD_PYTHON` | OFF | Build `lrvx` pybind11 binding. | pybind11, Python 3.10+ |
+| `LRVX_BUILD_NODE` | OFF | Documentation flag. The Node addon is built out-of-tree by `npm run build`; this flag exists for parity in the CI matrix. CMake itself does not invoke npm. | npm, Node 20+ |
+| `LRVX_BUILD_CAPI` | OFF | Build the `liblrvx_capi.so` shared library — the integration point for any other language. Forces the static `lrvx` library to be position-independent, and force-enables `LRVX_ENABLE_BACKTEST` (the C API exposes the backtest module). | — |
+| `LRVX_BUILD_CODON` | OFF | Build the Codon strategy support layer under `codon/`. | `LRVX_BUILD_CAPI=ON`, Codon compiler |
+| `LRVX_BUILD_QUICKJS` | OFF | Build the embedded JS strategy runtime. | `LRVX_BUILD_CAPI=ON` |
+| `LRVX_BUILD_CONNECTORS` | OFF | Build the native exchange connectors module under `connectors/`. | OpenSSL / zlib / libcurl, plus `ixwebsocket` and `simdjson` via FetchContent |
 
-### `FLOX_CONNECTORS` selector
+### `LRVX_CONNECTORS` selector
 
-When `FLOX_BUILD_CONNECTORS=ON`, the cache string `FLOX_CONNECTORS` chooses which venues to compile.
+When `LRVX_BUILD_CONNECTORS=ON`, the cache string `LRVX_CONNECTORS` chooses which venues to compile.
 
 ```bash
-cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
-                -DFLOX_CONNECTORS="bybit;bitget"
+cmake -B build -DLRVX_BUILD_CONNECTORS=ON \
+                -DLRVX_CONNECTORS="bybit;bitget"
 ```
 
 The empty string (the default) means "all venues currently in `connectors/src/`". Listing an unknown venue produces a configure-time error with the available set.
@@ -53,15 +53,15 @@ The empty string (the default) means "all venues currently in `connectors/src/`"
 
 | Flag | Default | Effect |
 |---|---|---|
-| `FLOX_NATIVE` | **ON** | Add `-march=native` to Release builds. Fastest on the build host, but the resulting `.so` / `.a` will fault with SIGILL on any CPU lacking an instruction the build host had (e.g. AVX-512 → consumer x86). When OFF on x86_64, falls back to `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, supported since ~2015); on arm64 the compiler default is used. Distribution paths (wheels, prebuilt binaries) must build with `FLOX_NATIVE=OFF`. |
+| `LRVX_NATIVE` | **ON** | Add `-march=native` to Release builds. Fastest on the build host, but the resulting `.so` / `.a` will fault with SIGILL on any CPU lacking an instruction the build host had (e.g. AVX-512 → consumer x86). When OFF on x86_64, falls back to `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, supported since ~2015); on arm64 the compiler default is used. Distribution paths (wheels, prebuilt binaries) must build with `LRVX_NATIVE=OFF`. |
 
 ## Build type, and why it is not a neutral choice
 
 `CMAKE_BUILD_TYPE` **defaults to `Release`**. Leaving it unset used to be the
 documented default in every build recipe, and it changes the ABI:
 
-Without `NDEBUG`, `FLOX_SCALE_CHECKS` turns on
-([`util/base/scale_check.h`](https://github.com/FLOX-Foundation/flox/blob/main/include/flox/util/base/scale_check.h))
+Without `NDEBUG`, `LRVX_SCALE_CHECKS` turns on
+([`util/base/scale_check.h`](https://github.com/lrvx/lrvx/blob/main/include/lrvx/util/base/scale_check.h))
 and adds an `int64_t _scale` member to `Decimal`. `sizeof(Price)` goes from 8
 to 16, and every struct holding a `Price`, `Quantity` or `Volume` changes
 layout with it.
@@ -79,51 +79,34 @@ So:
   `CMakeCache.txt` and fails the build on a mismatch, or when it cannot read
   one at all.
 - `Debug` is fine as long as *everything* is Debug.
-- `FLOX_SCALE_CHECKS` is derived from `NDEBUG`, not set directly.
+- `LRVX_SCALE_CHECKS` is derived from `NDEBUG`, not set directly.
 
 ## Recommended configurations
 
 ```bash
 # Research / Python-only
-cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON
+cmake -B build -DLRVX_BUILD_PYTHON=ON -DLRVX_ENABLE_BACKTEST=ON
 
 # Production trading service (Python + Node + connectors, narrowed)
-cmake -B build -DFLOX_BUILD_PYTHON=ON \
-                -DFLOX_BUILD_NODE=ON \
-                -DFLOX_BUILD_CONNECTORS=ON \
-                -DFLOX_CONNECTORS="bybit;bitget" \
-                -DFLOX_ENABLE_BACKTEST=ON \
-                -DFLOX_ENABLE_LZ4=ON
+cmake -B build -DLRVX_BUILD_PYTHON=ON \
+                -DLRVX_BUILD_NODE=ON \
+                -DLRVX_BUILD_CONNECTORS=ON \
+                -DLRVX_CONNECTORS="bybit;bitget" \
+                -DLRVX_ENABLE_BACKTEST=ON \
+                -DLRVX_ENABLE_LZ4=ON
 
 # Minimal CI gate — just confirm the core library compiles
-cmake -B build -DFLOX_BUILD_TESTS=ON
+cmake -B build -DLRVX_BUILD_TESTS=ON
 
 # Full developer build (everything)
-cmake -B build -DFLOX_BUILD_TESTS=ON -DFLOX_BUILD_BENCHMARKS=ON \
-                -DFLOX_BUILD_DEMO=ON -DFLOX_BUILD_TOOLS=ON \
-                -DFLOX_BUILD_PYTHON=ON -DFLOX_BUILD_CAPI=ON \
-                -DFLOX_BUILD_CODON=ON -DFLOX_BUILD_QUICKJS=ON \
-                -DFLOX_BUILD_CONNECTORS=ON \
-                -DFLOX_ENABLE_BACKTEST=ON -DFLOX_ENABLE_LZ4=ON \
-                -DFLOX_ENABLE_CPU_AFFINITY=ON
+cmake -B build -DLRVX_BUILD_TESTS=ON -DLRVX_BUILD_BENCHMARKS=ON \
+                -DLRVX_BUILD_DEMO=ON -DLRVX_BUILD_TOOLS=ON \
+                -DLRVX_BUILD_PYTHON=ON -DLRVX_BUILD_CAPI=ON \
+                -DLRVX_BUILD_CODON=ON -DLRVX_BUILD_QUICKJS=ON \
+                -DLRVX_BUILD_CONNECTORS=ON \
+                -DLRVX_ENABLE_BACKTEST=ON -DLRVX_ENABLE_LZ4=ON \
+                -DLRVX_ENABLE_CPU_AFFINITY=ON
 ```
-
-## Deprecated names
-
-The eight artefact options were renamed from `FLOX_ENABLE_*` to `FLOX_BUILD_*` during a build-flag cleanup. The legacy names continue to work as aliases for one release cycle:
-
-| Legacy | Current | Status |
-|---|---|---|
-| `FLOX_ENABLE_BENCHMARKS` | `FLOX_BUILD_BENCHMARKS` | deprecated |
-| `FLOX_ENABLE_TESTS` | `FLOX_BUILD_TESTS` | deprecated |
-| `FLOX_ENABLE_DEMO` | `FLOX_BUILD_DEMO` | deprecated |
-| `FLOX_ENABLE_TOOLS` | `FLOX_BUILD_TOOLS` | deprecated |
-| `FLOX_ENABLE_PYTHON` | `FLOX_BUILD_PYTHON` | deprecated |
-| `FLOX_ENABLE_CAPI` | `FLOX_BUILD_CAPI` | deprecated |
-| `FLOX_ENABLE_CODON` | `FLOX_BUILD_CODON` | deprecated |
-| `FLOX_ENABLE_QUICKJS` | `FLOX_BUILD_QUICKJS` | deprecated |
-
-Passing `-DFLOX_ENABLE_PYTHON=ON` still flips `FLOX_BUILD_PYTHON=ON` and emits a one-line deprecation warning. Migrate downstream `cmake` invocations and tooling that parses `cmake -L` to the new names; the old names will be removed in a later release cycle.
 
 ## FAQ
 
@@ -133,5 +116,5 @@ A backtest-only Python user shouldn't pay the cost of the QuickJS runtime, nor a
 **Can I add a new option?**
 Yes. Decide which prefix fits — capability of the core library is `ENABLE`, optional artefact is `BUILD`. Add the option, the conditional `add_subdirectory` (or whatever the artefact needs), a row in the table above, and a matrix config in `build-matrix.yml` that exercises it in isolation.
 
-**Why no aggregate `FLOX_FULL=ON` flag?**
-Aggregate flags drift. Today "full" means `BUILD_PYTHON + BUILD_NODE + BUILD_CAPI + …`; if a new artefact lands, downstream that pinned `FLOX_FULL` for "everything" suddenly drags in something they didn't ask for. The `full-build` config in the CI matrix already serves the "does everything compile together" purpose without giving users a foot-gun. If you want a one-line preset for your own machine, [CMakePresets.json](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html) is the standard escape hatch.
+**Why no aggregate `LRVX_FULL=ON` flag?**
+Aggregate flags drift. Today "full" means `BUILD_PYTHON + BUILD_NODE + BUILD_CAPI + …`; if a new artefact lands, downstream that pinned `LRVX_FULL` for "everything" suddenly drags in something they didn't ask for. The `full-build` config in the CI matrix already serves the "does everything compile together" purpose without giving users a foot-gun. If you want a one-line preset for your own machine, [CMakePresets.json](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html) is the standard escape hatch.

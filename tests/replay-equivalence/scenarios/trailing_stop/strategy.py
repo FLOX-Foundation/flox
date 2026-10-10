@@ -12,10 +12,10 @@ trailing trigger evaluation deterministically.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 
 
-class TrailingStopScenario(flox.Strategy):
+class TrailingStopScenario(lrvx.Strategy):
     def __init__(self, symbols, qty: float = 0.25):
         super().__init__(symbols)
         self.qty = qty

@@ -20,7 +20,7 @@ that never happened.
 
 ## The added states
 
-FLOX extends OrderEventStatus with three connector-driven states:
+lrvx extends OrderEventStatus with three connector-driven states:
 
 - PENDING_ONCHAIN: broadcast to the mempool, not yet confirmed.
 - REVERTED: the chain rejected the transaction. The reason rides on the
@@ -35,7 +35,7 @@ listeners that do not override the new callbacks keep working.
 
 ## Where the boundary sits
 
-FLOX owns the state machine and the event shape. It does not talk to a chain.
+lrvx owns the state machine and the event shape. It does not talk to a chain.
 RPC calls, mempool watching, gas policy, and signing live in the connector
 that drives these transitions and fills the hash and confirmation count. The
 engine's job is to model the states so a strategy can wait for confirmation

@@ -1,7 +1,7 @@
 # Strategy, Runner
 
 ```javascript
-const { SymbolRegistry, Runner } = require('@flox-foundation/flox');
+const { SymbolRegistry, Runner } = require('@lrvx/lrvx');
 ```
 
 ---
@@ -9,7 +9,7 @@ const { SymbolRegistry, Runner } = require('@flox-foundation/flox');
 ## SymbolRegistry
 
 ```javascript
-const registry = new flox.SymbolRegistry();
+const registry = new lrvx.SymbolRegistry();
 ```
 
 | Method | Returns | Description |
@@ -131,8 +131,8 @@ All callbacks are optional.
 Synchronous strategy host. Strategy callbacks fire in the caller's thread before the push call returns.
 
 ```javascript
-const runner = new flox.Runner(registry, onSignal);        // synchronous
-const runner = new flox.Runner(registry, onSignal, true);  // Disruptor background thread
+const runner = new lrvx.Runner(registry, onSignal);        // synchronous
+const runner = new lrvx.Runner(registry, onSignal, true);  // Disruptor background thread
 ```
 
 In threaded mode, events are published to a lock-free ring buffer and callbacks fire in a background C++ thread.
@@ -199,7 +199,7 @@ A trade handed to a `MarketDataRecorderHook`'s `onTrade` is a `TradeData`:
 
 | Method | Description |
 |--------|-------------|
-| `attachTraceRecorder(recorder)` | Auto-capture every signal into a `.floxrun` recorder. Sync mode only; throws otherwise |
+| `attachTraceRecorder(recorder)` | Auto-capture every signal into a `.lrvxrun` recorder. Sync mode only; throws otherwise |
 | `setTraceFeedTsNs(feedTsNs)` | Stamp every recorded signal with this `feed_ts_ns` until the next call |
 | `traceOrderEvent(opts)` | Mirror an order event into the attached recorder. No-op with no recorder attached |
 | `traceFill(opts)` | Mirror a fill into the attached recorder |

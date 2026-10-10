@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,14 +15,14 @@
 #include <utility>
 #include <vector>
 
-#include "flox/replay/delta_book.h"
+#include "lrvx/replay/delta_book.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
-inline py::list levelsToList(const std::vector<flox::replay::BookLevel>& levels)
+inline py::list levelsToList(const std::vector<lrvx::replay::BookLevel>& levels)
 {
   py::list out;
   for (const auto& l : levels)
@@ -35,14 +35,14 @@ inline py::list levelsToList(const std::vector<flox::replay::BookLevel>& levels)
   return out;
 }
 
-inline std::vector<flox::replay::BookLevel> listToLevels(const py::list& levels)
+inline std::vector<lrvx::replay::BookLevel> listToLevels(const py::list& levels)
 {
-  std::vector<flox::replay::BookLevel> out;
+  std::vector<lrvx::replay::BookLevel> out;
   out.reserve(levels.size());
   for (const auto& obj : levels)
   {
     auto d = obj.cast<py::dict>();
-    flox::replay::BookLevel l{};
+    lrvx::replay::BookLevel l{};
     l.price_raw = d["price_raw"].cast<int64_t>();
     l.qty_raw = d["qty_raw"].cast<int64_t>();
     out.push_back(l);
@@ -52,8 +52,8 @@ inline std::vector<flox::replay::BookLevel> listToLevels(const py::list& levels)
 
 inline void bindDeltaBook(py::module_& m)
 {
-  using flox::replay::DeltaBookEncoder;
-  using flox::replay::DeltaBookReplayer;
+  using lrvx::replay::DeltaBookEncoder;
+  using lrvx::replay::DeltaBookReplayer;
 
   py::class_<DeltaBookEncoder>(m, "DeltaBookEncoder",
                                "Encode a stream of L2 snapshots as anchor snapshots plus deltas. "
@@ -110,4 +110,4 @@ inline void bindDeltaBook(py::module_& m)
       .def("reset_all", &DeltaBookReplayer::resetAll);
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

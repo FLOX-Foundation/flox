@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -15,14 +15,14 @@
  * The reference book is the oracle; any ladder divergence fails with the command
  * index. Reproducible: fixed xorshift seed, no wall-clock / RNG.
  *
- * Depth defaults to a CI-friendly size; set FLOX_FUZZ_OPS for a deep run
+ * Depth defaults to a CI-friendly size; set LRVX_FUZZ_OPS for a deep run
  * (the venue application gates 2M under ASAN/UBSAN before release).
  */
-#include "flox-venue/event_hash.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/workload.h"
-#include "flox/book/ladder_book.h"
+#include "lrvx-venue/event_hash.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/workload.h"
+#include "lrvx/book/ladder_book.h"
 #include "support/counterexample.h"
 
 #include <gtest/gtest.h>
@@ -33,8 +33,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -133,7 +133,7 @@ TEST(VenueDifferentialFuzz, LadderMatchesReferenceBook)
   MatchingEngine<LadderBook> ladE(cfg(), [&](const OutboundEvent& e)
                                   { evLad.push_back(e); }, LadderBook{ladderCfg()});
 
-  const char* env = std::getenv("FLOX_FUZZ_OPS");
+  const char* env = std::getenv("LRVX_FUZZ_OPS");
   const uint64_t N = env != nullptr ? std::strtoull(env, nullptr, 10) : 200'000;
   uint64_t s = 0xC0FFEE123456789ULL;
   OrderId nextId = 1;

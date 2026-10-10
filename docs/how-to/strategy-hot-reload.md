@@ -26,7 +26,7 @@ The engine does not migrate state for you. If your new strategy needs to pick up
 
     SNAPSHOT = Path("/tmp/strategy_state.json")
 
-    class EmaStrategy(flox_py.Strategy):
+    class EmaStrategy(lrvx.Strategy):
         def on_stop(self):
             SNAPSHOT.write_text(json.dumps({"prices": list(self.prices)}))
 
@@ -64,7 +64,7 @@ The shape of the snapshot is your call. Pickle, JSON, msgpack, a binary buffer, 
 
 ## What it does not do
 
-- **Replace the binding.** Codon is AOT-compiled; once a Codon strategy is built into the binary, swapping its logic at runtime would require recompiling and restarting. QuickJS strategies are registered through `flox.register()` at script load; the runner does not currently expose a re-register hook.
+- **Replace the binding.** Codon is AOT-compiled; once a Codon strategy is built into the binary, swapping its logic at runtime would require recompiling and restarting. QuickJS strategies are registered through `lrvx.register()` at script load; the runner does not currently expose a re-register hook.
 - **Migrate orders.** Open positions and in-flight orders belong to the executor, not the strategy. They survive the swap automatically because the engine never touches them.
 - **Replay events.** If the new strategy needs to "see" the last hour of trades to warm up its indicators, run a brief replay through it before swapping it in.
 - **Validate symbol overlap.** The new strategy is expected to watch the same symbols as the old one. If you need to change the symbol set, tear down and recreate the strategy slot.

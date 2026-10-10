@@ -1,5 +1,5 @@
-// Smoke test for flox.tapeDiff exposed on the flox global.
-// Writes two .floxlog tapes via flox.DataWriter, then exercises:
+// Smoke test for lrvx.tapeDiff exposed on the lrvx global.
+// Writes two .lrvx tapes via lrvx.DataWriter, then exercises:
 //   - identical tapes return equal=true with no mismatches
 //   - one diverging record is reported with the right index
 //   - prefix-shorter tape sets firstDivergenceIndex to len(shorter)
@@ -24,8 +24,8 @@ function makeTape(dir, trades) {
     w.destroy();
 }
 
-var tmpRoot = '/tmp/flox-tape-diff-qjs-smoke-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
-__flox_load_csv;  // touch any C ABI to ensure host is wired
+var tmpRoot = '/tmp/lrvx-tape-diff-qjs-smoke-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
+__lrvx_load_csv;  // touch any C ABI to ensure host is wired
 
 var leftDir = tmpRoot + '/left';
 var rightDir = tmpRoot + '/right';
@@ -47,13 +47,13 @@ makeTape(rightDir, diverging);
 makeTape(shortDir, base.slice(0, 2));
 
 // Identical
-var r1 = flox.tapeDiff(leftDir, leftDir);
+var r1 = lrvx.tapeDiff(leftDir, leftDir);
 check(r1.equal === true, 'identical: equal=true');
 check(r1.firstDivergenceIndex === null, 'identical: firstDivergenceIndex null');
 check(r1.mismatches.length === 0, 'identical: no mismatches');
 
 // Diverging
-var r2 = flox.tapeDiff(leftDir, rightDir);
+var r2 = lrvx.tapeDiff(leftDir, rightDir);
 check(r2.equal === false, 'diverging: equal=false');
 check(r2.firstDivergenceIndex === 1, 'diverging: index 1');
 check(r2.mismatches.length === 1, 'diverging: one mismatch');
@@ -62,13 +62,13 @@ check(r2.mismatches[0].left.priceRaw !== r2.mismatches[0].right.priceRaw,
       'diverging: prices differ in mismatch payload');
 
 // Prefix shorter
-var r3 = flox.tapeDiff(leftDir, shortDir);
+var r3 = lrvx.tapeDiff(leftDir, shortDir);
 check(r3.equal === false, 'shorter: equal=false');
 check(r3.firstDivergenceIndex === 2, 'shorter: divergence at len(shorter)=2');
 
 // Invalid path
 var threw = false;
-try { flox.tapeDiff('/tmp/does-not-exist-xyz-qjs', leftDir); }
+try { lrvx.tapeDiff('/tmp/does-not-exist-xyz-qjs', leftDir); }
 catch (e) { threw = true; }
 check(threw, 'invalid path rejected');
 

@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #include <gtest/gtest.h>
 
-#include "flox/util/performance/memory_profile.h"
+#include "lrvx/util/performance/memory_profile.h"
 
-using flox::performance::applyMemoryProfile;
-using flox::performance::MemoryProfile;
-using flox::performance::memoryProfileFromString;
+using lrvx::performance::applyMemoryProfile;
+using lrvx::performance::MemoryProfile;
+using lrvx::performance::memoryProfileFromString;
 
 TEST(MemoryProfile, FromStringParsesKnownValuesAndDefaultsSafely)
 {

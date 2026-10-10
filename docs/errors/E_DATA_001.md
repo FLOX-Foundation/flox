@@ -21,7 +21,7 @@ Pre-aggregate the raw tape into bar files first. `preagg_bars` does it
 for a whole dataset and writes one file per timeframe:
 
 ```bash
-cmake -B build -DFLOX_BUILD_TOOLS=ON -DFLOX_ENABLE_BACKTEST=ON
+cmake -B build -DLRVX_BUILD_TOOLS=ON -DLRVX_ENABLE_BACKTEST=ON
 cmake --build build
 
 ./build/tools/preagg_bars /data/bybit/BTCUSDT /data/bybit/BTCUSDT/bars 60 300 900 3600
@@ -32,18 +32,18 @@ Then point the storage at the directory the tool wrote, not at the tape
 directory it read:
 
 ```cpp
-#include "flox/backtest/mmap_bar_storage.h"
+#include "lrvx/backtest/mmap_bar_storage.h"
 
-flox::MmapBarStorage storage("/data/bybit/BTCUSDT/bars");
+lrvx::MmapBarStorage storage("/data/bybit/BTCUSDT/bars");
 ```
 
 To produce the files from your own C++ code instead, subscribe an
 `MmapBarWriter` to the bar bus and flush it before the process exits:
 
 ```cpp
-#include "flox/backtest/mmap_bar_writer.h"
+#include "lrvx/backtest/mmap_bar_writer.h"
 
-flox::MmapBarWriter writer("/data/bybit/BTCUSDT/bars");
+lrvx::MmapBarWriter writer("/data/bybit/BTCUSDT/bars");
 writer.setMetadata({{"exchange", "bybit"}, {"kind", "perpetual"}});
 bus.subscribe(&writer);
 
@@ -54,7 +54,7 @@ writer.writeMetadata();  // writes .symbol_metadata
 ```
 
 There is no mmap bar path from the bindings at all. From Python or
-Node.js, aggregate the trade arrays in-process — `flox.aggregate_time_bars`
+Node.js, aggregate the trade arrays in-process — `lrvx.aggregate_time_bars`
 and friends — and feed the result straight to `run_bars` / `runBars`;
 no bar file is involved. See [Bar aggregation](../how-to/bar-aggregation.md).
 

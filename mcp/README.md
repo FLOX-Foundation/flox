@@ -1,7 +1,7 @@
-# flox-mcp — Model Context Protocol server for FLOX
+# lrvx-mcp — Model Context Protocol server for lrvx
 
 Gives AI agents (Cursor, Claude Code, Cline) **grounded** access to the
-FLOX C-API surface, error catalog, and indicator library — so they can
+lrvx C-API surface, error catalog, and indicator library — so they can
 write code against real signatures instead of guessing.
 
 The server runs locally on the developer's machine; the IDE spawns it
@@ -12,59 +12,60 @@ hosting; nothing leaves the machine.
 
 | Tool | What it does |
 |---|---|
-| `list_indicators` | Every indicator in `flox_py` with class signature, batch fn (if any), and shape. Filter by substring. |
+| `list_indicators` | Every indicator in `lrvx` with class signature, batch fn (if any), and shape. Filter by substring. |
 | `lookup_error_code` | `E_SYM_001` → full Markdown page with fix recipe, common causes, diagnostics. |
-| `list_capi_functions` | Search the FLOX C-API surface from the committed ABI snapshot. Returns `name + return type + parameter types`. |
+| `list_capi_functions` | Search the lrvx C-API surface from the committed ABI snapshot. Returns `name + return type + parameter types`. |
 | `validate_strategy` | Static-analysis check on Python strategy code: AST parses, expected hooks present, no `eval`/`exec`. |
-| `explain_event` | Describe the fields of a FLOX event struct (`FloxTradeData`, `FloxBookData`, `FloxBarData`, `FloxSymbolContext`, `FloxSignal`). Accepts a struct name or a raw event dict. |
-| `lookup_symbol` | Take any binding-local spelling (`FloxBarData`, `BarData`, `flox_indicator_ema`, `ema`) and return what the symbol is called in C-API, Python, Node, and Codon. |
+| `explain_event` | Describe the fields of a lrvx event struct (`LrvxTradeData`, `LrvxBookData`, `LrvxBarData`, `LrvxSymbolContext`, `LrvxSignal`). Accepts a struct name or a raw event dict. |
+| `lookup_symbol` | Take any binding-local spelling (`LrvxBarData`, `BarData`, `lrvx_indicator_ema`, `ema`) and return what the symbol is called in C-API, Python, Node, and Codon. |
 | `list_bindings` | Enumerate the exports of one binding (capi, python, node, codon, quickjs). Substring filter and limit. |
 | `get_example` | Code from `docs/examples/` matching a topic (strategy, connector, indicator, event-handler, risk, backtest), optionally filtered by language. |
 | `scaffold_strategy` | Starter strategy class for Python or Node. Three kinds: bar-driven, trade-driven, hybrid. The Python output goes through `ast.parse` + `validate_strategy`; the Node output goes through `node --check`. CI fails if either breaks, so templates can't quietly rot. |
 | `docs_search` | Top-k FTS5 search over the docs. The index is built from an allowlist of roots; private trackers and `CLAUDE.md` are not in that allowlist. |
 | `run_backtest` | Run a Python strategy against a CSV dataset in a sandboxed subprocess. Caps CPU, memory, and output size; wall-clock timeout. **MVP sandbox** — caps resources but does not isolate filesystem or network. Treat the same way as any untrusted Python; use nsjail / firejail / Docker for production. |
-| `compute_indicator` | Run one FLOX indicator over a list of floats. Accepts class-form (`EMA`) or function-form (`ema`) names and forwards extra kwargs to the constructor. Input capped at 1 MiB. Needs `flox-py` installed (`pip install "flox-mcp[flox]"`). |
-| `suggest_indicator` | Map an English description ('trend filter', 'momentum oscillator', 'volatility band', 'mean revert', 'regime test') to a ranked shortlist of FLOX indicators. Pure keyword heuristic — no LLM call. Always confirm the chosen indicator with `list_indicators` before using it. |
+| `compute_indicator` | Run one lrvx indicator over a list of floats. Accepts class-form (`EMA`) or function-form (`ema`) names and forwards extra kwargs to the constructor. Input capped at 1 MiB. Needs `lrvx` installed (`pip install "lrvx-mcp[lrvx]"`). |
+| `suggest_indicator` | Map an English description ('trend filter', 'momentum oscillator', 'volatility band', 'mean revert', 'regime test') to a ranked shortlist of lrvx indicators. Pure keyword heuristic — no LLM call. Always confirm the chosen indicator with `list_indicators` before using it. |
 
 ## Quickstart
 
 ```bash
-pip install flox-mcp           # MCP server + flox-py (indicators, backtest, engine CLI)
-flox-mcp init                  # writes ./.mcp.json for the current project
+pip install lrvx-mcp           # MCP server + lrvx (indicators, backtest, engine CLI)
+lrvx-mcp init                  # writes ./.mcp.json for the current project
 # restart your MCP client (Claude Code / Cursor / Cline) → done
 ```
 
 You get the whole surface in one install: docs / lookup tools,
 indicator introspection, backtest, and the engine CLI
-(`flox engine sim`, `flox tape record`). For tier-5/6 (live state,
+(`lrvx engine sim`, `lrvx tape record`). For tier-5/6 (live state,
 `place_order`, `flatten_positions`), also start a paper engine and
-rerun `init` with the printed token:
+rerun `init` with `--overwrite` and the printed token:
 
 ```bash
-flox engine sim --strategy s.py --tape ./tape       # prints engine URL + token
-flox-mcp init --engine-url URL --token T            # appends env to ./.mcp.json
+lrvx engine sim --strategy s.py --tape ./tape         # prints engine URL + token
+lrvx-mcp init --overwrite --engine-url URL --token T  # rewrites the lrvx entry with the engine env
 ```
 
-`flox engine sim` boots a `Runner` + `SimulatedExecutor` +
+`lrvx engine sim` boots a `Runner` + `SimulatedExecutor` +
 `ControlServer` and writes a runtime snapshot the read tools poll.
-See [`python/flox_py/engine_cli.py`](../python/flox_py/engine_cli.py)
+See [`python/lrvx/engine_cli.py`](../python/lrvx/engine_cli.py)
 for the full set of flags.
 
-`flox engine sim` boots a `Runner` + `SimulatedExecutor` + `ControlServer`
-and writes a runtime snapshot the read tools poll. See
-[`python/flox_py/engine_cli.py`](../python/flox_py/engine_cli.py)
-for the full set of flags.
-
-### `flox-mcp init` flags
+### `lrvx-mcp init` flags
 
 | Flag | What it does |
 |---|---|
 | *(default)* | Writes `./.mcp.json` in the current directory. Merges with an existing file. |
 | `--global` | Writes `~/.config/claude/.mcp.json` instead. |
-| `--overwrite` | Replace an existing `mcpServers.flox` entry instead of refusing. |
+| `--overwrite` | Replace an existing `mcpServers.lrvx` entry instead of refusing. |
 | `--print` | Print the merged config to stdout, don't write. |
-| `--engine-url URL` | Sets `FLOX_CONTROL_URL` (tier-5/6 wiring). |
-| `--token T` | Sets `FLOX_CONTROL_TOKEN` (printed by `flox engine sim`). |
+| `--engine-url URL` | Sets `LRVX_CONTROL_URL` (tier-5/6 wiring). |
+| `--token T` | Sets `LRVX_CONTROL_TOKEN` (printed by `lrvx engine sim`). |
+
+An existing `mcpServers.flox` entry that launches `flox-mcp`, the server's
+FLOX-era name, is replaced by the `lrvx` entry instead of kept next to it.
+The `FLOX_CONTROL_URL` and `FLOX_CONTROL_TOKEN` it set move over as
+`LRVX_CONTROL_URL` and `LRVX_CONTROL_TOKEN` unless `--engine-url` or
+`--token` sets them.
 
 ### Manual override
 
@@ -73,11 +74,11 @@ If you'd rather hand-edit, the resulting `.mcp.json` is shaped like:
 ```json
 {
   "mcpServers": {
-    "flox": {
-      "command": "flox-mcp",
+    "lrvx": {
+      "command": "lrvx-mcp",
       "args": ["serve"],
       "env": {
-        "FLOX_RUNTIME_STATE": "$HOME/.flox/runtime.json"
+        "LRVX_RUNTIME_STATE": "$HOME/.lrvx/runtime.json"
       }
     }
   }
@@ -95,7 +96,7 @@ cd mcp
 pip install -e ".[dev]"
 
 # Run the server manually (stdio):
-flox-mcp
+lrvx-mcp
 
 # Run unit tests:
 pytest tests/
@@ -108,22 +109,22 @@ python ../scripts/sync_mcp_data.py
 
 Read-only copies in the wheel:
 
-- `flox_mcp/data/c-api.snapshot` — copy of `.api/c-api.snapshot`.
-- `flox_mcp/data/errors/E_*.md` — copies of `docs/errors/E_*.md`.
-- `flox_mcp/data/ir.snapshot.json` — IR (functions, structs, enums,
+- `lrvx_mcp/data/c-api.snapshot` — copy of `.api/c-api.snapshot`.
+- `lrvx_mcp/data/errors/E_*.md` — copies of `docs/errors/E_*.md`.
+- `lrvx_mcp/data/ir.snapshot.json` — IR (functions, structs, enums,
   typedefs, function pointers) pulled from the IDL spec via libclang.
   Versioned schema.
-- `flox_mcp/data/binding_manifest.json` — per-binding symbol map keyed
+- `lrvx_mcp/data/binding_manifest.json` — per-binding symbol map keyed
   by IDL group. Built from `binding_parity.yaml` plus scans of
-  `flox_py/_flox_py/__init__.pyi`, `node/index.d.ts`, and the codon
+  `lrvx/_lrvx/__init__.pyi`, `node/index.d.ts`, and the codon
   golden file.
-- `flox_mcp/data/examples_index.json` — index of `docs/examples/`
+- `lrvx_mcp/data/examples_index.json` — index of `docs/examples/`
   (path, language, topic, sha256).
-- `flox_mcp/data/docs.fts.sqlite` — SQLite FTS5 index over six doc
+- `lrvx_mcp/data/docs.fts.sqlite` — SQLite FTS5 index over six doc
   roots: `bindings`, `how-to`, `tutorials`, `reference`, `explanation`,
   `errors`. Anything outside that list is skipped at index build time.
   Private trackers and `CLAUDE.md` are not in the allowlist.
-- `flox_mcp/data/templates/strategy/{python,node}/{bar,trade,hybrid}-driven.tmpl`
+- `lrvx_mcp/data/templates/strategy/{python,node}/{bar,trade,hybrid}-driven.tmpl`
   — strategy scaffolds rendered by `scaffold_strategy`.
 
 `scripts/sync_mcp_data.py --check` runs in CI. Any drift between a
@@ -131,10 +132,10 @@ bundled copy and its canonical source fails the build. To update
 after editing a canonical source: run the script without `--check`
 and commit the diff.
 
-The `flox-mcp` package version is bumped in lockstep with `flox-py`
-and `@flox-foundation/flox` by `scripts/set-version.sh`. An installed
-`flox-mcp x.y.z` was built from the same source tree as the matching
-flox-py / npm release, so what the agent sees lines up with what the
+The `lrvx-mcp` package version is bumped in lockstep with `lrvx`
+and `lrvx` by `scripts/set-version.sh`. An installed
+`lrvx-mcp x.y.z` was built from the same source tree as the matching
+lrvx / npm release, so what the agent sees lines up with what the
 developer has installed.
 
 ## Scope notes
@@ -151,8 +152,8 @@ developer has installed.
   `.api/c-api.snapshot` enforced by the codegen ABI gate; the IR
   snapshot used by `lookup_symbol` / `list_bindings` is regenerated
   from the same IDL spec on every release. So the agent's view of
-  the surface tracks what FLOX actually ships.
+  the surface tracks what lrvx actually ships.
 
 ## License
 
-MIT — same as FLOX.
+MIT — same as lrvx.

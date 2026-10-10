@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-# The compiled flox_py module isn't installed in MCP-only CI jobs
+# The compiled lrvx module isn't installed in MCP-only CI jobs
 # (e.g. verify-docs-current). Skip rather than ImportError when the
 # build artifact isn't on the path. The import is guarded here instead of
 # going through pytest.importorskip at module scope so that the cases stay
@@ -17,23 +17,23 @@ import pytest
 # holds, which understates what a run without the binding actually missed.
 # conftest.py puts build/python on sys.path.
 try:
-    import flox_py as flox
+    import lrvx
 except ImportError:
-    flox = None
+    lrvx = None
 
-pytestmark = pytest.mark.skipif(flox is None, reason="flox_py not importable")
+pytestmark = pytest.mark.skipif(lrvx is None, reason="lrvx not importable")
 
 
 def _build_custom():
-    acct = flox.Account(42, 10_000.0)
-    fees = flox.FeeSchedule()
+    acct = lrvx.Account(42, 10_000.0)
+    fees = lrvx.FeeSchedule()
     fees.add_tier(0, 1.0, 3.0)
     fees.add_tier(100_000, 0.5, 2.5)
-    funding = flox.FundingSchedule()
-    liq = flox.LiquidationEngine()
+    funding = lrvx.FundingSchedule()
+    liq = lrvx.LiquidationEngine()
     liq.add_tier(0.0, 0.004)
-    rl = flox.RateLimitPolicy()
-    return flox.assemble_custom_venue(
+    rl = lrvx.RateLimitPolicy()
+    return lrvx.assemble_custom_venue(
         account=acct,
         fees=fees,
         funding=funding,
@@ -73,24 +73,24 @@ def test_custom_venue_default_availability():
 
 
 def test_custom_venue_user_supplied_availability():
-    avail = flox.VenueAvailability()
-    custom = flox.assemble_custom_venue(
-        account=flox.Account(1, 100.0),
-        fees=flox.FeeSchedule(),
-        funding=flox.FundingSchedule(),
-        liquidation=flox.LiquidationEngine(),
-        rate_limits=flox.RateLimitPolicy(),
+    avail = lrvx.VenueAvailability()
+    custom = lrvx.assemble_custom_venue(
+        account=lrvx.Account(1, 100.0),
+        fees=lrvx.FeeSchedule(),
+        funding=lrvx.FundingSchedule(),
+        liquidation=lrvx.LiquidationEngine(),
+        rate_limits=lrvx.RateLimitPolicy(),
         venue_availability=avail,
     )
     assert custom.venue_availability() is avail
 
 
 def test_custom_venue_default_name():
-    custom = flox.assemble_custom_venue(
-        account=flox.Account(1, 100.0),
-        fees=flox.FeeSchedule(),
-        funding=flox.FundingSchedule(),
-        liquidation=flox.LiquidationEngine(),
-        rate_limits=flox.RateLimitPolicy(),
+    custom = lrvx.assemble_custom_venue(
+        account=lrvx.Account(1, 100.0),
+        fees=lrvx.FeeSchedule(),
+        funding=lrvx.FundingSchedule(),
+        liquidation=lrvx.LiquidationEngine(),
+        rate_limits=lrvx.RateLimitPolicy(),
     )
     assert custom.venue_name() == "custom"

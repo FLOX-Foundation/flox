@@ -28,14 +28,14 @@ Ask for one thread when the panel needs the whole tape in order.
 
 === "Python"
     ```python
-    reader = flox_py.DataReader("./tape")
+    reader = lrvx.DataReader("./tape")
     reader.run([book_agg], n_threads=1)
     ```
 
 === "C++"
     ```cpp
-    flox::replay::BinaryLogReader reader(cfg);
-    std::array<flox::replay::IAggregator*, 1> panel{&book_agg};
+    lrvx::replay::BinaryLogReader reader(cfg);
+    std::array<lrvx::replay::IAggregator*, 1> panel{&book_agg};
     reader.run(panel, 1);
     ```
 
@@ -48,7 +48,7 @@ threaded pass over everything.
 Override `supportsParallel()` when the result depends on event order across the whole tape:
 
 ```cpp
-class MyBookAggregator : public flox::replay::IAggregator
+class MyBookAggregator : public lrvx::replay::IAggregator
 {
  public:
   bool supportsParallel() const override { return false; }

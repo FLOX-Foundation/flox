@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/engine/abstract_subscriber.h"
-#include "flox/engine/abstract_subsystem.h"
-#include "flox/engine/engine.h"
-#include "flox/strategy/abstract_strategy.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/abstract_subscriber.h"
+#include "lrvx/engine/abstract_subsystem.h"
+#include "lrvx/engine/engine.h"
+#include "lrvx/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 // Smoke test: demonstrates how to create a strategy, wire it into the engine,
 // publish trades and book updates via a mock connector, and receive results.

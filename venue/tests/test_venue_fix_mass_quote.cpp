@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
  * FIX MassQuote (35=i) / QuoteCancel (35=Z) / QuoteStatusReport (35=AI) --
  * The FIX perimeter gained a decoder for a maker's whole ladder on one
  * symbol, decoding to the SAME QuoteLadder command a non-FIX caller builds
- * directly (see flox-venue/messages.h, flox-venue/engine/quote_mmp.inl,
+ * directly (see lrvx-venue/messages.h, lrvx-venue/engine/quote_mmp.inl,
  * docs/venue/fix-quoting.md).
  *
  * Three kinds of test:
@@ -25,14 +25,14 @@
  *    admission profile over a real TCP socket, the FixConnection/GatewaySession/
  *    TcpGateway pipeline end to end.
  */
-#include "flox-venue/event_hash.h"
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/fix_session.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/session_registry.h"
-#include "flox-venue/tcp_gateway.h"
-#include "flox/util/transport.h"
+#include "lrvx-venue/event_hash.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/fix_session.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/session_registry.h"
+#include "lrvx-venue/tcp_gateway.h"
+#include "lrvx/util/transport.h"
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
@@ -49,8 +49,8 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -453,7 +453,7 @@ struct FixVenue
   }
 };
 
-// wallClockNs() comes from flox-venue/session_registry.h -- the same clock
+// wallClockNs() comes from lrvx-venue/session_registry.h -- the same clock
 // the gateway/registry stamp SendingTime with.
 
 // Scripted FIX counterparty, the same shape as test_venue_fix_session.cpp's

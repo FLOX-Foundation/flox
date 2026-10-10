@@ -1,6 +1,6 @@
 """Bybit public archive round-trip — build a synthetic gzipped CSV
 matching Bybit's published column layout, push it through
-`bybit.trades_to_floxlog`, and read the resulting `.floxlog` tape
+`bybit.trades_to_lrvx`, and read the resulting `.lrvx` tape
 back via `DataReader` to confirm the trade stream round-trips.
 
 CI-runnable companion to
@@ -8,7 +8,7 @@ CI-runnable companion to
 No network — the fixture is built in memory.
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_bybit_archive.py
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import flox_py
-from flox_py.archives import bybit
+import lrvx
+from lrvx.archives import bybit
 
 
 _ROWS = [
@@ -45,17 +45,17 @@ def _build_gz(dest: Path) -> Path:
 
 
 def main() -> None:
-    workdir = Path(tempfile.mkdtemp(prefix="flox-bybit-"))
+    workdir = Path(tempfile.mkdtemp(prefix="lrvx-bybit-"))
     try:
         gz_path = workdir / "BTCUSDT2024-01-15.csv.gz"
         _build_gz(gz_path)
 
         tape = workdir / "tape"
-        stats = bybit.trades_to_floxlog(
+        stats = bybit.trades_to_lrvx(
             gz_path, tape,
             symbol_id=1, symbol_name="BTCUSDT", market="linear",
         )
-        trades = flox_py.DataReader(str(tape)).read_trades()
+        trades = lrvx.DataReader(str(tape)).read_trades()
         print(
             f"converted: rows_read={stats.rows_read} "
             f"trades_written={stats.trades_written} "

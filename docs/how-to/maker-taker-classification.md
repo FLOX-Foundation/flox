@@ -12,7 +12,7 @@ For `PARTIALLY_FILLED` and `FILLED` events:
   `"taker"`)
 - Node / QuickJS: `ev.isMaker` (boolean), `ev.fillRole` (`"maker"` |
   `"taker"` | `null` for non-fill events)
-- C ABI: `FloxOrderEventData.is_maker` (uint8, 0 = taker, 1 = maker)
+- C ABI: `LrvxOrderEventData.is_maker` (uint8, 0 = taker, 1 = maker)
 
 Non-fill statuses always report `is_maker = false` / `fillRole = null`.
 
@@ -36,12 +36,12 @@ maker fill at the price the order posted.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
     MAKER_BPS = 1.0   # 1 bp rebate or fee depending on venue
     TAKER_BPS = 5.0
 
-    class FeeTracker(flox.Strategy):
+    class FeeTracker(lrvx.Strategy):
         def on_fill(self, ctx, ev):
             notional = ev.fill_qty * ev.fill_price
             fee = notional * (MAKER_BPS if ev.is_maker else TAKER_BPS) / 10_000
@@ -75,7 +75,7 @@ maker fill at the price the order posted.
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
+    from lrvx.strategy import Strategy
 
     class FeeTracker(Strategy):
         def __init__(self, symbols):

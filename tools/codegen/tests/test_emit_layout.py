@@ -10,26 +10,26 @@ from __future__ import annotations
 
 import pytest
 
-from flox_codegen import emit_layout, ir
+from lrvx_codegen import emit_layout, ir
 
 
-_NAMES = ("FloxTradeData", "FloxBookSnapshot", "FloxSymbolContext")
+_NAMES = ("LrvxTradeData", "LrvxBookSnapshot", "LrvxSymbolContext")
 
 
 def _module() -> ir.Module:
     return ir.Module(structs=[
-        ir.Struct("FloxTradeData", (
+        ir.Struct("LrvxTradeData", (
             ir.StructField("symbol", "uint32_t"),
             ir.StructField("price_raw", "int64_t"),
             ir.StructField("is_buy", "uint8_t"),
         )),
-        ir.Struct("FloxBookSnapshot", (
+        ir.Struct("LrvxBookSnapshot", (
             ir.StructField("bid_price_raw", "int64_t"),
         )),
-        ir.Struct("FloxSymbolContext", (
+        ir.Struct("LrvxSymbolContext", (
             ir.StructField("symbol_id", "uint32_t"),
             ir.StructField("_pad", "uint8_t[2]"),
-            ir.StructField("book", "FloxBookSnapshot"),
+            ir.StructField("book", "LrvxBookSnapshot"),
         )),
     ])
 
@@ -39,18 +39,18 @@ def _layouts(names=_NAMES):
 
 
 def test_a_field_starts_at_its_own_alignment():
-    trade = _layouts()["FloxTradeData"]
+    trade = _layouts()["LrvxTradeData"]
     offsets = {f.name: f.offset for f in trade.fields}
     assert offsets == {"symbol": 0, "price_raw": 8, "is_buy": 16}
 
 
 def test_a_struct_is_padded_out_to_its_widest_member():
-    trade = _layouts()["FloxTradeData"]
+    trade = _layouts()["LrvxTradeData"]
     assert (trade.size, trade.alignment) == (24, 8)
 
 
 def test_a_nested_struct_carries_its_own_alignment():
-    ctx = _layouts()["FloxSymbolContext"]
+    ctx = _layouts()["LrvxSymbolContext"]
     offsets = {f.name: f.offset for f in ctx.fields}
     # symbol_id 0..4, _pad 4..6, then the nested struct at the next multiple
     # of 8. Padding is laid out but not exported: nothing may read it.
@@ -60,17 +60,17 @@ def test_a_nested_struct_carries_its_own_alignment():
 
 def test_an_unknown_field_type_is_an_error_not_a_guess():
     module = ir.Module(structs=[
-        ir.Struct("FloxOdd", (ir.StructField("x", "long double"),))])
+        ir.Struct("LrvxOdd", (ir.StructField("x", "long double"),))])
     with pytest.raises(emit_layout.LayoutError):
-        emit_layout.compute(module, ("FloxOdd",))
+        emit_layout.compute(module, ("LrvxOdd",))
 
 
 def test_the_header_carries_both_tables():
     text = emit_layout.emit_header(_module(), format=False, names=_NAMES)
-    assert "kFloxEventLayout" in text
-    assert "kFloxEventStructLayout" in text
-    assert '{"FloxTradeData", "price_raw", 8, 8},' in text
-    assert '{"FloxTradeData", 24, 8},' in text
+    assert "kLrvxEventLayout" in text
+    assert "kLrvxEventStructLayout" in text
+    assert '{"LrvxTradeData", "price_raw", 8, 8},' in text
+    assert '{"LrvxTradeData", 24, 8},' in text
     assert "_pad" not in text
 
 
@@ -94,12 +94,12 @@ def test_an_array_field_occupies_every_one_of_its_elements():
     rule holding. A synthetic struct can -- `tag` has to push `tail` six
     bytes, not one."""
     module = ir.Module(structs=[
-        ir.Struct("FloxArrayed", (
+        ir.Struct("LrvxArrayed", (
             ir.StructField("head", "uint32_t"),
             ir.StructField("tag", "uint8_t[6]"),
             ir.StructField("tail", "uint16_t"),
         ))])
-    layout = emit_layout.compute(module, ("FloxArrayed",))[0]
+    layout = emit_layout.compute(module, ("LrvxArrayed",))[0]
 
     assert {f.name: f.offset for f in layout.fields} == {
         "head": 0, "tag": 4, "tail": 10}
@@ -109,16 +109,16 @@ def test_an_array_field_occupies_every_one_of_its_elements():
 
 def test_an_array_of_structs_is_sized_by_element_too():
     module = ir.Module(structs=[
-        ir.Struct("FloxPair", (
+        ir.Struct("LrvxPair", (
             ir.StructField("a", "int32_t"),
             ir.StructField("b", "int32_t"),
         )),
-        ir.Struct("FloxHolder", (
-            ir.StructField("pairs", "FloxPair[3]"),
+        ir.Struct("LrvxHolder", (
+            ir.StructField("pairs", "LrvxPair[3]"),
             ir.StructField("count", "uint32_t"),
         ))])
     layout = {s.name: s for s in emit_layout.compute(
-        module, ("FloxPair", "FloxHolder"))}["FloxHolder"]
+        module, ("LrvxPair", "LrvxHolder"))}["LrvxHolder"]
 
     assert {f.name: f.offset for f in layout.fields} == {"pairs": 0, "count": 24}
     assert layout.size == 28

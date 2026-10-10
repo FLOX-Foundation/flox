@@ -1,10 +1,10 @@
 # Quoting over FIX: MassQuote / QuoteCancel / QuoteStatusReport
 
-`FixCodec` (`venue/include/flox-venue/fix_codec.h`) and `FixConnection`
-(`venue/include/flox-venue/fix_session.h`) decode a maker's whole ladder on
+`FixCodec` (`venue/include/lrvx-venue/fix_codec.h`) and `FixConnection`
+(`venue/include/lrvx-venue/fix_session.h`) decode a maker's whole ladder on
 one symbol from a single FIX message, the same `QuoteLadder` command a
-non-FIX caller builds directly (`venue/include/flox-venue/messages.h`,
-`venue/include/flox-venue/engine/quote_mmp.inl`). Before MassQuote/QuoteCancel support was added, the FIX
+non-FIX caller builds directly (`venue/include/lrvx-venue/messages.h`,
+`venue/include/lrvx-venue/engine/quote_mmp.inl`). Before MassQuote/QuoteCancel support was added, the FIX
 perimeter accepted `D`/`F`/`G` (order entry) only -- a market maker speaking
 FIX could not quote at all.
 
@@ -25,7 +25,7 @@ decoder hook the gateways install.
 FIX types `ClOrdID` (11), `OrigClOrdID` (41), `Account` (1) and `Symbol` (55)
 as String; this venue carries them as integers. A value it cannot carry is
 **refused naming the field**, never coerced -- see
-`venue/include/flox-venue/fix_field_parse.h`. Accepted: decimal digits only,
+`venue/include/lrvx-venue/fix_field_parse.h`. Accepted: decimal digits only,
 and nothing else.
 
 | Wire value | Answer |

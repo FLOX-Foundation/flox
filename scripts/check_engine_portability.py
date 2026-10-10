@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """The venue engine must not reach for POSIX behind the perimeter's back.
 
-`FLOX_VENUE_PERIMETER=OFF` is supposed to leave a module that builds where
+`LRVX_VENUE_PERIMETER=OFF` is supposed to leave a module that builds where
 POSIX sockets do not. Whether it does was, until this script, answered only
 by a Windows CI job eight minutes into a run -- and answered one header at a
 time, because the compiler stops at the first one.
 
 This walks what each engine test actually includes, follows the chain through
-flox and flox-venue headers, and reports every POSIX include that is not
+lrvx and lrvx-venue headers, and reports every POSIX include that is not
 inside a platform conditional. It answers the same question in about a
 second, and it answers all of it at once.
 
@@ -21,7 +21,7 @@ import subprocess
 import sys
 
 ROOTS = ["include", "venue/include"]
-INCLUDE = re.compile(r'#include\s+[<"]((?:flox|flox-venue)/[^">]+)[>"]')
+INCLUDE = re.compile(r'#include\s+[<"]((?:lrvx|lrvx-venue)/[^">]+)[>"]')
 POSIX = re.compile(
     r"#include\s+<(unistd|sys/socket|netinet/in|netinet/tcp|arpa/inet|poll|sys/wait|"
     r"fcntl|sys/mman|sys/time|netdb|termios|dirent)\.h>"
@@ -87,7 +87,7 @@ def is_perimeter_test(src):
         text = open(src, encoding="utf-8", errors="replace").read()
     except OSError:
         return False
-    return any(f"flox-venue/{h}" in text for h in PERIMETER)
+    return any(f"lrvx-venue/{h}" in text for h in PERIMETER)
 
 
 def main():
@@ -113,7 +113,7 @@ def main():
                   f"and reaches the engine-only build via {src}: {chain}")
     print(f"[engine-portability] {len(bad)} engine test(s) pull POSIX unconditionally. "
           f"Either guard the include, or -- if the header belongs to the perimeter -- "
-          f"add it to PERIMETER here and to FLOX_VENUE_PERIMETER_HEADERS in "
+          f"add it to PERIMETER here and to LRVX_VENUE_PERIMETER_HEADERS in "
           f"venue/CMakeLists.txt.")
     return 1
 

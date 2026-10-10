@@ -1,23 +1,23 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/abstract_event_reader.h"
+#include "lrvx/replay/abstract_event_reader.h"
 
-#include "flox/replay/readers/mmap_reader.h"
-#include "flox/replay/readers/parallel_reader.h"
+#include "lrvx/replay/readers/mmap_reader.h"
+#include "lrvx/replay/readers/parallel_reader.h"
 
 #include <atomic>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 class BinaryLogIteratorAdapter : public ISegmentReader
@@ -367,4 +367,4 @@ std::unique_ptr<IMultiSegmentReader> createMultiSegmentReader(
   return std::make_unique<BinaryLogReaderAdapter>(config);
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

@@ -124,12 +124,12 @@ side is empty -- an untouched book, a `clear()`, an empty `SNAPSHOT`, or the
 last level on the side pulled by a `DELTA`. No price value is spent as a
 sentinel for it, so no price can be mistaken for one.
 
-On the C surface, `flox_book_best_bid` and its siblings answer the same way:
+On the C surface, `lrvx_book_best_bid` and its siblings answer the same way:
 the return value is the presence flag and the price arrives through the out
-parameter. The strategy-side `flox_best_bid_raw` family has no such channel and
-returns 0 for both answers; use `flox_best_bid_raw_opt`, `flox_best_ask_raw_opt`
-and `flox_mid_price_raw_opt` where a book can quote through zero. See the
-[C API reference](../capi/flox_capi.md#context-queries).
+parameter. The strategy-side `lrvx_best_bid_raw` family has no such channel and
+returns 0 for both answers; use `lrvx_best_bid_raw_opt`, `lrvx_best_ask_raw_opt`
+and `lrvx_mid_price_raw_opt` where a book can quote through zero. See the
+[C API reference](../capi/lrvx_capi.md#context-queries).
 
 ## Depth Consumption
 
@@ -175,7 +175,7 @@ Output includes tick size, base index, spread, and mid price in header.
 The constructor throws `std::invalid_argument` when the tick size is zero or
 negative. A tick size reaches the book from instrument configuration and from
 user code, so a bad one is bad input and is reported rather than asserted;
-`flox_book_create` returns `NULL` for the same reason, and the Python, Node,
+`lrvx_book_create` returns `NULL` for the same reason, and the Python, Node,
 QuickJS and Codon wrappers raise in whatever way their language expects.
 
 `Price` has a fixed scale of 1e8, so the smallest representable tick is 1e-8.

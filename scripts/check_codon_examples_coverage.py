@@ -61,7 +61,7 @@ EXCEPTIONS: dict[str, str] = {
 # this reduces to "trust me" -- checked separately below.
 EXTERNAL_EXECUTIONS: dict[str, tuple[str, str]] = {
     "byte_identical_fixture": (
-        "scripts/floxrun_byte_identical_gate.py",
+        "scripts/lrvxrun_byte_identical_gate.py",
         "codon_byte_identical_fixture",
     ),
 }

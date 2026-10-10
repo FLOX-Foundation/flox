@@ -31,9 +31,9 @@ order's volume-at-arrival.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    ex = flox.SimulatedExecutor()
+    ex = lrvx.SimulatedExecutor()
     ex.set_queue_model("tob")
     ex.set_queue_position_min_change_fraction(0.05)   # 5%
     ```
@@ -41,7 +41,7 @@ order's volume-at-arrival.
 === "Node.js"
 
     ```javascript
-    const ex = new flox.SimulatedExecutor();
+    const ex = new lrvx.SimulatedExecutor();
     ex.setQueueModel("tob", 1);   // depth is required in the .d.ts
     ex.setQueuePositionMinChangeFraction(0.05);
     ```
@@ -49,8 +49,8 @@ order's volume-at-arrival.
 === "C++"
 
     ```cpp
-    flox::BacktestConfig cfg;
-    cfg.queueModel = flox::QueueModel::TOB;
+    lrvx::BacktestConfig cfg;
+    cfg.queueModel = lrvx::QueueModel::TOB;
     cfg.queuePositionMinChangeFraction = 0.05;
     ```
 
@@ -62,9 +62,9 @@ chatty) or to `1.0` to suppress queue-position events entirely.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    class QueueWatcher(flox.Strategy):
+    class QueueWatcher(lrvx.Strategy):
         def on_queue_position_change(self, ctx, ev):
             ratio = ev.queue_ahead / ev.queue_total if ev.queue_total > 0 else 0.0
             if ratio > 0.8:
@@ -101,7 +101,7 @@ chatty) or to `1.0` to suppress queue-position events entirely.
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
+    from lrvx.strategy import Strategy
 
     class QueueWatcher(Strategy):
         def on_queue_position_change(self, ctx, ev):

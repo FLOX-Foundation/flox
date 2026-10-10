@@ -1,6 +1,6 @@
 # Smoke test: execution algos compile + drive the C API.
 
-from flox.execution_algos import (
+from lrvx.execution_algos import (
     TWAPExecutor, IcebergExecutor, POVExecutor,
     SIDE_BUY, TYPE_MARKET, TYPE_LIMIT,
 )

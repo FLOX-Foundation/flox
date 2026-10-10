@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -15,15 +15,15 @@
  * (cumQty only -- a rejected order is never left resting, so its LeavesQty
  * is always 0 by construction) and writes FIX 151/14 from them on every
  * report. The venue's two matching-book implementations (MatchingBook here,
- * flox::LadderBook in production) both grew a RestingOrder::cumQty running
+ * lrvx::LadderBook in production) both grew a RestingOrder::cumQty running
  * total so a plain cancel of a previously-partially-filled resting order
  * reports the real cumulative fill, not 0.
  */
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/sbe_order_entry_codec.h"
-#include "flox/book/ladder_book.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/sbe_order_entry_codec.h"
+#include "lrvx/book/ladder_book.h"
 
 #include <gtest/gtest.h>
 
@@ -32,8 +32,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -442,7 +442,7 @@ TEST(LeavesCumQty, ProRataPartialFillThenCancelReportsRunningCumQty)
   EXPECT_EQ(tag(wire, 14), "4");
 }
 
-// ---- Same two book-mutation points, on flox::LadderBook --------------------
+// ---- Same two book-mutation points, on lrvx::LadderBook --------------------
 // The golden-replay corpus instantiates MatchingEngine<MatchingBook> only
 // (test_venue_golden_replay.cpp), so it gives LadderBook's fillBest/
 // consumeById no coverage at all, mutated or not. These are direct unit

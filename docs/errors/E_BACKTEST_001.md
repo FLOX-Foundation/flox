@@ -22,12 +22,12 @@ a tick or volume interval blows up on the next `flush()`, not at
 subscribe time:
 
 ```cpp
-flox::MultiTimeframeAggregator<4> aggregator(&bus);
+lrvx::MultiTimeframeAggregator<4> aggregator(&bus);
 aggregator.addTimeInterval(std::chrono::seconds(60));    // written as bars_60s.bin
 // aggregator.addTickInterval(1000);                      // ✗ not mmappable
 // aggregator.addVolumeInterval(50.0);                    // ✗ not mmappable
 
-flox::MmapBarWriter writer("/data/bybit/BTCUSDT/bars");
+lrvx::MmapBarWriter writer("/data/bybit/BTCUSDT/bars");
 bus.subscribe(&writer);
 ```
 
@@ -35,7 +35,7 @@ Writing a batch directly carries the same constraint — the `TimeframeId`
 has to be a time one:
 
 ```cpp
-writer.writeBars(flox::TimeframeId::time(std::chrono::seconds(60)), bars);
+writer.writeBars(lrvx::TimeframeId::time(std::chrono::seconds(60)), bars);
 
 // TimeframeId::tick(1000), ::volume(n), ::range(n) and ::renko(n) all
 // throw E_BACKTEST_001 here.
@@ -43,9 +43,9 @@ writer.writeBars(flox::TimeframeId::time(std::chrono::seconds(60)), bars);
 
 If you need a variable-duration bar type, keep it out of the writer and
 aggregate it per run. The batch aggregators cover every type and are the
-only bar path in the bindings anyway: `flox.aggregate_tick_bars`,
-`flox.aggregate_volume_bars`, `flox.aggregate_range_bars`,
-`flox.aggregate_renko_bars`, `flox.aggregate_heikin_ashi_bars` (Node:
+only bar path in the bindings anyway: `lrvx.aggregate_tick_bars`,
+`lrvx.aggregate_volume_bars`, `lrvx.aggregate_range_bars`,
+`lrvx.aggregate_renko_bars`, `lrvx.aggregate_heikin_ashi_bars` (Node:
 `aggregateTickBars`, ...). Their output goes to `run_bars` / `runBars`
 with no bar file in between — see
 [Bar aggregation](../how-to/bar-aggregation.md).

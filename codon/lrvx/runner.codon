@@ -1,0 +1,600 @@
+# lrvx/runner.codon -- Runner and BacktestRunner for Codon.
+#
+# Runner: unified live runner.
+#   Runner(reg, on_signal)               — synchronous (default)
+#   Runner(reg, on_signal, threaded=True) — Disruptor-based consumer thread
+#
+# Both modes expose the same API: add_strategy / start / stop / on_trade.
+# threaded=True uses lock-free publish; strategy callbacks fire in a
+# background C++ thread. No GIL in Codon so this is safe.
+#
+# Usage:
+#   from lrvx.runner import Runner
+#   from lrvx.strategy import Strategy
+#
+#   class MyStrat(Strategy):
+#       def on_trade(self, ctx, trade):
+#           if self.position() == 0:
+#               self.market_buy(0.01)
+#
+#   def on_signal(sig):
+#       print("Order:", sig.side, sig.quantity, "@", sig.price)
+#
+#   reg = lrvx_registry_create()
+#   btc = lrvx_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
+#
+#   runner = Runner(reg, on_signal)           # sync
+#   # runner = Runner(reg, on_signal, True)   # threaded
+#   runner.add_strategy(MyStrat([btc]))
+#   runner.start()
+#   runner.on_trade(btc, price, qty, True, ts_ns)
+
+# The C ABI handshake runs when this module is imported: see
+# lrvx/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from lrvx.abi import check_abi_version
+
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_destroy(cobj)
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+
+from C import lrvx_runner_create(cobj, cobj, cobj) -> cobj
+from C import lrvx_runner_destroy(cobj)
+from C import lrvx_runner_add_strategy(cobj, cobj)
+from C import lrvx_runner_start(cobj)
+from C import lrvx_runner_stop(cobj)
+from C import lrvx_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import lrvx_runner_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32,
+                                            Ptr[float], Ptr[float], u32, i64)
+from C import lrvx_runner_on_bar(cobj, u32, u8, u64,
+                                  float, float, float, float,
+                                  float, float, i64, i64, u8)
+from C import lrvx_runner_set_market_data_recorder(cobj, cobj)
+
+from C import lrvx_live_engine_create(cobj) -> cobj
+from C import lrvx_live_engine_destroy(cobj)
+from C import lrvx_live_engine_add_strategy(cobj, cobj, cobj, cobj)
+from C import lrvx_live_engine_start(cobj)
+from C import lrvx_live_engine_stop(cobj)
+from C import lrvx_live_engine_publish_trade(cobj, u32, float, float, u8, i64)
+from C import lrvx_live_engine_publish_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32,
+                                                       Ptr[float], Ptr[float], u32, i64)
+from C import lrvx_live_engine_publish_bar(cobj, u32, u8, u64,
+                                            float, float, float, float,
+                                            float, float, i64, i64, u8)
+from C import lrvx_live_engine_set_market_data_recorder(cobj, cobj)
+
+from C import lrvx_backtest_runner_create(cobj, float, float) -> cobj
+from C import lrvx_backtest_runner_destroy(cobj)
+from C import lrvx_backtest_runner_set_strategy(cobj, cobj)
+from C import lrvx_backtest_runner_run_csv(cobj, cobj, cobj, Ptr[i64]) -> i32
+from C import lrvx_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, Ptr[i64]) -> i32
+from C import lrvx_backtest_runner_run_tape(cobj, cobj, Ptr[i64]) -> i32
+from C import lrvx_backtest_runner_run_tapes(cobj, Ptr[cobj], u32, Ptr[i64]) -> i32
+from C import lrvx_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64],
+                                              Ptr[float], Ptr[float], Ptr[float],
+                                              Ptr[float], Ptr[float],
+                                              u32, cobj, u8, u64, Ptr[i64]) -> i32
+from C import lrvx_backtest_runner_take_result(cobj) -> cobj
+from C import lrvx_backtest_result_destroy(cobj)
+from C import lrvx_backtest_result_equity_curve(cobj, cobj, u32) -> u32
+from C import lrvx_backtest_result_trades(cobj, cobj, u32) -> u32
+
+# Walk-forward + grid search C ABI.
+from C import lrvx_walk_forward_run_csv(cobj, cobj, cobj, float, float,
+                                          cobj, cobj, cobj, cobj, u32) -> u32
+from C import lrvx_grid_search_create() -> cobj
+from C import lrvx_grid_search_destroy(cobj)
+from C import lrvx_grid_search_add_axis(cobj, Ptr[float], u32)
+from C import lrvx_grid_search_total(cobj) -> u64
+from C import lrvx_grid_search_params_for_index(cobj, u64, Ptr[float], u32) -> u32
+from C import lrvx_grid_search_run(cobj, cobj, cobj, cobj, u32) -> u64
+
+# Heatmap renderer — engine-side HTML generator. Codon
+# users build a LrvxHeatmapData via @dataclass mirror and pass its
+# pointer; size-first two-call pattern returns total bytes.
+from C import lrvx_render_heatmap_html(cobj, cobj, u64) -> u64
+
+from C import lrvx_price_to_double(i64) -> float
+from C import lrvx_quantity_to_double(i64) -> float
+from C import lrvx_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+
+from lrvx.types import SCALE, Price, Quantity
+from lrvx.backtest import BacktestStats
+from lrvx.dispatch import bind_callbacks, _as_class, _report_callback_error
+
+
+# Value type, not a reference class. @dataclass in Codon makes a reference
+# class, which is a single pointer: Ptr[LrvxSignalC] was then a pointer to a
+# pointer, and reading s[0] out of a signal the engine passed took the first
+# eight bytes of LrvxSignal -- the order id -- as an object address and
+# dereferenced it. @tuple lays the fields out by value, matching the C
+# struct, which is what a pointer coming across the ABI actually points at.
+# codon/examples/signal_fields_smoke.codon did not catch that because it
+# builds the value in Codon and passes __ptr__ to it: self-consistent on
+# both sides of a layout that never matched C.
+@tuple
+class LrvxSignalC:
+    order_id:        u64
+    symbol:          u32
+    side:            u8
+    order_type:      u8
+    price:           float
+    quantity:        float
+    trigger_price:   float
+    trailing_offset: float
+    trailing_bps:    i32
+    new_price:       float
+    new_quantity:    float
+    range_lower:     float
+    range_upper:     float
+    liquidity:       float
+
+
+@dataclass
+class Signal:
+    """Order signal emitted by a strategy."""
+    order_id:        int
+    symbol:          int
+    side:            str   # "buy" or "sell"
+    order_type:      str   # "market", "limit", "stop_market", ...
+    price:           float
+    quantity:        float
+    trigger_price:   float
+    trailing_offset: float
+    trailing_bps:    int
+    new_price:       float
+    new_quantity:    float
+    # provide/withdraw liquidity: range bounds and position size. Zero on
+    # every other signal type.
+    range_lower:     float
+    range_upper:     float
+    liquidity:       float
+
+
+# LRVX_SIGNAL_TYPE_* codes, in order. Mirrors kSignalTypeNames in
+# include/lrvx/capi/order_type_names.hpp -- the table that every binding
+# reads LrvxSignal.order_type through. The list stopped at "modify", so
+# code 10 came back as "unknown" and anything past it did too.
+_ORDER_TYPE_NAMES = [
+    "market", "limit", "stop_market", "stop_limit",
+    "tp_market", "tp_limit", "trailing_stop",
+    "cancel", "cancel_all", "modify", "iceberg",
+    "oco", "provide_liquidity", "withdraw_liquidity"
+]
+
+
+def _signal_from_c(s: Ptr[LrvxSignalC]) -> Signal:
+    ot_idx = int(s[0].order_type)
+    ot = _ORDER_TYPE_NAMES[ot_idx] if ot_idx < len(_ORDER_TYPE_NAMES) else "unknown"
+    return Signal(
+        order_id        = int(s[0].order_id),
+        symbol          = int(s[0].symbol),
+        side            = "buy" if s[0].side == u8(0) else "sell",
+        order_type      = ot,
+        price           = s[0].price,
+        quantity        = s[0].quantity,
+        trigger_price   = s[0].trigger_price,
+        trailing_offset = s[0].trailing_offset,
+        trailing_bps    = int(s[0].trailing_bps),
+        new_price       = s[0].new_price,
+        new_quantity    = s[0].new_quantity,
+        range_lower     = s[0].range_lower,
+        range_upper     = s[0].range_upper,
+        liquidity       = s[0].liquidity,
+    )
+
+
+# The C ABI calls on_signal as (void* user_data, const LrvxSignal*). The
+# trampoline is top-level and captures nothing, so it converts to a plain
+# function pointer; the Runner it belongs to comes back through user_data.
+# Generic in the Runner type for the same reason the strategy trampolines
+# are generic in the strategy type -- Runner carries the user's callback as
+# a generic field, so each callback type gives a different Runner type.
+def _signal_tramp(ud: cobj, sig: Ptr[LrvxSignalC], T: type):
+    if ud == cobj() or sig == Ptr[LrvxSignalC]():
+        return
+    runner = _as_class(ud, T)
+    try:
+        runner._on_signal(_signal_from_c(sig))
+    except Exception as e:
+        _report_callback_error("on_signal", str(e))
+
+
+def _signal_trampoline_raw(T: type) -> cobj:
+    return _signal_tramp(T=T, ...).F.T.__raw__()
+
+
+# ======================================================================
+# Runner
+# ======================================================================
+
+class Runner[F]:
+    """Unified live runner.
+
+    Runner(registry, on_signal)              — synchronous (default)
+    Runner(registry, on_signal, threaded=True) — Disruptor, lock-free
+
+    Both modes expose the same API. threaded=True runs strategy callbacks
+    in a background C++ consumer thread; on_trade() returns immediately.
+
+    Example::
+
+        runner = Runner(registry, on_signal)           # sync
+        runner = Runner(registry, on_signal, True)     # threaded
+        runner.add_strategy(strategy)
+        runner.start()
+        runner.on_trade(btc_id, price, qty, True, ts_ns)
+        runner.stop()
+    """
+
+    _sync_handle:   cobj
+    _live_handle:   cobj
+    _registry:      cobj
+    # Generic in the callback's own type rather than Function[[Signal],
+    # None]. That annotation is a raw function pointer, and the callback the
+    # documentation shows -- a nested def that appends to a list -- is a
+    # closure, which is not one. Written that way, this constructor rejected
+    # the documented call.
+    _on_signal:     F
+    _threaded:      bool
+
+    def __init__(self, registry: cobj, on_signal: F,
+                 threaded: bool = False):
+        self._on_signal = on_signal
+        self._threaded  = threaded
+        self._registry  = registry
+        self._sync_handle = cobj()
+        self._live_handle = cobj()
+
+        if threaded:
+            self._live_handle = lrvx_live_engine_create(registry)
+        else:
+            # The signal callback used to be written as a lambda closing
+            # over on_signal, which Codon cannot turn into a plain function
+            # pointer -- this constructor did not compile at all in the form
+            # the documentation shows. It also declared one parameter where
+            # the C ABI passes two, so the signal pointer would have arrived
+            # in the user_data slot. A top-level trampoline taking both
+            # takes care of each: it captures nothing, and it reaches the
+            # runner back through user_data.
+            self._sync_handle = lrvx_runner_create(
+                registry, _signal_trampoline_raw(type(self)), self.__raw__())
+
+    def add_strategy(self, strategy):
+        """Attach a strategy and wire its overrides to the engine.
+
+        Generic in the strategy's concrete type: that is what lets
+        bind_callbacks build trampolines that reach the subclass's own
+        on_bar / on_trade rather than the empty base methods.
+        """
+        self._attach(strategy, type(strategy))
+
+    def _attach(self, strategy, T: type):
+        if strategy._handle == cobj():
+            strategy._rebuild_handle(self._registry)
+        bind_callbacks(strategy, T)
+        if self._threaded:
+            lrvx_live_engine_add_strategy(
+                self._live_handle, strategy._handle,
+                _signal_trampoline_raw(type(self)), self.__raw__()
+            )
+        else:
+            lrvx_runner_add_strategy(self._sync_handle, strategy._handle)
+
+    def start(self):
+        if self._threaded: lrvx_live_engine_start(self._live_handle)
+        else:              lrvx_runner_start(self._sync_handle)
+
+    def stop(self):
+        if self._threaded: lrvx_live_engine_stop(self._live_handle)
+        else:              lrvx_runner_stop(self._sync_handle)
+
+    def set_market_data_recorder(self, recorder_handle: cobj):
+        """Attach a market-data recorder (or detach with ``cobj()``).
+
+        ``recorder_handle`` must be the ``LrvxMarketDataRecorderHandle``
+        returned by ``lrvx_binary_log_recorder_hook_as_recorder`` (or any
+        other recorder factory). The hook itself owns the handle; the
+        runner only borrows it.
+        """
+        if self._threaded:
+            lrvx_live_engine_set_market_data_recorder(
+                self._live_handle, recorder_handle)
+        else:
+            lrvx_runner_set_market_data_recorder(
+                self._sync_handle, recorder_handle)
+
+    def on_trade(self, symbol: int, price: float, qty: float,
+                 is_buy: bool, ts_ns: int = 0):
+        if self._threaded:
+            lrvx_live_engine_publish_trade(
+                self._live_handle, u32(symbol), price, qty,
+                u8(1 if is_buy else 0), i64(ts_ns))
+        else:
+            lrvx_runner_on_trade(self._sync_handle, u32(symbol), price, qty,
+                                  u8(1 if is_buy else 0), i64(ts_ns))
+
+    def on_book_snapshot(self, symbol: int,
+                          bid_prices: List[float], bid_qtys: List[float],
+                          ask_prices: List[float], ask_qtys: List[float],
+                          ts_ns: int = 0):
+        nb = u32(len(bid_prices))
+        na = u32(len(ask_prices))
+        if self._threaded:
+            lrvx_live_engine_publish_book_snapshot(
+                self._live_handle, u32(symbol),
+                bid_prices.arr.ptr, bid_qtys.arr.ptr, nb,
+                ask_prices.arr.ptr, ask_qtys.arr.ptr, na,
+                i64(ts_ns))
+        else:
+            lrvx_runner_on_book_snapshot(
+                self._sync_handle, u32(symbol),
+                bid_prices.arr.ptr, bid_qtys.arr.ptr, nb,
+                ask_prices.arr.ptr, ask_qtys.arr.ptr, na,
+                i64(ts_ns))
+
+    def on_bar(self, symbol: int,
+               open: float, high: float, low: float, close: float,
+               volume: float = 0.0, buy_volume: float = 0.0,
+               start_time_ns: int = 0, end_time_ns: int = 0,
+               bar_type: int = 0, bar_type_param: int = 0,
+               close_reason: int = 0):
+        if self._threaded:
+            lrvx_live_engine_publish_bar(
+                self._live_handle, u32(symbol),
+                u8(bar_type), u64(bar_type_param),
+                open, high, low, close, volume, buy_volume,
+                i64(start_time_ns), i64(end_time_ns), u8(close_reason))
+        else:
+            lrvx_runner_on_bar(
+                self._sync_handle, u32(symbol),
+                u8(bar_type), u64(bar_type_param),
+                open, high, low, close, volume, buy_volume,
+                i64(start_time_ns), i64(end_time_ns), u8(close_reason))
+
+
+# ======================================================================
+# BacktestRunner
+# ======================================================================
+
+class BacktestRunner:
+    """Replay OHLCV data through a Strategy and collect performance stats.
+
+    The same Strategy subclass used with Runner works
+    unchanged here — BacktestRunner is the signal handler, so emitted
+    orders go to the SimulatedExecutor automatically.
+
+    Example::
+
+        runner = BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000.0)
+        runner.set_strategy(strat)
+        stats = runner.run_csv("/path/to/data.csv", "BTCUSDT")
+        print(stats.return_pct, stats.sharpe_ratio)
+    """
+
+    _handle: cobj
+    _registry: cobj
+
+    def __init__(self, registry: cobj, fee_rate: float = 0.0004,
+                 initial_capital: float = 10_000.0):
+        self._registry = registry
+        self._handle = lrvx_backtest_runner_create(registry, fee_rate, initial_capital)
+
+    def close(self):
+        if self._handle != cobj():
+            lrvx_backtest_runner_destroy(self._handle)
+            self._handle = cobj()
+
+    def set_strategy(self, strategy):
+        """Attach a Strategy. Must be called before run_csv / run_ohlcv.
+
+        Generic in the strategy's concrete type, like Runner.add_strategy,
+        so the callbacks installed here reach the subclass's overrides.
+        """
+        self._attach(strategy, type(strategy))
+
+    def _attach(self, strategy, T: type):
+        if strategy._handle == cobj():
+            strategy._rebuild_handle(self._registry)
+        bind_callbacks(strategy, T)
+        lrvx_backtest_runner_set_strategy(self._handle, strategy._handle)
+
+    def _parse_stats(self, buf: List[i64]) -> BacktestStats:
+        fp = Ptr[f64](buf.arr.ptr)
+        return BacktestStats(
+            total_trades=int(buf[0]),
+            winning_trades=int(buf[1]),
+            losing_trades=int(buf[2]),
+            max_consecutive_wins=int(buf[3]),
+            max_consecutive_losses=int(buf[4]),
+            initial_capital=fp[5],
+            final_capital=fp[6],
+            total_pnl=fp[7],
+            total_fees=fp[8],
+            net_pnl=fp[9],
+            gross_profit=fp[10],
+            gross_loss=fp[11],
+            max_drawdown=fp[12],
+            max_drawdown_pct=fp[13],
+            win_rate=fp[14],
+            profit_factor=fp[15],
+            avg_win=fp[16],
+            avg_loss=fp[17],
+            avg_win_loss_ratio=fp[18],
+            avg_trade_duration_ns=fp[19],
+            median_trade_duration_ns=fp[20],
+            max_trade_duration_ns=fp[21],
+            sharpe_ratio=fp[22],
+            sortino_ratio=fp[23],
+            calmar_ratio=fp[24],
+            time_weighted_return=fp[25],
+            return_pct=fp[26],
+            start_time_ns=int(buf[27]),
+            end_time_ns=int(buf[28])
+        )
+
+    def run_csv(self, path: str, symbol: str) -> BacktestStats:
+        """Replay a OHLCV CSV file. Returns BacktestStats."""
+        buf = [i64(0)] * 29
+        ok = lrvx_backtest_runner_run_csv(
+            self._handle, path.c_str(), symbol.c_str(), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError(f"BacktestRunner.run_csv failed: {path}")
+        return self._parse_stats(buf)
+
+    def run_tape(self, path: str) -> BacktestStats:
+        """Replay a `.lrvx` tape directory through the backtest.
+        The tape is the canonical recording format written by
+        `lrvx tape record` (live) or `scripts/backfill_to_tape.py`
+        (historical). Strategy.on_trade fires for each recorded
+        event; on_bar does not."""
+        buf = [i64(0)] * 29
+        ok = lrvx_backtest_runner_run_tape(
+            self._handle, path.c_str(), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError(f"BacktestRunner.run_tape failed: {path}")
+        return self._parse_stats(buf)
+
+    def run_tapes(self, paths: List[str]) -> BacktestStats:
+        """Replay N `.lrvx` tape directories merged on read.
+        Symbols are rekeyed by ``(metadata.exchange, name)``; events
+        are delivered to Strategy.on_trade in global time order across
+        tapes. Returns the aggregated BacktestStats. Raises on bad
+        input, overlapping book streams, or any per-tape decode error
+        (the C ABI returns 0 in those cases)."""
+        n_paths = len(paths)
+        if n_paths == 0:
+            raise ValueError("BacktestRunner.run_tapes: paths must be non-empty")
+        # Build a cobj[] of c_str pointers; the c_str buffers must remain
+        # alive for the duration of the FFI call, so we hold them in
+        # path_bufs alongside path_ptrs.
+        path_ptrs = [cobj() for _ in range(n_paths)]
+        path_bufs = list[Ptr[byte]]()
+        for i in range(n_paths):
+            buf_i = paths[i].c_str()
+            path_bufs.append(buf_i)
+            path_ptrs[i] = buf_i
+        buf = [i64(0)] * 29
+        ok = lrvx_backtest_runner_run_tapes(
+            self._handle, path_ptrs.arr.ptr, u32(n_paths), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError("BacktestRunner.run_tapes failed")
+        return self._parse_stats(buf)
+
+    def run_ohlcv(self, timestamps: List[int], closes: List[float],
+                  symbol: str) -> BacktestStats:
+        """Replay raw OHLCV arrays. timestamps in nanoseconds."""
+        n = u32(len(timestamps))
+        ts_buf   = [i64(t) for t in timestamps]
+        buf      = [i64(0)] * 29
+        ok = lrvx_backtest_runner_run_ohlcv(
+            self._handle,
+            ts_buf.arr.ptr, closes.arr.ptr, n,
+            symbol.c_str(), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError("BacktestRunner.run_ohlcv failed")
+        return self._parse_stats(buf)
+
+    def run_bars(self, start_ns: List[int], end_ns: List[int],
+                 opens: List[float], highs: List[float],
+                 lows: List[float], closes: List[float],
+                 volumes: List[float],
+                 symbol: str,
+                 bar_type: int = 0, bar_type_param: int = 0) -> BacktestStats:
+        """Replay full OHLCV bars. Strategy.on_bar fires; on_trade does NOT."""
+        n = u32(len(start_ns))
+        sn = [i64(t) for t in start_ns]
+        en = [i64(t) for t in end_ns]
+        buf = [i64(0)] * 29
+        ok = lrvx_backtest_runner_run_bars(
+            self._handle,
+            sn.arr.ptr, en.arr.ptr,
+            opens.arr.ptr, highs.arr.ptr, lows.arr.ptr,
+            closes.arr.ptr, volumes.arr.ptr,
+            n, symbol.c_str(),
+            u8(bar_type), u64(bar_type_param),
+            buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError("BacktestRunner.run_bars failed")
+        return self._parse_stats(buf)
+
+    def equity_curve(self) -> Tuple[List[int], List[float], List[float]]:
+        """Equity curve from the most recent run.
+
+        Returns ``(timestamps_ns, equity, drawdown_pct)`` lists, all of
+        the same length. Raises if no run has completed.
+        """
+        result = lrvx_backtest_runner_take_result(self._handle)
+        if result == cobj():
+            raise ValueError("BacktestRunner.equity_curve called before any run_*")
+        n = int(lrvx_backtest_result_equity_curve(result, cobj(), u32(0)))
+        # LrvxEquityPoint = { i64, f64, f64 } = 24 bytes; allocate as i64 buf.
+        # 3 i64-slots per point.
+        ts_list: List[int] = []
+        eq_list: List[float] = []
+        dd_list: List[float] = []
+        if n > 0:
+            buf = [i64(0)] * (n * 3)
+            lrvx_backtest_result_equity_curve(result,
+                                              cobj(buf.arr.ptr), u32(n))
+            ip = Ptr[i64](buf.arr.ptr)
+            fp = Ptr[f64](buf.arr.ptr)
+            for i in range(n):
+                ts_list.append(int(ip[i * 3]))
+                eq_list.append(float(fp[i * 3 + 1]))
+                dd_list.append(float(fp[i * 3 + 2]))
+        lrvx_backtest_result_destroy(result)
+        return (ts_list, eq_list, dd_list)
+
+    def trades(self) -> Tuple[List[int], List[int], List[float], List[float],
+                              List[float], List[float], List[float],
+                              List[int], List[int]]:
+        """Closed trades from the most recent run.
+
+        Returns ``(symbol, side, entry_price, exit_price, quantity, pnl,
+        fee, entry_time_ns, exit_time_ns)`` parallel lists. ``side`` is
+        0 for long, 1 for short.
+        """
+        result = lrvx_backtest_runner_take_result(self._handle)
+        if result == cobj():
+            raise ValueError("BacktestRunner.trades called before any run_*")
+        n = int(lrvx_backtest_result_trades(result, cobj(), u32(0)))
+        sym_l: List[int] = []
+        side_l: List[int] = []
+        ep_l: List[float] = []
+        xp_l: List[float] = []
+        qty_l: List[float] = []
+        pnl_l: List[float] = []
+        fee_l: List[float] = []
+        ets_l: List[int] = []
+        xts_l: List[int] = []
+        if n > 0:
+            # LrvxBacktestTrade is 8-byte aligned; layout in i64 slots:
+            # [0] uint32 sym | uint8 side | padding (8 bytes total)
+            # [1] entry_price (f64)
+            # [2] exit_price  (f64)
+            # [3] quantity    (f64)
+            # [4] entry_ts_ns (i64)
+            # [5] exit_ts_ns  (i64)
+            # [6] pnl         (f64)
+            # [7] fee         (f64)
+            buf = [i64(0)] * (n * 8)
+            lrvx_backtest_result_trades(result, cobj(buf.arr.ptr), u32(n))
+            ip = Ptr[i64](buf.arr.ptr)
+            fp = Ptr[f64](buf.arr.ptr)
+            u32p = Ptr[u32](buf.arr.ptr)
+            u8p = Ptr[u8](buf.arr.ptr)
+            for i in range(n):
+                base_byte = i * 64  # 8 i64 slots = 64 bytes
+                sym_l.append(int(u32p[i * 16]))         # uint32 at offset 0 (i*64 / 4)
+                side_l.append(int(u8p[i * 64 + 4]))     # uint8 at offset 4
+                ep_l.append(float(fp[i * 8 + 1]))
+                xp_l.append(float(fp[i * 8 + 2]))
+                qty_l.append(float(fp[i * 8 + 3]))
+                ets_l.append(int(ip[i * 8 + 4]))
+                xts_l.append(int(ip[i * 8 + 5]))
+                pnl_l.append(float(fp[i * 8 + 6]))
+                fee_l.append(float(fp[i * 8 + 7]))
+        lrvx_backtest_result_destroy(result)
+        return (sym_l, side_l, ep_l, xp_l, qty_l, pnl_l, fee_l, ets_l, xts_l)

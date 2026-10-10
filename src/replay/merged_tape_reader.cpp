@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/merged_tape_reader.h"
+#include "lrvx/replay/merged_tape_reader.h"
 
-#include "flox/error/flox_error.h"
-#include "flox/replay/aggregator.h"
-#include "flox/replay/readers/binary_log_reader.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/replay/aggregator.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
 
 #include <algorithm>
 #include <memory>
@@ -19,7 +19,7 @@
 #include <sstream>
 #include <unordered_map>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -43,7 +43,7 @@ MergedTapeReader::MergedTapeReader(MergedTapeReaderConfig config)
 {
   if (_config.tape_dirs.empty())
   {
-    throw flox::FloxError("E_INPUT_001",
+    throw lrvx::LrvxError("E_INPUT_001",
                           "MergedTapeReader: paths list is empty");
   }
   loadManifests();
@@ -75,7 +75,7 @@ void MergedTapeReader::loadManifests()
     auto loaded = RecordingMetadata::load(meta_path);
     if (!loaded)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_INPUT_002",
           "MergedTapeReader: cannot load metadata.json from " + dir.string());
     }
@@ -125,7 +125,7 @@ void MergedTapeReader::loadManifests()
               << int(s.qty_precision) << " but global registry has "
               << "price_precision=" << int(existing.price_precision)
               << " qty_precision=" << int(existing.qty_precision);
-          throw flox::FloxError("E_INPUT_003", oss.str());
+          throw lrvx::LrvxError("E_INPUT_003", oss.str());
         }
       }
       table[s.symbol_id] = global_id;
@@ -559,7 +559,7 @@ class ReorderingWalker
       if (_watermark != std::numeric_limits<int64_t>::min() &&
           ev.timestamp_ns < _watermark - _W)
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_DATA_002",
             "Event arrived past reorder window on tape " +
                 std::to_string(_tape_index) + ": delta=" +
@@ -830,4 +830,4 @@ MergedTapeReader::Summary MergedTapeReader::summary() const noexcept
   return s;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

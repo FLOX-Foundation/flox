@@ -1,6 +1,6 @@
 """Deterministic tape generator for the replay-equivalence gate.
 
-Writes a small `.floxlog` directory with a fixed sequence of synthetic
+Writes a small `.lrvx` directory with a fixed sequence of synthetic
 trades. The output is fully deterministic for a given seed, so the
 expected_output.json frozen in this directory stays in sync as long
 as nobody edits this script.
@@ -11,8 +11,8 @@ import shutil
 import sys
 from pathlib import Path
 
-import flox_py as flox
-from flox_py import tape
+import lrvx
+from lrvx import tape
 
 
 SEQUENCE = [
@@ -33,11 +33,11 @@ def build_tape(out_dir: Path, *, exchange: str = "bundle",
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
 
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = int(registry.add_symbol(exchange, symbol_name, tick_size=tick_size))
 
     recorder = tape.make_recorder_hook(out_dir)
-    runner = flox.Runner(registry, on_signal=lambda _sig: None)
+    runner = lrvx.Runner(registry, on_signal=lambda _sig: None)
     runner.set_market_data_recorder(recorder)
     runner.start()
     for price, qty, is_buy, ts_ns in SEQUENCE:

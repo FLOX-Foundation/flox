@@ -33,11 +33,11 @@ concept BarPolicy = requires(T& p, const TradeEvent& t, Bar& b) {
 Closes when notional volume reaches a threshold:
 
 ```cpp
-#include "flox/aggregator/aggregation_policy.h"
-#include "flox/aggregator/bar.h"
-#include "flox/book/events/trade_event.h"
+#include "lrvx/aggregator/aggregation_policy.h"
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/book/events/trade_event.h"
 
-namespace flox
+namespace lrvx
 {
 
 class DollarBarPolicy
@@ -71,7 +71,7 @@ class DollarBarPolicy
   Volume _threshold;
 };
 
-}  // namespace flox
+}  // namespace lrvx
 ```
 
 ### Usage

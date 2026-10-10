@@ -1,34 +1,34 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bar_matrix.h"
-#include "flox/aggregator/bus/bar_bus.h"
-#include "flox/aggregator/custom/footprint_bar.h"
-#include "flox/aggregator/custom/market_profile.h"
-#include "flox/aggregator/custom/volume_profile.h"
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/aggregator/multi_timeframe_aggregator.h"
-#include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
-#include "flox/aggregator/policies/range_bar_policy.h"
-#include "flox/aggregator/policies/renko_bar_policy.h"
-#include "flox/aggregator/policies/tick_bar_policy.h"
-#include "flox/aggregator/policies/time_bar_policy.h"
-#include "flox/aggregator/policies/volume_bar_policy.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/strategy/abstract_strategy.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bar_matrix.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
+#include "lrvx/aggregator/custom/footprint_bar.h"
+#include "lrvx/aggregator/custom/market_profile.h"
+#include "lrvx/aggregator/custom/volume_profile.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/aggregator/multi_timeframe_aggregator.h"
+#include "lrvx/aggregator/policies/heikin_ashi_bar_policy.h"
+#include "lrvx/aggregator/policies/range_bar_policy.h"
+#include "lrvx/aggregator/policies/renko_bar_policy.h"
+#include "lrvx/aggregator/policies/tick_bar_policy.h"
+#include "lrvx/aggregator/policies/time_bar_policy.h"
+#include "lrvx/aggregator/policies/volume_bar_policy.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

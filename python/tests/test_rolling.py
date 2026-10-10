@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.rolling`` — sliding top-K threshold helper.
+"""Tests for ``lrvx.rolling`` — sliding top-K threshold helper.
 
 Covers:
 
@@ -30,7 +30,7 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-from flox_py import rolling  # noqa: E402
+from lrvx import rolling  # noqa: E402
 
 
 def _naive_top_k(values: np.ndarray, window: int, k: int) -> np.ndarray:

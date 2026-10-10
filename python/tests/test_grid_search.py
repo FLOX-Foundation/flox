@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.GridSearch``.
+"""Tests for ``lrvx.GridSearch``.
 
 Exercises axis registration, params decoding, factory contract, and a
 realistic 2-axis sweep on the bundled BTC sample.
@@ -12,26 +12,26 @@ import unittest
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
-_CSV = os.path.join(os.path.dirname(__file__), "..", "flox_py",
+_CSV = os.path.join(os.path.dirname(__file__), "..", "lrvx",
                     "templates", "research", "data", "btcusdt_sample.csv")
 
 
 class GridSearchTests(unittest.TestCase):
 
     def test_total_zero_with_no_axes(self):
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         self.assertEqual(gs.total(), 0)
 
     def test_axis_product_is_total(self):
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         gs.add_axis([1.0, 2.0, 3.0])
         gs.add_axis([10.0, 20.0])
         self.assertEqual(gs.total(), 6)
 
     def test_params_for_index_decodes_row_major(self):
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         gs.add_axis([1.0, 2.0])
         gs.add_axis([10.0, 20.0, 30.0])
         # Last axis varies fastest — index 0..5 cover all 6 points.
@@ -43,7 +43,7 @@ class GridSearchTests(unittest.TestCase):
         self.assertEqual(got, expected)
 
     def test_run_calls_factory_with_each_combination(self):
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         gs.add_axis([1.0, 2.0])
         gs.add_axis([10.0, 20.0])
         seen = []
@@ -62,23 +62,23 @@ class GridSearchTests(unittest.TestCase):
         self.assertAlmostEqual(results[3]["stats"]["sharpe_ratio"], 22.0)
 
     def test_run_without_factory_raises(self):
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         gs.add_axis([1.0])
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             gs.run()
         self.assertEqual(cm.exception.code, "E_RUN_001")
 
     def test_run_with_no_axes_raises(self):
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         gs.set_factory(lambda p: {"sharpe_ratio": 0})
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             gs.run()
         self.assertEqual(cm.exception.code, "E_RUN_002")
 
     @unittest.skipUnless(os.path.exists(_CSV),
                          f"sample CSV not found at {_CSV}")
     def test_realistic_sweep_returns_distinct_sharpe(self):
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 
         def factory(params):
@@ -86,11 +86,11 @@ class GridSearchTests(unittest.TestCase):
             if fast >= slow:
                 return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
-            class _S(flox.Strategy):
+            class _S(lrvx.Strategy):
                 def __init__(self, syms):
                     super().__init__(syms)
-                    self.fast = flox.SMA(fast)
-                    self.slow = flox.SMA(slow)
+                    self.fast = lrvx.SMA(fast)
+                    self.slow = lrvx.SMA(slow)
 
                 def on_trade(self, ctx, t):
                     f = self.fast.update(t.price)
@@ -102,11 +102,11 @@ class GridSearchTests(unittest.TestCase):
                     elif f < s and ctx.is_long():
                         self.market_sell(0.01)
 
-            bt = flox.BacktestRunner(reg, 0.0004, 10_000)
+            bt = lrvx.BacktestRunner(reg, 0.0004, 10_000)
             bt.set_strategy(_S([btc]))
             return bt.run_csv(_CSV, symbol="BTCUSDT")
 
-        gs = flox.GridSearch()
+        gs = lrvx.GridSearch()
         gs.add_axis([5.0, 10.0])
         gs.add_axis([20.0, 30.0])
         gs.set_factory(factory)

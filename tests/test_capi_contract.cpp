@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -18,7 +18,7 @@
 // Each of these was reachable from a shipped binding before it was written
 // down, so each gets a test rather than a comment.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 
@@ -40,7 +40,7 @@ namespace
 
 std::filesystem::path scratchDir(const char* leaf)
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_capi_contract" / leaf;
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_capi_contract" / leaf;
   std::filesystem::create_directories(dir);
   return dir;
 }
@@ -55,35 +55,35 @@ std::filesystem::path scratchDir(const char* leaf)
 // documented anywhere, so a caller had no way to know which was which.
 TEST(CapiContractTest, NullHandleReturnsZeroInsteadOfCrashing)
 {
-  EXPECT_EQ(flox_registry_symbol_count(nullptr), 0u);
+  EXPECT_EQ(lrvx_registry_symbol_count(nullptr), 0u);
 
   char exchange[32] = {0};
   char name[32] = {0};
-  EXPECT_EQ(flox_registry_get_symbol_name(nullptr, 0, exchange, sizeof(exchange), name,
+  EXPECT_EQ(lrvx_registry_get_symbol_name(nullptr, 0, exchange, sizeof(exchange), name,
                                           sizeof(name)),
             0);
 
   uint32_t id = 12345;
-  EXPECT_EQ(flox_registry_get_symbol_id(nullptr, "a", "b", &id), 0);
+  EXPECT_EQ(lrvx_registry_get_symbol_id(nullptr, "a", "b", &id), 0);
 
-  EXPECT_EQ(flox_simulated_executor_fill_count(nullptr), 0u);
-  flox_simulated_executor_submit_order(nullptr, 1, 0, 1.0, 1.0, 0, 1);
-  flox_simulated_executor_cancel_all(nullptr, 1);
-  flox_simulated_executor_on_trade(nullptr, 1, 100.0, 1);
+  EXPECT_EQ(lrvx_simulated_executor_fill_count(nullptr), 0u);
+  lrvx_simulated_executor_submit_order(nullptr, 1, 0, 1.0, 1.0, 0, 1);
+  lrvx_simulated_executor_cancel_all(nullptr, 1);
+  lrvx_simulated_executor_on_trade(nullptr, 1, 100.0, 1);
 
-  EXPECT_EQ(flox_account_id(nullptr), 0u);
-  EXPECT_DOUBLE_EQ(flox_account_equity(nullptr), 0.0);
-  flox_account_set_equity(nullptr, 1.0);
+  EXPECT_EQ(lrvx_account_id(nullptr), 0u);
+  EXPECT_DOUBLE_EQ(lrvx_account_equity(nullptr), 0.0);
+  lrvx_account_set_equity(nullptr, 1.0);
 
-  flox_liquidation_engine_add_tier(nullptr, 1.0, 0.5);
+  lrvx_liquidation_engine_add_tier(nullptr, 1.0, 0.5);
 
-  EXPECT_EQ(flox_venue_stack_account(nullptr), nullptr);
-  EXPECT_EQ(flox_venue_stack_executor(nullptr), nullptr);
-  EXPECT_EQ(flox_venue_stack_venue_name(nullptr), nullptr);
+  EXPECT_EQ(lrvx_venue_stack_account(nullptr), nullptr);
+  EXPECT_EQ(lrvx_venue_stack_executor(nullptr), nullptr);
+  EXPECT_EQ(lrvx_venue_stack_venue_name(nullptr), nullptr);
 
-  EXPECT_EQ(flox_data_reader_count(nullptr), 0u);
+  EXPECT_EQ(lrvx_data_reader_count(nullptr), 0u);
 
-  EXPECT_EQ(flox_book_get_bids(nullptr, nullptr, nullptr, 0), 0u);
+  EXPECT_EQ(lrvx_book_get_bids(nullptr, nullptr, nullptr, 0), 0u);
 }
 
 // Destroy has always accepted null and must keep doing so: a binding's
@@ -91,12 +91,12 @@ TEST(CapiContractTest, NullHandleReturnsZeroInsteadOfCrashing)
 // an error would be a downgrade.
 TEST(CapiContractTest, DestroyStillAcceptsNull)
 {
-  flox_registry_destroy(nullptr);
-  flox_account_destroy(nullptr);
-  flox_simulated_executor_destroy(nullptr);
-  flox_portfolio_risk_destroy(nullptr);
-  flox_venue_stack_destroy(nullptr);
-  flox_data_reader_destroy(nullptr);
+  lrvx_registry_destroy(nullptr);
+  lrvx_account_destroy(nullptr);
+  lrvx_simulated_executor_destroy(nullptr);
+  lrvx_portfolio_risk_destroy(nullptr);
+  lrvx_venue_stack_destroy(nullptr);
+  lrvx_data_reader_destroy(nullptr);
   SUCCEED();
 }
 
@@ -104,26 +104,26 @@ TEST(CapiContractTest, DestroyStillAcceptsNull)
 // This one path was a segmentation fault of its own.
 TEST(CapiContractTest, DataReaderCreateRejectsNullPath)
 {
-  EXPECT_EQ(flox_data_reader_create(nullptr), nullptr);
+  EXPECT_EQ(lrvx_data_reader_create(nullptr), nullptr);
 }
 
 TEST(CapiContractTest, SegmentPathArgumentsRejectNull)
 {
-  EXPECT_EQ(flox_segment_validate(nullptr), 0);
-  EXPECT_EQ(flox_segment_merge(nullptr, "/tmp/out.flox"), 0);
-  EXPECT_EQ(flox_segment_merge("/tmp", nullptr), 0);
+  EXPECT_EQ(lrvx_segment_validate(nullptr), 0);
+  EXPECT_EQ(lrvx_segment_merge(nullptr, "/tmp/out.lrvx"), 0);
+  EXPECT_EQ(lrvx_segment_merge("/tmp", nullptr), 0);
 }
 
 TEST(CapiContractTest, SegmentMergeRejectsNullArguments)
 {
-  FloxMergeResult r = flox_segment_merge_full(nullptr, 2, "/tmp", "out", 1);
+  LrvxMergeResult r = lrvx_segment_merge_full(nullptr, 2, "/tmp", "out", 1);
   EXPECT_EQ(r.success, 0);
 
-  const char paths[] = "/tmp/a.flox\0/tmp/b.flox";
-  r = flox_segment_merge_full(paths, 2, nullptr, "out", 1);
+  const char paths[] = "/tmp/a.lrvx\0/tmp/b.lrvx";
+  r = lrvx_segment_merge_full(paths, 2, nullptr, "out", 1);
   EXPECT_EQ(r.success, 0);
 
-  r = flox_segment_merge_full(paths, 2, "/tmp", nullptr, 1);
+  r = lrvx_segment_merge_full(paths, 2, "/tmp", nullptr, 1);
   EXPECT_EQ(r.success, 0);
 }
 
@@ -135,15 +135,15 @@ TEST(CapiContractTest, SegmentMergeRejectsNullArguments)
 // then reported success. Measured: 136 bytes zeroed from buf-65 to buf+70.
 TEST(CapiContractTest, GetSymbolNameWithZeroLengthWritesNothing)
 {
-  FloxRegistryHandle reg = flox_registry_create();
-  uint32_t sym = flox_registry_add_symbol(reg, "binance", "BTCUSDT", 0.01);
+  LrvxRegistryHandle reg = lrvx_registry_create();
+  uint32_t sym = lrvx_registry_add_symbol(reg, "binance", "BTCUSDT", 0.01);
 
   constexpr size_t kArena = 512;
   constexpr size_t kMid = 256;
   std::vector<unsigned char> arena(kArena, 0xAA);
   char* buf = reinterpret_cast<char*>(arena.data()) + kMid;
 
-  EXPECT_EQ(flox_registry_get_symbol_name(reg, sym, buf, 0, buf, 0), 0);
+  EXPECT_EQ(lrvx_registry_get_symbol_name(reg, sym, buf, 0, buf, 0), 0);
 
   for (size_t i = 0; i < kArena; ++i)
   {
@@ -151,23 +151,23 @@ TEST(CapiContractTest, GetSymbolNameWithZeroLengthWritesNothing)
                               << " from the buffer) was written through a zero-length buffer";
   }
 
-  flox_registry_destroy(reg);
+  lrvx_registry_destroy(reg);
 }
 
 TEST(CapiContractTest, GetSymbolNameStillTruncatesIntoAShortBuffer)
 {
-  FloxRegistryHandle reg = flox_registry_create();
-  uint32_t sym = flox_registry_add_symbol(reg, "binance", "BTCUSDT", 0.01);
+  LrvxRegistryHandle reg = lrvx_registry_create();
+  uint32_t sym = lrvx_registry_add_symbol(reg, "binance", "BTCUSDT", 0.01);
 
   char exchange[4] = {0};
   char name[4] = {0};
-  EXPECT_EQ(flox_registry_get_symbol_name(reg, sym, exchange, sizeof(exchange), name,
+  EXPECT_EQ(lrvx_registry_get_symbol_name(reg, sym, exchange, sizeof(exchange), name,
                                           sizeof(name)),
             1);
   EXPECT_STREQ(exchange, "bin");
   EXPECT_STREQ(name, "BTC");
 
-  flox_registry_destroy(reg);
+  lrvx_registry_destroy(reg);
 }
 
 // ── 3. Scratch buffers belong to the handle ───────────────────────────
@@ -175,19 +175,19 @@ TEST(CapiContractTest, GetSymbolNameStillTruncatesIntoAShortBuffer)
 namespace
 {
 
-FloxPortfolioRiskRules dailyLossRules()
+LrvxPortfolioRiskRules dailyLossRules()
 {
-  FloxPortfolioRiskRules rules{};
+  LrvxPortfolioRiskRules rules{};
   rules.has_max_daily_loss = 1;
   rules.max_daily_loss = -100.0;
   return rules;
 }
 
-void breachDailyLoss(FloxPortfolioRiskHandle h)
+void breachDailyLoss(LrvxPortfolioRiskHandle h)
 {
-  FloxStrategyAccountFields f{};
+  LrvxStrategyAccountFields f{};
   f.realized_pnl = -5000.0;
-  flox_portfolio_risk_update(h, "alpha", &f, 0xFF);
+  lrvx_portfolio_risk_update(h, "alpha", &f, 0xFF);
 }
 
 }  // namespace
@@ -198,28 +198,28 @@ void breachDailyLoss(FloxPortfolioRiskHandle h)
 // dead session's max_daily_loss breach and reported success.
 TEST(CapiContractTest, BreachScratchDoesNotOutliveItsHandle)
 {
-  FloxPortfolioRiskRules rules = dailyLossRules();
+  LrvxPortfolioRiskRules rules = dailyLossRules();
 
   void* firstAddress = nullptr;
   for (int attempt = 0; attempt < 64; ++attempt)
   {
-    FloxPortfolioRiskHandle dead = flox_portfolio_risk_create(&rules, 10000.0);
+    LrvxPortfolioRiskHandle dead = lrvx_portfolio_risk_create(&rules, 10000.0);
     ASSERT_NE(dead, nullptr);
     breachDailyLoss(dead);
-    ASSERT_GT(flox_portfolio_risk_breach_count(dead), 0u);
+    ASSERT_GT(lrvx_portfolio_risk_breach_count(dead), 0u);
     firstAddress = dead;
-    flox_portfolio_risk_destroy(dead);
+    lrvx_portfolio_risk_destroy(dead);
 
-    FloxPortfolioRiskHandle fresh = flox_portfolio_risk_create(&rules, 10000.0);
+    LrvxPortfolioRiskHandle fresh = lrvx_portfolio_risk_create(&rules, 10000.0);
     ASSERT_NE(fresh, nullptr);
 
-    FloxBreach breach{};
-    EXPECT_EQ(flox_portfolio_risk_breach_at(fresh, 0, &breach), 0)
+    LrvxBreach breach{};
+    EXPECT_EQ(lrvx_portfolio_risk_breach_at(fresh, 0, &breach), 0)
         << "a clean handle served a breach from a destroyed one";
-    EXPECT_EQ(flox_portfolio_risk_breach_count(fresh), 0u);
+    EXPECT_EQ(lrvx_portfolio_risk_breach_count(fresh), 0u);
 
     const bool reused = (fresh == firstAddress);
-    flox_portfolio_risk_destroy(fresh);
+    lrvx_portfolio_risk_destroy(fresh);
     if (reused)
     {
       SUCCEED() << "allocator reused the dead handle's address on attempt " << attempt;
@@ -234,28 +234,28 @@ TEST(CapiContractTest, BreachScratchDoesNotOutliveItsHandle)
 // zero levels, which reads exactly like an empty book.
 TEST(CapiContractTest, EncoderScratchCrossesThreads)
 {
-  FloxDeltaBookEncoderHandle enc = flox_delta_book_encoder_create(0);
+  LrvxDeltaBookEncoderHandle enc = lrvx_delta_book_encoder_create(0);
   ASSERT_NE(enc, nullptr);
 
-  FloxBookLevel bids[2] = {{100 * 100000000LL, 100000000LL}, {99 * 100000000LL, 200000000LL}};
-  FloxBookLevel asks[2] = {{101 * 100000000LL, 100000000LL}, {102 * 100000000LL, 200000000LL}};
+  LrvxBookLevel bids[2] = {{100 * 100000000LL, 100000000LL}, {99 * 100000000LL, 200000000LL}};
+  LrvxBookLevel asks[2] = {{101 * 100000000LL, 100000000LL}, {102 * 100000000LL, 200000000LL}};
 
   uint8_t isDelta = 0;
   uint64_t bidCount = 0;
   uint64_t askCount = 0;
-  flox_delta_book_encoder_encode(enc, 1, bids, 2, asks, 2, &isDelta, &bidCount, &askCount);
+  lrvx_delta_book_encoder_encode(enc, 1, bids, 2, asks, 2, &isDelta, &bidCount, &askCount);
   ASSERT_EQ(bidCount, 2u);
   ASSERT_EQ(askCount, 2u);
 
   uint64_t workerBids = 0;
   uint64_t workerAsks = 0;
-  FloxBookLevel outBids[4]{};
-  FloxBookLevel outAsks[4]{};
+  LrvxBookLevel outBids[4]{};
+  LrvxBookLevel outAsks[4]{};
   std::thread worker(
       [&]
       {
-        workerBids = flox_delta_book_encoder_copy_bids(enc, outBids, 4);
-        workerAsks = flox_delta_book_encoder_copy_asks(enc, outAsks, 4);
+        workerBids = lrvx_delta_book_encoder_copy_bids(enc, outBids, 4);
+        workerAsks = lrvx_delta_book_encoder_copy_asks(enc, outAsks, 4);
       });
   worker.join();
 
@@ -263,27 +263,27 @@ TEST(CapiContractTest, EncoderScratchCrossesThreads)
   EXPECT_EQ(workerAsks, 2u);
   EXPECT_EQ(outBids[0].price_raw, 100 * 100000000LL);
 
-  flox_delta_book_encoder_destroy(enc);
+  lrvx_delta_book_encoder_destroy(enc);
 }
 
 TEST(CapiContractTest, BreachCountAndBreachAtCrossThreads)
 {
-  FloxPortfolioRiskRules rules = dailyLossRules();
-  FloxPortfolioRiskHandle h = flox_portfolio_risk_create(&rules, 10000.0);
+  LrvxPortfolioRiskRules rules = dailyLossRules();
+  LrvxPortfolioRiskHandle h = lrvx_portfolio_risk_create(&rules, 10000.0);
   ASSERT_NE(h, nullptr);
   breachDailyLoss(h);
-  ASSERT_GT(flox_portfolio_risk_breach_count(h), 0u);
+  ASSERT_GT(lrvx_portfolio_risk_breach_count(h), 0u);
 
   uint8_t got = 0;
-  FloxBreach breach{};
+  LrvxBreach breach{};
   std::thread worker([&]
-                     { got = flox_portfolio_risk_breach_at(h, 0, &breach); });
+                     { got = lrvx_portfolio_risk_breach_at(h, 0, &breach); });
   worker.join();
 
   EXPECT_EQ(got, 1) << "the breach list was invisible from another thread";
   EXPECT_STREQ(breach.rule, "max_daily_loss");
 
-  flox_portfolio_risk_destroy(h);
+  lrvx_portfolio_risk_destroy(h);
 }
 
 // ── 4. Exceptions stop at the boundary ────────────────────────────────
@@ -312,20 +312,20 @@ TEST(CapiContractTest, RunCsvWithAMalformedRowFailsInsteadOfTerminating)
     f << "1700000120,100,101,99,102\n";
   }
 
-  FloxRegistryHandle reg = flox_registry_create();
-  flox_registry_add_symbol(reg, "sim", "BTCUSDT", 0.01);
+  LrvxRegistryHandle reg = lrvx_registry_create();
+  lrvx_registry_add_symbol(reg, "sim", "BTCUSDT", 0.01);
 
-  FloxBacktestRunnerHandle runner = flox_backtest_runner_create(reg, 0.0, 10000.0);
+  LrvxBacktestRunnerHandle runner = lrvx_backtest_runner_create(reg, 0.0, 10000.0);
   ASSERT_NE(runner, nullptr);
 
-  FloxBacktestStats stats{};
-  EXPECT_EQ(flox_backtest_runner_run_csv(runner, good.string().c_str(), "BTCUSDT", &stats), 1);
+  LrvxBacktestStats stats{};
+  EXPECT_EQ(lrvx_backtest_runner_run_csv(runner, good.string().c_str(), "BTCUSDT", &stats), 1);
 
-  FloxBacktestStats badStats{};
+  LrvxBacktestStats badStats{};
   int rc = -1;
   try
   {
-    rc = flox_backtest_runner_run_csv(runner, bad.string().c_str(), "BTCUSDT", &badStats);
+    rc = lrvx_backtest_runner_run_csv(runner, bad.string().c_str(), "BTCUSDT", &badStats);
   }
   catch (...)
   {
@@ -333,8 +333,8 @@ TEST(CapiContractTest, RunCsvWithAMalformedRowFailsInsteadOfTerminating)
   }
   EXPECT_EQ(rc, 0) << "a malformed row must fail the run, not abort the process";
 
-  flox_backtest_runner_destroy(runner);
-  flox_registry_destroy(reg);
+  lrvx_backtest_runner_destroy(runner);
+  lrvx_registry_destroy(reg);
   std::filesystem::remove_all(dir);
 }
 
@@ -351,17 +351,17 @@ TEST(CapiContractTest, DataWriterCreateOnAnImpossiblePathFailsInsteadOfTerminati
   }
   const std::string under = (blocker / "tape").string();
 
-  FloxDataWriterHandle writer = nullptr;
+  LrvxDataWriterHandle writer = nullptr;
   try
   {
-    writer = flox_data_writer_create(under.c_str(), 0, 0);
+    writer = lrvx_data_writer_create(under.c_str(), 0, 0);
   }
   catch (...)
   {
     ADD_FAILURE() << "an exception crossed the C ABI boundary; a C caller gets std::terminate";
   }
   EXPECT_EQ(writer, nullptr);
-  flox_data_writer_destroy(writer);
+  lrvx_data_writer_destroy(writer);
 
   std::filesystem::remove_all(dir);
 }
@@ -372,10 +372,10 @@ TEST(CapiContractTest, DataWriterCreateOnAnImpossiblePathFailsInsteadOfTerminati
 // whose name ends in _create returns a handle the caller owns and must
 // pass to the matching _destroy". Handle-returning functions that are not
 // named that way are outside the rule, and the header said nothing about
-// them -- flox_curve_constant_product, flox_curve_raydium_cp,
-// flox_curve_uniswap_v3, flox_curve_clone and flox_pool_tape_replay hand
-// back an owned handle, flox_run_reader_open hands back one whose partner
-// is flox_run_reader_close rather than a _destroy, and the venue-stack
+// them -- lrvx_curve_constant_product, lrvx_curve_raydium_cp,
+// lrvx_curve_uniswap_v3, lrvx_curve_clone and lrvx_pool_tape_replay hand
+// back an owned handle, lrvx_run_reader_open hands back one whose partner
+// is lrvx_run_reader_close rather than a _destroy, and the venue-stack
 // accessors hand back a borrowed one. A binding author following the rule
 // as written leaks or double-frees, so each of them needs a note.
 //
@@ -389,7 +389,7 @@ namespace
 
 std::string headerPath()
 {
-  return std::string(FLOX_REPO_ROOT) + "/include/flox/capi/flox_capi.h";
+  return std::string(LRVX_REPO_ROOT) + "/include/lrvx/capi/lrvx_capi.h";
 }
 
 std::vector<std::string> readLines(const std::string& path)
@@ -579,7 +579,7 @@ TEST(CapiContractTest, EveryHandleReturningFunctionOutsideTheCreateRuleCarriesAn
     blocks.push_back(block);
   }
 
-  const std::regex decl(R"(^\s*(Flox[A-Za-z0-9]*Handle)\s+(flox_[a-z0-9_]+)\s*\()");
+  const std::regex decl(R"(^\s*(Lrvx[A-Za-z0-9]*Handle)\s+(lrvx_[a-z0-9_]+)\s*\()");
   std::vector<std::string> undocumented;
   std::set<std::string> checked;
 
@@ -629,9 +629,9 @@ TEST(CapiContractTest, EveryHandleReturningFunctionOutsideTheCreateRuleCarriesAn
 
   // The six the audit named, so an enumeration that silently matched
   // nothing cannot pass this test.
-  for (const char* expected : {"flox_curve_constant_product", "flox_curve_raydium_cp",
-                               "flox_curve_uniswap_v3", "flox_curve_clone",
-                               "flox_pool_tape_replay", "flox_run_reader_open"})
+  for (const char* expected : {"lrvx_curve_constant_product", "lrvx_curve_raydium_cp",
+                               "lrvx_curve_uniswap_v3", "lrvx_curve_clone",
+                               "lrvx_pool_tape_replay", "lrvx_run_reader_open"})
   {
     EXPECT_TRUE(checked.count(expected) == 1)
         << expected << " was not found as a handle-returning declaration";
@@ -661,31 +661,31 @@ TEST(CapiContractTest, OwnershipNotesUseTheWordThatIsTrue)
   const auto isComment = commentLines(lines);
 
   const std::vector<std::pair<std::string, std::string>> expected = {
-      // Each builds a curve and hands it over; flox_curve_destroy is the partner.
-      {"flox_curve_constant_product", "owned"},
-      {"flox_curve_raydium_cp", "owned"},
-      {"flox_curve_uniswap_v3", "owned"},
-      {"flox_curve_clone", "owned"},
-      // Builds a replay; flox_pool_replay_destroy is the partner.
-      {"flox_pool_tape_replay", "owned"},
-      // Owned with an oddly named partner: flox_run_reader_close.
-      {"flox_run_reader_open", "owned"},
-      // Detaches the result from the runner; flox_backtest_result_destroy.
-      {"flox_backtest_runner_take_result", "owned"},
+      // Each builds a curve and hands it over; lrvx_curve_destroy is the partner.
+      {"lrvx_curve_constant_product", "owned"},
+      {"lrvx_curve_raydium_cp", "owned"},
+      {"lrvx_curve_uniswap_v3", "owned"},
+      {"lrvx_curve_clone", "owned"},
+      // Builds a replay; lrvx_pool_replay_destroy is the partner.
+      {"lrvx_pool_tape_replay", "owned"},
+      // Owned with an oddly named partner: lrvx_run_reader_close.
+      {"lrvx_run_reader_open", "owned"},
+      // Detaches the result from the runner; lrvx_backtest_result_destroy.
+      {"lrvx_backtest_runner_take_result", "owned"},
       // A member of the replay -- destroying it would free the replay's own curve.
-      {"flox_pool_replay_curve", "borrowed"},
+      {"lrvx_pool_replay_curve", "borrowed"},
       // A view of a member of the hook.
-      {"flox_binary_log_recorder_hook_as_recorder", "borrowed"},
+      {"lrvx_binary_log_recorder_hook_as_recorder", "borrowed"},
       // Members of the stack, every one of them.
-      {"flox_venue_stack_executor", "borrowed"},
-      {"flox_venue_stack_account", "borrowed"},
-      {"flox_venue_stack_liquidation", "borrowed"},
-      {"flox_venue_stack_fees", "borrowed"},
-      {"flox_venue_stack_funding", "borrowed"},
-      {"flox_venue_stack_venue", "borrowed"},
+      {"lrvx_venue_stack_executor", "borrowed"},
+      {"lrvx_venue_stack_account", "borrowed"},
+      {"lrvx_venue_stack_liquidation", "borrowed"},
+      {"lrvx_venue_stack_fees", "borrowed"},
+      {"lrvx_venue_stack_funding", "borrowed"},
+      {"lrvx_venue_stack_venue", "borrowed"},
   };
 
-  const std::regex decl(R"(^\s*(Flox[A-Za-z0-9]*Handle)\s+(flox_[a-z0-9_]+)\s*\()");
+  const std::regex decl(R"(^\s*(Lrvx[A-Za-z0-9]*Handle)\s+(lrvx_[a-z0-9_]+)\s*\()");
   std::map<std::string, size_t> declLine;
   for (size_t i = 0; i < lines.size(); ++i)
   {

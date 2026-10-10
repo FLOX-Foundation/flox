@@ -1,6 +1,6 @@
 """Unit tests for the runtime MCP tools.
 
-`compute_indicator` and `run_backtest` need ``flox_py`` available; if
+`compute_indicator` and `run_backtest` need ``lrvx`` available; if
 the binding isn't importable in the test environment, those cases
 skip cleanly. `suggest_indicator` is pure-Python and runs everywhere.
 """
@@ -26,12 +26,12 @@ if _BUILD_PY.is_dir():
     sys.path.insert(0, str(_BUILD_PY))
 
 try:
-    import flox_py  # noqa: F401
-    HAS_FLOX = True
+    import lrvx  # noqa: F401
+    HAS_LRVX = True
 except ImportError:
-    HAS_FLOX = False
+    HAS_LRVX = False
 
-from flox_mcp.tools import runtime
+from lrvx_mcp.tools import runtime
 
 
 # ── suggest_indicator ─────────────────────────────────────────────────
@@ -96,7 +96,7 @@ def test_suggest_k_argument():
 # ── compute_indicator ─────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(not HAS_FLOX, reason="flox_py not importable")
+@pytest.mark.skipif(not HAS_LRVX, reason="lrvx not importable")
 def test_compute_indicator_class_form():
     data = [100.0 + i * 0.5 for i in range(50)]
     out = runtime.compute_indicator("EMA", data, period=10)
@@ -106,7 +106,7 @@ def test_compute_indicator_class_form():
     assert "first 32" in out
 
 
-@pytest.mark.skipif(not HAS_FLOX, reason="flox_py not importable")
+@pytest.mark.skipif(not HAS_LRVX, reason="lrvx not importable")
 def test_compute_indicator_function_form():
     data = [100.0 + i for i in range(40)]
     out = runtime.compute_indicator("ema", data, period=5)
@@ -116,7 +116,7 @@ def test_compute_indicator_function_form():
     assert "summary" in out
 
 
-@pytest.mark.skipif(not HAS_FLOX, reason="flox_py not importable")
+@pytest.mark.skipif(not HAS_LRVX, reason="lrvx not importable")
 def test_compute_indicator_unknown_name():
     out = runtime.compute_indicator("NotAnIndicator", [1.0, 2.0, 3.0])
     assert "no indicator" in out.lower()
@@ -142,24 +142,24 @@ def test_compute_indicator_bad_data_type():
 
 
 def _bundled_csv() -> Path:
-    return REPO_ROOT / "python" / "flox_py" / "templates" / "research" / "data" / "btcusdt_sample.csv"
+    return REPO_ROOT / "python" / "lrvx" / "templates" / "research" / "data" / "btcusdt_sample.csv"
 
 
 @pytest.mark.skipif(
-    not HAS_FLOX or not _bundled_csv().exists(),
-    reason="needs flox_py + bundled sample CSV",
+    not HAS_LRVX or not _bundled_csv().exists(),
+    reason="needs lrvx + bundled sample CSV",
 )
 def test_run_backtest_happy_path(monkeypatch):
     monkeypatch.setenv("PYTHONPATH",
                        f"{_BUILD_PY}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
     code = textwrap.dedent('''
-        import flox_py as flox
+        import lrvx
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def __init__(self, syms):
                 super().__init__(syms)
-                self.fast = flox.SMA(5)
-                self.slow = flox.SMA(20)
+                self.fast = lrvx.SMA(5)
+                self.slow = lrvx.SMA(20)
 
             def on_trade(self, ctx, trade):
                 f = self.fast.update(trade.price)
@@ -184,8 +184,8 @@ def test_run_backtest_happy_path(monkeypatch):
 
 
 @pytest.mark.skipif(
-    not HAS_FLOX or not _bundled_csv().exists(),
-    reason="needs flox_py + bundled sample CSV",
+    not HAS_LRVX or not _bundled_csv().exists(),
+    reason="needs lrvx + bundled sample CSV",
 )
 def test_run_backtest_strategy_with_no_class(monkeypatch):
     monkeypatch.setenv("PYTHONPATH",
@@ -200,8 +200,8 @@ def test_run_backtest_strategy_with_no_class(monkeypatch):
 
 
 @pytest.mark.skipif(
-    not HAS_FLOX or not _bundled_csv().exists(),
-    reason="needs flox_py + bundled sample CSV",
+    not HAS_LRVX or not _bundled_csv().exists(),
+    reason="needs lrvx + bundled sample CSV",
 )
 def test_run_backtest_raises_in_user_code(monkeypatch):
     monkeypatch.setenv("PYTHONPATH",
@@ -216,8 +216,8 @@ def test_run_backtest_raises_in_user_code(monkeypatch):
 
 
 @pytest.mark.skipif(
-    not HAS_FLOX or not _bundled_csv().exists(),
-    reason="needs flox_py + bundled sample CSV",
+    not HAS_LRVX or not _bundled_csv().exists(),
+    reason="needs lrvx + bundled sample CSV",
 )
 def test_run_backtest_routes_bar_driven_to_run_bars(monkeypatch):
     """Bar-driven strategy (overrides `on_bar`) is dispatched as
@@ -228,9 +228,9 @@ def test_run_backtest_routes_bar_driven_to_run_bars(monkeypatch):
     monkeypatch.setenv("PYTHONPATH",
                        f"{_BUILD_PY}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
     code = textwrap.dedent('''
-        import flox_py as flox
+        import lrvx
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def __init__(self, syms):
                 super().__init__(syms)
                 self.bar_count = 0
@@ -264,15 +264,15 @@ def test_run_backtest_rejects_strategy_with_no_hooks(monkeypatch):
     monkeypatch.setenv("PYTHONPATH",
                        f"{_BUILD_PY}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
     code = textwrap.dedent('''
-        import flox_py as flox
+        import lrvx
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             pass
 
         STRATEGY = S
     ''')
-    if not HAS_FLOX or not _bundled_csv().exists():
-        pytest.skip("needs flox_py + bundled sample CSV")
+    if not HAS_LRVX or not _bundled_csv().exists():
+        pytest.skip("needs lrvx + bundled sample CSV")
     out = runtime.run_backtest(
         strategy_code=code,
         dataset_path=str(_bundled_csv()),

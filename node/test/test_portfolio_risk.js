@@ -5,7 +5,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -16,7 +16,7 @@ function check(cond, msg) {
 
 console.log('=== construction ===');
 {
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxDrawdownPct: 0.20, maxDailyLoss: 10_000 },
     initialEquity: 100_000,
   });
@@ -29,7 +29,7 @@ console.log('=== construction ===');
 
 console.log('=== update + snapshot ===');
 {
-  const agg = new flox.PortfolioRiskAggregator({ initialEquity: 100_000 });
+  const agg = new lrvx.PortfolioRiskAggregator({ initialEquity: 100_000 });
   agg.update('ema', {
     realizedPnl: 120, unrealizedPnl: -30, fees: -5,
     grossExposure: 5000, netExposure: 4500, tradeCount: 12,
@@ -42,7 +42,7 @@ console.log('=== update + snapshot ===');
 
 console.log('=== drawdown breach trips kill switch ===');
 {
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxDrawdownPct: 0.10 },
     initialEquity: 100_000,
   });
@@ -56,7 +56,7 @@ console.log('=== drawdown breach trips kill switch ===');
 
 console.log('=== check_order ===');
 {
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxGrossExposure: 10_000 },
   });
   agg.update('s1', { grossExposure: 7_000 });
@@ -69,7 +69,7 @@ console.log('=== check_order ===');
 
 console.log('=== reset_kill_switch ===');
 {
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxDrawdownPct: 0.05 },
     initialEquity: 100_000,
   });
@@ -83,7 +83,7 @@ console.log('=== gate agrees with snapshot ===');
 {
   // One strategy is 100% of its own book by definition. The gate used to
   // refuse every opening order it sent while the snapshot showed nothing.
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxConcentrationPct: 0.40 },
     initialEquity: 100_000,
   });
@@ -99,7 +99,7 @@ console.log('=== gate agrees with snapshot ===');
 {
   // One of two strategies flattens. Counting registered rows rather than
   // contributing ones halted the whole portfolio here.
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxConcentrationPct: 0.60 },
     initialEquity: 100_000,
   });
@@ -113,7 +113,7 @@ console.log('=== gate agrees with snapshot ===');
 {
   // Risk-reducing orders pass the exposure cap. Reading an unreported net
   // as zero made every order look like it increased exposure.
-  const agg = new flox.PortfolioRiskAggregator({
+  const agg = new lrvx.PortfolioRiskAggregator({
     rules: { maxGrossExposure: 50_000 },
     initialEquity: 100_000,
   });
@@ -130,7 +130,7 @@ console.log('=== drawdown needs a capital base ===');
 {
   let threw = false;
   try {
-    new flox.PortfolioRiskAggregator({ rules: { maxDrawdownPct: 0.20 } });
+    new lrvx.PortfolioRiskAggregator({ rules: { maxDrawdownPct: 0.20 } });
   } catch (e) {
     threw = true;
   }
@@ -138,7 +138,7 @@ console.log('=== drawdown needs a capital base ===');
 
   let ok = true;
   try {
-    new flox.PortfolioRiskAggregator({ rules: { maxGrossExposure: 1_000 } });
+    new lrvx.PortfolioRiskAggregator({ rules: { maxGrossExposure: 1_000 } });
   } catch (e) {
     ok = false;
   }

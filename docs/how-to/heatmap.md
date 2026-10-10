@@ -1,16 +1,16 @@
 # Heatmap rendering
 
-`flox.report.heatmap_html` (Python) and `flox.report.heatmapHtml` (Node) render a 2D matrix as a self-contained HTML page with an inline-SVG heatmap. The renderer lives in `flox::report::renderHeatmapHtml` (C++), so all bindings produce byte-identical output for the same input. No external assets, no scripts beyond the SVG `<title>` tooltips.
+`lrvx.report.heatmap_html` (Python) and `lrvx.report.heatmapHtml` (Node) render a 2D matrix as a self-contained HTML page with an inline-SVG heatmap. The renderer lives in `lrvx::report::renderHeatmapHtml` (C++), so all bindings produce byte-identical output for the same input. No external assets, no scripts beyond the SVG `<title>` tooltips.
 
 The most natural pairing is with the [grid search](grid-search.md) results — sweep two axes, project a metric onto the resulting 2D grid, render.
 
 ## Python
 
 ```python
-import flox_py as flox
-from flox_py.report import write_heatmap
+import lrvx
+from lrvx.report import write_heatmap
 
-reg = flox.SymbolRegistry()
+reg = lrvx.SymbolRegistry()
 btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 
 
@@ -19,7 +19,7 @@ def factory(params):
     if fast >= slow:
         return {"sharpe_ratio": 0.0}
     # ... build BacktestRunner, run, return stats dict
-    bt = flox.BacktestRunner(reg, 0.0004, 10_000)
+    bt = lrvx.BacktestRunner(reg, 0.0004, 10_000)
     bt.set_strategy(_build(fast, slow))
     return bt.run_csv("data.csv", symbol="BTCUSDT")
 
@@ -27,7 +27,7 @@ def factory(params):
 fast_axis = [5.0, 10.0, 15.0, 20.0]
 slow_axis = [20.0, 30.0, 50.0, 100.0]
 
-gs = flox.GridSearch()
+gs = lrvx.GridSearch()
 gs.add_axis(fast_axis)
 gs.add_axis(slow_axis)
 gs.set_factory(factory)
@@ -54,13 +54,13 @@ write_heatmap(
 ## Node
 
 ```js
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 
 const z = [
   [0.5, -0.3, 1.2],
   [0.8, 1.1, -1.4],
 ];
-const html = flox.report.heatmapHtml(z, {
+const html = lrvx.report.heatmapHtml(z, {
   rowLabels: ['fast=5', 'fast=10'],
   colLabels: ['slow=20', 'slow=30', 'slow=50'],
   title: 'Sweep',

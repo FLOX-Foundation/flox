@@ -4,7 +4,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -17,7 +17,7 @@ const lvl = (price, qty) => ({ priceRaw: price, qtyRaw: qty });
 
 console.log('=== Encoder basics ===');
 {
-  const enc = new flox.DeltaBookEncoder({ anchorEvery: 10 });
+  const enc = new lrvx.DeltaBookEncoder({ anchorEvery: 10 });
   const first = enc.encode(1, [lvl(10000, 10), lvl(9999, 5)], [lvl(10001, 8)]);
   check(first.isDelta === false, 'first event is a snapshot');
   check(first.bids.length === 2 && first.asks.length === 1,
@@ -26,7 +26,7 @@ console.log('=== Encoder basics ===');
 
 console.log('=== Anchor cadence ===');
 {
-  const enc = new flox.DeltaBookEncoder({ anchorEvery: 3 });
+  const enc = new lrvx.DeltaBookEncoder({ anchorEvery: 3 });
   const bids = [lvl(10000, 10)];
   const asks = [lvl(10001, 5)];
   const kinds = [];
@@ -39,7 +39,7 @@ console.log('=== Anchor cadence ===');
 
 console.log('=== Delta records changes + removals ===');
 {
-  const enc = new flox.DeltaBookEncoder({ anchorEvery: 100 });
+  const enc = new lrvx.DeltaBookEncoder({ anchorEvery: 100 });
   enc.encode(1, [lvl(10000, 10), lvl(9999, 5)], [lvl(10001, 8)]);
   const next = enc.encode(1, [lvl(10000, 12)], [lvl(10001, 8), lvl(10002, 3)]);
   check(next.isDelta === true, 'second event is a delta');
@@ -53,8 +53,8 @@ console.log('=== Delta records changes + removals ===');
 
 console.log('=== Replayer reconstructs full snapshot ===');
 {
-  const enc = new flox.DeltaBookEncoder({ anchorEvery: 100 });
-  const rep = new flox.DeltaBookReplayer();
+  const enc = new lrvx.DeltaBookEncoder({ anchorEvery: 100 });
+  const rep = new lrvx.DeltaBookReplayer();
   const sequences = [
     [[lvl(10000, 10), lvl(9999, 5)], [lvl(10001, 8)]],
     [[lvl(10000, 12)], [lvl(10001, 8), lvl(10002, 3)]],

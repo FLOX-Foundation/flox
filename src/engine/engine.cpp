@@ -1,23 +1,23 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/engine/engine.h"
+#include "lrvx/engine/engine.h"
 
-#include "flox/log/log.h"
-#include "flox/util/base/time.h"
-#include "flox/util/memory/counting_resource.h"
-#include "flox/util/memory/large_arena.h"
-#include "flox/util/performance/memory_profile.h"
+#include "lrvx/log/log.h"
+#include "lrvx/util/base/time.h"
+#include "lrvx/util/memory/counting_resource.h"
+#include "lrvx/util/memory/large_arena.h"
+#include "lrvx/util/performance/memory_profile.h"
 
 #include <utility>
 
-namespace flox
+namespace lrvx
 {
 
 Engine::Engine(const EngineConfig& config, std::vector<std::unique_ptr<ISubsystem>> subsystems,
@@ -29,7 +29,7 @@ Engine::Engine(const EngineConfig& config, std::vector<std::unique_ptr<ISubsyste
 void Engine::start()
 {
   // First, before anything the engine owns runs. Every connector, aggregator
-  // and bar policy that turns a venue's wall-clock stamp into a FloxClock
+  // and bar policy that turns a venue's wall-clock stamp into a LrvxClock
   // TimePoint reads the process-global offset this establishes, and a
   // component started before it would convert its first messages through a
   // zero offset and the rest through the anchored one. Idempotent, so a
@@ -42,10 +42,10 @@ void Engine::start()
   memReport.hugeArenaMode = memory::LargeArena::aggregateMode();
   memReport.poolHeapAllocations = memory::CountingResource::totalAllocations();
   memReport.poolHeapBytes = memory::CountingResource::totalBytes();
-  FLOX_LOG_INFO(memReport.toString());
+  LRVX_LOG_INFO(memReport.toString());
   if (memReport.poolHeapAllocations > 0)
   {
-    FLOX_LOG_WARN("pool arenas fell back to the heap "
+    LRVX_LOG_WARN("pool arenas fell back to the heap "
                   << memReport.poolHeapAllocations << " time(s) ("
                   << memReport.poolHeapBytes
                   << "B): a pool's inline buffer is too small for its events. Size it at "
@@ -53,7 +53,7 @@ void Engine::start()
   }
   if (memReport.mlockRequested && !memReport.mlockApplied)
   {
-    FLOX_LOG_WARN("memory profile 'colo' requested but mlockall failed ("
+    LRVX_LOG_WARN("memory profile 'colo' requested but mlockall failed ("
                   << memReport.mlockError
                   << "); hot pages remain evictable. Check CAP_IPC_LOCK / ulimit -l.");
   }
@@ -92,4 +92,4 @@ void Engine::stop()
   }
 }
 
-}  // namespace flox
+}  // namespace lrvx

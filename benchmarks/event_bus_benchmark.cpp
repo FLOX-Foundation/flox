@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -14,12 +14,12 @@
 #include <thread>
 #include <vector>
 
-#include "flox/util/concurrency/thread_body.h"
-#include "flox/util/eventing/event_bus.h"
-#include "flox/util/eventing/wake_set.h"
-#include "flox/util/performance/busy_backoff.h"
+#include "lrvx/util/concurrency/thread_body.h"
+#include "lrvx/util/eventing/event_bus.h"
+#include "lrvx/util/eventing/wake_set.h"
+#include "lrvx/util/performance/busy_backoff.h"
 
-namespace flox
+namespace lrvx
 {
 
 struct BenchEvent
@@ -43,12 +43,12 @@ struct EventDispatcher<BenchEvent>
   }
 };
 
-}  // namespace flox
+}  // namespace lrvx
 
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 class NoOpListener : public BenchEvent::Listener
 {
@@ -85,13 +85,13 @@ class StampingListener : public BenchEvent::Listener
 
 static void BM_EventBus_PublishLatency(benchmark::State& state)
 {
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus;
   NoOpListener listener;
 
   bus.subscribe(&listener);
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
 
   for (auto _ : state)
   {
@@ -111,13 +111,13 @@ BENCHMARK(BM_EventBus_PublishLatency)->Iterations(1'000'000);
 
 static void BM_EventBus_SingleConsumerThroughput(benchmark::State& state)
 {
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus;
   NoOpListener listener;
 
   bus.subscribe(&listener);
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
   int64_t totalPublished = 0;
 
   for (auto _ : state)
@@ -133,7 +133,7 @@ static void BM_EventBus_SingleConsumerThroughput(benchmark::State& state)
   bus.stop();
 
   state.SetItemsProcessed(totalPublished);
-  state.SetBytesProcessed(totalPublished * sizeof(flox::BenchEvent));
+  state.SetBytesProcessed(totalPublished * sizeof(lrvx::BenchEvent));
 }
 BENCHMARK(BM_EventBus_SingleConsumerThroughput);
 
@@ -145,7 +145,7 @@ static void BM_EventBus_MultiConsumerThroughput(benchmark::State& state)
 {
   const int numConsumers = state.range(0);
 
-  flox::EventBus<flox::BenchEvent, 4096, 8> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 8> bus;
   std::vector<std::unique_ptr<NoOpListener>> listeners;
 
   for (int i = 0; i < numConsumers; ++i)
@@ -156,7 +156,7 @@ static void BM_EventBus_MultiConsumerThroughput(benchmark::State& state)
 
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
   int64_t totalPublished = 0;
 
   for (auto _ : state)
@@ -183,7 +183,7 @@ static void BM_EventBus_ConcurrentPublishers(benchmark::State& state)
 {
   const int numPublishers = state.range(0);
 
-  flox::EventBus<flox::BenchEvent, 8192, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 8192, 4> bus;
   NoOpListener listener;
 
   bus.subscribe(&listener);
@@ -197,7 +197,7 @@ static void BM_EventBus_ConcurrentPublishers(benchmark::State& state)
   {
     publishers.push_back(makeThread("bench.event_bus.publisher", [&bus, &running, &totalPublished]
                                     {
-      flox::BenchEvent event{};
+      lrvx::BenchEvent event{};
       while (running.load(std::memory_order_relaxed))
       {
         bus.publish(event);
@@ -230,13 +230,13 @@ BENCHMARK(BM_EventBus_ConcurrentPublishers)->Arg(1)->Arg(2)->Arg(4);
 
 static void BM_EventBus_TryPublishLatency(benchmark::State& state)
 {
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus;
   NoOpListener listener;
 
   bus.subscribe(&listener);
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
 
   for (auto _ : state)
   {
@@ -261,9 +261,9 @@ static void BM_EventBus_WrapAround(benchmark::State& state)
   const size_t bufferSize = state.range(0);
 
   // Use different buffer sizes
-  flox::EventBus<flox::BenchEvent, 256, 4> bus256;
-  flox::EventBus<flox::BenchEvent, 1024, 4> bus1024;
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus4096;
+  lrvx::EventBus<lrvx::BenchEvent, 256, 4> bus256;
+  lrvx::EventBus<lrvx::BenchEvent, 1024, 4> bus1024;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus4096;
 
   NoOpListener listener;
 
@@ -272,7 +272,7 @@ static void BM_EventBus_WrapAround(benchmark::State& state)
     bus256.subscribe(&listener);
     bus256.start();
 
-    flox::BenchEvent event{};
+    lrvx::BenchEvent event{};
     for (auto _ : state)
     {
       for (int i = 0; i < 1000; ++i)
@@ -288,7 +288,7 @@ static void BM_EventBus_WrapAround(benchmark::State& state)
     bus1024.subscribe(&listener);
     bus1024.start();
 
-    flox::BenchEvent event{};
+    lrvx::BenchEvent event{};
     for (auto _ : state)
     {
       for (int i = 0; i < 1000; ++i)
@@ -304,7 +304,7 @@ static void BM_EventBus_WrapAround(benchmark::State& state)
     bus4096.subscribe(&listener);
     bus4096.start();
 
-    flox::BenchEvent event{};
+    lrvx::BenchEvent event{};
     for (auto _ : state)
     {
       for (int i = 0; i < 1000; ++i)
@@ -326,13 +326,13 @@ BENCHMARK(BM_EventBus_WrapAround)->Arg(256)->Arg(1024)->Arg(4096);
 
 static void BM_EventBus_EndToEndLatency(benchmark::State& state)
 {
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus;
   NoOpListener listener;
 
   bus.subscribe(&listener);
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
 
   for (auto _ : state)
   {
@@ -353,15 +353,15 @@ BENCHMARK(BM_EventBus_EndToEndLatency)->Iterations(100'000);
 // buys with a burning core.
 // =============================================================================
 
-static void idleWakeLatency(benchmark::State& state, flox::ConsumerWaitMode mode)
+static void idleWakeLatency(benchmark::State& state, lrvx::ConsumerWaitMode mode)
 {
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus;
   StampingListener listener;
 
   bus.subscribe(&listener, /*required=*/true, mode);
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
   int64_t total = 0;
   int64_t worst = 0;
   int64_t n = 0;
@@ -395,7 +395,7 @@ static void idleWakeLatency(benchmark::State& state, flox::ConsumerWaitMode mode
 // lands, so this is what the burning core buys.
 static void BM_EventBus_IdleWakeLatency(benchmark::State& state)
 {
-  idleWakeLatency(state, flox::ConsumerWaitMode::ACTIVE);
+  idleWakeLatency(state, lrvx::ConsumerWaitMode::ACTIVE);
 }
 BENCHMARK(BM_EventBus_IdleWakeLatency)->Iterations(300)->UseRealTime();
 
@@ -404,7 +404,7 @@ BENCHMARK(BM_EventBus_IdleWakeLatency)->Iterations(300)->UseRealTime();
 // to look at before making parking anybody's default.
 static void BM_EventBus_IdleWakeLatency_Parked(benchmark::State& state)
 {
-  idleWakeLatency(state, flox::ConsumerWaitMode::PARKED);
+  idleWakeLatency(state, lrvx::ConsumerWaitMode::PARKED);
 }
 BENCHMARK(BM_EventBus_IdleWakeLatency_Parked)->Iterations(300)->UseRealTime();
 
@@ -423,10 +423,10 @@ BENCHMARK(BM_EventBus_IdleWakeLatency_Parked)->Iterations(300)->UseRealTime();
 
 static void fanoutWakeLatency(benchmark::State& state, bool useWakeSet)
 {
-  using FanBus = flox::EventBus<flox::BenchEvent, 4096, 4>;
+  using FanBus = lrvx::EventBus<lrvx::BenchEvent, 4096, 4>;
   const int nBuses = static_cast<int>(state.range(0));
 
-  flox::WakeSet set;
+  lrvx::WakeSet set;
   std::vector<std::unique_ptr<FanBus>> buses;
   std::vector<std::unique_ptr<StampingListener>> sinks;
   for (int b = 0; b < nBuses; ++b)
@@ -447,7 +447,7 @@ static void fanoutWakeLatency(benchmark::State& state, bool useWakeSet)
       "bench.event_bus.fanout.driver",
       [&buses, &set, &running, useWakeSet]
       {
-        flox::BusyBackoff backoff;
+        lrvx::BusyBackoff backoff;
         const auto pending = [&buses]
         {
           for (auto& bus : buses)
@@ -489,7 +489,7 @@ static void fanoutWakeLatency(benchmark::State& state, bool useWakeSet)
         }
       });
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
   int64_t total = 0;
   int64_t worst = 0;
   int64_t n = 0;
@@ -549,13 +549,13 @@ BENCHMARK(BM_EventBus_FanoutWakeLatency_WakeSet)->Arg(3)->Arg(16)->Iterations(30
 // active consumer and never wakes anybody.
 static void BM_EventBus_PublishLatency_ParkedConsumer(benchmark::State& state)
 {
-  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  lrvx::EventBus<lrvx::BenchEvent, 4096, 4> bus;
   NoOpListener listener;
 
-  bus.subscribe(&listener, /*required=*/true, flox::ConsumerWaitMode::PARKED);
+  bus.subscribe(&listener, /*required=*/true, lrvx::ConsumerWaitMode::PARKED);
   bus.start();
 
-  flox::BenchEvent event{};
+  lrvx::BenchEvent event{};
   for (auto _ : state)
   {
     bus.publish(event);

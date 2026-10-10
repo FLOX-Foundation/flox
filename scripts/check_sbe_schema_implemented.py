@@ -19,8 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS = {
     ROOT / "venue/schema/order-entry-sbe.xml": ROOT
-    / "venue/include/flox-venue/sbe_order_entry_codec.h",
-    ROOT / "venue/schema/md-sbe.xml": ROOT / "venue/include/flox-venue/sbe_md_codec.h",
+    / "venue/include/lrvx-venue/sbe_order_entry_codec.h",
+    ROOT / "venue/schema/md-sbe.xml": ROOT / "venue/include/lrvx-venue/sbe_md_codec.h",
 }
 NS = {"sbe": "http://fixprotocol.io/2016/sbe"}
 

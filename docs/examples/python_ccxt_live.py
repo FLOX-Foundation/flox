@@ -12,7 +12,7 @@ removing the dry-run guard.
 
 Usage::
 
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_ccxt_live.py
 
 Stop with Ctrl+C.
@@ -22,18 +22,18 @@ from __future__ import annotations
 import asyncio
 import os
 
-import flox_py as flox
-from flox_py.ccxt import CcxtBroker
+import lrvx
+from lrvx.ccxt import CcxtBroker
 
 
-DRY_RUN = os.environ.get("FLOX_LIVE", "0") != "1"
+DRY_RUN = os.environ.get("LRVX_LIVE", "0") != "1"
 
 
-class SMAStrategy(flox.Strategy):
+class SMAStrategy(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
         self.tick_count = 0
 
     def on_start(self):
@@ -72,7 +72,7 @@ class SMAStrategy(flox.Strategy):
 
 
 async def main():
-    # For real order placement, set the env var FLOX_LIVE=1 and pass
+    # For real order placement, set the env var LRVX_LIVE=1 and pass
     # api_key / secret / sandbox=True. Keep DRY_RUN otherwise.
     broker = CcxtBroker(
         "binance",

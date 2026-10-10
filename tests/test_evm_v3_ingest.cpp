@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/concentrated_liquidity_curve.h"
-#include "flox/connector/amm_dex_connector.h"
-#include "flox/replay/pool_state_tape.h"
+#include "lrvx/backtest/concentrated_liquidity_curve.h"
+#include "lrvx/connector/amm_dex_connector.h"
+#include "lrvx/replay/pool_state_tape.h"
 
 #include <gtest/gtest.h>
 
@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

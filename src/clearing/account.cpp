@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/clearing/account.h"
+#include "lrvx/clearing/account.h"
 
 #include <cctype>
 #include <climits>
 
-namespace flox
+namespace lrvx
 {
 
 namespace
@@ -303,4 +303,4 @@ Volume Account::crossHeadroom(double tierFraction) const
   return Volume::fromRaw(checkedSubI64(checkedAddI64(_equity.raw(), upnl), mmReq));
 }
 
-}  // namespace flox
+}  // namespace lrvx

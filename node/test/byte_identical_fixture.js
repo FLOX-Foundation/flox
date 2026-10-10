@@ -1,11 +1,11 @@
-// Produce the same deterministic .floxrun directory through the NAPI
-// binding as scripts/floxrun_byte_identical_fixture.py. The
+// Produce the same deterministic .lrvxrun directory through the NAPI
+// binding as scripts/lrvxrun_byte_identical_fixture.py. The
 // cross-binding gate hashes the segment files and asserts they match.
 
-const flox = require('..');
+const lrvx = require('..');
 
 function writeFixture(outDir) {
-  const rec = new flox.TraceRecorder({
+  const rec = new lrvx.TraceRecorder({
     path: outDir,
     strategyId: 'byte-identical-gate',
     strategyHash: 'sha256:fixture',

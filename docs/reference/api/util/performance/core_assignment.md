@@ -1,10 +1,10 @@
 # CoreAssignmentManager
 
-`CoreAssignmentManager` is responsible for assigning CPU cores to critical components in the FLOX Engine to optimize performance, minimize contention, and leverage CPU topology such as isolated cores and NUMA awareness.
+`CoreAssignmentManager` is responsible for assigning CPU cores to critical components in the lrvx Engine to optimize performance, minimize contention, and leverage CPU topology such as isolated cores and NUMA awareness.
 
 ## Overview
 
-FLOX supports assigning cores to the following critical components:
+lrvx supports assigning cores to the following critical components:
 
 - `marketData` — Market data collection and processing
 - `execution` — Order routing and order execution

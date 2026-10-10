@@ -1,8 +1,8 @@
 # Strategy API
 
-Event-driven strategy classes for Python. Mirrors C++ `flox::Strategy`.
+Event-driven strategy classes for Python. Mirrors C++ `lrvx::Strategy`.
 
-## Class: `flox_py.Symbol`
+## Class: `lrvx.Symbol`
 
 Returned by `SymbolRegistry.add_symbol`. Works transparently as an `int` wherever a symbol ID is expected.
 
@@ -18,10 +18,10 @@ int(btc)   # 1
 print(btc) # Symbol(binance:BTCUSDT, id=1)
 ```
 
-## Class: `flox_py.SymbolRegistry`
+## Class: `lrvx.SymbolRegistry`
 
 ```python
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 ```
 
@@ -30,7 +30,7 @@ btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 | `add_symbol(exchange, symbol, tick_size=0.01)` | `Symbol` | Register a symbol and return its `Symbol` object |
 | `symbol_count()` | `int` | Number of registered symbols |
 
-## Class: `flox_py.Strategy`
+## Class: `lrvx.Strategy`
 
 ### Constructor
 
@@ -177,7 +177,7 @@ These methods use the first registered symbol when `symbol` is omitted. `symbol`
 6=BpsRange. `param` is the time-bar interval in nanoseconds, or the tick /
 volume / range threshold the aggregator was configured with.
 
-## Class: `flox_py.SymbolContext`
+## Class: `lrvx.SymbolContext`
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -201,7 +201,7 @@ none, and the field is `NaN` rather than a number. Check it with
 `PositionTracker` and `MultiModePositionTracker`, always report one while a
 position is open.
 
-## Class: `flox_py.TradeData`
+## Class: `lrvx.TradeData`
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -214,13 +214,13 @@ position is open.
 | `timestamp_ns` | `int` | Local timestamp (nanoseconds) |
 | `exchange_ts_ns` | `int` | Exchange timestamp (nanoseconds) |
 
-## Class: `flox_py.Runner`
+## Class: `lrvx.Runner`
 
 Feeds market data into strategies and routes emitted signals to a callback.
 
 ```python
-runner = flox.Runner(registry, on_signal)                  # synchronous
-runner = flox.Runner(registry, on_signal, threaded=True)   # Disruptor background thread
+runner = lrvx.Runner(registry, on_signal)                  # synchronous
+runner = lrvx.Runner(registry, on_signal, threaded=True)   # Disruptor background thread
 
 runner.add_strategy(strategy)
 runner.start()
@@ -258,7 +258,7 @@ runner.stop()
 
 | Method | Description |
 |--------|-------------|
-| `attach_trace_recorder(recorder)` | Auto-capture every signal into a `.floxrun` recorder |
+| `attach_trace_recorder(recorder)` | Auto-capture every signal into a `.lrvxrun` recorder |
 | `set_trace_feed_ts_ns(feed_ts_ns)` | Stamp every recorded signal with this `feed_ts_ns` until the next call |
 | `trace_order_event(order_id, parent_signal_id, symbol_id, event_kind, side, order_type, price, qty, flags=0)` | Mirror an order event into the attached recorder |
 | `trace_fill(order_id, fill_id, price, qty, fee, symbol_id, side, liquidity=0)` | Mirror a fill into the attached recorder |
@@ -281,12 +281,12 @@ Passed to the `on_signal` callback.
 | `new_price` | `float` | Replacement price on a modify |
 | `new_quantity` | `float` | Replacement quantity on a modify |
 
-## Class: `flox_py.BacktestRunner`
+## Class: `lrvx.BacktestRunner`
 
 Runs a strategy against historical CSV data.
 
 ```python
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(strategy)
 
 stats = bt.run_csv("data.csv")             # auto-detects symbol from registry
@@ -299,8 +299,8 @@ stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
 | `run_csv(path, symbol='')` | Run backtest against a CSV file, returns stats dict |
 | `run_ohlcv(ts, close, symbol='')` | Replay close-only bars as synthetic trades (`Strategy.on_trade` fires) |
 | `run_bars(start_time_ns, end_time_ns, open, high, low, close, volume, symbol='', bar_type=0, bar_type_param=0)` | Replay full OHLCV bars (`Strategy.on_bar` fires) |
-| `run_tape(path)` | Run against a `.floxlog` tape directory — the canonical recorded artifact `flox tape record` writes. Same stats shape as `run_csv` |
-| `run_tapes(paths)` | Run against N `.floxlog` tapes merged on read. Symbols are rekeyed by `(metadata.exchange, name)`, so two captures of the same venue/symbol collapse and two venues stay distinct. `run_tapes([t])` equals `run_tape(t)` |
+| `run_tape(path)` | Run against a `.lrvx` tape directory — the canonical recorded artifact `lrvx tape record` writes. Same stats shape as `run_csv` |
+| `run_tapes(paths)` | Run against N `.lrvx` tapes merged on read. Symbols are rekeyed by `(metadata.exchange, name)`, so two captures of the same venue/symbol collapse and two venues stay distinct. `run_tapes([t])` equals `run_tape(t)` |
 | `equity_curve()` | Equity curve from the most recent run, as a dict of numpy arrays (`timestamp_ns`, `equity`, `drawdown_pct`) |
 | `trades()` | Closed trades from the most recent run, as a dict of numpy arrays (`symbol`, `side`, `entry_price`, `exit_price`, `quantity`, `pnl`, `fee`, `entry_time_ns`, `exit_time_ns`) |
 
@@ -333,16 +333,16 @@ Each setter takes `None` to detach.
 ## Example
 
 ```python
-import flox_py as flox
+import lrvx
 
-registry = flox.SymbolRegistry()
+registry = lrvx.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-class SMAcross(flox.Strategy):
+class SMAcross(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
 
     def on_trade(self, ctx, trade):
         f = self.fast.update(trade.price)
@@ -358,12 +358,12 @@ class SMAcross(flox.Strategy):
 def on_signal(sig):
     print(sig.side, sig.order_type, sig.quantity)
 
-runner = flox.Runner(registry, on_signal)
+runner = lrvx.Runner(registry, on_signal)
 runner.add_strategy(SMAcross([btc]))
 runner.start()
 
 # Backtest
-bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMAcross([btc]))
 stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")
 print(stats)

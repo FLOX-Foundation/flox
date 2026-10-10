@@ -18,7 +18,7 @@ Any type with `onTrade(const TradeEvent&)` and/or `onBar(const BarEvent&)`
 works. No base class:
 
 ```cpp
-#include "flox/backtest/strategy_pump.h"
+#include "lrvx/backtest/strategy_pump.h"
 
 struct EmaCross
 {
@@ -27,7 +27,7 @@ struct EmaCross
   int64_t flips = 0;
   int64_t lastSignal = 0;
 
-  void onTrade(const flox::TradeEvent& ev)
+  void onTrade(const lrvx::TradeEvent& ev)
   {
     const int64_t p = ev.trade.price.raw();
     emaFast += (p - emaFast) >> 4;
@@ -45,22 +45,22 @@ struct EmaCross
 ## Run it over events in memory
 
 ```cpp
-std::vector<flox::TradeEvent> tape = loadTape();
+std::vector<lrvx::TradeEvent> tape = loadTape();
 
 EmaCross strategy;
-flox::StrategyPump<EmaCross> pump(strategy);
+lrvx::StrategyPump<EmaCross> pump(strategy);
 const auto stats = pump.runTrades(tape);
 // stats.trades == tape.size(); results are in the strategy's own fields
 ```
 
 `runBars` does the same for a `std::span<const BarEvent>`.
 
-## Run it over a recorded .floxlog tape
+## Run it over a recorded .lrvx tape
 
 ```cpp
-auto reader = flox::replay::createMultiSegmentReader(tapeDir);
+auto reader = lrvx::replay::createMultiSegmentReader(tapeDir);
 EmaCross strategy;
-flox::StrategyPump<EmaCross> pump(strategy);
+lrvx::StrategyPump<EmaCross> pump(strategy);
 const auto stats = pump.run(*reader);
 ```
 
@@ -80,7 +80,7 @@ The pump holds a reference, so a sweep is a plain loop:
 for (int fastShift = 2; fastShift <= 6; ++fastShift)
 {
   MyParamSignal s{fastShift};
-  flox::StrategyPump<MyParamSignal> pump(s);
+  lrvx::StrategyPump<MyParamSignal> pump(s);
   pump.runTrades(tape);
   record(fastShift, s.score());
 }

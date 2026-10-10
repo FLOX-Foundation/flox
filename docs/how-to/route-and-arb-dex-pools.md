@@ -1,12 +1,12 @@
 # Route, arb, and ingest DEX pools
 
-`flox_py.dex` prices one pool. The desk tools work across pools: route a notional to the
+`lrvx.dex` prices one pool. The desk tools work across pools: route a notional to the
 venue that fills it best, size the arb between two pools, and read a live pool (or its
 swap history) straight off the chain into the comfort layer. Everything stays wei-exact —
 routing and arb price through `quote`, which leaves the pools untouched.
 
 ```python
-from flox_py import dex
+from lrvx import dex
 
 weth, usdc = dex.Token("WETH", 18), dex.Token("USDC", 6)
 uni = dex.UniswapV2(weth, usdc, reserves=("1000 WETH", "2_000_000 USDC"), fee="0.30%")

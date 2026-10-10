@@ -11,13 +11,13 @@
  */
 
 const path = require('path');
-const flox = require('../../node');
+const lrvx = require('../../node');
 
 const DATA = path.join(__dirname, 'data', 'btcusdt_1m.csv');
 
 // ── Symbol registry (shared across all modes) ──────────────────────────
 
-const registry = new flox.SymbolRegistry();
+const registry = new lrvx.SymbolRegistry();
 const btc = registry.addSymbol('binance', 'BTCUSDT', 0.01);
 
 // ── Strategy factory — plain JS object with callbacks ─────────────────
@@ -27,8 +27,8 @@ const btc = registry.addSymbol('binance', 'BTCUSDT', 0.01);
 // In live modes it routes orders to the exchange.
 
 function makeSMAStrategy() {
-  const fast = new flox.SMA(10);
-  const slow  = new flox.SMA(30);
+  const fast = new lrvx.SMA(10);
+  const slow  = new lrvx.SMA(30);
   let tradeCount = 0;
 
   return {
@@ -62,7 +62,7 @@ function makeSMAStrategy() {
 
 console.log('── Backtest ──────────────────────────────────────────────────────');
 
-const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
+const bt = new lrvx.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(makeSMAStrategy());
 const stats = bt.runCsv(DATA, 'BTCUSDT');
 
@@ -81,7 +81,7 @@ if (stats) {
 console.log('\n── Runner (live, sync) ───────────────────────────────────────────');
 
 const liveSigs = [];
-const runner = new flox.Runner(registry, sig => liveSigs.push(sig));
+const runner = new lrvx.Runner(registry, sig => liveSigs.push(sig));
 runner.addStrategy(makeSMAStrategy());
 runner.start();
 
@@ -103,7 +103,7 @@ for (const s of liveSigs.slice(0, 3)) {
 console.log('\n── Runner (threaded=true) ────────────────────────────────────────');
 
 const engineSigs = [];
-const threaded = new flox.Runner(registry, sig => engineSigs.push(sig), true);
+const threaded = new lrvx.Runner(registry, sig => engineSigs.push(sig), true);
 threaded.addStrategy(makeSMAStrategy());
 threaded.start();
 

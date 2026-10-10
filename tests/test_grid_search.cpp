@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/backtest_optimizer.h"
-#include "flox/backtest/bar_replay_source.h"
+#include "lrvx/backtest/backtest_optimizer.h"
+#include "lrvx/backtest/bar_replay_source.h"
 
 #include <gtest/gtest.h>
 #include <filesystem>
 
-using namespace flox;
+using namespace lrvx;
 
 // Test parameter struct
 struct TestParams
@@ -51,7 +51,7 @@ class GridSearchTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_grid_search_test";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_grid_search_test";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }

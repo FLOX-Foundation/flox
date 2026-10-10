@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,24 +15,24 @@
 #include <thread>
 #include <vector>
 
-#include "flox/ml/onnx_inference.h"
+#include "lrvx/ml/onnx_inference.h"
 
-using flox::ml::BudgetedInference;
-using flox::ml::OnnxModel;
-using flox::ml::OnnxSidecar;
+using lrvx::ml::BudgetedInference;
+using lrvx::ml::OnnxModel;
+using lrvx::ml::OnnxSidecar;
 
 namespace
 {
 
 // Fixture: y = 2*x0 + 3*x1 + 0.5 (tests/fixtures/linear2.onnx). The path is
 // injected by CMake so the test works from any build directory.
-#ifndef FLOX_TEST_FIXTURE_DIR
-#define FLOX_TEST_FIXTURE_DIR "tests/fixtures"
+#ifndef LRVX_TEST_FIXTURE_DIR
+#define LRVX_TEST_FIXTURE_DIR "tests/fixtures"
 #endif
 
 std::string modelPath()
 {
-  return std::string(FLOX_TEST_FIXTURE_DIR) + "/linear2.onnx";
+  return std::string(LRVX_TEST_FIXTURE_DIR) + "/linear2.onnx";
 }
 
 }  // namespace
@@ -134,24 +134,24 @@ TEST(OnnxSidecar, SubmitRejectsFeatureCountMismatch)
 
 TEST(OnnxGraphNode, BatchColumnMatchesModelRowByRow)
 {
-  using flox::indicator::IndicatorGraph;
+  using lrvx::indicator::IndicatorGraph;
 
   IndicatorGraph graph;
-  std::vector<flox::Bar> bars(50);
+  std::vector<lrvx::Bar> bars(50);
   std::vector<double> close(50);
   for (size_t i = 0; i < bars.size(); ++i)
   {
     close[i] = 100.0 + double(i);
-    bars[i].open = flox::Price::fromDouble(close[i]);
-    bars[i].high = flox::Price::fromDouble(close[i] + 1);
-    bars[i].low = flox::Price::fromDouble(close[i] - 1);
-    bars[i].close = flox::Price::fromDouble(close[i]);
-    bars[i].volume = flox::Volume::fromDouble(1.0);
+    bars[i].open = lrvx::Price::fromDouble(close[i]);
+    bars[i].high = lrvx::Price::fromDouble(close[i] + 1);
+    bars[i].low = lrvx::Price::fromDouble(close[i] - 1);
+    bars[i].close = lrvx::Price::fromDouble(close[i]);
+    bars[i].volume = lrvx::Volume::fromDouble(1.0);
   }
   graph.setBars(0, bars);
 
   graph.addNode("sma_3", {},
-                [](IndicatorGraph& g, flox::SymbolId sym)
+                [](IndicatorGraph& g, lrvx::SymbolId sym)
                 {
                   const auto& c = g.close(sym);
                   std::vector<double> out(c.size(), std::numeric_limits<double>::quiet_NaN());
@@ -162,11 +162,11 @@ TEST(OnnxGraphNode, BatchColumnMatchesModelRowByRow)
                   return out;
                 });
   graph.addNode("close_id", {},
-                [](IndicatorGraph& g, flox::SymbolId sym)
+                [](IndicatorGraph& g, lrvx::SymbolId sym)
                 { return std::vector<double>(g.close(sym).begin(), g.close(sym).end()); });
 
   auto model = std::make_shared<OnnxModel>(modelPath());
-  flox::ml::registerOnnxNode(graph, "alpha", {"close_id", "sma_3"}, model);
+  lrvx::ml::registerOnnxNode(graph, "alpha", {"close_id", "sma_3"}, model);
 
   const auto& col = graph.require(0, "alpha");
   ASSERT_EQ(col.size(), bars.size());

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -23,14 +23,14 @@
  * and leaves the behaviour to the cases above it, where a wrong answer names
  * itself instead of arriving as a missing event twelve calls later.
  */
-#include "flox-venue/engine/fees.h"
-#include "flox-venue/engine/integrity.h"
-#include "flox-venue/engine/oco.h"
-#include "flox-venue/engine/quote.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/messages.h"
+#include "lrvx-venue/engine/fees.h"
+#include "lrvx-venue/engine/integrity.h"
+#include "lrvx-venue/engine/oco.h"
+#include "lrvx-venue/engine/quote.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/messages.h"
 
 #include <gtest/gtest.h>
 
@@ -40,12 +40,12 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::engine::Fees;
-using flox::venue::engine::Integrity;
-using flox::venue::engine::OcoBook;
-using flox::venue::engine::QuoteLegs;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::engine::Fees;
+using lrvx::venue::engine::Integrity;
+using lrvx::venue::engine::OcoBook;
+using lrvx::venue::engine::QuoteLegs;
 
 namespace
 {
@@ -100,9 +100,9 @@ Trade print(double price, double quantity, uint64_t makerAcct = 1, uint64_t take
 
 // A flat schedule: one tier, from the beginning of time, maker and taker
 // priced independently so a test that swaps the two is a failing test.
-flox::FeeSchedule schedule(double makerBps, double takerBps)
+lrvx::FeeSchedule schedule(double makerBps, double takerBps)
 {
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, makerBps, takerBps);
   return fs;
 }

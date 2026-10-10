@@ -2,16 +2,16 @@
 
 Each tape is per-exchange. `exchange_id` lives in the manifest,
 `recv_ts` comes from one writer process, and failure isolation is
-per-venue. To let a strategy see N venues at once, FLOX merges them
-*on read*, not on write. `.floxlog` format does not change.
+per-venue. To let a strategy see N venues at once, lrvx merges them
+*on read*, not on write. `.lrvx` format does not change.
 
 Three consumption paths share the same `MergedTapeReader` primitive:
 
-- [`flox_py.tape.replay_tapes`](#python-replay) is a callback API for
+- [`lrvx.tape.replay_tapes`](#python-replay) is a callback API for
   ad-hoc cross-venue scripts.
-- [`flox_py.MergedTapeReader`](#python-direct) has the DataReader
+- [`lrvx.MergedTapeReader`](#python-direct) has the DataReader
   shape and is the right fit for bulk analytics.
-- [`flox tape view path1 path2 …`](#cli-view) renders N tapes
+- [`lrvx tape view path1 path2 …`](#cli-view) renders N tapes
   side-by-side in the replay viewer.
 
 ## Symbol identity
@@ -33,7 +33,7 @@ explicitly so the merge has something to key on:
 
 === "Python"
     ```python
-    hook = flox.BinaryLogRecorderHook(
+    hook = lrvx.BinaryLogRecorderHook(
         "tapes/bybit-btc",
         exchange_name="bybit",
         instrument_type="perpetual",
@@ -42,7 +42,7 @@ explicitly so the merge has something to key on:
 
 === "Node.js"
     ```javascript
-    const hook = new flox.BinaryLogRecorderHook(
+    const hook = new lrvx.BinaryLogRecorderHook(
         "tapes/bybit-btc", 256, 0, "none", "bybit", "perpetual");
     ```
 
@@ -74,7 +74,7 @@ the same `(exchange, name)` and their time ranges intersect:
 ## <a name="python-replay"></a>Python: `replay_tapes` callback API
 
 ```python
-from flox_py import tape
+from lrvx import tape
 
 def on_trade(ts_ns, global_id, price, qty, side):
     print(f"  trade {ts_ns} sym={global_id} {price:.2f}@{qty}")
@@ -101,9 +101,9 @@ inputs is empty (typo in path, recording crashed before any events).
 ## <a name="python-direct"></a>Python: `MergedTapeReader` direct API
 
 ```python
-import flox_py
+import lrvx
 
-reader = flox_py.MergedTapeReader(
+reader = lrvx.MergedTapeReader(
     ["tapes/bybit-btc", "tapes/binance-btc"],
     from_ns=1_700_000_000_000_000_000,   # optional time filter
     to_ns=None,
@@ -158,8 +158,8 @@ A two-line strategy that watches the spread between bybit and binance
 BTC and prints when it exceeds 5 bps:
 
 ```python
-import flox_py
-from flox_py import tape
+import lrvx
+from lrvx import tape
 
 last = {1: None, 2: None}      # global_id → last price
 def on_trade(ts_ns, sym, price, qty, side):
@@ -180,10 +180,10 @@ For a real backtest, hand the merged stream to a `BacktestRunner`
 via `bt.run_tapes([t1, t2])`. Mirrors `bt.run_tape(t)`: single-tape
 input round-trips identically.
 
-## <a name="cli-view"></a>CLI: `flox tape view`
+## <a name="cli-view"></a>CLI: `lrvx tape view`
 
 ```bash
-flox tape view tapes/bybit-btc tapes/binance-btc
+lrvx tape view tapes/bybit-btc tapes/binance-btc
 ```
 
 Opens the replay viewer pre-loaded with both tapes merged into one
@@ -191,7 +191,7 @@ synthetic stream. Each global symbol gets its own colour on the
 price chart.
 
 Under the hood the CLI materialises the merge into a fresh
-synthetic `.floxlog` inside the per-session temp dir, rekeyed to
+synthetic `.lrvx` inside the per-session temp dir, rekeyed to
 global symbol ids, and points the existing single-tape viewer at it.
 This is the v1 path. The follow-up plan is a streaming `/merge`
 HTTP endpoint that the SPA reads directly, with a multi-venue legend
@@ -207,7 +207,7 @@ Limitations:
 
 ## See also
 
-- [Spec: floxlog format](../spec/floxlog.md) for the per-tape on-disk
+- [Spec: lrvx format](../spec/lrvx.md) for the per-tape on-disk
   shape.
 - [Record and replay tapes](tape-record.md) for capturing the input
   tapes.

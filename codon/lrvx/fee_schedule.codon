@@ -1,0 +1,89 @@
+# Tiered maker/taker fee ladder for Codon strategies.
+# Mirrors include/lrvx/backtest/fee_schedule.h.
+
+# The C ABI handshake runs when this module is imported: see
+# lrvx/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from lrvx.abi import check_abi_version
+
+from C import lrvx_fee_schedule_create() -> cobj
+from C import lrvx_fee_schedule_destroy(cobj)
+from C import lrvx_fee_schedule_add_tier(cobj, f64, f64, f64)
+from C import lrvx_fee_schedule_load_profile(cobj, cobj) -> i32
+from C import lrvx_fee_schedule_record_fill(cobj, i64, f64)
+from C import lrvx_fee_schedule_fee_for(cobj, i64, f64, u8) -> f64
+from C import lrvx_fee_schedule_current_tier(cobj) -> u32
+from C import lrvx_fee_schedule_rolling_notional(cobj) -> f64
+from C import lrvx_fee_schedule_tier_transitions(cobj, cobj, u32) -> u32
+from C import lrvx_fee_schedule_reset_rolling(cobj)
+from C import lrvx_fee_schedule_bind_account(cobj, cobj)
+from C import lrvx_fee_schedule_clear_account_binding(cobj)
+
+
+def _cstr(s: str) -> cobj:
+    # `internal.gc.sys_alloc` does not exist in Codon 0.19.6, so this whole
+    # function failed to compile and took every method that calls it with it.
+    # run_trace.codon has always used the plain Ptr[byte] allocation.
+    n = len(s)
+    buf = Ptr[byte](n + 1)
+    for i in range(n):
+        buf[i] = byte(int(s.ptr[i]))
+    buf[n] = byte(0)
+    return cobj(buf)
+
+
+class FeeSchedule:
+    """Volume-tiered maker/taker fee ladder. Add tiers (or load a canned
+    profile), call record_fill on every fill, query fee_for to compute
+    the fee for a new fill at the active tier."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = lrvx_fee_schedule_create()
+
+    def close(self):
+        if self._h != cobj():
+            lrvx_fee_schedule_destroy(self._h)
+            self._h = cobj()
+
+    def add_tier(self, min_notional_30d: float, maker_bps: float, taker_bps: float):
+        lrvx_fee_schedule_add_tier(self._h, f64(min_notional_30d),
+                                    f64(maker_bps), f64(taker_bps))
+
+    def load_profile(self, name: str):
+        """name: binance_um_futures | bybit_linear | okx_swap | deribit."""
+        if int(lrvx_fee_schedule_load_profile(self._h, _cstr(name))) == 0:
+            raise ValueError("unknown fee schedule profile: " + name)
+    def record_fill(self, ts_ns: int, notional: float):
+        lrvx_fee_schedule_record_fill(self._h, i64(ts_ns), f64(notional))
+
+    def fee_for(self, ts_ns: int, notional: float, is_maker: bool) -> float:
+        return float(lrvx_fee_schedule_fee_for(
+            self._h, i64(ts_ns), f64(notional), u8(1 if is_maker else 0)))
+
+    def current_tier_index(self) -> int:
+        return int(lrvx_fee_schedule_current_tier(self._h))
+
+    def rolling_notional_30d(self) -> float:
+        return float(lrvx_fee_schedule_rolling_notional(self._h))
+
+    def tier_transition_ts_ns(self) -> List[int]:
+        n = int(lrvx_fee_schedule_tier_transitions(self._h, cobj(), u32(0)))
+        if n == 0:
+            return []
+        buf = [i64(0)] * n
+        lrvx_fee_schedule_tier_transitions(self._h, cobj(buf.arr.ptr), u32(n))
+        return [int(buf[i]) for i in range(n)]
+
+    def reset_rolling(self):
+        lrvx_fee_schedule_reset_rolling(self._h)
+
+    def bind_account(self, account):
+        """Bind an Account so 30d rolling notional reads from the
+        account's aggregate counter instead of this schedule's
+        internal one. Pass an Account from lrvx.backtest."""
+        lrvx_fee_schedule_bind_account(self._h, account._h)
+
+    def clear_account_binding(self):
+        lrvx_fee_schedule_clear_account_binding(self._h)

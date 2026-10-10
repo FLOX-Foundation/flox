@@ -1,6 +1,6 @@
 # Smoke test: targets module compiles + computes against the C API.
 
-from flox.targets import future_return, future_ctc_volatility, future_linear_slope
+from lrvx.targets import future_return, future_ctc_volatility, future_linear_slope
 
 
 def check(label: str, ok: bool):

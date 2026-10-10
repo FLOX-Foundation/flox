@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/util/base/math.h"
+#include "lrvx/util/base/math.h"
 
 #include <gtest/gtest.h>
 
@@ -15,11 +15,11 @@
 #include <random>
 #include <vector>
 
-using flox::math::make_fastdiv64;
-using flox::math::sdiv_ceil;
-using flox::math::sdiv_floor;
-using flox::math::sdiv_round_nearest;
-using flox::math::udiv_fast;
+using lrvx::math::make_fastdiv64;
+using lrvx::math::sdiv_ceil;
+using lrvx::math::sdiv_floor;
+using lrvx::math::sdiv_round_nearest;
+using lrvx::math::udiv_fast;
 
 namespace
 {

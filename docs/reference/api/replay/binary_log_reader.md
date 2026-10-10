@@ -59,12 +59,12 @@ public:
 
 | Field      | Type                    | Description                              |
 |------------|-------------------------|------------------------------------------|
-| data_dir   | `filesystem::path`      | Directory containing `.floxlog` files    |
+| data_dir   | `filesystem::path`      | Directory containing `.lrvx` files    |
 | from_ns    | `optional<int64_t>`     | Start timestamp filter (inclusive)       |
 | to_ns      | `optional<int64_t>`     | End timestamp filter (inclusive)         |
 | symbols    | `set<uint32_t>`         | Symbol IDs to include (empty = all)      |
 | verify_crc | `bool`                  | Verify CRC32 checksums (default: true)   |
-| reorder_window_ns | `int64_t`        | Bounded reorder buffer, default 10 s. Events arriving more than this far behind the emit cursor cannot be placed in order any more, so the reader throws `FloxError` with the observed delta. The default covers exchange-WS jitter and the 99th percentile of reconnect-induced cross-block inversions on real tapes. Memory bound is roughly `reorder_window_ns x peak_event_rate x sizeof(ReplayEvent)` — about 36 MB at 10 s and a 10k ev/s burst |
+| reorder_window_ns | `int64_t`        | Bounded reorder buffer, default 10 s. Events arriving more than this far behind the emit cursor cannot be placed in order any more, so the reader throws `LrvxError` with the observed delta. The default covers exchange-WS jitter and the 99th percentile of reconnect-induced cross-block inversions on real tapes. Memory bound is roughly `reorder_window_ns x peak_event_rate x sizeof(ReplayEvent)` — about 36 MB at 10 s and a 10k ev/s burst |
 
 ## Core Methods
 
@@ -248,7 +248,7 @@ For legacy segments without the flag, all events in the segment are buffered and
 * Compressed segments (LZ4) are transparently decompressed.
 * Seeking uses segment indexes when available for O(log n) lookup.
 * The callback returning `false` stops iteration early.
-* File extension is `.floxlog`.
+* File extension is `.lrvx`.
 
 ## Live-tail safety
 

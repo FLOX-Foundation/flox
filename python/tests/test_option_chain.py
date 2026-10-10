@@ -23,7 +23,7 @@ build_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'build', 'python
 if os.path.isdir(build_dir):
     sys.path.insert(0, os.path.abspath(build_dir))
 
-from flox_py.archives import deribit
+from lrvx.archives import deribit
 
 _CSV_HEADER = ("trade_id,timestamp_ms,instrument,side,price,amount,"
                "mark_price,iv,index_price\n")
@@ -87,10 +87,10 @@ class OptionChainTests(unittest.TestCase):
         self.assertEqual(mar_calls[0].instrument, "BTC-29MAR24-50000-C")
 
         # get() resolves a single contract and its tape is readable.
-        import flox_py
+        import lrvx
         c = chain.get(date(2024, 3, 29), 50000.0, "P")
         self.assertIsNotNone(c)
-        quotes = flox_py.DataReader(str(c.tape)).read_option_quotes_from(0)
+        quotes = lrvx.DataReader(str(c.tape)).read_option_quotes_from(0)
         self.assertEqual(quotes.size, 1)
         self.assertAlmostEqual(quotes["iv_raw"][0] / 1e8, 0.60, places=6)
 

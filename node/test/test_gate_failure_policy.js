@@ -37,7 +37,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 // The child process re-runs the scenarios only to prove the process
 // survives them, so it keeps its verdicts to itself.
@@ -63,12 +63,12 @@ const GATES = [
 // trade, with the gate under test attached and an executor watching for
 // anything that gets past it.
 function scenario(setter, method, impl) {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
   const signals = [];
   const submits = [];
   const emitErrors = [];
-  const runner = new flox.Runner(reg, sig => signals.push(sig), false);
+  const runner = new lrvx.Runner(reg, sig => signals.push(sig), false);
 
   let fired = false;
   runner.addStrategy({

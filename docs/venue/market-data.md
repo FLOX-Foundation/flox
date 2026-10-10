@@ -16,7 +16,7 @@ MatchingEngine<MatchingBook> venue(cfg, [&](const OutboundEvent& e)
                                      ledgerOrMetrics(e);
                                    });
 
-md.book();   // flox::NLevelOrderBook kept in step with the venue book
+md.book();   // lrvx::NLevelOrderBook kept in step with the venue book
 ```
 
 ## Messages
@@ -93,7 +93,7 @@ feed that went quiet, and never sees a repeat for a state that did not change.
 | `Closed` | the session is closed; new orders rejected, the book stands | 0 |
 | `Delisted` | withdrawn from trading, with no scheduled return; the book was pulled | 0 |
 
-The transitions between them are one table in `flox-venue/engine/session.h`,
+The transitions between them are one table in `lrvx-venue/engine/session.h`,
 written out in [matching.md](matching.md#the-session-automaton).
 
 `TradingStatusReason` says why: `Administrative` (an operator `AdminCmd`),
@@ -560,8 +560,8 @@ aggregate.
 
 ## Depth is the aggregate, kept in step
 
-The publisher maintains a `flox::NLevelOrderBook`, the same aggregate book
-type strategies consume elsewhere in FLOX, so market-data depth and the
+The publisher maintains a `lrvx::NLevelOrderBook`, the same aggregate book
+type strategies consume elsewhere in lrvx, so market-data depth and the
 venue's internal order-level book stay in agreement. A test drives 300k
 commands and periodically compares the publisher's full depth against the
 engine's book.
@@ -624,6 +624,6 @@ hostile input alongside the FIX / SBE order-entry / REST parsers.
 
 `tape_recorder.h` records trade prints only: it filters `Trade` events out of
 the outbound stream and persists them through `BinaryLogWriter`, the same
-binary format the rest of FLOX reads. The trade tape a venue produces can be
-replayed by ordinary FLOX tooling; the non-trade events (adds, cancels,
+binary format the rest of lrvx reads. The trade tape a venue produces can be
+replayed by ordinary lrvx tooling; the non-trade events (adds, cancels,
 replaces) are not on the tape.

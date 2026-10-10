@@ -68,7 +68,7 @@ const skewArr = Skewness.compute(prices, 20);
 <!-- INDICATOR-LIST-START -->
 
 Every indicator below is a **global class**: the embedded runtime evaluates
-`quickjs/flox/indicators.js` at global scope, so there is no `require()` and no
+`quickjs/lrvx/indicators.js` at global scope, so there is no `require()` and no
 namespace prefix. Streaming is `update()` / `value` / `ready` / `reset()` on the
 instance; batch is a **static** `compute()`. Only some classes also carry an
 instance `compute()` — see the `Batch` column.
@@ -110,7 +110,7 @@ An instance `compute()` exists only on `KAMA`, `ShannonEntropy`, `AutoCorrelatio
 `Stochastic`, `MACD`, `Bollinger`. On every other class above `new EMA(20).compute(prices)` is
 `undefined` — call `EMA.compute(prices, 20)`.
 
-Also defined in `flox/indicators.js` but not in the shared registry: `CHOP` (streaming plus a
+Also defined in `lrvx/indicators.js` but not in the shared registry: `CHOP` (streaming plus a
 static `compute()`); `ADX`, `OBV`, `VWAP`, `CVD` (batch-only static `compute()`, no `update()`).
 
 

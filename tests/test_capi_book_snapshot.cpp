@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-// FloxBookSnapshot carries a price and a size for each side of the top of
+// LrvxBookSnapshot carries a price and a size for each side of the top of
 // book. The price fields were filled from the book; the two size fields
 // were hardcoded to 0 on every event and every context, under a comment
 // saying the size at the best level was "not directly available from
@@ -20,17 +20,17 @@
 // These tests pin the fields to the size at the best level of the book the
 // event was delivered against, and 0 only where the side really is empty.
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/capi/bridge_strategy.h"
-#include "flox/common.h"
-#include "flox/engine/symbol_registry.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/capi/bridge_strategy.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/symbol_registry.h"
 
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -38,11 +38,11 @@ namespace
 struct Captured
 {
   int bookCalls = 0;
-  FloxBookSnapshot fromEvent{};
-  FloxBookSnapshot fromContext{};
+  LrvxBookSnapshot fromEvent{};
+  LrvxBookSnapshot fromContext{};
 };
 
-void onBookCapture(void* user, const FloxSymbolContext* ctx, const FloxBookData* book)
+void onBookCapture(void* user, const LrvxSymbolContext* ctx, const LrvxBookData* book)
 {
   auto* c = static_cast<Captured*>(user);
   ++c->bookCalls;
@@ -85,7 +85,7 @@ TEST(CApiBookSnapshot, BestLevelSizesReachTheCConsumer)
   SymbolId sym = addSymbol(registry);
 
   Captured captured;
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_book = &onBookCapture;
   cb.user_data = &captured;
 
@@ -123,7 +123,7 @@ TEST(CApiBookSnapshot, EmptySideReportsZeroPriceAndZeroSize)
   SymbolId sym = addSymbol(registry);
 
   Captured captured;
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_book = &onBookCapture;
   cb.user_data = &captured;
 
@@ -155,7 +155,7 @@ TEST(CApiBookSnapshot, EmptyBidSideReportsTheAskFlagAlone)
   SymbolId sym = addSymbol(registry);
 
   Captured captured;
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_book = &onBookCapture;
   cb.user_data = &captured;
 
@@ -183,7 +183,7 @@ TEST(CApiBookSnapshot, BestLevelSizeFollowsTheBookAcrossUpdates)
   SymbolId sym = addSymbol(registry);
 
   Captured captured;
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   cb.on_book = &onBookCapture;
   cb.user_data = &captured;
 
@@ -209,8 +209,8 @@ TEST(CApiBookSnapshot, BestLevelSizeFollowsTheBookAcrossUpdates)
       << "the size reported is the one at the new best level";
 }
 
-// The same snapshot is reachable a second way: flox_get_symbol_context
-// builds a FloxSymbolContext on demand, for a C consumer that wants the
+// The same snapshot is reachable a second way: lrvx_get_symbol_context
+// builds a LrvxSymbolContext on demand, for a C consumer that wants the
 // book between events rather than inside a callback. It has its own copy
 // of the best-level lookup, so it needs its own test -- reverting only
 // this half of the fix left every callback-driven test green.
@@ -219,9 +219,9 @@ TEST(CApiBookSnapshot, SymbolContextQueryReportsTheBestLevelSizes)
   SymbolRegistry registry;
   SymbolId sym = addSymbol(registry);
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   auto bridge = std::make_unique<BridgeStrategy>(1, std::vector<SymbolId>{sym}, registry, cb);
-  auto handle = static_cast<FloxStrategyHandle>(bridge.get());
+  auto handle = static_cast<LrvxStrategyHandle>(bridge.get());
 
   BookUpdatePool pool;
   auto update = makeSnapshot(pool, sym,
@@ -231,8 +231,8 @@ TEST(CApiBookSnapshot, SymbolContextQueryReportsTheBestLevelSizes)
                               {Price::fromDouble(100.06), Quantity::fromDouble(9.0)}});
   bridge->onBookUpdate(*update);
 
-  FloxSymbolContext ctx{};
-  flox_get_symbol_context(handle, sym, &ctx);
+  LrvxSymbolContext ctx{};
+  lrvx_get_symbol_context(handle, sym, &ctx);
 
   EXPECT_EQ(ctx.symbol_id, sym);
   EXPECT_EQ(ctx.book.bid_price_raw, Price::fromDouble(100.00).raw());
@@ -250,17 +250,17 @@ TEST(CApiBookSnapshot, SymbolContextQueryReportsZeroForAnEmptySide)
   SymbolRegistry registry;
   SymbolId sym = addSymbol(registry);
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   auto bridge = std::make_unique<BridgeStrategy>(1, std::vector<SymbolId>{sym}, registry, cb);
-  auto handle = static_cast<FloxStrategyHandle>(bridge.get());
+  auto handle = static_cast<LrvxStrategyHandle>(bridge.get());
 
   BookUpdatePool pool;
   auto update =
       makeSnapshot(pool, sym, {{Price::fromDouble(100.00), Quantity::fromDouble(3.0)}}, {});
   bridge->onBookUpdate(*update);
 
-  FloxSymbolContext ctx{};
-  flox_get_symbol_context(handle, sym, &ctx);
+  LrvxSymbolContext ctx{};
+  lrvx_get_symbol_context(handle, sym, &ctx);
 
   EXPECT_EQ(ctx.book.bid_qty_raw, Quantity::fromDouble(3.0).raw());
   EXPECT_EQ(ctx.book.ask_price_raw, 0);

@@ -1,0 +1,295 @@
+# lrvx/types.codon -- Fixed-point types mirroring C++ lrvx::Price, lrvx::Quantity
+
+SCALE: int = 100_000_000  # 1e8 -- matches C++ Decimal scale
+
+
+@dataclass
+class Price:
+    """Fixed-point price with 8 decimal places (scale 1e8).
+    Mirrors C++ lrvx::Price.
+    """
+
+    _raw: int
+
+    def __init__(self):
+        self._raw = 0
+
+    @staticmethod
+    def from_double(value: float) -> Price:
+        p = Price()
+        p._raw = int(value * float(SCALE) + (0.5 if value >= 0.0 else -0.5))
+        return p
+
+    @staticmethod
+    def from_raw(raw: int) -> Price:
+        p = Price()
+        p._raw = raw
+        return p
+
+    def to_double(self) -> float:
+        return float(self._raw) / float(SCALE)
+
+    def raw(self) -> int:
+        return self._raw
+
+    def is_zero(self) -> bool:
+        return self._raw == 0
+
+    def __eq__(self, other: Price) -> bool:
+        return self._raw == other._raw
+
+    def __lt__(self, other: Price) -> bool:
+        return self._raw < other._raw
+
+    def __gt__(self, other: Price) -> bool:
+        return self._raw > other._raw
+
+    def __le__(self, other: Price) -> bool:
+        return self._raw <= other._raw
+
+    def __ge__(self, other: Price) -> bool:
+        return self._raw >= other._raw
+
+    def __add__(self, other: Price) -> Price:
+        return Price.from_raw(self._raw + other._raw)
+
+    def __sub__(self, other: Price) -> Price:
+        return Price.from_raw(self._raw - other._raw)
+
+    def __repr__(self) -> str:
+        return f"Price({self.to_double():.8f})"
+
+
+@dataclass
+class Quantity:
+    """Fixed-point quantity with 8 decimal places (scale 1e8).
+    Mirrors C++ lrvx::Quantity.
+    """
+
+    _raw: int
+
+    def __init__(self):
+        self._raw = 0
+
+    @staticmethod
+    def from_double(value: float) -> Quantity:
+        q = Quantity()
+        q._raw = int(value * float(SCALE) + (0.5 if value >= 0.0 else -0.5))
+        return q
+
+    @staticmethod
+    def from_raw(raw: int) -> Quantity:
+        q = Quantity()
+        q._raw = raw
+        return q
+
+    def to_double(self) -> float:
+        return float(self._raw) / float(SCALE)
+
+    def raw(self) -> int:
+        return self._raw
+
+    def is_zero(self) -> bool:
+        return self._raw == 0
+
+    def __repr__(self) -> str:
+        return f"Quantity({self.to_double():.8f})"
+
+
+# Enums mirroring C++ Side, OrderType
+BUY: int = 0
+SELL: int = 1
+
+ORDER_MARKET: int = 0
+ORDER_LIMIT: int = 1
+ORDER_STOP_MARKET: int = 2
+ORDER_STOP_LIMIT: int = 3
+ORDER_TAKE_PROFIT_MARKET: int = 4
+ORDER_TAKE_PROFIT_LIMIT: int = 5
+ORDER_TRAILING_STOP: int = 6
+
+TIF_GTC: int = 0
+TIF_IOC: int = 1
+TIF_FOK: int = 2
+TIF_GTD: int = 3
+TIF_POST_ONLY: int = 4
+
+
+@dataclass
+class TradeData:
+    """Trade event data. Mirrors C++ lrvx::Trade (flattened)."""
+
+    symbol: int
+    symbol_name: str
+    price: Price
+    quantity: Quantity
+    is_buy: bool
+    side: str
+    timestamp_ns: int
+
+    def __init__(self):
+        self.symbol = 0
+        self.symbol_name = ""
+        self.price = Price()
+        self.quantity = Quantity()
+        self.is_buy = False
+        self.side = ""
+        self.timestamp_ns = 0
+
+    @staticmethod
+    def from_raw(symbol: int, price_raw: int, qty_raw: int, is_buy: bool,
+                 ts_ns: int, symbol_name: str = "") -> TradeData:
+        t = TradeData()
+        t.symbol = symbol
+        t.symbol_name = symbol_name
+        t.price = Price.from_raw(price_raw)
+        t.quantity = Quantity.from_raw(qty_raw)
+        t.is_buy = is_buy
+        t.side = "buy" if is_buy else "sell"
+        t.timestamp_ns = ts_ns
+        return t
+
+
+@dataclass
+class BarData:
+    """Closed OHLC bar. Mirrors C++ lrvx::BarEvent (flattened)."""
+
+    symbol: int
+    symbol_name: str
+    bar_type: int          # 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi
+    bar_type_param: int    # interval_ns / tick count / volume threshold
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    buy_volume: float
+    start_time_ns: int
+    end_time_ns: int
+    close_reason: int      # 0=Threshold, 1=Gap, 2=Forced, 3=Warmup (engine
+                           # only ever emits 0 or 2 today; see
+                           # docs/reference/api/aggregator/bar.md)
+
+    def __init__(self):
+        self.symbol = 0
+        self.symbol_name = ""
+        self.bar_type = 0
+        self.bar_type_param = 0
+        self.open = 0.0
+        self.high = 0.0
+        self.low = 0.0
+        self.close = 0.0
+        self.volume = 0.0
+        self.buy_volume = 0.0
+        self.start_time_ns = 0
+        self.end_time_ns = 0
+        self.close_reason = 0
+
+    @staticmethod
+    def from_raw(symbol: int, bar_type: int, bar_type_param: int,
+                 o_raw: int, h_raw: int, l_raw: int, c_raw: int,
+                 v_raw: int, bv_raw: int,
+                 start_ns: int, end_ns: int, close_reason: int,
+                 symbol_name: str = "") -> BarData:
+        b = BarData()
+        b.symbol = symbol
+        b.symbol_name = symbol_name
+        b.bar_type = bar_type
+        b.bar_type_param = bar_type_param
+        b.open  = float(o_raw) / float(SCALE)
+        b.high  = float(h_raw) / float(SCALE)
+        b.low   = float(l_raw) / float(SCALE)
+        b.close = float(c_raw) / float(SCALE)
+        b.volume     = float(v_raw)  / float(SCALE)
+        b.buy_volume = float(bv_raw) / float(SCALE)
+        b.start_time_ns = start_ns
+        b.end_time_ns   = end_ns
+        b.close_reason  = close_reason
+        return b
+
+
+# Market-position names, indexed by the code in LrvxOrderEventData.
+# market_position. Code 0 means the venue did not report a category and
+# maps to the empty string, which is what marketPositionName() in
+# python/strategy_bindings.h, node/src/strategy.h and
+# src/quickjs/js_strategy.cpp all return for it. Index 0 is deliberately
+# "" so the table is read by position rather than by an offset somebody
+# has to remember.
+_MARKET_POSITION_NAMES = [
+    "", "best", "behind_best", "mid_spread", "level_empty", "crossed"
+]
+
+
+@dataclass
+class OrderEventData:
+    """Order-lifecycle event for an order this strategy emitted.
+
+    Reaches on_fill, on_order_update, on_queue_position_change and
+    on_market_position_change. Mirrors C++ lrvx::OrderEvent (flattened);
+    the same fields the Python and Node bindings hand to their
+    equivalents, under the same names.
+    """
+
+    order_id: int
+    symbol: int
+    symbol_name: str
+    side: str
+    order_type: int
+    status: int
+    fill_qty: float
+    fill_price: float
+    exchange_ts_ns: int
+    is_maker: bool
+    # Queue and market position are filled in by the backtest simulator;
+    # a live venue leaves them at zero and the empty string.
+    queue_ahead: float
+    queue_total: float
+    market_position: str
+    distance_to_best_ticks: int
+    # Why the venue rejected the order; empty for every other status.
+    reject_reason: str
+
+    def __init__(self):
+        self.order_id = 0
+        self.symbol = 0
+        self.symbol_name = ""
+        self.side = ""
+        self.order_type = 0
+        self.status = 0
+        self.fill_qty = 0.0
+        self.fill_price = 0.0
+        self.exchange_ts_ns = 0
+        self.is_maker = False
+        self.queue_ahead = 0.0
+        self.queue_total = 0.0
+        self.market_position = ""
+        self.distance_to_best_ticks = 0
+        self.reject_reason = ""
+
+    @staticmethod
+    def from_raw(order_id: int, symbol: int, side_code: int, order_type: int,
+                 status: int, fill_qty_raw: int, fill_price_raw: int,
+                 exchange_ts_ns: int, is_maker: bool,
+                 queue_ahead_raw: int, queue_total_raw: int,
+                 market_position_code: int, distance_to_best_ticks: int,
+                 symbol_name: str = "",
+                 reject_reason: str = "") -> OrderEventData:
+        e = OrderEventData()
+        e.order_id = order_id
+        e.symbol = symbol
+        e.symbol_name = symbol_name
+        e.side = "buy" if side_code == 0 else "sell"
+        e.order_type = order_type
+        e.status = status
+        e.fill_qty = float(fill_qty_raw) / float(SCALE)
+        e.fill_price = float(fill_price_raw) / float(SCALE)
+        e.exchange_ts_ns = exchange_ts_ns
+        e.is_maker = is_maker
+        e.queue_ahead = float(queue_ahead_raw) / float(SCALE)
+        e.queue_total = float(queue_total_raw) / float(SCALE)
+        e.market_position = (_MARKET_POSITION_NAMES[market_position_code]
+                             if 0 <= market_position_code < len(_MARKET_POSITION_NAMES)
+                             else "")
+        e.distance_to_best_ticks = distance_to_best_ticks
+        e.reject_reason = reject_reason
+        return e

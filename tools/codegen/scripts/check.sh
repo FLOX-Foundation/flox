@@ -2,7 +2,7 @@
 # CI-equivalent check for the codegen pipeline. Run locally before pushing.
 #   1. Regenerates each golden artifact from the spec into a temp file.
 #   2. Diffs each against the committed golden — fails on drift.
-#   3. Runs the full-coverage signature check against the live flox_capi.h.
+#   3. Runs the full-coverage signature check against the live lrvx_capi.h.
 #   4. Runs unit tests.
 #
 # Exits non-zero on any failure. Idempotent.
@@ -18,13 +18,13 @@ if [[ ! -x "$PY" ]]; then
   exit 2
 fi
 
-SPEC="$REPO/include/flox/capi/flox_capi_spec.hpp"
-LIVE="$REPO/include/flox/capi/flox_capi.h"
+SPEC="$REPO/include/lrvx/capi/lrvx_capi_spec.hpp"
+LIVE="$REPO/include/lrvx/capi/lrvx_capi.h"
 
 verify_one() {
   local subcommand="$1" target="$2"
   local tmp="${target}.tmp"
-  PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli "$subcommand" \
+  PYTHONPATH="$TOOL" "$PY" -m lrvx_codegen.cli "$subcommand" \
     --spec "$SPEC" --out "$tmp"
   if ! diff -u "$target" "$tmp" >/dev/null; then
     echo "::error::$(basename "$target") drift — run 'tools/codegen/scripts/regenerate.sh'"
@@ -35,21 +35,21 @@ verify_one() {
   rm -f "$tmp"
 }
 
-verify_one emit-capi  "$TOOL/golden/flox_capi.h"
-verify_one emit-codon "$TOOL/golden/flox_capi.codon"
-verify_one emit-llms  "$TOOL/golden/flox_capi.md"
+verify_one emit-capi  "$TOOL/golden/lrvx_capi.h"
+verify_one emit-codon "$TOOL/golden/lrvx_capi.codon"
+verify_one emit-llms  "$TOOL/golden/lrvx_capi.md"
 
 # Generated in place rather than into golden/: these two are the files the
 # C++ test and the Codon binding actually read.
-verify_one emit-layout-h     "$REPO/include/flox/capi/flox_capi_layout.h"
-verify_one emit-layout-codon "$REPO/codon/flox/layout.codon"
+verify_one emit-layout-h     "$REPO/include/lrvx/capi/lrvx_capi_layout.h"
+verify_one emit-layout-codon "$REPO/codon/lrvx/layout.codon"
 
-PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli check \
+PYTHONPATH="$TOOL" "$PY" -m lrvx_codegen.cli check \
   --expected "$LIVE" \
-  --actual "$TOOL/golden/flox_capi.h" \
+  --actual "$TOOL/golden/lrvx_capi.h" \
   --require-full-coverage
 
-PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli abi-diff \
+PYTHONPATH="$TOOL" "$PY" -m lrvx_codegen.cli abi-diff \
   --snapshot "$REPO/.api/c-api.snapshot" \
   --header "$LIVE"
 

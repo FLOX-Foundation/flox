@@ -4,7 +4,7 @@ Connects to Binance public WebSocket via `ccxt.pro`, streams BTC/USDT trades in 
 
 ```
 pip install ccxt
-cd /path/to/flox
+cd /path/to/lrvx
 PYTHONPATH=build/python python3 docs/examples/python_ccxt_live.py
 ```
 

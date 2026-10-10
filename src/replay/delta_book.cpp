@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/delta_book.h"
+#include "lrvx/replay/delta_book.h"
 
 #include <algorithm>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 DeltaBookEncoder::DeltaBookEncoder(uint32_t anchor_every) : _anchor_every(anchor_every) {}
@@ -193,4 +193,4 @@ bool DeltaBookReplayer::anchored(uint32_t symbol_id) const
 void DeltaBookReplayer::reset(uint32_t symbol_id) { _state.erase(symbol_id); }
 void DeltaBookReplayer::resetAll() { _state.clear(); }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

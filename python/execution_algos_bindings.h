@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,25 +16,25 @@
 #include <utility>
 #include <vector>
 
-#include "flox/execution/algos.h"
+#include "lrvx/execution/algos.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
-inline py::dict childToDict(const flox::execution::ChildOrder& c)
+inline py::dict childToDict(const lrvx::execution::ChildOrder& c)
 {
   py::dict d;
   d["order_id"] = c.order_id;
   d["timestamp_ns"] = c.timestamp_ns;
   d["qty"] = c.qty;
   d["price"] = c.price;
-  d["type"] = (c.type == flox::execution::OrderType::Limit) ? "limit" : "market";
+  d["type"] = (c.type == lrvx::execution::OrderType::Limit) ? "limit" : "market";
   return d;
 }
 
-inline py::list pendingToList(const flox::execution::ExecutionAlgo& algo)
+inline py::list pendingToList(const lrvx::execution::ExecutionAlgo& algo)
 {
   py::list out;
   for (const auto& c : algo.pending())
@@ -46,13 +46,13 @@ inline py::list pendingToList(const flox::execution::ExecutionAlgo& algo)
 
 inline void bindExecutionAlgos(py::module_& m)
 {
-  using ExecSide = flox::execution::Side;
-  using ExecOrderType = flox::execution::OrderType;
-  using flox::execution::ExecutionAlgo;
-  using flox::execution::IcebergExecutor;
-  using flox::execution::POVExecutor;
-  using flox::execution::TWAPExecutor;
-  using flox::execution::VWAPExecutor;
+  using ExecSide = lrvx::execution::Side;
+  using ExecOrderType = lrvx::execution::OrderType;
+  using lrvx::execution::ExecutionAlgo;
+  using lrvx::execution::IcebergExecutor;
+  using lrvx::execution::POVExecutor;
+  using lrvx::execution::TWAPExecutor;
+  using lrvx::execution::VWAPExecutor;
 
   py::enum_<ExecSide>(m, "_ExecSide")
       .value("Buy", ExecSide::Buy)
@@ -124,4 +124,4 @@ inline void bindExecutionAlgos(py::module_& m)
            py::arg("min_slice_qty") = 0.0);
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

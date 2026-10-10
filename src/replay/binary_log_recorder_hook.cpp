@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/binary_log_recorder_hook.h"
+#include "lrvx/replay/binary_log_recorder_hook.h"
 
-#include "flox/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_format_v1.h"
 
 #include <chrono>
 #include <ctime>
@@ -17,7 +17,7 @@
 #include <span>
 #include <sstream>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -100,8 +100,8 @@ void BinaryLogRecorderHook::onTrade(uint32_t symbol_id, int64_t price_raw,
   rec.price_raw = price_raw;
   rec.qty_raw = qty_raw;
   rec.symbol_id = symbol_id;
-  // Side convention: 0 = buy, 1 = sell, matching flox::Side, the TradeRecord
-  // row of docs/spec/floxlog.md and every other writer of the format.
+  // Side convention: 0 = buy, 1 = sell, matching lrvx::Side, the TradeRecord
+  // row of docs/spec/lrvx.md and every other writer of the format.
   rec.side = is_buy ? 0 : 1;
   rec.exchange_id = _config.exchange_id;
 
@@ -202,4 +202,4 @@ std::filesystem::path BinaryLogRecorderHook::currentSegmentPath() const
   return _writer ? _writer->currentSegmentPath() : std::filesystem::path{};
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

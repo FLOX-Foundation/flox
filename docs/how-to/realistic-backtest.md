@@ -9,9 +9,9 @@ defaults.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    stack = flox.VenueStack.binance_um_futures(
+    stack = lrvx.VenueStack.binance_um_futures(
         account_id=42, equity=10_000.0)
 
     acct = stack.account()
@@ -24,7 +24,7 @@ defaults.
 === "TypeScript"
 
     ```typescript
-    import { VenueStack } from "@flox-foundation/flox";
+    import { VenueStack } from "@lrvx/lrvx";
 
     const stack = VenueStack.binanceUmFutures(42, 10_000);
     stack.accountOpenPosition(1, 5.0, 50_000);
@@ -34,7 +34,7 @@ defaults.
 === "Codon"
 
     ```python
-    from flox.backtest import VenueStack
+    from lrvx.backtest import VenueStack
 
     stack = VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     acct = stack.account_handle()  # raw handle; wrap as Account if needed.
@@ -109,10 +109,10 @@ the stack for you:
 === "Python"
 
     ```python
-    stack = flox.VenueStack.binance_um_futures(
+    stack = lrvx.VenueStack.binance_um_futures(
         account_id=42, equity=10_000.0)
 
-    runner = flox.BacktestRunner(registry, fee_rate=0.0004,
+    runner = lrvx.BacktestRunner(registry, fee_rate=0.0004,
                                   initial_capital=10_000.0)
     runner.set_strategy(my_strategy)
     runner.set_venue_stack(stack)
@@ -133,13 +133,13 @@ Funding and liquidation stay driven by explicit calls to `liq` and
 built-in executor.
 
 `BacktestRunner.set_executor(...)` refuses a bare venue executor
-(`flox.VenueExecutor`) with a pointer back to this page: the executor
+(`lrvx.VenueExecutor`) with a pointer back to this page: the executor
 alone does not carry the clock the runner has to advance to make ack
 latency and queue timing progress, so `set_venue_stack(stack)` — which
 hands over the whole stack — is the only supported path.
 
 This attach path is currently Python-only: the C ABI exposes a
-single-argument `flox_backtest_runner_set_executor` without the
+single-argument `lrvx_backtest_runner_set_executor` without the
 clock the venue executor needs, so Codon and QuickJS strategies keep
 driving a `VenueStack` standalone, the same way as in every other
 section of this page.
@@ -177,20 +177,20 @@ user-built subsystems into a venue-stack-shaped bundle:
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    acct = flox.Account(account_id=42, equity=10_000)
-    fees = flox.FeeSchedule()
+    acct = lrvx.Account(account_id=42, equity=10_000)
+    fees = lrvx.FeeSchedule()
     fees.add_tier(0, 1.0, 3.0)
     fees.add_tier(50_000, 0.5, 2.5)
     # 4h cadence; interval is fixed at construction, there is no setter.
-    funding = flox.FundingSchedule.constant(4 * 3600 * 1_000_000_000, 0.0)
-    liq = flox.LiquidationEngine()
+    funding = lrvx.FundingSchedule.constant(4 * 3600 * 1_000_000_000, 0.0)
+    liq = lrvx.LiquidationEngine()
     liq.add_tier(0.0, 0.004)
-    rate_limits = flox.RateLimitPolicy()
+    rate_limits = lrvx.RateLimitPolicy()
     rate_limits.add_bucket("trading", 1_000_000_000, 50)
 
-    custom = flox.assemble_custom_venue(
+    custom = lrvx.assemble_custom_venue(
         account=acct, fees=fees, funding=funding, liquidation=liq,
         rate_limits=rate_limits, venue_name="my_exchange",
     )

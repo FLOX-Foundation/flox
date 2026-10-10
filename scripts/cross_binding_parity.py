@@ -48,9 +48,9 @@ def run_node(script: str) -> dict:
 def main() -> int:
     sys.path.insert(0, str(REPO / "build" / "python"))
     try:
-        import flox_py as flox  # noqa
+        import lrvx  # noqa
     except ImportError as e:
-        print(f"error: cannot import flox_py: {e}", file=sys.stderr)
+        print(f"error: cannot import lrvx: {e}", file=sys.stderr)
         return 1
 
     rng = np.random.default_rng(42)
@@ -63,7 +63,7 @@ def main() -> int:
     # Cases: (indicator_name, py_call, js_call_template, atol)
     # JS template uses prices/high/low/close from a JS-side fixture below.
     js_setup = (
-        f"const flox = require('.');\n"
+        f"const lrvx = require('.');\n"
         f"const prices = {prices};\n"
         f"const high = {high};\n"
         f"const low = {low};\n"
@@ -72,28 +72,28 @@ def main() -> int:
 
     cases = [
         ("EMA(10)",
-         lambda: list(flox.EMA(10).compute(np.array(prices))),
-         "const out = Array.from(new flox.EMA(10).compute(new Float64Array(prices)));"),
+         lambda: list(lrvx.EMA(10).compute(np.array(prices))),
+         "const out = Array.from(new lrvx.EMA(10).compute(new Float64Array(prices)));"),
         ("SMA(10)",
-         lambda: list(flox.SMA(10).compute(np.array(prices))),
-         "const out = Array.from(new flox.SMA(10).compute(new Float64Array(prices)));"),
+         lambda: list(lrvx.SMA(10).compute(np.array(prices))),
+         "const out = Array.from(new lrvx.SMA(10).compute(new Float64Array(prices)));"),
         ("RSI(14)",
-         lambda: list(flox.RSI(14).compute(np.array(prices))),
-         "const out = Array.from(new flox.RSI(14).compute(new Float64Array(prices)));"),
+         lambda: list(lrvx.RSI(14).compute(np.array(prices))),
+         "const out = Array.from(new lrvx.RSI(14).compute(new Float64Array(prices)));"),
         ("ATR(14)",
-         lambda: list(flox.ATR(14).compute(np.array(high), np.array(low), np.array(close))),
-         "const out = Array.from(new flox.ATR(14).compute("
+         lambda: list(lrvx.ATR(14).compute(np.array(high), np.array(low), np.array(close))),
+         "const out = Array.from(new lrvx.ATR(14).compute("
          "new Float64Array(high), new Float64Array(low), new Float64Array(close)));"),
         ("CCI(20)",
-         lambda: list(flox.CCI(20).compute(np.array(high), np.array(low), np.array(close))),
-         "const out = Array.from(new flox.CCI(20).compute("
+         lambda: list(lrvx.CCI(20).compute(np.array(high), np.array(low), np.array(close))),
+         "const out = Array.from(new lrvx.CCI(20).compute("
          "new Float64Array(high), new Float64Array(low), new Float64Array(close)));"),
         ("DEMA(10)",
-         lambda: list(flox.DEMA(10).compute(np.array(prices))),
-         "const out = Array.from(new flox.DEMA(10).compute(new Float64Array(prices)));"),
+         lambda: list(lrvx.DEMA(10).compute(np.array(prices))),
+         "const out = Array.from(new lrvx.DEMA(10).compute(new Float64Array(prices)));"),
         ("Skewness(10)",
-         lambda: list(flox.Skewness(10).compute(np.array(prices))),
-         "const out = Array.from(new flox.Skewness(10).compute(new Float64Array(prices)));"),
+         lambda: list(lrvx.Skewness(10).compute(np.array(prices))),
+         "const out = Array.from(new lrvx.Skewness(10).compute(new Float64Array(prices)));"),
     ]
 
     ok = 0
@@ -141,17 +141,17 @@ def main() -> int:
     bar_start = [i * 1_000_000_000 for i in range(bars_n)]
     bar_end   = [(i + 1) * 1_000_000_000 for i in range(bars_n)]
 
-    # Python: subclass flox.Strategy, capture each bar
-    reg_py = flox.SymbolRegistry()
+    # Python: subclass lrvx.Strategy, capture each bar
+    reg_py = lrvx.SymbolRegistry()
     sym_py = reg_py.add_symbol("test", "TST", tick_size=0.01)
     captured_py = []
 
-    class _BarCapture(flox.Strategy):
+    class _BarCapture(lrvx.Strategy):
         def on_bar(self, ctx, bar):
             captured_py.append((bar.open, bar.high, bar.low, bar.close))
 
     strat_py = _BarCapture([sym_py])
-    bt_py = flox.BacktestRunner(reg_py, fee_rate=0.0, initial_capital=10_000.0)
+    bt_py = lrvx.BacktestRunner(reg_py, fee_rate=0.0, initial_capital=10_000.0)
     bt_py.set_strategy(strat_py)
     bt_py.run_bars(
         np.array(bar_start, dtype=np.int64),
@@ -168,8 +168,8 @@ def main() -> int:
     starts_js = [i * 1_000_000_000 for i in range(bars_n)]
     ends_js   = [(i + 1) * 1_000_000_000 for i in range(bars_n)]
     js_bars = (
-        "const flox = require('.');\n"
-        "const reg = new flox.SymbolRegistry();\n"
+        "const lrvx = require('.');\n"
+        "const reg = new lrvx.SymbolRegistry();\n"
         "const sym = reg.addSymbol('test', 'TST', 0.01);\n"
         f"const startNs = new BigInt64Array({starts_js}.map(BigInt));\n"
         f"const endNs   = new BigInt64Array({ends_js}.map(BigInt));\n"
@@ -181,7 +181,7 @@ def main() -> int:
         "const captured = [];\n"
         "const strat = { symbols: [sym], "
         "  onBar: (ctx, bar, em) => captured.push([bar.open, bar.high, bar.low, bar.close]) };\n"
-        "const bt = new flox.BacktestRunner(reg, 0.0, 10000.0);\n"
+        "const bt = new lrvx.BacktestRunner(reg, 0.0, 10000.0);\n"
         "bt.setStrategy(strat);\n"
         "bt.runBars(startNs, endNs, op, hi, lo, cl, vo, 'TST');\n"
         "process.stdout.write(JSON.stringify(captured));\n"
@@ -223,7 +223,7 @@ def main() -> int:
     # Python's raw fields the same way before comparing so a real content
     # mismatch isn't masked by a units mismatch.
     price_scale = 1e8
-    py_bars = flox.aggregate_time_bars(
+    py_bars = lrvx.aggregate_time_bars(
         np.array(ts_bars, dtype=np.int64), np.array(px_bars, dtype=np.float64),
         np.array(qty_bars, dtype=np.float64), np.array(ib_bars, dtype=np.uint8),
         1.0,
@@ -235,14 +235,14 @@ def main() -> int:
     ]
 
     js_bars_script = (
-        "const flox = require('.');\n"
+        "const lrvx = require('.');\n"
         # aggregateTimeBars takes its timestamp column either way; a
         # Float64Array is enough for the small readings built above.
         f"const ts = new Float64Array({ts_bars});\n"
         f"const px = new Float64Array({px_bars});\n"
         f"const qty = new Float64Array({qty_bars});\n"
         f"const ib = new Uint8Array({ib_bars});\n"
-        "const bars = flox.aggregateTimeBars(ts, px, qty, ib, 1.0);\n"
+        "const bars = lrvx.aggregateTimeBars(ts, px, qty, ib, 1.0);\n"
         "process.stdout.write(JSON.stringify(bars.map("
         "b => [b.open, b.high, b.low, b.close])));\n"
     )
@@ -264,14 +264,14 @@ def main() -> int:
 
     # ── DataReader parity: read_book_updates / read_bbo / read_trades
     #    + their *_from variants must return identical row counts and per-row
-    #    fields between Python and Node on the same .floxlog dataset.
+    #    fields between Python and Node on the same .lrvx dataset.
     print("\n  DataReader parity (Python vs Node):")
     sample = REPO / "demo" / "data"
     if not sample.exists():
         print(f"  SKIP  DataReader parity: {sample} not present")
     else:
         # Python side
-        reader_py = flox.DataReader(str(sample))
+        reader_py = lrvx.DataReader(str(sample))
         py_count_total = reader_py.count()
 
         py_book_h, py_book_l = reader_py.read_book_updates()
@@ -293,8 +293,8 @@ def main() -> int:
         # on every platform. mid_ts is passed as BigInt — JS Numbers are
         # float64 and silently round nanosecond timestamps past 2^53.
         node_script = (
-            f"const flox = require('.');\n"
-            f"const r = new flox.DataReader({json.dumps(str(sample))});\n"
+            f"const lrvx = require('.');\n"
+            f"const r = new lrvx.DataReader({json.dumps(str(sample))});\n"
             f"const tr = r.readTrades(), bu = r.readBookUpdates(), bb = r.readBBO();\n"
             f"const trF = r.readTradesFrom({mid_ts}n);\n"
             f"const buF = r.readBookUpdatesFrom({mid_ts}n);\n"

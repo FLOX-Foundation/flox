@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPO_ROOT / "mcp"))
 
 resource = pytest.importorskip("resource", reason="POSIX-only")
 
-from flox_mcp.tools._runtime_worker import _apply_rlimits  # noqa: E402
+from lrvx_mcp.tools._runtime_worker import _apply_rlimits  # noqa: E402
 
 
 def _deny(*names: str):

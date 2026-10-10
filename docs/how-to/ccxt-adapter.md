@@ -1,26 +1,26 @@
-# Connect FLOX to a CCXT exchange
+# Connect lrvx to a CCXT exchange
 
-`flox_py.ccxt.CcxtBroker` wraps a [ccxt.pro](https://github.com/ccxt/ccxt/wiki/ccxt.pro) exchange. Market data flows in (trades, L2 books, order updates) and orders flow out (`self.market_buy(...)`, `self.limit_sell(...)`, `self.stop_market(...)` from inside the strategy translate into `create_*_order` calls on the exchange).
+`lrvx.ccxt.CcxtBroker` wraps a [ccxt.pro](https://github.com/ccxt/ccxt/wiki/ccxt.pro) exchange. Market data flows in (trades, L2 books, order updates) and orders flow out (`self.market_buy(...)`, `self.limit_sell(...)`, `self.stop_market(...)` from inside the strategy translate into `create_*_order` calls on the exchange).
 
 ## Install
 
 ```bash
-pip install flox-py "ccxt[pro]"
+pip install lrvx "ccxt[pro]"
 ```
 
 ## Quick start
 
 ```python
 import asyncio
-import flox_py as flox
-from flox_py.ccxt import CcxtBroker
+import lrvx
+from lrvx.ccxt import CcxtBroker
 
 
-class SMA(flox.Strategy):
+class SMA(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
 
     def on_trade(self, ctx, trade):
         f = self.fast.update(trade.price)
@@ -68,7 +68,7 @@ Other constructor keywords: `password` (for venues that need a passphrase), `on_
 
 Pass any subset of `("trades", "book", "orders")` to `run(streams=...)`:
 
-| Stream    | ccxt method               | FLOX target                                                    |
+| Stream    | ccxt method               | lrvx target                                                    |
 |-----------|---------------------------|----------------------------------------------------------------|
 | `trades`  | `watch_trades(sym)`       | `runner.on_trade(sym_id, price, qty, is_buy, ts_ns)`           |
 | `book`    | `watch_order_book(sym)`   | `runner.on_book_snapshot(sym_id, bids/asks)`                   |
@@ -137,7 +137,7 @@ class BybitBroker(CcxtBroker):
 
 ## Recording market data
 
-`broker.set_market_data_recorder(recorder)` attaches a `MarketDataRecorderHook` subclass that sees every trade and book update flowing through the broker. This is the hook `flox tape record` uses, and it is also the fix when a capture's `metadata.json` comes out with an empty `symbols` list — attach the recorder before `run()` so the symbol registrations are captured.
+`broker.set_market_data_recorder(recorder)` attaches a `MarketDataRecorderHook` subclass that sees every trade and book update flowing through the broker. This is the hook `lrvx tape record` uses, and it is also the fix when a capture's `metadata.json` comes out with an empty `symbols` list — attach the recorder before `run()` so the symbol registrations are captured.
 
 ## Multi-exchange
 
@@ -145,4 +145,4 @@ Instantiate one broker per exchange. A strategy attached to one broker only sees
 
 ## Runnable example
 
-A complete script lives at [`docs/examples/python_ccxt_live.py`](../examples/python-ccxt-live.md): SMA(10/30) on `BTC/USDT` against Binance's public WebSocket. Runs in dry-run mode by default; set `FLOX_LIVE=1` plus `BINANCE_API_KEY` / `BINANCE_SECRET` to actually place sandbox orders.
+A complete script lives at [`docs/examples/python_ccxt_live.py`](../examples/python-ccxt-live.md): SMA(10/30) on `BTC/USDT` against Binance's public WebSocket. Runs in dry-run mode by default; set `LRVX_LIVE=1` plus `BINANCE_API_KEY` / `BINANCE_SECRET` to actually place sandbox orders.

@@ -6,9 +6,9 @@ stats. Useful as a sanity check on overfitting: if the strategy looks
 great on the train half but degrades on the held-out test half across
 folds, the backtest is overfit.
 
-`flox_py.WalkForwardRunner` ships in Python. The same primitive is in
-`flox.WalkForwardRunner` for Node and through the C ABI for Codon
-(`flox_walk_forward_run_csv`).
+`lrvx.WalkForwardRunner` ships in Python. The same primitive is in
+`lrvx.WalkForwardRunner` for Node and through the C ABI for Codon
+(`lrvx_walk_forward_run_csv`).
 
 ## Modes
 
@@ -24,17 +24,17 @@ fold trains on `[t, t + train_size]`, tests on
 ## Python
 
 ```python
-import flox_py as flox
+import lrvx
 
-reg = flox.SymbolRegistry()
+reg = lrvx.SymbolRegistry()
 btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 
 
-class SmaCross(flox.Strategy):
+class SmaCross(lrvx.Strategy):
     def __init__(self, syms):
         super().__init__(syms)
-        self.fast = flox.SMA(10)
-        self.slow = flox.SMA(30)
+        self.fast = lrvx.SMA(10)
+        self.slow = lrvx.SMA(30)
 
     def on_trade(self, ctx, t):
         f = self.fast.update(t.price)
@@ -47,7 +47,7 @@ class SmaCross(flox.Strategy):
             self.close_position()
 
 
-wfr = flox.WalkForwardRunner(
+wfr = lrvx.WalkForwardRunner(
     reg, fee_rate=0.0004, initial_capital=10_000,
     mode="anchored", test_size=100, step=100, min_train_size=100,
 )
@@ -73,18 +73,18 @@ the next fold's stats.
 ## Node
 
 ```js
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 
-const reg = new flox.SymbolRegistry();
+const reg = new lrvx.SymbolRegistry();
 const btc = reg.addSymbol('exchange', 'BTCUSDT', 0.01);
 
-const wfr = new flox.WalkForwardRunner(reg, 0.0004, 10000, {
+const wfr = new lrvx.WalkForwardRunner(reg, 0.0004, 10000, {
   mode: 'anchored', testSize: 100, step: 100, minTrainSize: 100,
 });
 
 wfr.setStrategyFactory((foldIndex) => {
-  const fast = new flox.SMA(10);
-  const slow = new flox.SMA(30);
+  const fast = new lrvx.SMA(10);
+  const slow = new lrvx.SMA(30);
   return {
     symbols: [Number(btc)],
     onTrade(ctx, t, emit) {
@@ -130,14 +130,14 @@ not preserved. For strategies whose decisions depend on bar internals
 use `run_bars` with numpy arrays:
 
 ```python
-import flox_py as flox
+import lrvx
 import numpy as np
 
-reg = flox.SymbolRegistry()
+reg = lrvx.SymbolRegistry()
 btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 
 
-class IntrabarBreakout(flox.Strategy):
+class IntrabarBreakout(lrvx.Strategy):
     def __init__(self, syms):
         super().__init__(syms)
         self.in_pos = False
@@ -151,7 +151,7 @@ class IntrabarBreakout(flox.Strategy):
             self.in_pos = False
 
 
-wfr = flox.WalkForwardRunner(
+wfr = lrvx.WalkForwardRunner(
     reg, fee_rate=0.0, initial_capital=10_000,
     mode="sliding", train_size=4380, test_size=2190, step=2190,
 )

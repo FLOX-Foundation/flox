@@ -6,11 +6,11 @@
 # only proves that what would go to the registry actually installs and
 # loads on this machine.
 #
-# This is the check that would have caught the flat prebuilds/flox_node.node
+# This is the check that would have caught the flat prebuilds/lrvx_node.node
 # bug: every npm publish since 0.7.1 shipped a package whose prebuilds/
 # directory held one file that overwrote all three platform artifacts on
 # download, while node/index.js requires prebuilds/<platform>-<arch>/..., so
-# `require('@flox-foundation/flox')` failed on every install. Nothing in the
+# `require('@lrvx/lrvx')` failed on every install. Nothing in the
 # old workflow ever ran that require -- publish went straight from
 # download-artifact to `npm publish`.
 #
@@ -69,12 +69,12 @@ fail=0
 
 # The import smoke both Python checks run, kept in one place so the sdist
 # path cannot drift into proving something weaker than the wheel path.
-FLOX_PY_SMOKE='
+LRVX_PY_SMOKE='
 import sys
-import flox_py as flox
-reg = flox.SymbolRegistry()
+import lrvx
+reg = lrvx.SymbolRegistry()
 sid = reg.add_symbol("bybit", "BTCUSDT", 0.01)
-assert flox.SLIPPAGE_NONE == 0
+assert lrvx.SLIPPAGE_NONE == 0
 assert sid is not None
 print(sys.argv[1], "OK: import + SymbolRegistry.add_symbol() ->", sid)
 '
@@ -100,8 +100,8 @@ check_npm_tarball() {
 
   echo "[npm-check] requiring the package and calling into the native addon..."
   if ! node -e "
-    const flox = require('$work/node_modules/@flox-foundation/flox');
-    const reg = new flox.SymbolRegistry();
+    const lrvx = require('$work/node_modules/lrvx');
+    const reg = new lrvx.SymbolRegistry();
     const sym = reg.addSymbol('bybit', 'BTCUSDT', 0.01);
     if (sym === undefined || sym === null) {
       throw new Error('native addon call returned nothing');
@@ -130,10 +130,10 @@ check_wheel() {
   "$py" -m venv "$work/venv"
   "$work/venv/bin/pip" install --quiet "$wheel"
 
-  echo "[wheel-check] importing flox_py and calling into the native extension..."
-  # Run from a directory with no python/flox_py/ nearby so cwd resolution
+  echo "[wheel-check] importing lrvx and calling into the native extension..."
+  # Run from a directory with no python/lrvx/ nearby so cwd resolution
   # cannot shadow the installed wheel with the source tree.
-  if ! (cd /tmp && "$work/venv/bin/python" -c "$FLOX_PY_SMOKE" "[wheel-check]"); then
+  if ! (cd /tmp && "$work/venv/bin/python" -c "$LRVX_PY_SMOKE" "[wheel-check]"); then
     echo "::error::wheel failed to import or call the native extension" >&2
     return 1
   fi
@@ -160,7 +160,7 @@ check_sdist() {
   members=$(tar tzf "$sdist" | cut -d/ -f2- | sort -u)
   local missing=()
   local required
-  for required in CMakeLists.txt cmake/ include/ src/ venue/ python/flox_py/; do
+  for required in CMakeLists.txt cmake/ include/ src/ venue/ python/lrvx/; do
     if ! grep -q "^${required}" <<<"$members"; then
       missing+=("$required")
     fi
@@ -179,11 +179,11 @@ check_sdist() {
     return 1
   fi
 
-  echo "[sdist-check] importing flox_py and calling into the native extension..."
+  echo "[sdist-check] importing lrvx and calling into the native extension..."
   # Same reason as the wheel check: run from elsewhere so the source tree
   # cannot shadow what was installed.
-  if ! (cd /tmp && "$work/venv/bin/python" -c "$FLOX_PY_SMOKE" "[sdist-check]"); then
-    echo "::error::sdist installed but flox_py failed to import or call the native extension" >&2
+  if ! (cd /tmp && "$work/venv/bin/python" -c "$LRVX_PY_SMOKE" "[sdist-check]"); then
+    echo "::error::sdist installed but lrvx failed to import or call the native extension" >&2
     return 1
   fi
 }

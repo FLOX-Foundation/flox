@@ -4,7 +4,7 @@ Exercises the Codon API end-to-end on synthetic data: streaming indicators, `Sim
 
 ```bash
 codon build -exe -o build/codon/codon_full_backtest \
-  -L build/src/capi -lflox_capi docs/examples/codon_full_backtest.codon
+  -L build/src/capi -llrvx_capi docs/examples/codon_full_backtest.codon
 
 DYLD_LIBRARY_PATH=build/src/capi:~/.local/lib/codon \
   ./build/codon/codon_full_backtest

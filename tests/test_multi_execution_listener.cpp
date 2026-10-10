@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #include <gtest/gtest.h>
-#include "flox/common.h"
-#include "flox/engine/abstract_subscriber.h"
-#include "flox/execution/abstract_execution_listener.h"
-#include "flox/execution/multi_execution_listener.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/abstract_subscriber.h"
+#include "lrvx/execution/abstract_execution_listener.h"
+#include "lrvx/execution/multi_execution_listener.h"
 
-using namespace flox;
+using namespace lrvx;
 
 class MockExecutionListener : public IOrderExecutionListener
 {

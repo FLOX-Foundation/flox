@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -18,12 +18,12 @@
  *
  * Neither failure announces itself, so both are asked about here.
  */
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/reject_reason.h"
-#include "flox-venue/sbe_order_entry_codec.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/reject_reason.h"
+#include "lrvx-venue/sbe_order_entry_codec.h"
 
 #include <gtest/gtest.h>
 
@@ -31,8 +31,8 @@
 #include <set>
 #include <string>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 // The array ends exactly where the enum does. Asked of toString rather than of
 // a second number: a reason that has a name but no slot is the bug.

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -13,16 +13,16 @@
 // executor).
 //
 // Each hook is created and destroyed through a C handle that used to be
-// nothing more than a pointer value: flox_pnl_tracker_create() handed back
-// the address of a heap object, and flox_pnl_tracker_destroy() called
+// nothing more than a pointer value: lrvx_pnl_tracker_create() handed back
+// the address of a heap object, and lrvx_pnl_tracker_destroy() called
 // `delete` on it directly. That is only safe if nothing else can still be
 // dereferencing the address at the moment of the delete. Nothing enforced
 // that. The engine's bus consumer threads read whatever pointer was last
 // handed to RunnerSignalHandler and call straight through it, and a call
 // into a binding language's callback can run for an arbitrary amount of
 // time. A caller doing the documented right thing --
-// flox_runner_set_pnl_tracker(runner, NULL) followed by
-// flox_pnl_tracker_destroy(tracker) -- only stops *future* dispatches from
+// lrvx_runner_set_pnl_tracker(runner, NULL) followed by
+// lrvx_pnl_tracker_destroy(tracker) -- only stops *future* dispatches from
 // picking up the old pointer. A dispatch already past the load, mid-way
 // through the user's on_signal callback with the old pointer in hand, has
 // no way to know the object underneath it is about to disappear, and no

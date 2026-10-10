@@ -43,8 +43,8 @@ the estimator on venues with active hidden flow.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
-    const est = new flox.LiveQueuePositionEstimator();
+    const lrvx = require('@lrvx/lrvx');
+    const est = new lrvx.LiveQueuePositionEstimator();
     est.setHiddenOrderPolicy('trust_trade_flag');
     est.onTradeWithFlag(symbol, 50000.0, 1.0, tsNs, /*isHidden=*/true);
     ```
@@ -52,7 +52,7 @@ the estimator on venues with active hidden flow.
 === "Codon"
 
     ```python
-    from flox.live_queue_position import LiveQueuePositionEstimator
+    from lrvx.live_queue_position import LiveQueuePositionEstimator
 
     est = LiveQueuePositionEstimator()
     est.set_hidden_order_policy("trust_trade_flag")
@@ -63,16 +63,16 @@ the estimator on venues with active hidden flow.
 === "QuickJS"
 
     ```javascript
-    __flox_live_queue_position_set_hidden_order_policy(handle, 1);
-    __flox_live_queue_position_on_trade_with_flag(handle, sym, p, q, ts, 1);
+    __lrvx_live_queue_position_set_hidden_order_policy(handle, 1);
+    __lrvx_live_queue_position_on_trade_with_flag(handle, sym, p, q, ts, 1);
     ```
 
 === "C++"
 
     ```cpp
-    est.setHiddenOrderPolicy(flox::HiddenOrderPolicy::TrustTradeFlag);
-    est.onTradeWithFlag(symbol, flox::Price::fromDouble(50000.0),
-                        flox::Quantity::fromDouble(1.0), tsNs, /*isHidden=*/true);
+    est.setHiddenOrderPolicy(lrvx::HiddenOrderPolicy::TrustTradeFlag);
+    est.onTradeWithFlag(symbol, lrvx::Price::fromDouble(50000.0),
+                        lrvx::Quantity::fromDouble(1.0), tsNs, /*isHidden=*/true);
     ```
 
 ## Venue flag availability

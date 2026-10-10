@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,13 +15,13 @@
 #include <chrono>
 #include <memory>
 
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bus/bar_bus.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/execution/bus/order_execution_bus.h"
-#include "flox/execution/execution_tracker_adapter.h"
-#include "flox/strategy/abstract_strategy.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/execution/bus/order_execution_bus.h"
+#include "lrvx/execution/execution_tracker_adapter.h"
+#include "lrvx/strategy/abstract_strategy.h"
 
 namespace demo
 {
@@ -42,7 +42,7 @@ std::unique_ptr<Engine> DemoBuilder::build()
   auto barAggregator = std::make_unique<TimeBarAggregator>(TimeBarPolicy(std::chrono::seconds{60}), barBus.get());
   tradeBus->subscribe(barAggregator.get());
 
-#if FLOX_CPU_AFFINITY_ENABLED
+#if LRVX_CPU_AFFINITY_ENABLED
   // Configure CPU affinity for optimal performance
   using namespace performance;
 
@@ -54,14 +54,14 @@ std::unique_ptr<Engine> DemoBuilder::build()
   auto cpuAffinity = createCpuAffinity();
   auto assignment = cpuAffinity->getNumaAwareCoreAssignment(config);
 
-  FLOX_LOG("[DemoBuilder] ✓ CPU affinity configured for high-performance workload:");
-  FLOX_LOG("  - Market Data cores: " << assignment.marketDataCores.size());
-  FLOX_LOG("  - Execution cores: " << assignment.executionCores.size());
-  FLOX_LOG("  - Strategy cores: " << assignment.strategyCores.size());
-  FLOX_LOG("  - Risk cores: " << assignment.riskCores.size());
-  FLOX_LOG("  - Using isolated cores: " << (assignment.hasIsolatedCores ? "Yes" : "No"));
+  LRVX_LOG("[DemoBuilder] ✓ CPU affinity configured for high-performance workload:");
+  LRVX_LOG("  - Market Data cores: " << assignment.marketDataCores.size());
+  LRVX_LOG("  - Execution cores: " << assignment.executionCores.size());
+  LRVX_LOG("  - Strategy cores: " << assignment.strategyCores.size());
+  LRVX_LOG("  - Risk cores: " << assignment.riskCores.size());
+  LRVX_LOG("  - Using isolated cores: " << (assignment.hasIsolatedCores ? "Yes" : "No"));
 #else
-  FLOX_LOG("[DemoBuilder] ✓ CPU affinity disabled (FLOX_ENABLE_CPU_AFFINITY=OFF)");
+  LRVX_LOG("[DemoBuilder] ✓ CPU affinity disabled (LRVX_ENABLE_CPU_AFFINITY=OFF)");
 #endif
 
   std::vector<std::shared_ptr<IStrategy>> strategies;

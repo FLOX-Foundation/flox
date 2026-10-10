@@ -48,7 +48,7 @@ def daemon():
 def sock_dir():
     # pytest's tmp_path is long enough on macOS to overflow sun_path (104
     # bytes there), which every AF_UNIX bind below would trip over.
-    directory = tempfile.mkdtemp(prefix="flox-sd-")
+    directory = tempfile.mkdtemp(prefix="lrvx-sd-")
     try:
         yield Path(directory)
     finally:

@@ -2,11 +2,11 @@
 
 #include <filesystem>
 
-#include "flox/common.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -27,7 +27,7 @@ OptionQuoteRecord makeQuote(int i, uint32_t sym = 7)
   q.bid_iv_raw = static_cast<int64_t>((0.49 + i * 0.001) * kIvScale);
   q.ask_iv_raw = static_cast<int64_t>((0.51 + i * 0.001) * kIvScale);
   q.symbol_id = sym;
-  q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
+  q.instrument = static_cast<uint8_t>(lrvx::InstrumentType::Option);
   return q;
 }
 }  // namespace
@@ -37,7 +37,7 @@ class OptionQuoteIoTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _dir = std::filesystem::temp_directory_path() / "flox_test_option_quote_io";
+    _dir = std::filesystem::temp_directory_path() / "lrvx_test_option_quote_io";
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
   }

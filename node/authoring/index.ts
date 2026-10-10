@@ -1,6 +1,6 @@
 // Authoring layer for TypeScript strategies.
 //
-// Lets you write a flox strategy as a TS class with decorated methods
+// Lets you write a lrvx strategy as a TS class with decorated methods
 // instead of a plain object literal. The runtime surface is exactly the
 // same — `compile()` returns the duck-typed Strategy object that
 // BacktestRunner / Engine / WalkForwardRunner already accept.
@@ -11,16 +11,16 @@ import type {
   BarData,
   EmitMethods,
   Strategy,
-  Symbol as FloxSymbol,
+  Symbol as LrvxSymbol,
   SymbolContext,
   TradeData,
 } from "..";
 
 const HANDLERS: unique symbol = Symbol.for(
-  "@flox-foundation/flox.authoring.handlers"
+  "lrvx.authoring.handlers"
 );
 const SYMBOLS: unique symbol = Symbol.for(
-  "@flox-foundation/flox.authoring.symbols"
+  "lrvx.authoring.symbols"
 );
 
 type HandlerName =
@@ -43,7 +43,7 @@ interface HandlerCarrier {
 }
 
 interface ClassWithSymbols {
-  [SYMBOLS]?: ReadonlyArray<FloxSymbol | number>;
+  [SYMBOLS]?: ReadonlyArray<LrvxSymbol | number>;
 }
 
 function methodDecorator<K extends HandlerName>(
@@ -54,10 +54,10 @@ function methodDecorator<K extends HandlerName>(
 ) => (this: This, ...args: Args) => R {
   return (target, context) => {
     if (context.private) {
-      throw new Error("flox decorators cannot be applied to private methods");
+      throw new Error("lrvx decorators cannot be applied to private methods");
     }
     if (context.static) {
-      throw new Error("flox decorators cannot be applied to static methods");
+      throw new Error("lrvx decorators cannot be applied to static methods");
     }
     context.addInitializer(function (this: unknown) {
       const carrier = this as HandlerCarrier;
@@ -89,11 +89,11 @@ export interface StrategyOptions {
    * Symbols this strategy subscribes to. Equivalent to setting
    * `symbols` on a plain Strategy object.
    */
-  symbols?: ReadonlyArray<FloxSymbol | number>;
+  symbols?: ReadonlyArray<LrvxSymbol | number>;
 }
 
 /**
- * Class decorator. Marks a class as a flox strategy and records the
+ * Class decorator. Marks a class as a lrvx strategy and records the
  * symbol set on the class itself. Use with `compile(instance)` to
  * produce a runtime Strategy object.
  */

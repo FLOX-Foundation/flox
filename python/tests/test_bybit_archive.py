@@ -1,14 +1,14 @@
-"""Tests for ``flox_py.archives.bybit`` — Bybit public archive
+"""Tests for ``lrvx.archives.bybit`` — Bybit public archive
 converter and the shared `ArchiveReader` protocol contract.
 
 No network: a synthetic gzipped CSV matching Bybit's published
 column layout is built in memory and fed through the converter. The
-resulting `.floxlog` is read back via DataReader and asserted
+resulting `.lrvx` is read back via DataReader and asserted
 trade-by-trade.
 
 Covers:
 
-  * `trades_to_floxlog` writes the exact row count + side mapping
+  * `trades_to_lrvx` writes the exact row count + side mapping
     (Buy → BUY, Sell → SELL).
   * trade_id derivation from `trdMatchID` (UUID strings → folded
     int64 hash).
@@ -39,9 +39,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py.archives import ArchiveReader, bybit  # noqa: E402
+from lrvx.archives import ArchiveReader, bybit  # noqa: E402
 
 
 # Bybit columns: timestamp, symbol, side, size, price, tickDirection,
@@ -75,7 +75,7 @@ class BybitConvertTests(unittest.TestCase):
 
     def _convert(self) -> bybit.ConvertStats:
         _build_gz(self.gz_path)
-        return bybit.trades_to_floxlog(
+        return bybit.trades_to_lrvx(
             self.gz_path, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="linear",
         )
@@ -83,7 +83,7 @@ class BybitConvertTests(unittest.TestCase):
     def test_round_trip_and_side_mapping(self) -> None:
         stats = self._convert()
         self.assertEqual(stats.trades_written, 3)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 3)
         # Buy → 0, Sell → 1 by exchange order in the fixture.
         sides = [int(t["side"]) for t in trades]
@@ -99,13 +99,13 @@ class BybitConvertTests(unittest.TestCase):
         first = self._convert()
         self.assertEqual(first.trades_written, 3)
         # Re-run: every trade_id <= last_id → all skipped.
-        second = bybit.trades_to_floxlog(
+        second = bybit.trades_to_lrvx(
             self.gz_path, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="linear",
         )
         self.assertEqual(second.trades_written, 0)
         self.assertEqual(second.rows_skipped, 3)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 3)
 
     def test_metadata(self) -> None:
@@ -130,7 +130,7 @@ class CrossExchangeMergeTests(unittest.TestCase):
     symbol id and exchange tag)."""
 
     def setUp(self) -> None:
-        from flox_py.archives import binance as bnc
+        from lrvx.archives import binance as bnc
         import zipfile
 
         self.tmp = Path(tempfile.mkdtemp(prefix="bybit-merge-"))
@@ -145,7 +145,7 @@ class CrossExchangeMergeTests(unittest.TestCase):
         with zipfile.ZipFile(bnz, "w") as z:
             z.writestr(bnz.with_suffix(".csv").name, buf.getvalue())
         self.bnz_tape = self.tmp / "binance-tape"
-        bnc.aggtrades_to_floxlog(
+        bnc.aggtrades_to_lrvx(
             bnz, self.bnz_tape, symbol_id=1, symbol_name="BTCUSDT",
             market="um-futures",
         )
@@ -153,13 +153,13 @@ class CrossExchangeMergeTests(unittest.TestCase):
         gz = self.tmp / "BTCUSDT2024-01-15.csv.gz"
         _build_gz(gz)
         self.byb_tape = self.tmp / "bybit-tape"
-        bybit.trades_to_floxlog(
+        bybit.trades_to_lrvx(
             gz, self.byb_tape, symbol_id=1, symbol_name="BTCUSDT",
             market="linear",
         )
 
     def test_merge_two_exchanges(self) -> None:
-        reader = flox_py.MergedTapeReader([
+        reader = lrvx.MergedTapeReader([
             str(self.bnz_tape), str(self.byb_tape),
         ])
         trades = reader.read_trades()

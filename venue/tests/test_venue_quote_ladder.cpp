@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -30,12 +30,12 @@
  * rung loop stop one short -- it fails the equality tests above it, which is
  * the same statement from the other side.
  */
-#include "flox-venue/engine/quote.h"
-#include "flox-venue/event_hash.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/sbe_order_entry_codec.h"
+#include "lrvx-venue/engine/quote.h"
+#include "lrvx-venue/event_hash.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/sbe_order_entry_codec.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -46,9 +46,9 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
@@ -471,7 +471,7 @@ TEST(VenueQuoteLadderJournal, FiveLevelsCostLessThanHalfOfFiveQuotes)
   EXPECT_EQ(ladderBytes, frame + kQuoteLadderHeadSize + 5 * sizeof(QuoteLadderLevel));
   EXPECT_EQ(quoteBytes, 5 * (frame + sizeof(Quote)));
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
   EXPECT_LE(ladderBytes * 9, quoteBytes * 5)  // at least 1.8x
       << "ladder " << ladderBytes << " bytes, five quotes " << quoteBytes;
 #else
@@ -545,7 +545,7 @@ TEST(VenueQuoteLadderJournal, ABodyThatDisagreesWithItsLevelsStopsTheLoad)
     put(&tag, sizeof(tag));
     put(&len, sizeof(len));
     put(&l, len);
-    const uint32_t crc = flox::util::Crc32::compute(rec.data(), rec.size());
+    const uint32_t crc = lrvx::util::Crc32::compute(rec.data(), rec.size());
     put(&crc, sizeof(crc));
 
     std::ofstream out(path, std::ios::binary | std::ios::app);

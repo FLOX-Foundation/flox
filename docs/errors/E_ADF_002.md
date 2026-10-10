@@ -18,10 +18,10 @@ Use a longer input series or reduce `max_lag`:
 === "Python"
     ```python
     # OK: enough data for max_lag=4 with constant regression
-    flox.adf(prices_500, max_lag=4, regression="c")
+    lrvx.adf(prices_500, max_lag=4, regression="c")
 
     # Avoid:
-    # flox.adf(prices_5, max_lag=10, regression="ct")
+    # lrvx.adf(prices_5, max_lag=10, regression="ct")
     # → too short for max_lag=10 + 2 trend regressors
     ```
 

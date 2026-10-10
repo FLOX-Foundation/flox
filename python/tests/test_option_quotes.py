@@ -17,7 +17,7 @@ build_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'build', 'python
 if os.path.isdir(build_dir):
     sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox
+import lrvx
 import numpy as np
 
 _passed = 0
@@ -50,7 +50,7 @@ try:
     bid_ivs = ivs - 0.01
     ask_ivs = ivs + 0.01
 
-    w = flox.DataWriter(d, max_segment_mb=128, exchange_id=0)
+    w = lrvx.DataWriter(d, max_segment_mb=128, exchange_id=0)
     written = w.write_option_quotes(
         exchange_ts_ns=ts, recv_ts_ns=ts, mark_prices=marks,
         index_prices=indices, ivs=ivs, open_interest=oi, symbol_ids=syms,
@@ -60,7 +60,7 @@ try:
     w.close()
     check(written == n, f"wrote all {n} quotes (got {written})")
 
-    r = flox.DataReader(d)
+    r = lrvx.DataReader(d)
     arr = r.read_option_quotes_from(0)
     check(arr.size == n, f"read back {n} quotes (got {arr.size})")
 
@@ -85,7 +85,7 @@ try:
     check(abs(arr["iv_raw"][-1] / 1e8 - ivs[-1]) < 1e-6, "iv round-trip last")
     check(abs(arr["open_interest_raw"][0] / 1e8 - oi[0]) < 1e-6, "oi round-trip")
     check(int(arr["symbol_id"][0]) == 7, "symbol id preserved")
-    check(int(arr["instrument"][0]) == int(flox.OptionType.CALL) + 3 or
+    check(int(arr["instrument"][0]) == int(lrvx.OptionType.CALL) + 3 or
           int(arr["instrument"][0]) >= 0, "instrument tagged")  # Option enum value
 
     # start_ts filter: skip the first half.

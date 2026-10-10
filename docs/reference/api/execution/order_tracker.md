@@ -102,7 +102,7 @@ Terminal orders cannot be modified. Methods return `false` when attempting to mo
 
 * Bounded: the tracker holds at most `capacity()` entries, defaulting to
   `config::ORDER_TRACKER_CAPACITY` (4096, overridable through
-  `FLOX_DEFAULT_ORDER_TRACKER_CAPACITY`). The map is sized once at
+  `LRVX_DEFAULT_ORDER_TRACKER_CAPACITY`). The map is sized once at
   construction, so the bound is a memory bound too.
 * When an insert finds the map full, terminal entries are dropped to make
   room. History is what gets sacrificed — a live order is never evicted.

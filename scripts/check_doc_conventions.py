@@ -7,20 +7,23 @@ plausible, copy-pastes cleanly, and fails on line one.
 
 Rules:
 
-* `PY_IMPORT`   — `import flox` as a bare Python import. The distribution
-                  installs the package as `flox_py`; docs alias it with
-                  `import flox_py as flox`. `import flox` is an ImportError.
-* `NODE_PKG`    — `require('flox')`, `require('flox-node')`,
-                  `from "flox"`. The npm package is
-                  `@flox-foundation/flox`; the others do not resolve.
+* `PY_IMPORT`   — the FLOX-era Python names: the `flox-py` distribution,
+                  the `flox_py` module, and `import lrvx as lrvx` /
+                  `import lrvx as flox`. The distribution and the module
+                  are both `lrvx`, imported as plain `import lrvx`.
+* `NODE_PKG`    — the FLOX-era npm package `@flox-foundation/flox`. The
+                  package is `@lrvx/lrvx`: `require('@lrvx/lrvx')` /
+                  `import ... from '@lrvx/lrvx'`.
 * `QUICKJS_REQ` — `require(` inside a `docs/reference/quickjs/**` page. The
                   embedded runtime has no module loader; classes arrive as
                   globals. Lines that explicitly state the *absence* of
                   `require()` are allowed.
-* `CMAKE_FLAG`  — the deprecated `FLOX_ENABLE_{TESTS,BENCHMARKS,DEMO,TOOLS,
-                  PYTHON,NODE,CAPI,CODON,QUICKJS}` options inside a runnable
-                  shell / cmake block. Prose that documents the rename (the
-                  alias table in `docs/build/feature-flags.md`) is fine.
+* `CMAKE_FLAG`  — a FLOX-era CMake option (`FLOX_BUILD_*`, `FLOX_ENABLE_*`,
+                  `FLOX_NATIVE`, `FLOX_CONNECTORS`, ...) inside a runnable
+                  shell / cmake block. The options are `LRVX_*`; CMake does
+                  not recognise the old names and builds without them. Prose
+                  that documents the mapping (the table in
+                  `docs/how-to/migrate-from-flox.md`) is fine.
 * `EMOJI`       — any emoji. The project forbids them. `✓` (U+2713) and
                   `✗` (U+2717) are legitimate table markers and are not
                   emoji for this gate's purposes.
@@ -56,16 +59,17 @@ _SHELL_LANGS = {"bash", "sh", "shell", "shell-session", "console", "cmake",
 
 _FENCE_RE = re.compile(r"^\s*(?P<mark>`{3,}|~{3,})(?P<lang>[A-Za-z0-9_+-]*)")
 
-_PY_IMPORT_RE = re.compile(r"^\s*import\s+flox\s*(?:as\s+\w+)?\s*(?:#.*)?$")
-_NODE_PKG_RE = re.compile(
-    r"""require\(\s*['"]flox(?:-node)?['"]\s*\)"""
-    r"""|from\s+['"]flox(?:-node)?['"]"""
+_PY_IMPORT_RE = re.compile(
+    r"\bflox[_-]py\b"
+    r"|^\s*import\s+lrvx\s+as\s+(?:lrvx|flox)\b"
 )
+_NODE_PKG_RE = re.compile(r"@flox-foundation/flox\b")
 _REQUIRE_RE = re.compile(r"\brequire\s*\(")
 _NO_REQUIRE_RE = re.compile(r"(?i)\b(?:no|not|without)\b[^.]{0,60}require\s*\(")
 _CMAKE_FLAG_RE = re.compile(
-    r"FLOX_ENABLE_(?:TESTS|BENCHMARKS|DEMO|TOOLS|PYTHON|NODE|CAPI|CODON"
-    r"|QUICKJS)\b"
+    r"(?:(?<=-D)|(?<!\w))FLOX_(?:BUILD_\w+|ENABLE_\w+|NATIVE|VENUE_LITE|VENUE_PERIMETER"
+    r"|FETCH_GTEST|FIX_TLS|RUN_CONNECTOR_INTEGRATION_TESTS|CONNECTORS"
+    r"|DEFAULT_\w+|NODE_\w+)\b"
 )
 
 # Emoji, deliberately narrow: pictographs, dingbats, misc symbols, regional
@@ -87,17 +91,27 @@ RULES = ("PY_IMPORT", "NODE_PKG", "QUICKJS_REQ", "CMAKE_FLAG", "EMOJI")
 
 # (page relative to repo root, rule) -> reason. Keep narrow: one page, one
 # rule. A `TODO:` marks a real defect this gate cannot fix from here.
-_EXEMPTIONS: Dict[Tuple[str, str], str] = {}
+_EXEMPTIONS: Dict[Tuple[str, str], str] = {
+    ("docs/contributors/doc-gates.md", "PY_IMPORT"):
+        "the rule table names the FLOX-era Python names it flags",
+    ("docs/contributors/doc-gates.md", "NODE_PKG"):
+        "the rule table names the FLOX-era npm package it flags",
+    ("docs/how-to/migrate-from-flox.md", "PY_IMPORT"):
+        "the migration guide maps the FLOX-era Python names to the new ones",
+    ("docs/how-to/migrate-from-flox.md", "NODE_PKG"):
+        "the migration guide maps the FLOX-era npm package to the new one",
+}
 
 _FIX_HINT = {
-    "PY_IMPORT": "use `import flox_py as flox` (the installed package is "
-                 "flox_py)",
-    "NODE_PKG": "use `require('@flox-foundation/flox')` / "
-                "`from \"@flox-foundation/flox\"`",
+    "PY_IMPORT": "use `pip install lrvx` and plain `import lrvx` "
+                 "(flox-py / flox_py is the deprecated name)",
+    "NODE_PKG": "use `npm install @lrvx/lrvx` and `require('@lrvx/lrvx')` / "
+                "`import ... from '@lrvx/lrvx'` (@flox-foundation/flox is the "
+                "deprecated name)",
     "QUICKJS_REQ": "drop the require: the embedded runtime injects classes "
                    "as globals",
-    "CMAKE_FLAG": "use the FLOX_BUILD_* name (FLOX_ENABLE_* is a deprecated "
-                  "alias that warns and will be removed)",
+    "CMAKE_FLAG": "use the LRVX_* name (CMake does not recognise the FLOX_* "
+                  "option names)",
     "EMOJI": "delete it: the project forbids emoji in docs and code",
 }
 
@@ -139,8 +153,10 @@ def _scan(path: Path, rel: str, enabled: Set[str]) -> List[Tuple[str, int, str]]
                                 f"U+{ord(ch):04X} in {line.strip()[:60]!r}"))
                     break
 
-        if "PY_IMPORT" in enabled and _PY_IMPORT_RE.match(line):
-            out.append(("PY_IMPORT", lineno, line.strip()))
+        if "PY_IMPORT" in enabled:
+            m = _PY_IMPORT_RE.search(line)
+            if m:
+                out.append(("PY_IMPORT", lineno, m.group(0).strip()))
 
         if "NODE_PKG" in enabled:
             m = _NODE_PKG_RE.search(line)

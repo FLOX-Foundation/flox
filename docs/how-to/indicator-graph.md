@@ -17,29 +17,29 @@ Bars are supplied as plain float64 arrays, not a structured array. Only `close` 
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
     import numpy as np
 
-    g = flox.IndicatorGraph()
+    g = lrvx.IndicatorGraph()
     g.set_bars(symbol_id, close, high, low, volume)   # high/low/volume optional
     ```
 
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
-    const g = new flox.IndicatorGraph();
+    const lrvx = require('@lrvx/lrvx');
+    const g = new lrvx.IndicatorGraph();
     g.setBars(symbolId, close, high, low, volume);   // Float64Array; high/low/volume optional
     ```
 
 === "C++"
 
     ```cpp
-    #include "flox/indicator/indicator_pipeline.h"
+    #include "lrvx/indicator/indicator_pipeline.h"
 
-    using namespace flox::indicator;
+    using namespace lrvx::indicator;
     IndicatorGraph g;
-    g.setBars(symbolId, bars);        // std::span<const flox::Bar>
+    g.setBars(symbolId, bars);        // std::span<const lrvx::Bar>
     ```
 
 ## Registering nodes
@@ -50,15 +50,15 @@ Bars are supplied as plain float64 arrays, not a structured array. Only `close` 
 
     ```python
     g.add_node("atr14", [],
-               lambda graph, sym: flox.atr(graph.high(sym), graph.low(sym),
+               lambda graph, sym: lrvx.atr(graph.high(sym), graph.low(sym),
                                            graph.close(sym), 14))
 
     g.add_node("ema50", [],
-               lambda graph, sym: flox.ema(graph.close(sym), 50))
+               lambda graph, sym: lrvx.ema(graph.close(sym), 50))
 
     def norm_slope(graph, sym):
         atr = graph.get(sym, "atr14")
-        slope = flox.slope(graph.get(sym, "ema50"), 1)
+        slope = lrvx.slope(graph.get(sym, "ema50"), 1)
         out = np.divide(slope, atr, out=np.zeros_like(slope), where=atr > 0)
         return out
 
@@ -68,7 +68,7 @@ Bars are supplied as plain float64 arrays, not a structured array. Only `close` 
     For a single-input indicator object there is sugar over `add_node`:
 
     ```python
-    g.indicator("ema50", flox.EMA(50), source="close")
+    g.indicator("ema50", lrvx.EMA(50), source="close")
     # equivalent to add_node("ema50", [], lambda gr, sym: ind.compute(gr.close(sym)))
     ```
 
@@ -79,13 +79,13 @@ Bars are supplied as plain float64 arrays, not a structured array. Only `close` 
 
     ```javascript
     g.addNode('atr14', [], (graph, sym) =>
-      flox.atr(graph.high(sym), graph.low(sym), graph.close(sym), 14));
+      lrvx.atr(graph.high(sym), graph.low(sym), graph.close(sym), 14));
 
-    g.addNode('ema50', [], (graph, sym) => flox.ema(graph.close(sym), 50));
+    g.addNode('ema50', [], (graph, sym) => lrvx.ema(graph.close(sym), 50));
 
     g.addNode('normSlope', ['ema50', 'atr14'], (graph, sym) => {
       const atr = graph.get(sym, 'atr14');
-      const slope = flox.slope(graph.get(sym, 'ema50'), 1);
+      const slope = lrvx.slope(graph.get(sym, 'ema50'), 1);
       const out = new Float64Array(slope.length);
       for (let i = 0; i < slope.length; ++i) out[i] = atr[i] > 0 ? slope[i] / atr[i] : 0;
       return out;
@@ -181,7 +181,7 @@ Node definitions are the same as the batch graph — the compute function still 
 === "Python"
 
     ```python
-    sg = flox.StreamingIndicatorGraph()
+    sg = lrvx.StreamingIndicatorGraph()
     sg.add_node("double_close", [], lambda graph, sym: graph.close(sym) * 2.0)
 
     for c in [10.0, 20.0, 30.0, 40.0, 50.0]:
@@ -199,7 +199,7 @@ Node definitions are the same as the batch graph — the compute function still 
 === "Node.js"
 
     ```javascript
-    const sg = new flox.StreamingIndicatorGraph();
+    const sg = new lrvx.StreamingIndicatorGraph();
     sg.addNode('doubleClose', [], (graph, sym) => {
       const c = graph.close(sym);
       const out = new Float64Array(c.length);

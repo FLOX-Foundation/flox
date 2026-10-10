@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/replay_connector.h"
+#include "lrvx/replay/replay_connector.h"
 
-#include "flox/util/base/time.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx/util/base/time.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
 #include <chrono>
 #include <thread>
 
-namespace flox
+namespace lrvx
 {
 
 ReplayConnector::ReplayConnector(ReplayConnectorConfig config)
@@ -43,7 +43,7 @@ void ReplayConnector::start()
   _reader = std::make_unique<replay::BinaryLogReader>(std::move(reader_config));
   _finished.store(false);
 
-  _replay_thread = makeThread("flox.replay.connector", [this]
+  _replay_thread = makeThread("lrvx.replay.connector", [this]
                               { replayLoop(); });
 }
 
@@ -276,4 +276,4 @@ int64_t ReplayConnector::currentPosition() const
   return _current_pos.load(std::memory_order_relaxed);
 }
 
-}  // namespace flox
+}  // namespace lrvx

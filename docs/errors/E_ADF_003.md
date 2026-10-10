@@ -19,7 +19,7 @@ Drop or fill NaN values before testing:
     import numpy as np
 
     clean = prices[~np.isnan(prices)]
-    result = flox.adf(clean, max_lag=8, regression="c")
+    result = lrvx.adf(clean, max_lag=8, regression="c")
 
     # Or, if you need same-length output (e.g. rolling test):
     filled = np.where(np.isnan(prices), 0.0, prices)

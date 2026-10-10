@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,7 +12,7 @@
 // instead of the built-in SimulatedExecutor. Lifecycle (on_start /
 // on_stop) is balanced against runner / live engine / backtest start.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -45,7 +45,7 @@ struct ExecState
   uint64_t last_replace_old_id{0};
 };
 
-void ex_submit(void* ud, const FloxOrder* o)
+void ex_submit(void* ud, const LrvxOrder* o)
 {
   auto* s = static_cast<ExecState*>(ud);
   s->submit++;
@@ -68,14 +68,14 @@ void ex_cancel_all(void* ud, uint32_t sym)
   s->cancel_all++;
   s->last_cancel_all_symbol = sym;
 }
-void ex_replace(void* ud, uint64_t old_id, const FloxOrder*)
+void ex_replace(void* ud, uint64_t old_id, const LrvxOrder*)
 {
   auto* s = static_cast<ExecState*>(ud);
   s->replace++;
   s->last_replace_old_id = old_id;
 }
-void ex_oco(void* ud, const FloxOrder*, const FloxOrder*) { static_cast<ExecState*>(ud)->oco++; }
-void ex_caps(void* ud, FloxExchangeCapabilities* out)
+void ex_oco(void* ud, const LrvxOrder*, const LrvxOrder*) { static_cast<ExecState*>(ud)->oco++; }
+void ex_caps(void* ud, LrvxExchangeCapabilities* out)
 {
   static_cast<ExecState*>(ud)->caps_calls++;
   out->supports_stop_market = 1;
@@ -96,9 +96,9 @@ void ex_caps(void* ud, FloxExchangeCapabilities* out)
 void ex_on_start(void* ud) { static_cast<ExecState*>(ud)->on_start++; }
 void ex_on_stop(void* ud) { static_cast<ExecState*>(ud)->on_stop++; }
 
-FloxExecutorCallbacks make_cb(ExecState& s)
+LrvxExecutorCallbacks make_cb(ExecState& s)
 {
-  FloxExecutorCallbacks cb{};
+  LrvxExecutorCallbacks cb{};
   cb.submit = ex_submit;
   cb.cancel = ex_cancel;
   cb.cancel_all = ex_cancel_all;
@@ -116,31 +116,31 @@ FloxExecutorCallbacks make_cb(ExecState& s)
 TEST(CapiExecutor, CreateDestroyCapabilities)
 {
   ExecState s;
-  auto* exec = flox_executor_create(make_cb(s));
+  auto* exec = lrvx_executor_create(make_cb(s));
   ASSERT_NE(exec, nullptr);
 
-  FloxExchangeCapabilities caps{};
-  flox_executor_get_capabilities(exec, &caps);
+  LrvxExchangeCapabilities caps{};
+  lrvx_executor_get_capabilities(exec, &caps);
   EXPECT_EQ(s.caps_calls.load(), 1);
   EXPECT_EQ(caps.supports_stop_market, 1);
   EXPECT_EQ(caps.supports_oco, 1);
   EXPECT_EQ(caps.supports_iceberg, 0);
 
-  flox_executor_destroy(exec);
+  lrvx_executor_destroy(exec);
 }
 
 TEST(CapiExecutor, GetCapabilitiesWithNullCallbackZeroes)
 {
   // Executor with null capabilities callback — get should zero-init out.
-  FloxExecutorCallbacks cb{};
+  LrvxExecutorCallbacks cb{};
   cb.user_data = nullptr;
-  auto* exec = flox_executor_create(cb);
-  FloxExchangeCapabilities caps{};
+  auto* exec = lrvx_executor_create(cb);
+  LrvxExchangeCapabilities caps{};
   // Pre-fill with garbage to make sure the API zeroes it.
   caps.supports_oco = 1;
-  flox_executor_get_capabilities(exec, &caps);
+  lrvx_executor_get_capabilities(exec, &caps);
   EXPECT_EQ(caps.supports_oco, 0);
-  flox_executor_destroy(exec);
+  lrvx_executor_destroy(exec);
 }
 
 namespace
@@ -150,56 +150,56 @@ namespace
 // trade event. Used by the runner-level executor tests.
 struct RunnerCtx
 {
-  FloxRegistryHandle registry{nullptr};
-  FloxStrategyHandle strategy{nullptr};
-  FloxRunnerHandle runner{nullptr};
+  LrvxRegistryHandle registry{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
+  LrvxRunnerHandle runner{nullptr};
   uint32_t symbol{0};
   ~RunnerCtx()
   {
     if (runner)
     {
-      flox_runner_destroy(runner);
+      lrvx_runner_destroy(runner);
     }
     if (strategy)
     {
-      flox_strategy_destroy(strategy);
+      lrvx_strategy_destroy(strategy);
     }
     if (registry)
     {
-      flox_registry_destroy(registry);
+      lrvx_registry_destroy(registry);
     }
   }
 };
 
-void noop_signal(void*, const FloxSignal*) {}
+void noop_signal(void*, const LrvxSignal*) {}
 
 void make_market_buy_runner(RunnerCtx& s)
 {
-  s.registry = flox_registry_create();
-  s.symbol = flox_registry_add_symbol(s.registry, "test", "BTC", 0.01);
+  s.registry = lrvx_registry_create();
+  s.symbol = lrvx_registry_add_symbol(s.registry, "test", "BTC", 0.01);
 
   static std::atomic<bool> fired{false};
   fired.store(false);
 
-  static FloxStrategyHandle strat_capture;
+  static LrvxStrategyHandle strat_capture;
   static uint32_t sym_capture;
-  auto on_trade = +[](void* /*ud*/, const FloxSymbolContext*, const FloxTradeData*)
+  auto on_trade = +[](void* /*ud*/, const LrvxSymbolContext*, const LrvxTradeData*)
   {
     if (fired.exchange(true))
     {
       return;
     }
-    flox_emit_market_buy(strat_capture, sym_capture, 100000000LL);
+    lrvx_emit_market_buy(strat_capture, sym_capture, 100000000LL);
   };
 
-  FloxStrategyCallbacks scb{};
+  LrvxStrategyCallbacks scb{};
   scb.on_trade = on_trade;
   uint32_t syms[] = {s.symbol};
-  s.strategy = flox_strategy_create(/*id=*/1, syms, 1, s.registry, scb);
+  s.strategy = lrvx_strategy_create(/*id=*/1, syms, 1, s.registry, scb);
   strat_capture = s.strategy;
   sym_capture = s.symbol;
-  s.runner = flox_runner_create(s.registry, noop_signal, nullptr);
-  flox_runner_add_strategy(s.runner, s.strategy);
+  s.runner = lrvx_runner_create(s.registry, noop_signal, nullptr);
+  lrvx_runner_add_strategy(s.runner, s.strategy);
 }
 
 }  // namespace
@@ -210,12 +210,12 @@ TEST(CapiExecutor, RunnerForwardsMarketBuyToExecutor)
   RunnerCtx ctx;
   make_market_buy_runner(ctx);
 
-  auto* exec = flox_executor_create(make_cb(s));
-  flox_runner_set_executor(ctx.runner, exec);
-  flox_runner_start(ctx.runner);
+  auto* exec = lrvx_executor_create(make_cb(s));
+  lrvx_runner_set_executor(ctx.runner, exec);
+  lrvx_runner_start(ctx.runner);
   EXPECT_EQ(s.on_start.load(), 1);
 
-  flox_runner_on_trade(ctx.runner, ctx.symbol, /*price=*/100.0, /*qty=*/1.0,
+  lrvx_runner_on_trade(ctx.runner, ctx.symbol, /*price=*/100.0, /*qty=*/1.0,
                        /*is_buy=*/1, /*ts=*/1'000);
 
   EXPECT_EQ(s.submit.load(), 1) << "executor should see the market buy";
@@ -224,44 +224,44 @@ TEST(CapiExecutor, RunnerForwardsMarketBuyToExecutor)
   EXPECT_EQ(s.last_submit_type, 1u) << "MARKET → type=1";
   EXPECT_EQ(s.last_submit_qty_raw, 100000000LL);
 
-  flox_runner_stop(ctx.runner);
+  lrvx_runner_stop(ctx.runner);
   EXPECT_EQ(s.on_stop.load(), 1);
 
-  flox_executor_destroy(exec);
+  lrvx_executor_destroy(exec);
 }
 
 TEST(CapiExecutor, RunnerForwardsCancelAndCancelAll)
 {
   ExecState s;
   RunnerCtx ctx;
-  ctx.registry = flox_registry_create();
-  ctx.symbol = flox_registry_add_symbol(ctx.registry, "test", "BTC", 0.01);
+  ctx.registry = lrvx_registry_create();
+  ctx.symbol = lrvx_registry_add_symbol(ctx.registry, "test", "BTC", 0.01);
 
-  FloxStrategyCallbacks scb{};
+  LrvxStrategyCallbacks scb{};
   uint32_t syms[] = {ctx.symbol};
-  ctx.strategy = flox_strategy_create(1, syms, 1, ctx.registry, scb);
-  ctx.runner = flox_runner_create(ctx.registry, noop_signal, nullptr);
-  flox_runner_add_strategy(ctx.runner, ctx.strategy);
+  ctx.strategy = lrvx_strategy_create(1, syms, 1, ctx.registry, scb);
+  ctx.runner = lrvx_runner_create(ctx.registry, noop_signal, nullptr);
+  lrvx_runner_add_strategy(ctx.runner, ctx.strategy);
 
-  auto* exec = flox_executor_create(make_cb(s));
-  flox_runner_set_executor(ctx.runner, exec);
-  flox_runner_start(ctx.runner);
+  auto* exec = lrvx_executor_create(make_cb(s));
+  lrvx_runner_set_executor(ctx.runner, exec);
+  lrvx_runner_start(ctx.runner);
 
-  flox_emit_cancel(ctx.strategy, /*order_id=*/42);
+  lrvx_emit_cancel(ctx.strategy, /*order_id=*/42);
   EXPECT_EQ(s.cancel.load(), 1);
   EXPECT_EQ(s.last_cancel_id, 42u);
 
-  flox_emit_cancel_all(ctx.strategy, ctx.symbol);
+  lrvx_emit_cancel_all(ctx.strategy, ctx.symbol);
   EXPECT_EQ(s.cancel_all.load(), 1);
   EXPECT_EQ(s.last_cancel_all_symbol, ctx.symbol);
 
-  flox_emit_modify(ctx.strategy, /*order_id=*/7,
+  lrvx_emit_modify(ctx.strategy, /*order_id=*/7,
                    /*new_price_raw=*/10000000000LL, /*new_qty_raw=*/200000000LL);
   EXPECT_EQ(s.replace.load(), 1);
   EXPECT_EQ(s.last_replace_old_id, 7u);
 
-  flox_runner_stop(ctx.runner);
-  flox_executor_destroy(exec);
+  lrvx_runner_stop(ctx.runner);
+  lrvx_executor_destroy(exec);
 }
 
 TEST(CapiExecutor, NullDetachesExecutor)
@@ -270,90 +270,90 @@ TEST(CapiExecutor, NullDetachesExecutor)
   RunnerCtx ctx;
   make_market_buy_runner(ctx);
 
-  auto* exec = flox_executor_create(make_cb(s));
-  flox_runner_set_executor(ctx.runner, exec);
-  flox_runner_start(ctx.runner);
+  auto* exec = lrvx_executor_create(make_cb(s));
+  lrvx_runner_set_executor(ctx.runner, exec);
+  lrvx_runner_start(ctx.runner);
   EXPECT_EQ(s.on_start.load(), 1);
 
   // Detach mid-run — outgoing executor sees on_stop.
-  flox_runner_set_executor(ctx.runner, nullptr);
+  lrvx_runner_set_executor(ctx.runner, nullptr);
   EXPECT_EQ(s.on_stop.load(), 1);
 
-  flox_runner_on_trade(ctx.runner, ctx.symbol, 100.0, 1.0, 1, 1'000);
+  lrvx_runner_on_trade(ctx.runner, ctx.symbol, 100.0, 1.0, 1, 1'000);
   EXPECT_EQ(s.submit.load(), 0) << "no submit after detach";
 
-  flox_runner_stop(ctx.runner);
+  lrvx_runner_stop(ctx.runner);
   // No additional on_stop; the runner stopped after detachment.
   EXPECT_EQ(s.on_stop.load(), 1);
-  flox_executor_destroy(exec);
+  lrvx_executor_destroy(exec);
 }
 
 TEST(CapiExecutor, BacktestRunnerSetExecutorRoutesSignals)
 {
   ExecState s;
-  auto* exec = flox_executor_create(make_cb(s));
+  auto* exec = lrvx_executor_create(make_cb(s));
 
-  auto* registry = flox_registry_create();
-  uint32_t sym = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
-  auto* btr = flox_backtest_runner_create(registry, 0.0, 10000.0);
-  flox_backtest_runner_set_executor(btr, exec);
+  auto* registry = lrvx_registry_create();
+  uint32_t sym = lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
+  auto* btr = lrvx_backtest_runner_create(registry, 0.0, 10000.0);
+  lrvx_backtest_runner_set_executor(btr, exec);
 
   static std::atomic<bool> fired{false};
   fired.store(false);
   struct St
   {
-    FloxStrategyHandle h;
+    LrvxStrategyHandle h;
     uint32_t sym;
   } st{nullptr, sym};
-  auto on_bar = +[](void* ud, const FloxSymbolContext*, const FloxBarData*)
+  auto on_bar = +[](void* ud, const LrvxSymbolContext*, const LrvxBarData*)
   {
     if (fired.exchange(true))
     {
       return;
     }
     auto* p = static_cast<St*>(ud);
-    flox_emit_market_buy(p->h, p->sym, 100000000LL);
+    lrvx_emit_market_buy(p->h, p->sym, 100000000LL);
   };
-  FloxStrategyCallbacks scb{};
+  LrvxStrategyCallbacks scb{};
   scb.on_bar = on_bar;
   scb.user_data = &st;
   uint32_t syms[] = {sym};
-  auto* strat = flox_strategy_create(1, syms, 1, registry, scb);
+  auto* strat = lrvx_strategy_create(1, syms, 1, registry, scb);
   st.h = strat;
-  flox_backtest_runner_set_strategy(btr, strat);
+  lrvx_backtest_runner_set_strategy(btr, strat);
 
   int64_t starts[1] = {1'000'000'000};
   int64_t ends[1] = {1'999'999'999};
   double opens[1] = {100.0}, highs[1] = {101.0}, lows[1] = {99.0};
   double closes[1] = {100.5}, volumes[1] = {10.0};
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows,
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows,
                                          closes, volumes, 1, "BTC", 0, 0, &stats);
   EXPECT_EQ(rc, 1);
   EXPECT_GE(s.submit.load(), 1)
       << "BacktestRunner must route through the binding executor when set";
 
-  flox_strategy_destroy(strat);
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
-  flox_executor_destroy(exec);
+  lrvx_strategy_destroy(strat);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
+  lrvx_executor_destroy(exec);
 }
 
 TEST(CapiExecutor, NullCallbacksAreNoOp)
 {
   // Executor with all callbacks null shouldn't crash even when the
   // runner forwards events.
-  FloxExecutorCallbacks cb{};
-  auto* exec = flox_executor_create(cb);
+  LrvxExecutorCallbacks cb{};
+  auto* exec = lrvx_executor_create(cb);
   ASSERT_NE(exec, nullptr);
 
   RunnerCtx ctx;
   make_market_buy_runner(ctx);
-  flox_runner_set_executor(ctx.runner, exec);
-  flox_runner_start(ctx.runner);
-  flox_runner_on_trade(ctx.runner, ctx.symbol, 100.0, 1.0, 1, 1'000);
-  flox_emit_cancel(ctx.strategy, 1);
-  flox_runner_stop(ctx.runner);
+  lrvx_runner_set_executor(ctx.runner, exec);
+  lrvx_runner_start(ctx.runner);
+  lrvx_runner_on_trade(ctx.runner, ctx.symbol, 100.0, 1.0, 1, 1'000);
+  lrvx_emit_cancel(ctx.strategy, 1);
+  lrvx_runner_stop(ctx.runner);
 
-  flox_executor_destroy(exec);
+  lrvx_executor_destroy(exec);
 }

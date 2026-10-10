@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/common.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/util/base/scale_check.h"
+#include "lrvx/common.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/util/base/scale_check.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <limits>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -128,7 +128,7 @@ TEST(ScaleTest, SerializeRoundTripsScale)
   EXPECT_EQ(got->qtyScale, 10);
 }
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 // With scale checks on (debug / CI), mixing a per-symbol-scaled value into
 // arithmetic with a default-scale value traps instead of silently
 // miscomputing. This is the guardrail that would have caught the position-PnL
@@ -176,7 +176,7 @@ TEST(ScaleTest, DivisionOfNonZeroValuesDoesNotTrap)
   EXPECT_NEAR((vol / qty).toDouble(), 25.0, 1e-9);
 }
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 // With checks on, a zero divisor trips instead of reaching the hardware.
 TEST(ScaleDeathTest, DecimalDivisionByZeroTraps)
 {
@@ -291,7 +291,7 @@ TEST(ScaleTest, MulDivHandlesSigns)
   EXPECT_EQ(mulDivI64(0, 50, 25), 0);
 }
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 // With checks on, a quotient past the int64 range and a zero divisor both
 // trip rather than being papered over.
 TEST(ScaleDeathTest, MulDivOverflowTraps)

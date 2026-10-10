@@ -27,15 +27,15 @@ Worth doing when `late_dropped` is higher than you are willing to lose, or when 
 
     === "Python"
         ```python
-        reader = flox_py.DataReader("./tape", reorder_window_ns=30_000_000_000)
+        reader = lrvx.DataReader("./tape", reorder_window_ns=30_000_000_000)
         ```
 
     === "C++"
         ```cpp
-        flox::replay::ReaderConfig cfg;
+        lrvx::replay::ReaderConfig cfg;
         cfg.data_dir = "./tape";
         cfg.reorder_window_ns = 30'000'000'000;
-        flox::replay::BinaryLogReader reader(cfg);
+        lrvx::replay::BinaryLogReader reader(cfg);
         ```
 
 2. **Pre-sort the tape.** Re-process the segment through `BinaryLogWriter` (which sets the Sorted flag and the reader's fast path takes over). This is the right fix for archived data that won't change.

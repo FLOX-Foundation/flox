@@ -11,25 +11,25 @@
 #include <stdexcept>
 
 #include "callback_guard.h"
-#include "flox/backtest/backtest_config.h"
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/venue_stack.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/capi/bridge_strategy.h"
-#include "flox/capi/flox_capi.h"
-#include "flox/capi/order_type_names.hpp"
-#include "flox/engine/symbol_registry.h"
-#include "flox/error/flox_error.h"
-#include "flox/replay/abstract_event_reader.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/binary_log_recorder_hook.h"
-#include "flox/run/trace_recorder.h"
-#include "flox/util/memory/pool.h"
 #include "hook_bindings.h"
+#include "lrvx/backtest/backtest_config.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/venue_stack.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/capi/bridge_strategy.h"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/capi/order_type_names.hpp"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/replay/abstract_event_reader.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_log_recorder_hook.h"
+#include "lrvx/run/trace_recorder.h"
+#include "lrvx/util/memory/pool.h"
 #include "replay_bindings.h"
 #include "types_bindings.h"
 
@@ -52,7 +52,7 @@ namespace py = pybind11;
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 // PyTradeData lives in types_bindings.h (shared with hook_bindings.h).
 
@@ -102,24 +102,24 @@ struct PySymbolCtx
 
 // The presence flags say whether a side has a quote; the price fields cannot,
 // since a book may be quoted at exactly zero.
-inline void fillQuotes(PySymbolCtx& pc, const FloxBookSnapshot& book)
+inline void fillQuotes(PySymbolCtx& pc, const LrvxBookSnapshot& book)
 {
   if (book.has_bid)
   {
-    pc.best_bid = flox_price_to_double(book.bid_price_raw);
+    pc.best_bid = lrvx_price_to_double(book.bid_price_raw);
   }
   if (book.has_ask)
   {
-    pc.best_ask = flox_price_to_double(book.ask_price_raw);
+    pc.best_ask = lrvx_price_to_double(book.ask_price_raw);
   }
   if (book.has_bid && book.has_ask)
   {
-    pc.mid_price = flox_price_to_double(book.mid_raw);
+    pc.mid_price = lrvx_price_to_double(book.mid_raw);
   }
 }
 
 // Order-event payload exposed to the Python `on_fill` /
-// `on_order_update` hooks. Mirrors `FloxOrderEventData` from the C
+// `on_order_update` hooks. Mirrors `LrvxOrderEventData` from the C
 // ABI but with double prices/qtys so user code doesn't need to
 // touch raw fixed-point.
 struct PyOrderEventData
@@ -582,7 +582,7 @@ class PyStrategyBase
     {
       return std::nullopt;
     }
-    auto bar = _bridge->lastClosedBar(symbol_id, static_cast<flox::BarType>(bar_type), param);
+    auto bar = _bridge->lastClosedBar(symbol_id, static_cast<lrvx::BarType>(bar_type), param);
     if (!bar)
     {
       return std::nullopt;
@@ -605,7 +605,7 @@ class PyStrategyBase
     {
       return out;
     }
-    auto bars = _bridge->lastNClosedBars(symbol_id, static_cast<flox::BarType>(bar_type), param, n);
+    auto bars = _bridge->lastNClosedBars(symbol_id, static_cast<lrvx::BarType>(bar_type), param, n);
     for (const auto& bar : bars)
     {
       py::dict d;
@@ -671,7 +671,7 @@ class PyStrategyBase
     {
       return it->second;
     }
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_SYM_001",
         "Symbol '" + symbol.value() +
             "' is not registered. Add it via Engine.add_symbol() "
@@ -764,11 +764,11 @@ struct PyStrategyHost
     if (self->with_gil)
     {
       py::gil_scoped_acquire gil;
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
     else
     {
-      flox_py::guardCallback(fn, source);
+      lrvx::guardCallback(fn, source);
     }
   }
 
@@ -808,7 +808,7 @@ struct PyStrategyHost
                  uint32_t id, bool with_gil_)
       : strategy(strat), with_gil(with_gil_)
   {
-    FloxStrategyCallbacks cbs{};
+    LrvxStrategyCallbacks cbs{};
     cbs.user_data = this;
     cbs.on_trade = &PyStrategyHost::onTrade;
     cbs.on_book = &PyStrategyHost::onBook;
@@ -827,22 +827,22 @@ struct PyStrategyHost
   }
 
   // Callbacks are C function pointers — no captures allowed.
-  static void onTrade(void* ud, const FloxSymbolContext* ctx,
-                      const FloxTradeData* trade)
+  static void onTrade(void* ud, const LrvxSymbolContext* ctx,
+                      const LrvxTradeData* trade)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx, trade]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
 
       PyTradeData pt{};
       pt.symbol = trade->symbol;
-      pt.price = flox_price_to_double(trade->price_raw);
-      pt.quantity = flox_quantity_to_double(trade->quantity_raw);
+      pt.price = lrvx_price_to_double(trade->price_raw);
+      pt.quantity = lrvx_quantity_to_double(trade->quantity_raw);
       pt.is_buy = trade->is_buy != 0;
       pt.side = pt.is_buy ? "buy" : "sell";
       pt.timestamp_ns = trade->exchange_ts_ns;
@@ -852,44 +852,44 @@ struct PyStrategyHost
     dispatch(self, "Strategy.on_trade", call);
   }
 
-  static void onBook(void* ud, const FloxSymbolContext* ctx,
-                     const FloxBookData* /*book*/)
+  static void onBook(void* ud, const LrvxSymbolContext* ctx,
+                     const LrvxBookData* /*book*/)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
       self->strategy.load(std::memory_order_acquire)->on_book_update(pc);
     };
     dispatch(self, "Strategy.on_book_update", call);
   }
 
-  static void onBar(void* ud, const FloxSymbolContext* ctx,
-                    const FloxBarData* bar)
+  static void onBar(void* ud, const LrvxSymbolContext* ctx,
+                    const LrvxBarData* bar)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx, bar]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
 
       PyBarData pb{};
       pb.symbol = bar->symbol;
       pb.bar_type = bar->bar_type;
       pb.bar_type_param = bar->bar_type_param;
-      pb.open = flox_price_to_double(bar->open_raw);
-      pb.high = flox_price_to_double(bar->high_raw);
-      pb.low = flox_price_to_double(bar->low_raw);
-      pb.close = flox_price_to_double(bar->close_raw);
-      pb.volume = flox_quantity_to_double(bar->volume_raw);
-      pb.buy_volume = flox_quantity_to_double(bar->buy_volume_raw);
+      pb.open = lrvx_price_to_double(bar->open_raw);
+      pb.high = lrvx_price_to_double(bar->high_raw);
+      pb.low = lrvx_price_to_double(bar->low_raw);
+      pb.close = lrvx_price_to_double(bar->close_raw);
+      pb.volume = lrvx_quantity_to_double(bar->volume_raw);
+      pb.buy_volume = lrvx_quantity_to_double(bar->buy_volume_raw);
       pb.start_time_ns = bar->start_time_ns;
       pb.end_time_ns = bar->end_time_ns;
       pb.close_reason = bar->close_reason;
@@ -907,7 +907,7 @@ struct PyStrategyHost
              { self->strategy.load(std::memory_order_acquire)->on_start(); });
   }
 
-  static PyOrderEventData toPyOrderEvent(const FloxOrderEventData* ev)
+  static PyOrderEventData toPyOrderEvent(const LrvxOrderEventData* ev)
   {
     PyOrderEventData pe{};
     pe.order_id = ev->order_id;
@@ -915,12 +915,12 @@ struct PyStrategyHost
     pe.side = (ev->side == 0) ? "buy" : "sell";
     pe.order_type = orderTypeName(ev->order_type);
     pe.status = orderStatusName(ev->status);
-    pe.fill_qty = flox_quantity_to_double(ev->fill_qty_raw);
-    pe.fill_price = flox_price_to_double(ev->fill_price_raw);
+    pe.fill_qty = lrvx_quantity_to_double(ev->fill_qty_raw);
+    pe.fill_price = lrvx_price_to_double(ev->fill_price_raw);
     pe.exchange_ts_ns = ev->exchange_ts_ns;
     pe.reject_reason = ev->reject_reason ? std::string(ev->reject_reason) : "";
-    pe.queue_ahead = flox_quantity_to_double(ev->queue_ahead_raw);
-    pe.queue_total = flox_quantity_to_double(ev->queue_total_raw);
+    pe.queue_ahead = lrvx_quantity_to_double(ev->queue_ahead_raw);
+    pe.queue_total = lrvx_quantity_to_double(ev->queue_total_raw);
     pe.submitted_at_ns = ev->submitted_at_ns;
     pe.accepted_at_ns = ev->accepted_at_ns;
     pe.first_fill_at_ns = ev->first_fill_at_ns;
@@ -942,7 +942,7 @@ struct PyStrategyHost
   // The canonical table, not a copy of it. The copy that used to sit
   // here spelled codes 4 and 5 "take_profit_market"/"take_profit_limit"
   // and had no case 7, so an iceberg fill read back "unknown".
-  static const char* orderTypeName(uint8_t t) { return flox::capi::orderTypeNameLower(t); }
+  static const char* orderTypeName(uint8_t t) { return lrvx::capi::orderTypeNameLower(t); }
 
   static const char* orderStatusName(uint8_t s)
   {
@@ -1014,16 +1014,16 @@ struct PyStrategyHost
     }
   }
 
-  static void onFill(void* ud, const FloxSymbolContext* ctx,
-                     const FloxOrderEventData* ev)
+  static void onFill(void* ud, const LrvxSymbolContext* ctx,
+                     const LrvxOrderEventData* ev)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx, ev]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_fill(pc, pe);
@@ -1031,16 +1031,16 @@ struct PyStrategyHost
     dispatch(self, "Strategy.on_fill", call);
   }
 
-  static void onOrderUpdate(void* ud, const FloxSymbolContext* ctx,
-                            const FloxOrderEventData* ev)
+  static void onOrderUpdate(void* ud, const LrvxSymbolContext* ctx,
+                            const LrvxOrderEventData* ev)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx, ev]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_order_update(pc, pe);
@@ -1048,16 +1048,16 @@ struct PyStrategyHost
     dispatch(self, "Strategy.on_order_update", call);
   }
 
-  static void onQueuePositionChange(void* ud, const FloxSymbolContext* ctx,
-                                    const FloxOrderEventData* ev)
+  static void onQueuePositionChange(void* ud, const LrvxSymbolContext* ctx,
+                                    const LrvxOrderEventData* ev)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx, ev]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_queue_position_change(pc, pe);
@@ -1065,16 +1065,16 @@ struct PyStrategyHost
     dispatch(self, "Strategy.on_queue_position_change", call);
   }
 
-  static void onMarketPositionChange(void* ud, const FloxSymbolContext* ctx,
-                                     const FloxOrderEventData* ev)
+  static void onMarketPositionChange(void* ud, const LrvxSymbolContext* ctx,
+                                     const LrvxOrderEventData* ev)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
     auto call = [self, ctx, ev]()
     {
       PySymbolCtx pc{};
       pc.symbol_id = ctx->symbol_id;
-      pc.position = flox_quantity_to_double(ctx->position_raw);
-      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.position = lrvx_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = lrvx_price_to_double(ctx->last_trade_price_raw);
       fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)
@@ -1107,7 +1107,7 @@ class PyStrategyRunner
   PyStrategyRunner(SymbolRegistry* reg, py::object on_signal)
       : _reg(reg), _on_signal(std::move(on_signal))
   {
-    _runner = flox_runner_create(static_cast<FloxRegistryHandle>(reg),
+    _runner = lrvx_runner_create(static_cast<LrvxRegistryHandle>(reg),
                                  &PyStrategyRunner::signalCallback, this);
   }
 
@@ -1115,12 +1115,12 @@ class PyStrategyRunner
   {
     if (_binlog_recorder_handle)
     {
-      flox_market_data_recorder_destroy(_binlog_recorder_handle);
+      lrvx_market_data_recorder_destroy(_binlog_recorder_handle);
       _binlog_recorder_handle = nullptr;
     }
     if (_runner)
     {
-      flox_runner_destroy(_runner);
+      lrvx_runner_destroy(_runner);
     }
   }
 
@@ -1128,8 +1128,8 @@ class PyStrategyRunner
   {
     uint32_t id = static_cast<uint32_t>(_hosts.size()) + 1;
     auto host = std::make_unique<PyStrategyHost>(strat, _reg, id, false);
-    flox_runner_add_strategy(_runner,
-                             static_cast<FloxStrategyHandle>(host->bridge.get()));
+    lrvx_runner_add_strategy(_runner,
+                             static_cast<LrvxStrategyHandle>(host->bridge.get()));
     _hosts.push_back(std::move(host));
   }
 
@@ -1137,105 +1137,105 @@ class PyStrategyRunner
   {
     if (index >= _hosts.size())
     {
-      throw flox::FloxError("E_VAL_002",
+      throw lrvx::LrvxError("E_VAL_002",
                             "replace_strategy: index out of range");
     }
     _hosts[index]->replace_strategy(new_strat);
   }
 
-  void start() { flox_runner_start(_runner); }
-  void stop() { flox_runner_stop(_runner); }
+  void start() { lrvx_runner_start(_runner); }
+  void stop() { lrvx_runner_stop(_runner); }
 
-  FloxRunnerHandle handle() const noexcept { return _runner; }
+  LrvxRunnerHandle handle() const noexcept { return _runner; }
 
-  void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
+  void set_pnl_tracker(std::shared_ptr<lrvx::PyPnLTracker> tracker)
   {
     _pnl_owner.reset();
     if (tracker)
     {
-      _pnl_owner = std::make_unique<flox_py::PyPnLTrackerOwner>(std::move(tracker));
-      flox_runner_set_pnl_tracker(_runner, _pnl_owner->handle());
+      _pnl_owner = std::make_unique<lrvx::PyPnLTrackerOwner>(std::move(tracker));
+      lrvx_runner_set_pnl_tracker(_runner, _pnl_owner->handle());
     }
     else
     {
-      flox_runner_set_pnl_tracker(_runner, nullptr);
+      lrvx_runner_set_pnl_tracker(_runner, nullptr);
     }
   }
 
-  void set_storage_sink(std::shared_ptr<flox_py::PyStorageSink> sink)
+  void set_storage_sink(std::shared_ptr<lrvx::PyStorageSink> sink)
   {
     _storage_owner.reset();
     if (sink)
     {
-      _storage_owner = std::make_unique<flox_py::PyStorageSinkOwner>(std::move(sink));
-      flox_runner_set_storage_sink(_runner, _storage_owner->handle());
+      _storage_owner = std::make_unique<lrvx::PyStorageSinkOwner>(std::move(sink));
+      lrvx_runner_set_storage_sink(_runner, _storage_owner->handle());
     }
     else
     {
-      flox_runner_set_storage_sink(_runner, nullptr);
+      lrvx_runner_set_storage_sink(_runner, nullptr);
     }
   }
 
-  void set_risk_manager(std::shared_ptr<flox_py::PyRiskManager> rm)
+  void set_risk_manager(std::shared_ptr<lrvx::PyRiskManager> rm)
   {
     _risk_owner.reset();
     if (rm)
     {
-      _risk_owner = std::make_unique<flox_py::PyRiskManagerOwner>(std::move(rm));
-      flox_runner_set_risk_manager(_runner, _risk_owner->handle());
+      _risk_owner = std::make_unique<lrvx::PyRiskManagerOwner>(std::move(rm));
+      lrvx_runner_set_risk_manager(_runner, _risk_owner->handle());
     }
     else
     {
-      flox_runner_set_risk_manager(_runner, nullptr);
+      lrvx_runner_set_risk_manager(_runner, nullptr);
     }
   }
 
-  void set_kill_switch(std::shared_ptr<flox_py::PyKillSwitch> ks)
+  void set_kill_switch(std::shared_ptr<lrvx::PyKillSwitch> ks)
   {
     _kill_owner.reset();
     if (ks)
     {
-      _kill_owner = std::make_unique<flox_py::PyKillSwitchOwner>(std::move(ks));
-      flox_runner_set_kill_switch(_runner, _kill_owner->handle());
+      _kill_owner = std::make_unique<lrvx::PyKillSwitchOwner>(std::move(ks));
+      lrvx_runner_set_kill_switch(_runner, _kill_owner->handle());
     }
     else
     {
-      flox_runner_set_kill_switch(_runner, nullptr);
+      lrvx_runner_set_kill_switch(_runner, nullptr);
     }
   }
 
-  void set_order_validator(std::shared_ptr<flox_py::PyOrderValidator> ov)
+  void set_order_validator(std::shared_ptr<lrvx::PyOrderValidator> ov)
   {
     _validator_owner.reset();
     if (ov)
     {
-      _validator_owner = std::make_unique<flox_py::PyOrderValidatorOwner>(std::move(ov));
-      flox_runner_set_order_validator(_runner, _validator_owner->handle());
+      _validator_owner = std::make_unique<lrvx::PyOrderValidatorOwner>(std::move(ov));
+      lrvx_runner_set_order_validator(_runner, _validator_owner->handle());
     }
     else
     {
-      flox_runner_set_order_validator(_runner, nullptr);
+      lrvx_runner_set_order_validator(_runner, nullptr);
     }
   }
 
-  void set_market_data_recorder(std::shared_ptr<flox_py::PyMarketDataRecorderHook> rec)
+  void set_market_data_recorder(std::shared_ptr<lrvx::PyMarketDataRecorderHook> rec)
   {
     _recorder_owner.reset();
     _binlog_recorder.reset();
     if (rec)
     {
-      _recorder_owner = std::make_unique<flox_py::PyMarketDataRecorderHookOwner>(std::move(rec));
-      flox_runner_set_market_data_recorder(_runner, _recorder_owner->handle());
+      _recorder_owner = std::make_unique<lrvx::PyMarketDataRecorderHookOwner>(std::move(rec));
+      lrvx_runner_set_market_data_recorder(_runner, _recorder_owner->handle());
     }
     else
     {
-      flox_runner_set_market_data_recorder(_runner, nullptr);
+      lrvx_runner_set_market_data_recorder(_runner, nullptr);
     }
   }
 
-  // Built-in `.floxlog` sink overload. Same single attach slot as the
+  // Built-in `.lrvx` sink overload. Same single attach slot as the
   // user-callback flavour — setting one clears the other.
-  void set_market_data_recorder(std::shared_ptr<flox_py::PyBinaryLogRecorderHook> rec)
+  void set_market_data_recorder(std::shared_ptr<lrvx::PyBinaryLogRecorderHook> rec)
   {
     _recorder_owner.reset();
     _binlog_recorder.reset();
@@ -1246,70 +1246,70 @@ class PyStrategyRunner
       // for user-callback recorders. The C-API `binary_log_recorder_hook_create`
       // path would yield a self-owned handle; here we already own the
       // C++ object, so wire the callbacks manually onto a transient handle.
-      FloxMarketDataRecorderCallbacks cb{};
-      cb.on_trade = [](void* ud, const FloxTradeData* t)
+      LrvxMarketDataRecorderCallbacks cb{};
+      cb.on_trade = [](void* ud, const LrvxTradeData* t)
       {
         if (!t)
         {
           return;
         }
-        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->onTrade(
+        static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud)->onTrade(
             t->symbol, t->price_raw, t->quantity_raw,
             t->is_buy != 0, t->exchange_ts_ns, 0);
       };
       cb.on_book_update = [](void* ud, uint32_t symbol, uint8_t is_snap,
-                             const FloxBookLevel* bids, uint32_t n_bids,
-                             const FloxBookLevel* asks, uint32_t n_asks,
+                             const LrvxBookLevel* bids, uint32_t n_bids,
+                             const LrvxBookLevel* asks, uint32_t n_asks,
                              int64_t ts)
       {
-        auto* hk = static_cast<flox::replay::BinaryLogRecorderHook*>(ud);
+        auto* hk = static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud);
         hk->onBookUpdate(symbol, is_snap != 0,
-                         reinterpret_cast<const flox::replay::BookLevel*>(bids), n_bids,
-                         reinterpret_cast<const flox::replay::BookLevel*>(asks), n_asks,
+                         reinterpret_cast<const lrvx::replay::BookLevel*>(bids), n_bids,
+                         reinterpret_cast<const lrvx::replay::BookLevel*>(asks), n_asks,
                          ts, 0);
       };
       cb.on_start = [](void* ud)
       {
-        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->start();
+        static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud)->start();
       };
       cb.on_stop = [](void* ud)
       {
-        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->stop();
+        static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud)->stop();
       };
       cb.user_data = raw;
-      _binlog_recorder_handle = flox_market_data_recorder_create(cb);
+      _binlog_recorder_handle = lrvx_market_data_recorder_create(cb);
       _binlog_recorder = std::move(rec);
-      flox_runner_set_market_data_recorder(_runner, _binlog_recorder_handle);
+      lrvx_runner_set_market_data_recorder(_runner, _binlog_recorder_handle);
     }
     else
     {
       if (_binlog_recorder_handle)
       {
-        flox_runner_set_market_data_recorder(_runner, nullptr);
-        flox_market_data_recorder_destroy(_binlog_recorder_handle);
+        lrvx_runner_set_market_data_recorder(_runner, nullptr);
+        lrvx_market_data_recorder_destroy(_binlog_recorder_handle);
         _binlog_recorder_handle = nullptr;
       }
     }
   }
 
-  void set_executor(std::shared_ptr<flox_py::PyExecutor> exec)
+  void set_executor(std::shared_ptr<lrvx::PyExecutor> exec)
   {
     _executor_owner.reset();
     if (exec)
     {
-      _executor_owner = std::make_unique<flox_py::PyExecutorOwner>(std::move(exec));
-      flox_runner_set_executor(_runner, _executor_owner->handle());
+      _executor_owner = std::make_unique<lrvx::PyExecutorOwner>(std::move(exec));
+      lrvx_runner_set_executor(_runner, _executor_owner->handle());
     }
     else
     {
-      flox_runner_set_executor(_runner, nullptr);
+      lrvx_runner_set_executor(_runner, nullptr);
     }
   }
 
   void on_trade(uint32_t symbol, double price, double qty,
                 bool is_buy, int64_t ts_ns)
   {
-    flox_runner_on_trade(_runner, symbol, price, qty,
+    lrvx_runner_on_trade(_runner, symbol, price, qty,
                          static_cast<uint8_t>(is_buy), ts_ns);
   }
 
@@ -1322,7 +1322,7 @@ class PyStrategyRunner
   {
     uint32_t nb = static_cast<uint32_t>(bid_prices.size());
     uint32_t na = static_cast<uint32_t>(ask_prices.size());
-    flox_runner_on_book_snapshot(_runner, symbol,
+    lrvx_runner_on_book_snapshot(_runner, symbol,
                                  bid_prices.data(), bid_qtys.data(), nb,
                                  ask_prices.data(), ask_qtys.data(), na,
                                  ts_ns);
@@ -1335,33 +1335,33 @@ class PyStrategyRunner
               uint8_t bar_type = 0, uint64_t bar_type_param = 0,
               uint8_t close_reason = 0)
   {
-    flox_runner_on_bar(_runner, symbol, bar_type, bar_type_param,
+    lrvx_runner_on_bar(_runner, symbol, bar_type, bar_type_param,
                        open, high, low, close, volume, buy_volume,
                        start_time_ns, end_time_ns, close_reason);
   }
 
  private:
   SymbolRegistry* _reg;
-  FloxRunnerHandle _runner{nullptr};
+  LrvxRunnerHandle _runner{nullptr};
   py::object _on_signal;
   std::vector<std::unique_ptr<PyStrategyHost>> _hosts;
 
   // Hook owners — keep the Owner alive while the runner holds a non-owning
-  // FloxXxxHandle. Reset on detach (set_xxx(None)) or on destruction.
-  std::unique_ptr<flox_py::PyPnLTrackerOwner> _pnl_owner;
-  std::unique_ptr<flox_py::PyStorageSinkOwner> _storage_owner;
-  std::unique_ptr<flox_py::PyRiskManagerOwner> _risk_owner;
-  std::unique_ptr<flox_py::PyKillSwitchOwner> _kill_owner;
-  std::unique_ptr<flox_py::PyOrderValidatorOwner> _validator_owner;
-  std::unique_ptr<flox_py::PyMarketDataRecorderHookOwner> _recorder_owner;
-  // Built-in `.floxlog` sink overload — keeps the Python hook alive
+  // LrvxXxxHandle. Reset on detach (set_xxx(None)) or on destruction.
+  std::unique_ptr<lrvx::PyPnLTrackerOwner> _pnl_owner;
+  std::unique_ptr<lrvx::PyStorageSinkOwner> _storage_owner;
+  std::unique_ptr<lrvx::PyRiskManagerOwner> _risk_owner;
+  std::unique_ptr<lrvx::PyKillSwitchOwner> _kill_owner;
+  std::unique_ptr<lrvx::PyOrderValidatorOwner> _validator_owner;
+  std::unique_ptr<lrvx::PyMarketDataRecorderHookOwner> _recorder_owner;
+  // Built-in `.lrvx` sink overload — keeps the Python hook alive
   // for the duration of the attach, plus the transient callback bundle
-  // we hand to flox_market_data_recorder_create.
-  std::shared_ptr<flox_py::PyBinaryLogRecorderHook> _binlog_recorder;
-  FloxMarketDataRecorderHandle _binlog_recorder_handle{nullptr};
-  std::unique_ptr<flox_py::PyExecutorOwner> _executor_owner;
+  // we hand to lrvx_market_data_recorder_create.
+  std::shared_ptr<lrvx::PyBinaryLogRecorderHook> _binlog_recorder;
+  LrvxMarketDataRecorderHandle _binlog_recorder_handle{nullptr};
+  std::unique_ptr<lrvx::PyExecutorOwner> _executor_owner;
 
-  static void signalCallback(void* ud, const FloxSignal* sig)
+  static void signalCallback(void* ud, const LrvxSignal* sig)
   {
     // Called synchronously from Python thread — GIL already held.
     auto* self = static_cast<PyStrategyRunner*>(ud);
@@ -1384,19 +1384,19 @@ class PyLiveEngine
   explicit PyLiveEngine(SymbolRegistry* reg, py::object on_signal)
       : _reg(reg), _on_signal(std::move(on_signal))
   {
-    _engine = flox_live_engine_create(static_cast<FloxRegistryHandle>(reg));
+    _engine = lrvx_live_engine_create(static_cast<LrvxRegistryHandle>(reg));
   }
 
   ~PyLiveEngine()
   {
     if (_binlog_recorder_handle)
     {
-      flox_market_data_recorder_destroy(_binlog_recorder_handle);
+      lrvx_market_data_recorder_destroy(_binlog_recorder_handle);
       _binlog_recorder_handle = nullptr;
     }
     if (_engine)
     {
-      flox_live_engine_destroy(_engine);
+      lrvx_live_engine_destroy(_engine);
     }
   }
 
@@ -1404,8 +1404,8 @@ class PyLiveEngine
   {
     uint32_t id = static_cast<uint32_t>(_hosts.size()) + 1;
     auto host = std::make_unique<PyStrategyHost>(strat, _reg, id, true);
-    flox_live_engine_add_strategy(_engine,
-                                  static_cast<FloxStrategyHandle>(host->bridge.get()),
+    lrvx_live_engine_add_strategy(_engine,
+                                  static_cast<LrvxStrategyHandle>(host->bridge.get()),
                                   &PyLiveEngine::signalCallback, this);
     _hosts.push_back(std::move(host));
   }
@@ -1414,17 +1414,17 @@ class PyLiveEngine
   {
     if (index >= _hosts.size())
     {
-      throw flox::FloxError("E_VAL_002",
+      throw lrvx::LrvxError("E_VAL_002",
                             "replace_strategy: index out of range");
     }
     _hosts[index]->replace_strategy(new_strat);
   }
 
-  void start() { flox_live_engine_start(_engine); }
+  void start() { lrvx_live_engine_start(_engine); }
   void stop()
   {
     py::gil_scoped_release release;
-    flox_live_engine_stop(_engine);
+    lrvx_live_engine_stop(_engine);
   }
 
   // The three publish_* methods release the GIL for the duration of the
@@ -1437,7 +1437,7 @@ class PyLiveEngine
                      bool is_buy, int64_t ts_ns)
   {
     py::gil_scoped_release release;
-    flox_live_engine_publish_trade(_engine, symbol, price, qty,
+    lrvx_live_engine_publish_trade(_engine, symbol, price, qty,
                                    static_cast<uint8_t>(is_buy), ts_ns);
   }
 
@@ -1451,7 +1451,7 @@ class PyLiveEngine
     uint32_t nb = static_cast<uint32_t>(bid_prices.size());
     uint32_t na = static_cast<uint32_t>(ask_prices.size());
     py::gil_scoped_release release;
-    flox_live_engine_publish_book_snapshot(_engine, symbol,
+    lrvx_live_engine_publish_book_snapshot(_engine, symbol,
                                            bid_prices.data(), bid_qtys.data(), nb,
                                            ask_prices.data(), ask_qtys.data(), na,
                                            ts_ns);
@@ -1464,176 +1464,176 @@ class PyLiveEngine
                    uint8_t close_reason)
   {
     py::gil_scoped_release release;
-    flox_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,
+    lrvx_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,
                                  open, high, low, close, volume, buy_volume,
                                  start_time_ns, end_time_ns, close_reason);
   }
 
-  void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
+  void set_pnl_tracker(std::shared_ptr<lrvx::PyPnLTracker> tracker)
   {
     _pnl_owner.reset();
     if (tracker)
     {
-      _pnl_owner = std::make_unique<flox_py::PyPnLTrackerOwner>(std::move(tracker));
-      flox_live_engine_set_pnl_tracker(_engine, _pnl_owner->handle());
+      _pnl_owner = std::make_unique<lrvx::PyPnLTrackerOwner>(std::move(tracker));
+      lrvx_live_engine_set_pnl_tracker(_engine, _pnl_owner->handle());
     }
     else
     {
-      flox_live_engine_set_pnl_tracker(_engine, nullptr);
+      lrvx_live_engine_set_pnl_tracker(_engine, nullptr);
     }
   }
 
-  void set_storage_sink(std::shared_ptr<flox_py::PyStorageSink> sink)
+  void set_storage_sink(std::shared_ptr<lrvx::PyStorageSink> sink)
   {
     _storage_owner.reset();
     if (sink)
     {
-      _storage_owner = std::make_unique<flox_py::PyStorageSinkOwner>(std::move(sink));
-      flox_live_engine_set_storage_sink(_engine, _storage_owner->handle());
+      _storage_owner = std::make_unique<lrvx::PyStorageSinkOwner>(std::move(sink));
+      lrvx_live_engine_set_storage_sink(_engine, _storage_owner->handle());
     }
     else
     {
-      flox_live_engine_set_storage_sink(_engine, nullptr);
+      lrvx_live_engine_set_storage_sink(_engine, nullptr);
     }
   }
 
-  void set_risk_manager(std::shared_ptr<flox_py::PyRiskManager> rm)
+  void set_risk_manager(std::shared_ptr<lrvx::PyRiskManager> rm)
   {
     _risk_owner.reset();
     if (rm)
     {
-      _risk_owner = std::make_unique<flox_py::PyRiskManagerOwner>(std::move(rm));
-      flox_live_engine_set_risk_manager(_engine, _risk_owner->handle());
+      _risk_owner = std::make_unique<lrvx::PyRiskManagerOwner>(std::move(rm));
+      lrvx_live_engine_set_risk_manager(_engine, _risk_owner->handle());
     }
     else
     {
-      flox_live_engine_set_risk_manager(_engine, nullptr);
+      lrvx_live_engine_set_risk_manager(_engine, nullptr);
     }
   }
 
-  void set_kill_switch(std::shared_ptr<flox_py::PyKillSwitch> ks)
+  void set_kill_switch(std::shared_ptr<lrvx::PyKillSwitch> ks)
   {
     _kill_owner.reset();
     if (ks)
     {
-      _kill_owner = std::make_unique<flox_py::PyKillSwitchOwner>(std::move(ks));
-      flox_live_engine_set_kill_switch(_engine, _kill_owner->handle());
+      _kill_owner = std::make_unique<lrvx::PyKillSwitchOwner>(std::move(ks));
+      lrvx_live_engine_set_kill_switch(_engine, _kill_owner->handle());
     }
     else
     {
-      flox_live_engine_set_kill_switch(_engine, nullptr);
+      lrvx_live_engine_set_kill_switch(_engine, nullptr);
     }
   }
 
-  void set_order_validator(std::shared_ptr<flox_py::PyOrderValidator> ov)
+  void set_order_validator(std::shared_ptr<lrvx::PyOrderValidator> ov)
   {
     _validator_owner.reset();
     if (ov)
     {
-      _validator_owner = std::make_unique<flox_py::PyOrderValidatorOwner>(std::move(ov));
-      flox_live_engine_set_order_validator(_engine, _validator_owner->handle());
+      _validator_owner = std::make_unique<lrvx::PyOrderValidatorOwner>(std::move(ov));
+      lrvx_live_engine_set_order_validator(_engine, _validator_owner->handle());
     }
     else
     {
-      flox_live_engine_set_order_validator(_engine, nullptr);
+      lrvx_live_engine_set_order_validator(_engine, nullptr);
     }
   }
 
-  void set_market_data_recorder(std::shared_ptr<flox_py::PyMarketDataRecorderHook> rec)
+  void set_market_data_recorder(std::shared_ptr<lrvx::PyMarketDataRecorderHook> rec)
   {
     _recorder_owner.reset();
     _binlog_recorder.reset();
     if (rec)
     {
-      _recorder_owner = std::make_unique<flox_py::PyMarketDataRecorderHookOwner>(std::move(rec));
-      flox_live_engine_set_market_data_recorder(_engine, _recorder_owner->handle());
+      _recorder_owner = std::make_unique<lrvx::PyMarketDataRecorderHookOwner>(std::move(rec));
+      lrvx_live_engine_set_market_data_recorder(_engine, _recorder_owner->handle());
     }
     else
     {
-      flox_live_engine_set_market_data_recorder(_engine, nullptr);
+      lrvx_live_engine_set_market_data_recorder(_engine, nullptr);
     }
   }
 
-  void set_market_data_recorder(std::shared_ptr<flox_py::PyBinaryLogRecorderHook> rec)
+  void set_market_data_recorder(std::shared_ptr<lrvx::PyBinaryLogRecorderHook> rec)
   {
     _recorder_owner.reset();
     _binlog_recorder.reset();
     if (_binlog_recorder_handle)
     {
-      flox_live_engine_set_market_data_recorder(_engine, nullptr);
-      flox_market_data_recorder_destroy(_binlog_recorder_handle);
+      lrvx_live_engine_set_market_data_recorder(_engine, nullptr);
+      lrvx_market_data_recorder_destroy(_binlog_recorder_handle);
       _binlog_recorder_handle = nullptr;
     }
     if (rec)
     {
       auto* raw = rec->raw();
-      FloxMarketDataRecorderCallbacks cb{};
-      cb.on_trade = [](void* ud, const FloxTradeData* t)
+      LrvxMarketDataRecorderCallbacks cb{};
+      cb.on_trade = [](void* ud, const LrvxTradeData* t)
       {
         if (!t)
         {
           return;
         }
-        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->onTrade(
+        static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud)->onTrade(
             t->symbol, t->price_raw, t->quantity_raw,
             t->is_buy != 0, t->exchange_ts_ns, 0);
       };
       cb.on_book_update = [](void* ud, uint32_t symbol, uint8_t is_snap,
-                             const FloxBookLevel* bids, uint32_t n_bids,
-                             const FloxBookLevel* asks, uint32_t n_asks,
+                             const LrvxBookLevel* bids, uint32_t n_bids,
+                             const LrvxBookLevel* asks, uint32_t n_asks,
                              int64_t ts)
       {
-        auto* hk = static_cast<flox::replay::BinaryLogRecorderHook*>(ud);
+        auto* hk = static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud);
         hk->onBookUpdate(symbol, is_snap != 0,
-                         reinterpret_cast<const flox::replay::BookLevel*>(bids), n_bids,
-                         reinterpret_cast<const flox::replay::BookLevel*>(asks), n_asks,
+                         reinterpret_cast<const lrvx::replay::BookLevel*>(bids), n_bids,
+                         reinterpret_cast<const lrvx::replay::BookLevel*>(asks), n_asks,
                          ts, 0);
       };
       cb.on_start = [](void* ud)
       {
-        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->start();
+        static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud)->start();
       };
       cb.on_stop = [](void* ud)
       {
-        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->stop();
+        static_cast<lrvx::replay::BinaryLogRecorderHook*>(ud)->stop();
       };
       cb.user_data = raw;
-      _binlog_recorder_handle = flox_market_data_recorder_create(cb);
+      _binlog_recorder_handle = lrvx_market_data_recorder_create(cb);
       _binlog_recorder = std::move(rec);
-      flox_live_engine_set_market_data_recorder(_engine, _binlog_recorder_handle);
+      lrvx_live_engine_set_market_data_recorder(_engine, _binlog_recorder_handle);
     }
   }
 
-  void set_executor(std::shared_ptr<flox_py::PyExecutor> exec)
+  void set_executor(std::shared_ptr<lrvx::PyExecutor> exec)
   {
     _executor_owner.reset();
     if (exec)
     {
-      _executor_owner = std::make_unique<flox_py::PyExecutorOwner>(std::move(exec));
-      flox_live_engine_set_executor(_engine, _executor_owner->handle());
+      _executor_owner = std::make_unique<lrvx::PyExecutorOwner>(std::move(exec));
+      lrvx_live_engine_set_executor(_engine, _executor_owner->handle());
     }
     else
     {
-      flox_live_engine_set_executor(_engine, nullptr);
+      lrvx_live_engine_set_executor(_engine, nullptr);
     }
   }
 
  private:
   SymbolRegistry* _reg;
-  FloxLiveEngineHandle _engine{nullptr};
+  LrvxLiveEngineHandle _engine{nullptr};
   py::object _on_signal;
   std::vector<std::unique_ptr<PyStrategyHost>> _hosts;
-  std::unique_ptr<flox_py::PyPnLTrackerOwner> _pnl_owner;
-  std::unique_ptr<flox_py::PyStorageSinkOwner> _storage_owner;
-  std::unique_ptr<flox_py::PyRiskManagerOwner> _risk_owner;
-  std::unique_ptr<flox_py::PyKillSwitchOwner> _kill_owner;
-  std::unique_ptr<flox_py::PyOrderValidatorOwner> _validator_owner;
-  std::unique_ptr<flox_py::PyMarketDataRecorderHookOwner> _recorder_owner;
-  std::shared_ptr<flox_py::PyBinaryLogRecorderHook> _binlog_recorder;
-  FloxMarketDataRecorderHandle _binlog_recorder_handle{nullptr};
-  std::unique_ptr<flox_py::PyExecutorOwner> _executor_owner;
+  std::unique_ptr<lrvx::PyPnLTrackerOwner> _pnl_owner;
+  std::unique_ptr<lrvx::PyStorageSinkOwner> _storage_owner;
+  std::unique_ptr<lrvx::PyRiskManagerOwner> _risk_owner;
+  std::unique_ptr<lrvx::PyKillSwitchOwner> _kill_owner;
+  std::unique_ptr<lrvx::PyOrderValidatorOwner> _validator_owner;
+  std::unique_ptr<lrvx::PyMarketDataRecorderHookOwner> _recorder_owner;
+  std::shared_ptr<lrvx::PyBinaryLogRecorderHook> _binlog_recorder;
+  LrvxMarketDataRecorderHandle _binlog_recorder_handle{nullptr};
+  std::unique_ptr<lrvx::PyExecutorOwner> _executor_owner;
 
-  static void signalCallback(void* ud, const FloxSignal* sig)
+  static void signalCallback(void* ud, const LrvxSignal* sig)
   {
     // Called from C++ consumer thread — GIL must be acquired.
     auto* self = static_cast<PyLiveEngine*>(ud);
@@ -1716,17 +1716,17 @@ class PyRunner
     }
   }
 
-#define _PYRUNNER_SET_HOOK(NAME, TYPE)                 \
-  void set_##NAME(std::shared_ptr<flox_py::TYPE> hook) \
-  {                                                    \
-    if (_live)                                         \
-    {                                                  \
-      _live->set_##NAME(std::move(hook));              \
-    }                                                  \
-    else                                               \
-    {                                                  \
-      _sync->set_##NAME(std::move(hook));              \
-    }                                                  \
+#define _PYRUNNER_SET_HOOK(NAME, TYPE)              \
+  void set_##NAME(std::shared_ptr<lrvx::TYPE> hook) \
+  {                                                 \
+    if (_live)                                      \
+    {                                               \
+      _live->set_##NAME(std::move(hook));           \
+    }                                               \
+    else                                            \
+    {                                               \
+      _sync->set_##NAME(std::move(hook));           \
+    }                                               \
   }
   _PYRUNNER_SET_HOOK(pnl_tracker, PyPnLTracker)
   _PYRUNNER_SET_HOOK(storage_sink, PyStorageSink)
@@ -1737,9 +1737,9 @@ class PyRunner
   _PYRUNNER_SET_HOOK(executor, PyExecutor)
 #undef _PYRUNNER_SET_HOOK
 
-  // Built-in `.floxlog` recorder overload — picks up the same attach
+  // Built-in `.lrvx` recorder overload — picks up the same attach
   // slot as the user-callback flavour on the underlying runner / engine.
-  void set_market_data_recorder(std::shared_ptr<flox_py::PyBinaryLogRecorderHook> hook)
+  void set_market_data_recorder(std::shared_ptr<lrvx::PyBinaryLogRecorderHook> hook)
   {
     if (_live)
     {
@@ -1805,7 +1805,7 @@ class PyRunner
   }
 
  public:
-  FloxRunnerHandle _runner_handle() const noexcept
+  LrvxRunnerHandle _runner_handle() const noexcept
   {
     return _sync ? _sync->handle() : nullptr;
   }
@@ -1912,12 +1912,12 @@ class PyBacktestRunner
     _runner->setStrategy(_host->bridge.get());
   }
 
-  void set_executor(std::shared_ptr<flox_py::PyExecutor> exec)
+  void set_executor(std::shared_ptr<lrvx::PyExecutor> exec)
   {
     if (exec)
     {
       _executor_adapter =
-          std::make_unique<flox_py::cxx_adapters::PyExecutorCxxAdapter>(std::move(exec));
+          std::make_unique<lrvx::cxx_adapters::PyExecutorCxxAdapter>(std::move(exec));
       _runner->setExecutor(_executor_adapter.get());
     }
     else
@@ -1945,7 +1945,7 @@ class PyBacktestRunner
   // Takes the whole stack because the executor alone does not expose the
   // clock, and without advancing it ack latency and queue timing would
   // never progress. Pass None to revert to the built-in executor.
-  void set_venue_stack(flox::VenueStack* stack)
+  void set_venue_stack(lrvx::VenueStack* stack)
   {
     if (stack == nullptr)
     {
@@ -1959,23 +1959,23 @@ class PyBacktestRunner
   // does not expose the clock it was built with, so the runner could not
   // advance it. Point the caller at set_venue_stack instead of accepting
   // a half-wired run.
-  [[noreturn]] void set_venue_executor(flox::SimulatedExecutor*)
+  [[noreturn]] void set_venue_executor(lrvx::SimulatedExecutor*)
   {
     throw std::invalid_argument(
         "BacktestRunner.set_executor() does not take a VenueStack executor "
-        "(flox.VenueExecutor) — the executor alone does not carry the clock "
+        "(lrvx.VenueExecutor) — the executor alone does not carry the clock "
         "the runner has to advance. Pass the stack itself: "
         "runner.set_venue_stack(stack). See docs/how-to/realistic-backtest.md.");
   }
 
-  void add_execution_listener(std::shared_ptr<flox_py::PyExecutionListener> listener)
+  void add_execution_listener(std::shared_ptr<lrvx::PyExecutionListener> listener)
   {
     if (!listener)
     {
       return;
     }
-    auto id = static_cast<flox::SubscriberId>(_listener_adapters.size() + 1);
-    auto adapter = std::make_unique<flox_py::cxx_adapters::PyExecutionListenerCxxAdapter>(
+    auto id = static_cast<lrvx::SubscriberId>(_listener_adapters.size() + 1);
+    auto adapter = std::make_unique<lrvx::cxx_adapters::PyExecutionListenerCxxAdapter>(
         id, std::move(listener));
     _runner->addExecutionListener(adapter.get());
     _listener_adapters.push_back(std::move(adapter));
@@ -1986,11 +1986,11 @@ class PyBacktestRunner
   // PyPnLTracker to attach, None to detach. Reduce-only orders bypass
   // the gate by design (see lookup_symbol gotcha) so tightening caps
   // does not strand a strategy in a position.
-  void set_risk_manager(std::shared_ptr<flox_py::PyRiskManager> rm)
+  void set_risk_manager(std::shared_ptr<lrvx::PyRiskManager> rm)
   {
     if (rm)
     {
-      _risk_adapter = std::make_unique<flox_py::cxx_adapters::PyRiskManagerCxxAdapter>(
+      _risk_adapter = std::make_unique<lrvx::cxx_adapters::PyRiskManagerCxxAdapter>(
           std::move(rm));
       _runner->setRiskManager(_risk_adapter.get());
     }
@@ -2001,11 +2001,11 @@ class PyBacktestRunner
     }
   }
 
-  void set_kill_switch(std::shared_ptr<flox_py::PyKillSwitch> ks)
+  void set_kill_switch(std::shared_ptr<lrvx::PyKillSwitch> ks)
   {
     if (ks)
     {
-      _kill_adapter = std::make_unique<flox_py::cxx_adapters::PyKillSwitchCxxAdapter>(
+      _kill_adapter = std::make_unique<lrvx::cxx_adapters::PyKillSwitchCxxAdapter>(
           std::move(ks));
       _runner->setKillSwitch(_kill_adapter.get());
     }
@@ -2016,12 +2016,12 @@ class PyBacktestRunner
     }
   }
 
-  void set_order_validator(std::shared_ptr<flox_py::PyOrderValidator> ov)
+  void set_order_validator(std::shared_ptr<lrvx::PyOrderValidator> ov)
   {
     if (ov)
     {
       _validator_adapter =
-          std::make_unique<flox_py::cxx_adapters::PyOrderValidatorCxxAdapter>(
+          std::make_unique<lrvx::cxx_adapters::PyOrderValidatorCxxAdapter>(
               std::move(ov));
       _runner->setOrderValidator(_validator_adapter.get());
     }
@@ -2032,11 +2032,11 @@ class PyBacktestRunner
     }
   }
 
-  void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
+  void set_pnl_tracker(std::shared_ptr<lrvx::PyPnLTracker> tracker)
   {
     if (tracker)
     {
-      _pnl_adapter = std::make_unique<flox_py::cxx_adapters::PyPnLTrackerCxxAdapter>(
+      _pnl_adapter = std::make_unique<lrvx::cxx_adapters::PyPnLTrackerCxxAdapter>(
           std::move(tracker));
       _runner->setPnLTracker(_pnl_adapter.get());
     }
@@ -2059,7 +2059,7 @@ class PyBacktestRunner
   {
     if (!_host)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_001",
           "BacktestRunner.run_tape() called before set_strategy(). "
           "Attach a strategy with set_strategy(MyStrategy()) first.");
@@ -2072,7 +2072,7 @@ class PyBacktestRunner
   {
     if (!_host)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_001",
           "BacktestRunner.run_tapes() called before set_strategy(). "
           "Attach a strategy with set_strategy(MyStrategy()) first.");
@@ -2116,8 +2116,8 @@ class PyBacktestRunner
 
  public:
   // ts is nanoseconds by contract, not a magnitude-guessed unit: the same
-  // contract as flox_backtest_runner_run_ohlcv's timestamps_ns parameter
-  // (src/capi/flox_capi.cpp), Node's runOhlcv (BigInt64Array passed straight
+  // contract as lrvx_backtest_runner_run_ohlcv's timestamps_ns parameter
+  // (src/capi/lrvx_capi.cpp), Node's runOhlcv (BigInt64Array passed straight
   // through to that C ABI call), and Codon's run_ohlcv ("timestamps in
   // nanoseconds" per its docstring, same passthrough). This binding used to
   // be the odd one out, running every value through normalizeTs()'s
@@ -2158,7 +2158,7 @@ class PyBacktestRunner
   {
     if (!_host)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_001",
           "BacktestRunner.run_bars() called before set_strategy(). "
           "Attach a strategy with set_strategy(MyStrategy()) first.");
@@ -2168,7 +2168,7 @@ class PyBacktestRunner
     const auto n = start_ns.size();
     if (end_ns.size() != n || open.size() != n || high.size() != n || low.size() != n || close.size() != n || volume.size() != n)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_001",
           "run_bars: all arrays (start_time_ns, end_time_ns, open, high, "
           "low, close, volume) must have the same length.");
@@ -2238,7 +2238,7 @@ class PyBacktestRunner
   {
     if (!_lastResult.has_value())
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_002",
           "BacktestRunner.equity_curve() called before any run_* completed.");
     }
@@ -2266,7 +2266,7 @@ class PyBacktestRunner
   {
     if (!_lastResult.has_value())
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_002",
           "BacktestRunner.trades() called before any run_* completed.");
     }
@@ -2315,19 +2315,19 @@ class PyBacktestRunner
   std::unique_ptr<BacktestRunner> _runner;
   std::unique_ptr<PyStrategyHost> _host;
   std::optional<BacktestResult> _lastResult;
-  // C++ adapters bridging Python hooks → flox::IOrderExecutor /
+  // C++ adapters bridging Python hooks → lrvx::IOrderExecutor /
   // IOrderExecutionListener used by BacktestRunner directly (without
   // going through the C ABI).
-  std::unique_ptr<flox_py::cxx_adapters::PyExecutorCxxAdapter> _executor_adapter;
-  std::vector<std::unique_ptr<flox_py::cxx_adapters::PyExecutionListenerCxxAdapter>>
+  std::unique_ptr<lrvx::cxx_adapters::PyExecutorCxxAdapter> _executor_adapter;
+  std::vector<std::unique_ptr<lrvx::cxx_adapters::PyExecutionListenerCxxAdapter>>
       _listener_adapters;
   // Pre-trade gate adapters. Owned so they outlive the
   // runner's non-owning IRiskManager / IKillSwitch / IOrderValidator
   // / IPnLTracker pointers. Replaced on every set_* call.
-  std::unique_ptr<flox_py::cxx_adapters::PyRiskManagerCxxAdapter> _risk_adapter;
-  std::unique_ptr<flox_py::cxx_adapters::PyKillSwitchCxxAdapter> _kill_adapter;
-  std::unique_ptr<flox_py::cxx_adapters::PyOrderValidatorCxxAdapter> _validator_adapter;
-  std::unique_ptr<flox_py::cxx_adapters::PyPnLTrackerCxxAdapter> _pnl_adapter;
+  std::unique_ptr<lrvx::cxx_adapters::PyRiskManagerCxxAdapter> _risk_adapter;
+  std::unique_ptr<lrvx::cxx_adapters::PyKillSwitchCxxAdapter> _kill_adapter;
+  std::unique_ptr<lrvx::cxx_adapters::PyOrderValidatorCxxAdapter> _validator_adapter;
+  std::unique_ptr<lrvx::cxx_adapters::PyPnLTrackerCxxAdapter> _pnl_adapter;
 
   uint32_t resolveSymbol(const std::string& sym)
   {
@@ -2343,7 +2343,7 @@ class PyBacktestRunner
           return info.id;
         }
       }
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_SYM_001",
           "Symbol '" + sym +
               "' is not registered. Register it via "
@@ -2357,7 +2357,7 @@ class PyBacktestRunner
   {
     if (!_host)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_RUN_001",
           "BacktestRunner.run_*() called before set_strategy(). "
           "Attach a strategy with set_strategy(MyStrategy()) first.");
@@ -2394,7 +2394,7 @@ class PyBacktestRunner
     std::ifstream f(path);
     if (!f.is_open())
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_IO_001",
           "Cannot open file: '" + path +
               "'. Check the path is correct and the file is readable.");
@@ -2424,7 +2424,7 @@ class PyBacktestRunner
 
   // Best-effort unit guess for genuinely unit-less input: a raw CSV column
   // (loadCsv, run_csv) that the caller may have populated with seconds,
-  // milliseconds, microseconds, or nanoseconds -- flox has no way to know,
+  // milliseconds, microseconds, or nanoseconds -- lrvx has no way to know,
   // and docs/bindings/python.md documents this exact threshold behavior for
   // run_csv. Do NOT call this on a value whose unit is already part of the
   // contract (run_bars's start_time_ns / end_time_ns, or run_ohlcv's ts --
@@ -2537,7 +2537,7 @@ inline void bindStrategy(py::module_& m)
       .def(py::init<>())
       .def("add_symbol", [](SymbolRegistry& reg, const std::string& exchange, const std::string& symbol, double tick_size) -> PySymbol
            {
-             flox::SymbolInfo info;
+             lrvx::SymbolInfo info;
              info.exchange  = exchange;
              info.symbol    = symbol;
              info.tickSize  = Price::fromDouble(tick_size);
@@ -2736,139 +2736,139 @@ inline void bindStrategy(py::module_& m)
 
   // ── Extension-hook base classes (users subclass these) ──────────────
 
-  py::class_<flox_py::PyPnLTracker, flox_py::PyPnLTrackerTrampoline,
-             std::shared_ptr<flox_py::PyPnLTracker>>(m, "PnLTracker")
+  py::class_<lrvx::PyPnLTracker, lrvx::PyPnLTrackerTrampoline,
+             std::shared_ptr<lrvx::PyPnLTracker>>(m, "PnLTracker")
       .def(py::init<>())
-      .def("on_signal", &flox_py::PyPnLTracker::on_signal, py::arg("signal"));
+      .def("on_signal", &lrvx::PyPnLTracker::on_signal, py::arg("signal"));
 
-  py::class_<flox_py::PyStorageSink, flox_py::PyStorageSinkTrampoline,
-             std::shared_ptr<flox_py::PyStorageSink>>(m, "StorageSink")
+  py::class_<lrvx::PyStorageSink, lrvx::PyStorageSinkTrampoline,
+             std::shared_ptr<lrvx::PyStorageSink>>(m, "StorageSink")
       .def(py::init<>())
-      .def("store", &flox_py::PyStorageSink::store, py::arg("signal"));
+      .def("store", &lrvx::PyStorageSink::store, py::arg("signal"));
 
-  py::class_<flox_py::PyRiskManager, flox_py::PyRiskManagerTrampoline,
-             std::shared_ptr<flox_py::PyRiskManager>>(m, "RiskManager")
+  py::class_<lrvx::PyRiskManager, lrvx::PyRiskManagerTrampoline,
+             std::shared_ptr<lrvx::PyRiskManager>>(m, "RiskManager")
       .def(py::init<>())
-      .def("allow", &flox_py::PyRiskManager::allow, py::arg("signal"));
+      .def("allow", &lrvx::PyRiskManager::allow, py::arg("signal"));
 
-  py::class_<flox_py::PyKillSwitch, flox_py::PyKillSwitchTrampoline,
-             std::shared_ptr<flox_py::PyKillSwitch>>(m, "KillSwitch")
+  py::class_<lrvx::PyKillSwitch, lrvx::PyKillSwitchTrampoline,
+             std::shared_ptr<lrvx::PyKillSwitch>>(m, "KillSwitch")
       .def(py::init<>())
-      .def("check", &flox_py::PyKillSwitch::check, py::arg("signal"));
+      .def("check", &lrvx::PyKillSwitch::check, py::arg("signal"));
 
-  py::class_<flox_py::PyOrderValidator, flox_py::PyOrderValidatorTrampoline,
-             std::shared_ptr<flox_py::PyOrderValidator>>(m, "OrderValidator")
+  py::class_<lrvx::PyOrderValidator, lrvx::PyOrderValidatorTrampoline,
+             std::shared_ptr<lrvx::PyOrderValidator>>(m, "OrderValidator")
       .def(py::init<>())
-      .def("validate", &flox_py::PyOrderValidator::validate, py::arg("signal"));
+      .def("validate", &lrvx::PyOrderValidator::validate, py::arg("signal"));
 
-  py::class_<flox_py::PyMarketDataRecorderHook,
-             flox_py::PyMarketDataRecorderHookTrampoline,
-             std::shared_ptr<flox_py::PyMarketDataRecorderHook>>(
+  py::class_<lrvx::PyMarketDataRecorderHook,
+             lrvx::PyMarketDataRecorderHookTrampoline,
+             std::shared_ptr<lrvx::PyMarketDataRecorderHook>>(
       m, "MarketDataRecorderHook")
       .def(py::init<>())
-      .def("on_trade", &flox_py::PyMarketDataRecorderHook::on_trade)
-      .def("on_book_update", &flox_py::PyMarketDataRecorderHook::on_book_update,
+      .def("on_trade", &lrvx::PyMarketDataRecorderHook::on_trade)
+      .def("on_book_update", &lrvx::PyMarketDataRecorderHook::on_book_update,
            py::arg("symbol"), py::arg("is_snapshot"), py::arg("bids"),
            py::arg("asks"), py::arg("ts_ns"))
-      .def("on_start", &flox_py::PyMarketDataRecorderHook::on_start)
-      .def("on_stop", &flox_py::PyMarketDataRecorderHook::on_stop);
+      .def("on_start", &lrvx::PyMarketDataRecorderHook::on_start)
+      .def("on_stop", &lrvx::PyMarketDataRecorderHook::on_stop);
 
-  py::class_<flox_py::PyReplayEvent>(m, "ReplayEvent")
+  py::class_<lrvx::PyReplayEvent>(m, "ReplayEvent")
       .def(py::init<>())
-      .def_readwrite("type", &flox_py::PyReplayEvent::type)
-      .def_readwrite("timestamp_ns", &flox_py::PyReplayEvent::timestamp_ns)
-      .def_readwrite("trade_symbol", &flox_py::PyReplayEvent::trade_symbol)
-      .def_readwrite("trade_is_buy", &flox_py::PyReplayEvent::trade_is_buy)
-      .def_readwrite("trade_price", &flox_py::PyReplayEvent::trade_price)
-      .def_readwrite("trade_quantity", &flox_py::PyReplayEvent::trade_quantity)
-      .def_readwrite("book_symbol", &flox_py::PyReplayEvent::book_symbol)
-      .def_readwrite("bids", &flox_py::PyReplayEvent::bids)
-      .def_readwrite("asks", &flox_py::PyReplayEvent::asks);
+      .def_readwrite("type", &lrvx::PyReplayEvent::type)
+      .def_readwrite("timestamp_ns", &lrvx::PyReplayEvent::timestamp_ns)
+      .def_readwrite("trade_symbol", &lrvx::PyReplayEvent::trade_symbol)
+      .def_readwrite("trade_is_buy", &lrvx::PyReplayEvent::trade_is_buy)
+      .def_readwrite("trade_price", &lrvx::PyReplayEvent::trade_price)
+      .def_readwrite("trade_quantity", &lrvx::PyReplayEvent::trade_quantity)
+      .def_readwrite("book_symbol", &lrvx::PyReplayEvent::book_symbol)
+      .def_readwrite("bids", &lrvx::PyReplayEvent::bids)
+      .def_readwrite("asks", &lrvx::PyReplayEvent::asks);
 
-  py::class_<flox_py::PyReplaySource, flox_py::PyReplaySourceTrampoline,
-             std::shared_ptr<flox_py::PyReplaySource>>(m, "ReplaySource")
+  py::class_<lrvx::PyReplaySource, lrvx::PyReplaySourceTrampoline,
+             std::shared_ptr<lrvx::PyReplaySource>>(m, "ReplaySource")
       .def(py::init<>())
-      .def("on_start", &flox_py::PyReplaySource::on_start)
-      .def("on_stop", &flox_py::PyReplaySource::on_stop)
-      .def("seek_to", &flox_py::PyReplaySource::seek_to, py::arg("ts_ns"))
-      .def("next", &flox_py::PyReplaySource::next);
+      .def("on_start", &lrvx::PyReplaySource::on_start)
+      .def("on_stop", &lrvx::PyReplaySource::on_stop)
+      .def("seek_to", &lrvx::PyReplaySource::seek_to, py::arg("ts_ns"))
+      .def("next", &lrvx::PyReplaySource::next);
 
-  py::class_<flox_py::PyOrder>(m, "Order")
+  py::class_<lrvx::PyOrder>(m, "Order")
       .def(py::init<>())
-      .def_readwrite("id", &flox_py::PyOrder::id)
-      .def_readwrite("client_order_id", &flox_py::PyOrder::client_order_id)
-      .def_readwrite("symbol", &flox_py::PyOrder::symbol)
-      .def_readwrite("strategy_id", &flox_py::PyOrder::strategy_id)
-      .def_readwrite("order_tag", &flox_py::PyOrder::order_tag)
-      .def_readwrite("side", &flox_py::PyOrder::side)
-      .def_readwrite("order_type", &flox_py::PyOrder::order_type)
-      .def_readwrite("time_in_force", &flox_py::PyOrder::time_in_force)
-      .def_readwrite("reduce_only", &flox_py::PyOrder::reduce_only)
-      .def_readwrite("post_only", &flox_py::PyOrder::post_only)
-      .def_readwrite("close_position", &flox_py::PyOrder::close_position)
-      .def_readwrite("price", &flox_py::PyOrder::price)
-      .def_readwrite("quantity", &flox_py::PyOrder::quantity)
-      .def_readwrite("filled_quantity", &flox_py::PyOrder::filled_quantity)
-      .def_readwrite("trigger_price", &flox_py::PyOrder::trigger_price)
-      .def_readwrite("trailing_offset", &flox_py::PyOrder::trailing_offset)
-      .def_readwrite("created_at_ns", &flox_py::PyOrder::created_at_ns)
-      .def_readwrite("exchange_ts_ns", &flox_py::PyOrder::exchange_ts_ns);
+      .def_readwrite("id", &lrvx::PyOrder::id)
+      .def_readwrite("client_order_id", &lrvx::PyOrder::client_order_id)
+      .def_readwrite("symbol", &lrvx::PyOrder::symbol)
+      .def_readwrite("strategy_id", &lrvx::PyOrder::strategy_id)
+      .def_readwrite("order_tag", &lrvx::PyOrder::order_tag)
+      .def_readwrite("side", &lrvx::PyOrder::side)
+      .def_readwrite("order_type", &lrvx::PyOrder::order_type)
+      .def_readwrite("time_in_force", &lrvx::PyOrder::time_in_force)
+      .def_readwrite("reduce_only", &lrvx::PyOrder::reduce_only)
+      .def_readwrite("post_only", &lrvx::PyOrder::post_only)
+      .def_readwrite("close_position", &lrvx::PyOrder::close_position)
+      .def_readwrite("price", &lrvx::PyOrder::price)
+      .def_readwrite("quantity", &lrvx::PyOrder::quantity)
+      .def_readwrite("filled_quantity", &lrvx::PyOrder::filled_quantity)
+      .def_readwrite("trigger_price", &lrvx::PyOrder::trigger_price)
+      .def_readwrite("trailing_offset", &lrvx::PyOrder::trailing_offset)
+      .def_readwrite("created_at_ns", &lrvx::PyOrder::created_at_ns)
+      .def_readwrite("exchange_ts_ns", &lrvx::PyOrder::exchange_ts_ns);
 
-  py::class_<flox_py::PyExchangeCapabilities>(m, "ExchangeCapabilities")
+  py::class_<lrvx::PyExchangeCapabilities>(m, "ExchangeCapabilities")
       .def(py::init<>())
-      .def_readwrite("stop_market", &flox_py::PyExchangeCapabilities::stop_market)
-      .def_readwrite("stop_limit", &flox_py::PyExchangeCapabilities::stop_limit)
+      .def_readwrite("stop_market", &lrvx::PyExchangeCapabilities::stop_market)
+      .def_readwrite("stop_limit", &lrvx::PyExchangeCapabilities::stop_limit)
       .def_readwrite("take_profit_market",
-                     &flox_py::PyExchangeCapabilities::take_profit_market)
+                     &lrvx::PyExchangeCapabilities::take_profit_market)
       .def_readwrite("take_profit_limit",
-                     &flox_py::PyExchangeCapabilities::take_profit_limit)
-      .def_readwrite("trailing_stop", &flox_py::PyExchangeCapabilities::trailing_stop)
-      .def_readwrite("iceberg", &flox_py::PyExchangeCapabilities::iceberg)
-      .def_readwrite("oco", &flox_py::PyExchangeCapabilities::oco)
-      .def_readwrite("gtc", &flox_py::PyExchangeCapabilities::gtc)
-      .def_readwrite("ioc", &flox_py::PyExchangeCapabilities::ioc)
-      .def_readwrite("fok", &flox_py::PyExchangeCapabilities::fok)
-      .def_readwrite("gtd", &flox_py::PyExchangeCapabilities::gtd)
-      .def_readwrite("post_only", &flox_py::PyExchangeCapabilities::post_only)
-      .def_readwrite("reduce_only", &flox_py::PyExchangeCapabilities::reduce_only)
-      .def_readwrite("close_position", &flox_py::PyExchangeCapabilities::close_position);
+                     &lrvx::PyExchangeCapabilities::take_profit_limit)
+      .def_readwrite("trailing_stop", &lrvx::PyExchangeCapabilities::trailing_stop)
+      .def_readwrite("iceberg", &lrvx::PyExchangeCapabilities::iceberg)
+      .def_readwrite("oco", &lrvx::PyExchangeCapabilities::oco)
+      .def_readwrite("gtc", &lrvx::PyExchangeCapabilities::gtc)
+      .def_readwrite("ioc", &lrvx::PyExchangeCapabilities::ioc)
+      .def_readwrite("fok", &lrvx::PyExchangeCapabilities::fok)
+      .def_readwrite("gtd", &lrvx::PyExchangeCapabilities::gtd)
+      .def_readwrite("post_only", &lrvx::PyExchangeCapabilities::post_only)
+      .def_readwrite("reduce_only", &lrvx::PyExchangeCapabilities::reduce_only)
+      .def_readwrite("close_position", &lrvx::PyExchangeCapabilities::close_position);
 
-  py::class_<flox_py::PyExecutor, flox_py::PyExecutorTrampoline,
-             std::shared_ptr<flox_py::PyExecutor>>(m, "Executor")
+  py::class_<lrvx::PyExecutor, lrvx::PyExecutorTrampoline,
+             std::shared_ptr<lrvx::PyExecutor>>(m, "Executor")
       .def(py::init<>())
-      .def("submit", &flox_py::PyExecutor::submit, py::arg("order"))
-      .def("cancel", &flox_py::PyExecutor::cancel, py::arg("order_id"))
-      .def("cancel_all", &flox_py::PyExecutor::cancel_all, py::arg("symbol"))
-      .def("replace", &flox_py::PyExecutor::replace, py::arg("old_order_id"),
+      .def("submit", &lrvx::PyExecutor::submit, py::arg("order"))
+      .def("cancel", &lrvx::PyExecutor::cancel, py::arg("order_id"))
+      .def("cancel_all", &lrvx::PyExecutor::cancel_all, py::arg("symbol"))
+      .def("replace", &lrvx::PyExecutor::replace, py::arg("old_order_id"),
            py::arg("new_order"))
-      .def("submit_oco", &flox_py::PyExecutor::submit_oco, py::arg("order1"),
+      .def("submit_oco", &lrvx::PyExecutor::submit_oco, py::arg("order1"),
            py::arg("order2"))
-      .def("capabilities", &flox_py::PyExecutor::capabilities)
-      .def("on_start", &flox_py::PyExecutor::on_start)
-      .def("on_stop", &flox_py::PyExecutor::on_stop);
+      .def("capabilities", &lrvx::PyExecutor::capabilities)
+      .def("on_start", &lrvx::PyExecutor::on_start)
+      .def("on_stop", &lrvx::PyExecutor::on_stop);
 
-  py::class_<flox_py::PyExecutionListener, flox_py::PyExecutionListenerTrampoline,
-             std::shared_ptr<flox_py::PyExecutionListener>>(m, "ExecutionListener")
+  py::class_<lrvx::PyExecutionListener, lrvx::PyExecutionListenerTrampoline,
+             std::shared_ptr<lrvx::PyExecutionListener>>(m, "ExecutionListener")
       .def(py::init<>())
-      .def("on_submitted", &flox_py::PyExecutionListener::on_submitted)
-      .def("on_accepted", &flox_py::PyExecutionListener::on_accepted)
-      .def("on_partially_filled", &flox_py::PyExecutionListener::on_partially_filled,
+      .def("on_submitted", &lrvx::PyExecutionListener::on_submitted)
+      .def("on_accepted", &lrvx::PyExecutionListener::on_accepted)
+      .def("on_partially_filled", &lrvx::PyExecutionListener::on_partially_filled,
            py::arg("order"), py::arg("fill_qty"))
-      .def("on_filled", &flox_py::PyExecutionListener::on_filled)
-      .def("on_pending_cancel", &flox_py::PyExecutionListener::on_pending_cancel)
-      .def("on_canceled", &flox_py::PyExecutionListener::on_canceled)
-      .def("on_expired", &flox_py::PyExecutionListener::on_expired)
-      .def("on_rejected", &flox_py::PyExecutionListener::on_rejected,
+      .def("on_filled", &lrvx::PyExecutionListener::on_filled)
+      .def("on_pending_cancel", &lrvx::PyExecutionListener::on_pending_cancel)
+      .def("on_canceled", &lrvx::PyExecutionListener::on_canceled)
+      .def("on_expired", &lrvx::PyExecutionListener::on_expired)
+      .def("on_rejected", &lrvx::PyExecutionListener::on_rejected,
            py::arg("order"), py::arg("reason"))
-      .def("on_replaced", &flox_py::PyExecutionListener::on_replaced,
+      .def("on_replaced", &lrvx::PyExecutionListener::on_replaced,
            py::arg("old_order"), py::arg("new_order"))
-      .def("on_pending_trigger", &flox_py::PyExecutionListener::on_pending_trigger)
-      .def("on_triggered", &flox_py::PyExecutionListener::on_triggered)
+      .def("on_pending_trigger", &lrvx::PyExecutionListener::on_pending_trigger)
+      .def("on_triggered", &lrvx::PyExecutionListener::on_triggered)
       .def("on_trailing_stop_updated",
-           &flox_py::PyExecutionListener::on_trailing_stop_updated,
+           &lrvx::PyExecutionListener::on_trailing_stop_updated,
            py::arg("order"), py::arg("new_trigger"));
 
-  m.def("set_log_callback", &flox_py::setPythonLogCallback, py::arg("callback"),
+  m.def("set_log_callback", &lrvx::setPythonLogCallback, py::arg("callback"),
         "Install a Python callable as the global log sink. Pass None to "
         "detach. Callable receives (level: int, msg: str); level: 0=info, "
         "1=warn, 2=error. The binding detaches it automatically at "
@@ -2878,7 +2878,7 @@ inline void bindStrategy(py::module_& m)
   // process. Detach it while the interpreter is still up, or shutdown
   // releases it afterwards and the process crashes on exit.
   py::module_::import("atexit").attr("register")(
-      py::cpp_function(&flox_py::logCallbackTeardown));
+      py::cpp_function(&lrvx::logCallbackTeardown));
 
   py::class_<PyRunner>(m, "Runner")
       .def(py::init([](SymbolRegistry* reg, py::object on_signal, bool threaded)
@@ -2906,44 +2906,44 @@ inline void bindStrategy(py::module_& m)
       .def("set_order_validator", &PyRunner::set_order_validator, py::arg("ov"),
            py::keep_alive<1, 2>())
       .def("set_market_data_recorder",
-           py::overload_cast<std::shared_ptr<flox_py::PyMarketDataRecorderHook>>(
+           py::overload_cast<std::shared_ptr<lrvx::PyMarketDataRecorderHook>>(
                &PyRunner::set_market_data_recorder),
            py::arg("recorder"), py::keep_alive<1, 2>())
       .def("set_market_data_recorder",
-           py::overload_cast<std::shared_ptr<flox_py::PyBinaryLogRecorderHook>>(
+           py::overload_cast<std::shared_ptr<lrvx::PyBinaryLogRecorderHook>>(
                &PyRunner::set_market_data_recorder),
            py::arg("recorder"), py::keep_alive<1, 2>())
       .def("set_executor", &PyRunner::set_executor, py::arg("executor"),
            py::keep_alive<1, 2>())
       .def("attach_trace_recorder", [](PyRunner& r, py::object recorder)
            {
-             // Accepts a flox_py.TraceRecorder or None. The TraceRecorder
-             // wraps a `flox::run::TraceRecorder*` reachable through its
+             // Accepts a lrvx.TraceRecorder or None. The TraceRecorder
+             // wraps a `lrvx::run::TraceRecorder*` reachable through its
              // `_handle()` accessor; we pass the raw pointer through the
              // C ABI so every binding shares one auto-capture path.
              if (recorder.is_none())
              {
-               flox_runner_attach_trace_recorder(r._runner_handle(), nullptr);
+               lrvx_runner_attach_trace_recorder(r._runner_handle(), nullptr);
                return;
              }
              // The pybind11 binding constructs a TraceRecorder by value
              // (defined in run_trace_bindings.h) so we cast to that exact
              // type and pass its address.
-             auto* trec = recorder.cast<flox::run::TraceRecorder*>();
-             flox_runner_attach_trace_recorder(r._runner_handle(),
+             auto* trec = recorder.cast<lrvx::run::TraceRecorder*>();
+             lrvx_runner_attach_trace_recorder(r._runner_handle(),
                                                 static_cast<void*>(trec)); }, py::arg("recorder"), py::keep_alive<1, 2>())
       .def("set_trace_feed_ts_ns", [](PyRunner& r, int64_t ts)
-           { flox_runner_set_trace_feed_ts_ns(r._runner_handle(), ts); }, py::arg("feed_ts_ns"))
+           { lrvx_runner_set_trace_feed_ts_ns(r._runner_handle(), ts); }, py::arg("feed_ts_ns"))
       .def("trace_order_event", [](PyRunner& r, uint64_t order_id, uint64_t parent_signal_id, uint32_t symbol_id, uint8_t event_kind, uint8_t side, uint8_t order_type, double price, double qty, uint32_t flags)
-           { flox_runner_trace_order_event(
+           { lrvx_runner_trace_order_event(
                  r._runner_handle(), order_id, parent_signal_id, symbol_id, event_kind, side,
-                 order_type, flox::Price::fromDouble(price).raw(),
-                 flox::Quantity::fromDouble(qty).raw(), flags); }, py::arg("order_id"), py::arg("parent_signal_id"), py::arg("symbol_id"), py::arg("event_kind"), py::arg("side"), py::arg("order_type"), py::arg("price"), py::arg("qty"), py::arg("flags") = 0u)
+                 order_type, lrvx::Price::fromDouble(price).raw(),
+                 lrvx::Quantity::fromDouble(qty).raw(), flags); }, py::arg("order_id"), py::arg("parent_signal_id"), py::arg("symbol_id"), py::arg("event_kind"), py::arg("side"), py::arg("order_type"), py::arg("price"), py::arg("qty"), py::arg("flags") = 0u)
       .def("trace_fill", [](PyRunner& r, uint64_t order_id, uint64_t fill_id, double price, double qty, double fee, uint32_t symbol_id, uint8_t side, uint8_t liquidity)
-           { flox_runner_trace_fill(r._runner_handle(), order_id, fill_id,
-                                    flox::Price::fromDouble(price).raw(),
-                                    flox::Quantity::fromDouble(qty).raw(),
-                                    flox::Quantity::fromDouble(fee).raw(), symbol_id, side,
+           { lrvx_runner_trace_fill(r._runner_handle(), order_id, fill_id,
+                                    lrvx::Price::fromDouble(price).raw(),
+                                    lrvx::Quantity::fromDouble(qty).raw(),
+                                    lrvx::Quantity::fromDouble(fee).raw(), symbol_id, side,
                                     liquidity); }, py::arg("order_id"), py::arg("fill_id"), py::arg("price"), py::arg("qty"), py::arg("fee"), py::arg("symbol_id"), py::arg("side"), py::arg("liquidity") = 0u)
       .def("on_trade", [](PyRunner& r, py::object sym, double price, double qty, bool is_buy, int64_t ts_ns)
            { r.on_trade(symId(sym), price, qty, is_buy, ts_ns); }, py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("is_buy"), py::arg("ts_ns") = 0)
@@ -3001,11 +3001,11 @@ inline void bindStrategy(py::module_& m)
       .def("run_csv", &PyBacktestRunner::run_csv,
            py::arg("path"), py::arg("symbol") = "")
       .def("run_tape", &PyBacktestRunner::run_tape, py::arg("path"),
-           "Run a backtest off a `.floxlog` tape directory. The tape is "
-           "the canonical recorded artifact (`flox tape record` writes it). "
+           "Run a backtest off a `.lrvx` tape directory. The tape is "
+           "the canonical recorded artifact (`lrvx tape record` writes it). "
            "Returns the same stats dict shape as run_csv / run_bars.")
       .def("run_tapes", &PyBacktestRunner::run_tapes, py::arg("paths"),
-           "Run a backtest off N `.floxlog` tapes merged on read. "
+           "Run a backtest off N `.lrvx` tapes merged on read. "
            "Symbols are rekeyed by (metadata.exchange, name) so two "
            "captures of the same venue/symbol collapse, and two "
            "different venues stay distinct. `run_tapes([t])` is "

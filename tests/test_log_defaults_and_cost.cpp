@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,19 +16,19 @@
 // line on stderr. A default that silently discards the log on two platforms
 // is not a default.
 //
-// FLOX_LOG_* is the second half. The macros guard on the global on/off flag
+// LRVX_LOG_* is the second half. The macros guard on the global on/off flag
 // and then build a LogStream -- a std::ostringstream -- and format the whole
 // message into it. The level is compared against the sink's threshold only
 // after that, inside the sink, so a filtered line still costs the allocation
-// and the formatting of every argument. FLOX_LOG_WARN sits on OrderTracker's
+// and the formatting of every argument. LRVX_LOG_WARN sits on OrderTracker's
 // unknown-order path and in the bus consumer loop, so a reconnect burst
 // formats thousands of messages nobody will read.
 
-#include <flox/log/abstract_logger.h>
-#include <flox/log/atomic_logger.h>
-#include <flox/log/console_logger.h>
-#include <flox/log/log.h>
-#include <flox/log/log_stream.h>
+#include <lrvx/log/abstract_logger.h>
+#include <lrvx/log/atomic_logger.h>
+#include <lrvx/log/console_logger.h>
+#include <lrvx/log/log.h>
+#include <lrvx/log/log_stream.h>
 
 #include <gtest/gtest.h>
 
@@ -47,7 +47,7 @@
 #include <unistd.h>
 #endif
 
-using namespace flox;
+using namespace lrvx;
 namespace fs = std::filesystem;
 
 namespace
@@ -105,7 +105,7 @@ std::vector<std::string> readLines(const fs::path& path)
 // The green control for the logger: told where to write, it writes there.
 TEST(AtomicLoggerDefaults, AnExplicitDirectoryReceivesEveryLine)
 {
-  const fs::path dir = fs::temp_directory_path() / "flox_default_dir_probe";
+  const fs::path dir = fs::temp_directory_path() / "lrvx_default_dir_probe";
   std::error_code ec;
   fs::remove_all(dir, ec);
   fs::create_directories(dir, ec);
@@ -152,7 +152,7 @@ TEST(AtomicLoggerDefaults, TheDefaultDirectoryIsOneTheHostActuallyHas)
 
 // Which directory the default is, not merely that the logger survives it.
 // The test above is satisfied by any writable path, and "." is one: a default
-// that quietly becomes the current working directory writes flox.log into
+// that quietly becomes the current working directory writes lrvx.log into
 // whatever the process happened to be started from -- a build tree, a
 // checkout, /, a directory that moves between runs -- which is a log nobody
 // looks for and a file nobody expected. The order is the point: /dev/shm
@@ -204,10 +204,10 @@ TEST(LogCost, DisabledLoggingDoesNotEvaluateTheMessage)
   GlobalSinkGuard guard(&sink);
 
   g_evaluations = 0;
-  FLOX_LOG_OFF();
-  FLOX_LOG_INFO("value=" << evaluatedArgument());
-  FLOX_LOG_WARN("value=" << evaluatedArgument());
-  FLOX_LOG_ON();
+  LRVX_LOG_OFF();
+  LRVX_LOG_INFO("value=" << evaluatedArgument());
+  LRVX_LOG_WARN("value=" << evaluatedArgument());
+  LRVX_LOG_ON();
 
   EXPECT_EQ(g_evaluations, 0);
   EXPECT_EQ(sink.filtered, 0);
@@ -216,14 +216,14 @@ TEST(LogCost, DisabledLoggingDoesNotEvaluateTheMessage)
 // Raising the threshold is done by installing a sink that carries one --
 // ConsoleLogger takes its minimum level in the constructor, and that is the
 // only threshold the tree has. Whatever the level ends up being read through,
-// FLOX_LOG_LEVEL has to consult it before it builds the stream.
+// LRVX_LOG_LEVEL has to consult it before it builds the stream.
 //
 // needs, either of:
 //   virtual LogLevel ILogger::minLevel() const noexcept;  consulted by
-//     FLOX_LOG_LEVEL through the installed sink, with ConsoleLogger and
+//     LRVX_LOG_LEVEL through the installed sink, with ConsoleLogger and
 //     AtomicLogger returning the threshold they were built with;
 //   or a process-global LogLevel that setGlobalLogger records from the sink
-//     and the macro reads (flox::logLevel()).
+//     and the macro reads (lrvx::logLevel()).
 TEST(LogCost, AFilteredLevelDoesNotEvaluateTheMessage)
 {
   ConsoleLogger errorsOnly(LogLevel::Error);  // drops Info and Warn
@@ -232,8 +232,8 @@ TEST(LogCost, AFilteredLevelDoesNotEvaluateTheMessage)
   g_evaluations = 0;
   for (int i = 0; i < 100; ++i)
   {
-    FLOX_LOG_INFO("value=" << evaluatedArgument());
-    FLOX_LOG_WARN("value=" << evaluatedArgument());
+    LRVX_LOG_INFO("value=" << evaluatedArgument());
+    LRVX_LOG_WARN("value=" << evaluatedArgument());
   }
 
   EXPECT_EQ(g_evaluations, 0)
@@ -250,7 +250,7 @@ TEST(LogCost, AnAcceptedLevelIsStillFormattedAndDelivered)
   GlobalSinkGuard guard(&sink);
 
   g_evaluations = 0;
-  FLOX_LOG_ERROR("value=" << evaluatedArgument());
+  LRVX_LOG_ERROR("value=" << evaluatedArgument());
 
   EXPECT_EQ(g_evaluations, 1);
   EXPECT_EQ(sink.accepted, 1);
@@ -271,7 +271,7 @@ TEST(LogCost, AnAcceptedLevelIsStillFormattedAndDelivered)
 // onward.
 TEST(AtomicLoggerDefaults, ALoggerThatCannotOpenItsFileWritesTheLineToStderr)
 {
-  const fs::path root = fs::temp_directory_path() / "flox_stderr_probe";
+  const fs::path root = fs::temp_directory_path() / "lrvx_stderr_probe";
   std::error_code ec;
   fs::remove_all(root, ec);
   fs::create_directories(root, ec);
@@ -368,7 +368,7 @@ class ThresholdSink final : public ILogger
 }  // namespace
 
 // The level the macro reads and the sink it is read for are two separate
-// atomics, published by setGlobalLogger() and consulted by every FLOX_LOG_*
+// atomics, published by setGlobalLogger() and consulted by every LRVX_LOG_*
 // on every other thread. Swapping the sink under a running logger must stay
 // a well-defined operation: no line may reach a sink below that sink's own
 // threshold, and nothing here may be a data race.
@@ -381,7 +381,7 @@ TEST(LogCost, SwappingTheSinkUnderAConcurrentLoggerIsWellDefined)
 {
   // Both outlive every thread that can reach them: the pointer is non-owning
   // and the header's contract is that the caller keeps the sink alive for any
-  // concurrent FLOX_LOG_* call.
+  // concurrent LRVX_LOG_* call.
   ThresholdSink errorsOnly(LogLevel::Error);
   ThresholdSink everything(LogLevel::Info);
 
@@ -397,9 +397,9 @@ TEST(LogCost, SwappingTheSinkUnderAConcurrentLoggerIsWellDefined)
         {
           const int turn = turns.fetch_add(1, std::memory_order_relaxed);
           (void)logLevel();
-          FLOX_LOG_INFO("info " << turn);
-          FLOX_LOG_WARN("warn " << turn);
-          FLOX_LOG_ERROR("error " << turn);
+          LRVX_LOG_INFO("info " << turn);
+          LRVX_LOG_WARN("warn " << turn);
+          LRVX_LOG_ERROR("error " << turn);
         }
       });
 

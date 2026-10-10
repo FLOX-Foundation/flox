@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -11,13 +11,13 @@
  * snapshot) and in both encodings, without breaking a reader of the previous
  * schema version.
  */
-#include "flox-venue/fix_md_codec.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/market_data.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/md_encoder.h"
-#include "flox-venue/sbe_md_codec.h"
+#include "lrvx-venue/fix_md_codec.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/market_data.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/md_encoder.h"
+#include "lrvx-venue/sbe_md_codec.h"
 
 #include <gtest/gtest.h>
 
@@ -26,8 +26,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -310,7 +310,7 @@ void test_auction_phases_visible()
   f.eng.submit(limit(2, Side::BUY, 100, 5, 2), 30);  // crossed, accumulating
   f.eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::OpenContinuous}}, 40);
 
-  std::vector<flox::venue::TradingStatus> seen;
+  std::vector<lrvx::venue::TradingStatus> seen;
   for (const MdMessage& m : f.out)
   {
     if (m.type == MdType::TradingStatus)

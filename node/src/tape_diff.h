@@ -1,6 +1,6 @@
 // node/src/tape_diff.h -- tape diff wrapper for Node.js.
 //
-// Exposes a single function `flox.tapeDiff(leftPath, rightPath, opts?)`
+// Exposes a single function `lrvx.tapeDiff(leftPath, rightPath, opts?)`
 // that returns a JS object matching the shape of the Python
 // TapeDiff dataclass. The walk runs entirely in the C++ engine
 // through the C ABI; this is purely marshalling.
@@ -10,18 +10,18 @@
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <cstdint>
 #include <string>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 namespace detail_diff
 {
 
-inline Napi::Object tradeToJs(Napi::Env env, const FloxTapeDiffTrade& t)
+inline Napi::Object tradeToJs(Napi::Env env, const LrvxTapeDiffTrade& t)
 {
   Napi::Object o = Napi::Object::New(env);
   o.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(t.exchange_ts_ns)));
@@ -36,12 +36,12 @@ inline Napi::Object tradeToJs(Napi::Env env, const FloxTapeDiffTrade& t)
 
 inline Napi::Value tapeDiff(const Napi::CallbackInfo& info)
 {
-  return tryFlox(info.Env(), [&]() -> Napi::Value
+  return tryLrvx(info.Env(), [&]() -> Napi::Value
                  {
     auto env = info.Env();
     if (info.Length() < 2 || !info[0].IsString() || !info[1].IsString())
     {
-      throw flox::FloxError("E_VAL_002",
+      throw lrvx::LrvxError("E_VAL_002",
           "tapeDiff: first two arguments must be tape directory paths.");
     }
     std::string left = info[0].As<Napi::String>().Utf8Value();
@@ -61,11 +61,11 @@ inline Napi::Value tapeDiff(const Napi::CallbackInfo& info)
       }
     }
 
-    FloxTapeDiffHandle h = flox_tape_diff_create(left.c_str(), right.c_str(),
+    LrvxTapeDiffHandle h = lrvx_tape_diff_create(left.c_str(), right.c_str(),
                                                   max_mismatches, tolerance_ns);
     if (!h)
     {
-      throw flox::FloxError("E_IO_001",
+      throw lrvx::LrvxError("E_IO_001",
           "tapeDiff: failed to read tape directory(ies).");
     }
 
@@ -73,12 +73,12 @@ inline Napi::Value tapeDiff(const Napi::CallbackInfo& info)
     out.Set("leftPath", Napi::String::New(env, left));
     out.Set("rightPath", Napi::String::New(env, right));
     out.Set("leftCount", Napi::Number::New(env,
-        static_cast<double>(flox_tape_diff_left_count(h))));
+        static_cast<double>(lrvx_tape_diff_left_count(h))));
     out.Set("rightCount", Napi::Number::New(env,
-        static_cast<double>(flox_tape_diff_right_count(h))));
+        static_cast<double>(lrvx_tape_diff_right_count(h))));
 
     uint64_t div_idx = 0;
-    if (flox_tape_diff_first_divergence(h, &div_idx))
+    if (lrvx_tape_diff_first_divergence(h, &div_idx))
     {
       out.Set("firstDivergenceIndex", Napi::Number::New(env, static_cast<double>(div_idx)));
     }
@@ -86,14 +86,14 @@ inline Napi::Value tapeDiff(const Napi::CallbackInfo& info)
     {
       out.Set("firstDivergenceIndex", env.Null());
     }
-    out.Set("equal", Napi::Boolean::New(env, flox_tape_diff_equal(h) != 0));
+    out.Set("equal", Napi::Boolean::New(env, lrvx_tape_diff_equal(h) != 0));
 
-    const uint64_t mcount = flox_tape_diff_mismatch_count(h);
+    const uint64_t mcount = lrvx_tape_diff_mismatch_count(h);
     Napi::Array mlist = Napi::Array::New(env, static_cast<size_t>(mcount));
     if (mcount > 0)
     {
-      std::vector<FloxTapeDiffMismatch> buf(mcount);
-      flox_tape_diff_copy_mismatches(h, buf.data(), mcount);
+      std::vector<LrvxTapeDiffMismatch> buf(mcount);
+      lrvx_tape_diff_copy_mismatches(h, buf.data(), mcount);
       for (uint64_t i = 0; i < mcount; ++i)
       {
         Napi::Object entry = Napi::Object::New(env);
@@ -105,7 +105,7 @@ inline Napi::Value tapeDiff(const Napi::CallbackInfo& info)
     }
     out.Set("mismatches", mlist);
 
-    flox_tape_diff_destroy(h);
+    lrvx_tape_diff_destroy(h);
     return out; });
 }
 
@@ -115,4 +115,4 @@ inline void registerTapeDiff(Napi::Env env, Napi::Object exports)
               Napi::Function::New(env, &tapeDiff, "tapeDiff"));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

@@ -1,26 +1,26 @@
 # Codon Bindings
 
 Codon is an ahead-of-time compiled Python-like language that produces native code.
-Flox provides Codon bindings via the C API, so strategies compile to binaries with no interpreter overhead.
+lrvx provides Codon bindings via the C API, so strategies compile to binaries with no interpreter overhead.
 
 ## Prerequisites
 
 - [Codon compiler](https://github.com/exaloop/codon) installed
-- Flox built with `-DFLOX_BUILD_CAPI=ON`
+- lrvx built with `-DLRVX_BUILD_CAPI=ON`
 
 ## Build
 
 ```bash
 cmake -B build \
-  -DFLOX_ENABLE_BACKTEST=ON \
-  -DFLOX_BUILD_CAPI=ON \
-  -DFLOX_BUILD_CODON=ON \
+  -DLRVX_ENABLE_BACKTEST=ON \
+  -DLRVX_BUILD_CAPI=ON \
+  -DLRVX_BUILD_CODON=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
 ```
 
-Produces `build/src/capi/libflox_capi.so` and the example binaries in `build/codon/`.
+Produces `build/src/capi/liblrvx_capi.so` and the example binaries in `build/codon/`.
 
 Compile a strategy:
 
@@ -28,17 +28,17 @@ Compile a strategy:
 codon build -exe \
   -o my_strategy \
   -L build/src/capi \
-  -lflox_capi \
+  -llrvx_capi \
   my_strategy.codon
 ```
 
 ## Symbols
 
-```python
-from flox.runner import Runner, flox_registry_create, flox_registry_add_symbol
+```codon
+from lrvx.runner import Runner, lrvx_registry_create, lrvx_registry_add_symbol
 
-reg = flox_registry_create()
-btc = flox_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
+reg = lrvx_registry_create()
+btc = lrvx_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
 # btc is a u32 symbol ID — pass it anywhere a symbol is expected
 ```
 
@@ -46,11 +46,11 @@ btc = flox_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
 
 Subclass `Strategy` and override `on_trade`. Order methods default to the primary symbol.
 
-```python
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import SMA
+```codon
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData
+from lrvx.indicators import SMA
 
 class SMAcross(Strategy):
     fast: SMA
@@ -107,8 +107,8 @@ All methods accept an optional `symbol` kwarg to target a specific symbol by nam
 
 ## Runner (live)
 
-```python
-from flox.runner import Runner
+```codon
+from lrvx.runner import Runner
 
 def on_signal(sig):
     # sig.side: "buy" | "sell"
@@ -133,8 +133,8 @@ runner.stop()
 
 The Codon binding exposes the bare `BacktestRunner` — flat fee, no funding, no liquidation, no rate limits. Good for indicator sanity checks; not enough for a decision about real capital.
 
-```python
-from flox.runner import BacktestRunner
+```codon
+from lrvx.runner import BacktestRunner
 
 bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
 bt.set_strategy(SMAcross([int(btc)]))
@@ -147,15 +147,15 @@ print(stats.return_pct, stats.sharpe_ratio, stats.max_drawdown_pct)
 
 Or pass raw arrays / a recorded tape:
 
-```python
+```codon
 stats = bt.run_ohlcv(timestamps_ns, closes, "BTCUSDT")
-stats = bt.run_tape("/path/to/tape.floxlog")
+stats = bt.run_tape("/path/to/tape.lrvx")
 ```
 
-The realistic venue stack (cross-margin account, MM tier ladder + ADL, VIP fee schedule, funding settlement, rate limits, venue availability) is a separate simulation in `flox.backtest`. It is not an argument to `BacktestRunner`:
+The realistic venue stack (cross-margin account, MM tier ladder + ADL, VIP fee schedule, funding settlement, rate limits, venue availability) is a separate simulation in `lrvx.backtest`. It is not an argument to `BacktestRunner`:
 
-```python
-from flox.backtest import binance_um_futures
+```codon
+from lrvx.backtest import binance_um_futures
 
 stack = binance_um_futures(account_id=42, equity=10_000.0)
 acct = stack.account_handle()   # raw handle; wrap with the matching codon class if needed
@@ -182,8 +182,8 @@ Codon has no `@classmethod`, so the factories are module-level functions: `binan
 
 Indicator classes offer both a batch (`compute`) and an incremental (`update` / `value` / `ready` / `reset`) surface:
 
-```python
-from flox.indicators import SMA, EMA
+```codon
+from lrvx.indicators import SMA, EMA
 
 sma = SMA(20)
 val = sma.update(price)   # returns float; sma.ready is True once primed
@@ -198,12 +198,12 @@ Batch indicators via C API (`ema`, `sma`, `rsi`, `atr`, `macd`, `bollinger`) —
 
 ## Full Example
 
-```python
-from flox.runner import Runner, BacktestRunner, flox_registry_create, flox_registry_add_symbol
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import SMA
+```codon
+from lrvx.runner import Runner, BacktestRunner, lrvx_registry_create, lrvx_registry_add_symbol
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData
+from lrvx.indicators import SMA
 
 class SMAcross(Strategy):
     fast: SMA
@@ -228,8 +228,8 @@ def on_signal(sig):
     print(f"signal  {sig.side}  qty={sig.quantity:.4f}  [{sig.order_type}]")
 
 def main():
-    reg = flox_registry_create()
-    btc = flox_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
+    reg = lrvx_registry_create()
+    btc = lrvx_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
     btc_id = int(btc)
 
     # --- Backtest ---

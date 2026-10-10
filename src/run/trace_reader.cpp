@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/run/trace_reader.h"
+#include "lrvx/run/trace_reader.h"
 
-#include "flox/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_format_v1.h"
 
 #include <algorithm>
 #include <cstring>
@@ -18,7 +18,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace flox::run
+namespace lrvx::run
 {
 
 namespace
@@ -30,7 +30,7 @@ namespace
 // so cap the reservation at that.
 size_t safeReserveCount(uint32_t declared, size_t segmentBytes, size_t recordBytes)
 {
-  const size_t frameBytes = sizeof(flox::replay::FrameHeader) + recordBytes;
+  const size_t frameBytes = sizeof(lrvx::replay::FrameHeader) + recordBytes;
   const size_t possible = frameBytes > 0 ? segmentBytes / frameBytes : 0;
   return std::min(static_cast<size_t>(declared), possible);
 }
@@ -476,11 +476,11 @@ std::vector<OwnedSignal> TraceReader::readAllSignals()
   out.reserve(safeReserveCount(hdr.event_count, bytes.size(), sizeof(SignalRecord)));
   for (uint32_t i = 0; i < hdr.event_count; ++i)
   {
-    if (cursor + sizeof(flox::replay::FrameHeader) > bytes.size())
+    if (cursor + sizeof(lrvx::replay::FrameHeader) > bytes.size())
     {
       throw std::runtime_error("trace reader: truncated frame header");
     }
-    flox::replay::FrameHeader fh{};
+    lrvx::replay::FrameHeader fh{};
     std::memcpy(&fh, bytes.data() + cursor, sizeof(fh));
     cursor += sizeof(fh);
     if (fh.type != static_cast<uint8_t>(FrameType::Signal))
@@ -491,7 +491,7 @@ std::vector<OwnedSignal> TraceReader::readAllSignals()
     {
       throw std::runtime_error("trace reader: truncated signal payload");
     }
-    uint32_t crc = flox::replay::Crc32::compute(bytes.data() + cursor, fh.size);
+    uint32_t crc = lrvx::replay::Crc32::compute(bytes.data() + cursor, fh.size);
     if (crc != fh.crc32)
     {
       throw std::runtime_error("trace reader: signal frame crc mismatch");
@@ -572,11 +572,11 @@ std::vector<OwnedOrderEvent> TraceReader::readAllOrderEvents()
   out.reserve(safeReserveCount(hdr.event_count, bytes.size(), sizeof(OrderEventRecord)));
   for (uint32_t i = 0; i < hdr.event_count; ++i)
   {
-    if (cursor + sizeof(flox::replay::FrameHeader) > bytes.size())
+    if (cursor + sizeof(lrvx::replay::FrameHeader) > bytes.size())
     {
       throw std::runtime_error("trace reader: truncated order frame header");
     }
-    flox::replay::FrameHeader fh{};
+    lrvx::replay::FrameHeader fh{};
     std::memcpy(&fh, bytes.data() + cursor, sizeof(fh));
     cursor += sizeof(fh);
     if (fh.type != static_cast<uint8_t>(FrameType::OrderEvent))
@@ -587,7 +587,7 @@ std::vector<OwnedOrderEvent> TraceReader::readAllOrderEvents()
     {
       throw std::runtime_error("trace reader: truncated order payload");
     }
-    uint32_t crc = flox::replay::Crc32::compute(bytes.data() + cursor, fh.size);
+    uint32_t crc = lrvx::replay::Crc32::compute(bytes.data() + cursor, fh.size);
     if (crc != fh.crc32)
     {
       throw std::runtime_error("trace reader: order frame crc mismatch");
@@ -654,11 +654,11 @@ std::vector<FillRecord> TraceReader::readAllFills()
   out.reserve(safeReserveCount(hdr.event_count, bytes.size(), sizeof(FillRecord)));
   for (uint32_t i = 0; i < hdr.event_count; ++i)
   {
-    if (cursor + sizeof(flox::replay::FrameHeader) > bytes.size())
+    if (cursor + sizeof(lrvx::replay::FrameHeader) > bytes.size())
     {
       throw std::runtime_error("trace reader: truncated fill frame header");
     }
-    flox::replay::FrameHeader fh{};
+    lrvx::replay::FrameHeader fh{};
     std::memcpy(&fh, bytes.data() + cursor, sizeof(fh));
     cursor += sizeof(fh);
     if (fh.type != static_cast<uint8_t>(FrameType::Fill))
@@ -669,7 +669,7 @@ std::vector<FillRecord> TraceReader::readAllFills()
     {
       throw std::runtime_error("trace reader: truncated fill payload");
     }
-    uint32_t crc = flox::replay::Crc32::compute(bytes.data() + cursor, fh.size);
+    uint32_t crc = lrvx::replay::Crc32::compute(bytes.data() + cursor, fh.size);
     if (crc != fh.crc32)
     {
       throw std::runtime_error("trace reader: fill frame crc mismatch");
@@ -686,4 +686,4 @@ std::vector<FillRecord> TraceReader::readAllFills()
   return out;
 }
 
-}  // namespace flox::run
+}  // namespace lrvx::run

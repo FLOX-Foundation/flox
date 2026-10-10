@@ -20,3 +20,6 @@ compile_commands.json
 .notes/
 
 /dist/
+
+*.egg-info/
+node/authoring/index.js

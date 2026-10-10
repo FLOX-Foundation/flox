@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# flox venue -- sanitizer verification.
+# lrvx venue -- sanitizer verification.
 # Builds and runs the verification corpus under AddressSanitizer + Undefined-
 # BehaviorSanitizer (memory safety, UB) and the concurrent paths under Thread-
 # Sanitizer (data races). Run this before a release and in CI so regressions in
@@ -9,7 +9,7 @@
 # Usage:  venue/scripts/run_sanitizers.sh
 set -euo pipefail
 
-cd "$(dirname "$0")/../.."  # repo root (venue/scripts -> flox)
+cd "$(dirname "$0")/../.."  # repo root (venue/scripts -> lrvx)
 ROOT="$(pwd)"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT

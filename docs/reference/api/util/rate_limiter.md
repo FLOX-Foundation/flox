@@ -5,7 +5,7 @@ Thread-safe token bucket rate limiter for controlling request/operation frequenc
 ## Quick Start
 
 ```cpp
-#include "flox/util/rate_limiter.h"
+#include "lrvx/util/rate_limiter.h"
 
 // 10 requests per second
 RateLimiter limiter({.capacity = 10, .refillRate = 10});

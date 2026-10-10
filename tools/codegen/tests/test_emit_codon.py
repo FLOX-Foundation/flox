@@ -1,7 +1,7 @@
 """Tests for the Codon FFI emitter."""
 from __future__ import annotations
 
-from flox_codegen import emit_codon, ir
+from lrvx_codegen import emit_codon, ir
 
 
 def _module(*funcs: ir.Function, **kw) -> ir.Module:
@@ -10,27 +10,27 @@ def _module(*funcs: ir.Function, **kw) -> ir.Module:
 
 def test_void_return_no_arrow():
     m = _module(
-        ir.Function(name="flox_x", return_type="void", params=(),
+        ir.Function(name="lrvx_x", return_type="void", params=(),
                     annotations={"group": "g"})
     )
     text = emit_codon.emit(m)
-    assert "from C import flox_x()" in text
+    assert "from C import lrvx_x()" in text
     assert "-> " not in text  # void return → no arrow
 
 
 def test_int_return_arrow():
     m = _module(
-        ir.Function(name="flox_x", return_type="int32_t", params=(),
+        ir.Function(name="lrvx_x", return_type="int32_t", params=(),
                     annotations={"group": "g"})
     )
     text = emit_codon.emit(m)
-    assert "from C import flox_x() -> i32" in text
+    assert "from C import lrvx_x() -> i32" in text
 
 
 def test_pointer_to_scalar():
     m = _module(
         ir.Function(
-            name="flox_x", return_type="void",
+            name="lrvx_x", return_type="void",
             params=(
                 ir.Param("input", "const double *"),
                 ir.Param("len", "size_t"),
@@ -40,29 +40,29 @@ def test_pointer_to_scalar():
         )
     )
     text = emit_codon.emit(m)
-    assert "from C import flox_x(Ptr[float], int, Ptr[float])" in text
+    assert "from C import lrvx_x(Ptr[float], int, Ptr[float])" in text
 
 
 def test_handle_and_string_collapse_to_cobj():
     m = _module(
         ir.Function(
-            name="flox_x", return_type="void",
+            name="lrvx_x", return_type="void",
             params=(
-                ir.Param("h", "FloxStrategyHandle"),
+                ir.Param("h", "LrvxStrategyHandle"),
                 ir.Param("name", "const char *"),
             ),
             annotations={"group": "g"},
         )
     )
     text = emit_codon.emit(m)
-    assert "from C import flox_x(cobj, cobj)" in text
+    assert "from C import lrvx_x(cobj, cobj)" in text
 
 
 def test_pointer_to_pointer():
     """const char* const* maps to Ptr[cobj]."""
     m = _module(
         ir.Function(
-            name="flox_x", return_type="void",
+            name="lrvx_x", return_type="void",
             params=(ir.Param("deps", "const char *const *"),),
             annotations={"group": "g"},
         )
@@ -73,9 +73,9 @@ def test_pointer_to_pointer():
 
 def test_grouping_alphabetical():
     m = _module(
-        ir.Function(name="flox_b", return_type="void", params=(),
+        ir.Function(name="lrvx_b", return_type="void", params=(),
                     annotations={"group": "zebra"}),
-        ir.Function(name="flox_a", return_type="void", params=(),
+        ir.Function(name="lrvx_a", return_type="void", params=(),
                     annotations={"group": "alpha"}),
     )
     text = emit_codon.emit(m)
@@ -87,7 +87,7 @@ def test_grouping_alphabetical():
 def test_unsigned_widths():
     m = _module(
         ir.Function(
-            name="flox_x", return_type="uint64_t",
+            name="lrvx_x", return_type="uint64_t",
             params=(
                 ir.Param("a", "uint8_t"),
                 ir.Param("b", "uint16_t"),
@@ -98,12 +98,12 @@ def test_unsigned_widths():
         )
     )
     text = emit_codon.emit(m)
-    assert "from C import flox_x(u8, u16, u32, u64) -> u64" in text
+    assert "from C import lrvx_x(u8, u16, u32, u64) -> u64" in text
 
 
 def test_double_returns_codon_float():
     m = _module(
-        ir.Function(name="flox_x", return_type="double", params=(),
+        ir.Function(name="lrvx_x", return_type="double", params=(),
                     annotations={"group": "g"})
     )
     text = emit_codon.emit(m)
@@ -124,19 +124,19 @@ def test_map_type_unknown_passthrough():
 
 
 def test_macro_constant_becomes_int_constant():
-    m = ir.Module(macros=[ir.MacroConstant(name="FLOX_THING_A", value="0", group="thing")])
+    m = ir.Module(macros=[ir.MacroConstant(name="LRVX_THING_A", value="0", group="thing")])
     text = emit_codon.emit(m)
-    assert "FLOX_THING_A: int = 0" in text
+    assert "LRVX_THING_A: int = 0" in text
 
 
 def test_macro_groups_get_their_own_comment_section():
     m = ir.Module(
         macros=[
-            ir.MacroConstant(name="FLOX_A_ONE", value="0", group="alpha"),
-            ir.MacroConstant(name="FLOX_B_ONE", value="0", group="beta"),
+            ir.MacroConstant(name="LRVX_A_ONE", value="0", group="alpha"),
+            ir.MacroConstant(name="LRVX_B_ONE", value="0", group="beta"),
         ]
     )
     text = emit_codon.emit(m)
     assert "# ── macro: alpha ──" in text
     assert "# ── macro: beta ──" in text
-    assert text.find("FLOX_A_ONE") < text.find("FLOX_B_ONE")
+    assert text.find("LRVX_A_ONE") < text.find("LRVX_B_ONE")

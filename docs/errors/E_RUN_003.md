@@ -24,7 +24,7 @@ a list, a non-dict mapping — fails fast.
             # stats dict (still a dict).
             return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
-        bt = flox.BacktestRunner(reg, 0.0004, 10_000)
+        bt = lrvx.BacktestRunner(reg, 0.0004, 10_000)
         bt.set_strategy(MyStrategy(fast, slow))
         return bt.run_csv("data.csv", symbol="BTCUSDT")  # ← dict
     ```

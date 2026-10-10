@@ -1,6 +1,6 @@
 # Codon smoke for the multi-feed clock state machine.
 
-from flox.feed_clock import (MultiFeedClock,
+from lrvx.feed_clock import (MultiFeedClock,
                               WAIT_FOR_ALL, FIRE_ON_ANY, LEADER_FOLLOWER)
 
 

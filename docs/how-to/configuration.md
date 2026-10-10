@@ -1,13 +1,13 @@
 # Configuration
 
 !!! info "C++ engine setup"
-    `EngineConfig` is what the **C++ engine** itself reads at startup. Everything else — which venues to connect, which symbols to subscribe to, the kill switch, the logger — is wired up by constructing the components and handing them to the engine. Python, Node.js, and Codon users build the same thing imperatively (`flox.SymbolRegistry`, `flox.Runner`, etc.) — see the [Bindings](../bindings/README.md) page. This guide is for the C++ entrypoint.
+    `EngineConfig` is what the **C++ engine** itself reads at startup. Everything else — which venues to connect, which symbols to subscribe to, the kill switch, the logger — is wired up by constructing the components and handing them to the engine. Python, Node.js, and Codon users build the same thing imperatively (`lrvx.SymbolRegistry`, `lrvx.Runner`, etc.) — see the [Bindings](../bindings/README.md) page. This guide is for the C++ entrypoint.
 
 `EngineConfig` is a plain struct with two fields. It is not loaded from JSON by
 the engine and there is no serializer for it in the tree; fill it in yourself.
 
 ```cpp
-#include "flox/engine/engine_config.h"
+#include "lrvx/engine/engine_config.h"
 
 EngineConfig config;
 config.drainTimeoutMs = 5000;
@@ -61,12 +61,12 @@ install it:
 ```cpp
 AtomicLoggerOptions opts;
 opts.levelThreshold = LogLevel::Warn;
-opts.directory = "/var/log/flox";   // defaults to /dev/shm, or the system temp directory
+opts.directory = "/var/log/lrvx";   // defaults to /dev/shm, or the system temp directory
 AtomicLogger logger(opts);
 setGlobalLogger(&logger);
 ```
 
-The level the sink was built with is also the level `FLOX_LOG_*` checks before
+The level the sink was built with is also the level `LRVX_LOG_*` checks before
 it formats anything, so a filtered line costs nothing. See
 [`AtomicLogger`](../reference/api/log/atomic_logger.md) and
 [the logging macros](../reference/api/log/log.md).
@@ -78,7 +78,7 @@ the risk path; it is not part of `EngineConfig`.
 
 ## Compile-time defaults
 
-`engine_config.h` also defines the constants in `flox::config` — event-bus
+`engine_config.h` also defines the constants in `lrvx::config` — event-bus
 capacity, connector pool capacity, order-tracker capacity, the CPU-affinity
 priorities — each overridable with a preprocessor define. See
 [EngineConfig](../reference/api/engine/engine_config.md) for the full list and
@@ -91,6 +91,6 @@ the pool-vs-bus sizing rule.
 
 ## See Also
 
-- [Quickstart](../tutorials/quickstart.md) — Build and run FLOX
+- [Quickstart](../tutorials/quickstart.md) — Build and run lrvx
 - [Run the Demo](../tutorials/demo.md) — See configuration in action
 - [Architecture](../explanation/architecture.md) — How config affects components

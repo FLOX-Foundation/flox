@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -23,13 +23,13 @@
 // apart the entry price in the snapshot is the blend of them -- the same
 // number getAverageEntryPrice() gives for the same state.
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/position/abstract_position_manager.h"
-#include "flox/position/multi_mode_position_tracker.h"
-#include "flox/position/position_tracker.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/position/abstract_position_manager.h"
+#include "lrvx/position/multi_mode_position_tracker.h"
+#include "lrvx/position/position_tracker.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -38,7 +38,7 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

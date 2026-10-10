@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -14,11 +14,11 @@
  * the extract evidence rather than a story: compared against the live run's,
  * equal digests say this replay took the path the venue took.
  *
- * The replay itself is in flox-venue/journal_window.h and is tested there.
+ * The replay itself is in lrvx-venue/journal_window.h and is tested there.
  * This file is argument parsing and printing, deliberately.
  */
-#include "flox-venue/journal_window.h"
-#include "flox-venue/matching_book.h"
+#include "lrvx-venue/journal_window.h"
+#include "lrvx-venue/matching_book.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -26,8 +26,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

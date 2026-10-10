@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flox-py"
+version = "0.10.2"
+authors = [{name = "lrvx contributors"}]
+description = "Deprecated: flox-py is renamed to lrvx. This release installs lrvx and keeps `import flox_py` working."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["lrvx==0.10.1"]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://docs.lrvx.dev/"
+Repository = "https://github.com/lrvx/lrvx"
+Migration = "https://docs.lrvx.dev/how-to/migrate-from-flox/"
+
+[project.scripts]
+flox = "_flox_py_cli:main"
+
+[tool.setuptools]
+packages = ["flox_py"]
+py-modules = ["_flox_py_cli"]

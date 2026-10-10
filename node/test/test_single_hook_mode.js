@@ -32,7 +32,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -58,9 +58,9 @@ const INLINE_HOOKS = [
 ];
 
 function makeRunner(threaded) {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, threaded);
+  const runner = new lrvx.Runner(reg, () => {}, threaded);
   return { runner, sym };
 }
 
@@ -98,9 +98,9 @@ for (const [setter, hook] of INLINE_HOOKS) {
 
 console.log('\n=== BacktestRunner is sync by construction and takes an executor ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   let err = null;
   // Which OS thread called capabilities() is not observable from JS --
   // there is no thread id to read. What is observable is the set of

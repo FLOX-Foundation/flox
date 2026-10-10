@@ -7,7 +7,7 @@ CI-runnable companion to
 [Cross-sectional panel builder](../how-to/cross-sectional-panel.md).
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_xs_panel.py
 """
 from __future__ import annotations
@@ -18,8 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
-import flox_py
-from flox_py import panel as panel_mod
+import lrvx
+from lrvx import panel as panel_mod
 
 
 _BUCKET_NS = 60_000_000_000   # 1 minute
@@ -30,7 +30,7 @@ def _write_tape(root: Path, symbol: str, *,
                 base_price: float) -> None:
     tape_dir = root / symbol
     tape_dir.mkdir(parents=True, exist_ok=True)
-    w = flox_py.DataWriter(str(tape_dir), max_segment_mb=64,
+    w = lrvx.DataWriter(str(tape_dir), max_segment_mb=64,
                            exchange_id=0, compression="none")
     try:
         for i, ts_ms in enumerate(bucket_starts_ms):
@@ -48,7 +48,7 @@ def _write_tape(root: Path, symbol: str, *,
 
 
 def main() -> None:
-    workdir = Path(tempfile.mkdtemp(prefix="flox-xs-panel-"))
+    workdir = Path(tempfile.mkdtemp(prefix="lrvx-xs-panel-"))
     try:
         base_ms = 1_700_000_000_000
         full = [base_ms + i * 60_000 for i in range(5)]

@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.report.write_html``.
+"""Tests for ``lrvx.report.write_html``.
 
 Render the HTML report with synthetic stats / equity / trades and
 assert the file is non-empty, self-contained (no external assets),
@@ -15,7 +15,7 @@ from pathlib import Path
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-from flox_py.report import render_html, write_html  # noqa: E402
+from lrvx.report import render_html, write_html  # noqa: E402
 
 
 _STATS = {

@@ -1,8 +1,8 @@
 """
-python/tests/test_dex.py -- the flox_py.dex comfort layer.
+python/tests/test_dex.py -- the lrvx.dex comfort layer.
 
 Symbol- and decimals-aware pricing over the exact curves. Verifies every quote still
-matches the raw flox_py curve to the wei, that human construction works, that the
+matches the raw lrvx curve to the wei, that human construction works, that the
 silent-wrong-answer footgun now raises, and that CLMM state reads back.
 
 Run from repo root:
@@ -15,8 +15,8 @@ from decimal import Decimal
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox  # noqa: E402
-from flox_py import dex  # noqa: E402
+import lrvx  # noqa: E402
+from lrvx import dex  # noqa: E402
 
 WETH, USDC = dex.Token("WETH", 18), dex.Token("USDC", 6)
 
@@ -33,12 +33,12 @@ def test_constant_product_human_and_exact():
     assert p.spot_price == Decimal("2000")          # exact mid, fee-excluded
     q = p.quote("10 WETH")
     # Matches the raw curve to the wei.
-    assert q.exact_wei == flox.AmmCurve.constant_product(1000*10**18, 2_000_000*10**6, 997, 1000
+    assert q.exact_wei == lrvx.AmmCurve.constant_product(1000*10**18, 2_000_000*10**6, 997, 1000
                                                          ).amount_out(0, 1, 10*10**18)
     assert q.out.token == USDC and q.price_impact > 0
     # PancakeSwap-style 0.25% maps to its own fee.
     pc = dex.UniswapV2(WETH, USDC, reserves=("1000 WETH", "2_000_000 USDC"), fee="0.25%", fee_den=10000)
-    assert pc.quote("10 WETH").exact_wei == flox.AmmCurve.constant_product(
+    assert pc.quote("10 WETH").exact_wei == lrvx.AmmCurve.constant_product(
         1000*10**18, 2_000_000*10**6, 9975, 10000).amount_out(0, 1, 10*10**18)
 
 
@@ -57,7 +57,7 @@ def test_uniswap_v3_readback_and_from_price():
 def test_raydium_cp_fee():
     ray = dex.RaydiumCp(dex.Token("WSOL", 9), USDC, reserves=("13831.187668587 WSOL",
                         "13771991.024747 USDC"), trade_fee="0.25%")
-    assert ray.quote("1 WSOL").exact_wei == flox.AmmCurve.raydium_cp(
+    assert ray.quote("1 WSOL").exact_wei == lrvx.AmmCurve.raydium_cp(
         13831187668587, 13771991024747, 2500, 0, True).amount_out(0, 1, 10**9)
 
 

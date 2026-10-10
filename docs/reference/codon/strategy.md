@@ -1,6 +1,6 @@
 # Strategy
 
-Base class for Codon event-driven strategies. Mirrors C++ `flox::Strategy`.
+Base class for Codon event-driven strategies. Mirrors C++ `lrvx::Strategy`.
 
 ## Class: `Strategy`
 
@@ -56,7 +56,7 @@ Two consequences worth knowing:
 
 Called on each trade event for subscribed symbols.
 
-```python
+```codon
 def on_trade(self, ctx: SymbolContext, trade: TradeData):
     price = trade.price.to_double()
     # strategy logic here
@@ -66,7 +66,7 @@ def on_trade(self, ctx: SymbolContext, trade: TradeData):
 
 Called on each order book update for subscribed symbols.
 
-```python
+```codon
 def on_book_update(self, ctx: SymbolContext):
     spread = ctx.book_spread()
     # strategy logic here
@@ -76,7 +76,7 @@ def on_book_update(self, ctx: SymbolContext):
 
 Called on each closed OHLC bar.
 
-```python
+```codon
 def on_bar(self, ctx: SymbolContext, bar: BarData):
     # bar.open, bar.high, bar.low, bar.close, bar.volume, ...
     if bar.close > bar.open and self.position() == 0.0:
@@ -219,7 +219,7 @@ back to the primary symbol when omitted. Prices and quantities are plain `float`
 | `order_status(order_id)` | `int` |
 
 `side` and `tif` are lowercase strings here (`'buy'` / `'sell'`, `'gtc'` / `'ioc'` / ...), unlike the
-`emit_*` methods which take the integer constants from [`flox.types`](types.md). An unrecognised
+`emit_*` methods which take the integer constants from [`lrvx.types`](types.md). An unrecognised
 `side` falls back to buy and an unrecognised `tif` to GTC. An unknown symbol name raises
 `ValueError`.
 
@@ -246,11 +246,11 @@ The name of the primary symbol, as resolved through the registry.
 
 ## Example
 
-```python
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import EMA
+```codon
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData
+from lrvx.indicators import EMA
 
 class EmaCrossover(Strategy):
     fast_ema: EMA

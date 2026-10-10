@@ -12,10 +12,10 @@ Technical indicators for Codon strategies. Two types:
 Batch indicators are **free functions**, not class methods. Import them by name.
 
 ```codon
-from flox.indicators import ema, sma, rsi, atr, macd, bollinger
-from flox.indicators import skewness, kurtosis, rolling_zscore, shannon_entropy
-from flox.indicators import parkinson_vol, rogers_satchell_vol, rolling_correlation, autocorrelation
-from flox.indicators import obv, vwap, cvd, chop, adx, adf, stochastic
+from lrvx.indicators import ema, sma, rsi, atr, macd, bollinger
+from lrvx.indicators import skewness, kurtosis, rolling_zscore, shannon_entropy
+from lrvx.indicators import parkinson_vol, rogers_satchell_vol, rolling_correlation, autocorrelation
+from lrvx.indicators import obv, vwap, cvd, chop, adx, adf, stochastic
 ```
 
 **Single value** — returns `List[float]`:
@@ -60,10 +60,10 @@ skew = skewness(prices, 20)
 All streaming indicators share the same pattern: call `update()` each tick, read `.value`, check `.ready`. All support `.reset()` to clear state.
 
 ```codon
-from flox.indicators import EMA, SMA, RSI, ATR, MACD, Bollinger
-from flox.indicators import RMA, DEMA, TEMA, KAMA, Slope, CCI, Stochastic
-from flox.indicators import Skewness, Kurtosis, RollingZScore, ShannonEntropy
-from flox.indicators import ParkinsonVol, RogersSatchellVol, Correlation, AutoCorrelation
+from lrvx.indicators import EMA, SMA, RSI, ATR, MACD, Bollinger
+from lrvx.indicators import RMA, DEMA, TEMA, KAMA, Slope, CCI, Stochastic
+from lrvx.indicators import Skewness, Kurtosis, RollingZScore, ShannonEntropy
+from lrvx.indicators import ParkinsonVol, RogersSatchellVol, Correlation, AutoCorrelation
 ```
 
 The complete class list is `SMA`, `EMA`, `RMA`, `DEMA`, `TEMA`, `KAMA`, `RSI`, `Slope`, `ATR`, `CCI`,
@@ -275,7 +275,7 @@ There are no streaming volume-indicator classes. On-Balance Volume, VWAP and Cum
 are batch-only free functions:
 
 ```codon
-from flox.indicators import obv, vwap, cvd
+from lrvx.indicators import obv, vwap, cvd
 
 obv_series  = obv(closes, volumes)
 vwap_series = vwap(closes, volumes, 20)
@@ -291,10 +291,10 @@ cvd_series  = cvd(opens, highs, lows, closes, volumes)
 Every indicator below is **one Codon class** with streaming `update()` / `value` /
 `ready` / `reset()`. A batch `compute()` is **not** on every class — the `Batch`
 column says what each class actually exposes. Classes and the batch free functions
-both come from `flox.indicators`.
+both come from `lrvx.indicators`.
 
 ```codon
-from flox.indicators import EMA, CCI, cci
+from lrvx.indicators import EMA, CCI, cci
 
 ema = EMA(20)
 out = ema.compute(prices)                  # EMA has an instance compute()

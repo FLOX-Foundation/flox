@@ -42,8 +42,8 @@ Numbers approximate published rules; tune to your account tier.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
-    const policy = new flox.RateLimitPolicy();
+    const lrvx = require('@lrvx/lrvx');
+    const policy = new lrvx.RateLimitPolicy();
     policy.loadProfile('binance_um_futures');
     exec.setRateLimitPolicy(policy);
     ```
@@ -51,7 +51,7 @@ Numbers approximate published rules; tune to your account tier.
 === "Codon"
 
     ```python
-    from flox.rate_limit import RateLimitPolicy
+    from lrvx.rate_limit import RateLimitPolicy
 
     p = RateLimitPolicy()
     p.load_profile("binance_um_futures")
@@ -61,16 +61,16 @@ Numbers approximate published rules; tune to your account tier.
 === "QuickJS"
 
     ```javascript
-    const p = __flox_rate_limit_policy_create();
-    __flox_rate_limit_policy_load_profile(p, "binance_um_futures");
-    __flox_simulated_executor_set_rate_limit_policy(exec, p);
+    const p = __lrvx_rate_limit_policy_create();
+    __lrvx_rate_limit_policy_load_profile(p, "binance_um_futures");
+    __lrvx_simulated_executor_set_rate_limit_policy(exec, p);
     ```
 
 === "C++"
 
     ```cpp
-    #include "flox/backtest/rate_limit_policy.h"
-    auto p = flox::RateLimitPolicy::binance_um_futures();
+    #include "lrvx/backtest/rate_limit_policy.h"
+    auto p = lrvx::RateLimitPolicy::binance_um_futures();
     sim.setRateLimitPolicy(p);
     ```
 
@@ -109,7 +109,7 @@ all three families with realistic numbers.
 
     ```python
     p.add_family_bucket(
-        family=flox_py.RateLimitEndpointFamily.MarketData,
+        family=lrvx.RateLimitEndpointFamily.MarketData,
         name="md_60s",
         window_ns=60_000_000_000,
         capacity=6000,

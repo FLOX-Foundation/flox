@@ -18,17 +18,17 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import bundle, tape  # noqa: E402
+from lrvx import bundle, tape  # noqa: E402
 
 
 _STRATEGY_SOURCE = '''
 """A trivial strategy: fire one market BUY on the first trade."""
-import flox_py as flox
+import lrvx
 
 
-class FirstTradeBuy(flox.Strategy):
+class FirstTradeBuy(lrvx.Strategy):
     def __init__(self, symbols, qty=1.0):
         super().__init__(symbols)
         self.qty = qty
@@ -52,11 +52,11 @@ def _write_tape(dir_: Path) -> Path:
     """Capture a synthetic tape with three trades."""
     out = dir_ / "tape"
     out.mkdir()
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = int(registry.add_symbol("bundle", "BTCUSDT", tick_size=0.01))
 
     recorder = tape.make_recorder_hook(out)
-    runner = flox.Runner(registry, on_signal=lambda _: None)
+    runner = lrvx.Runner(registry, on_signal=lambda _: None)
     runner.set_market_data_recorder(recorder)
     runner.start()
     runner.on_trade(sym, 100.00, 1.0, True, 1_000_000_000)
@@ -69,10 +69,10 @@ def _write_tape(dir_: Path) -> Path:
 
 _TAKE_PROFIT_STRATEGY_SOURCE = '''
 """Hangs one take-profit above the market on the first trade."""
-import flox_py as flox
+import lrvx
 
 
-class TakeProfitOnFirstTrade(flox.Strategy):
+class TakeProfitOnFirstTrade(lrvx.Strategy):
     def __init__(self, symbols, qty=1.0):
         super().__init__(symbols)
         self.qty = qty
@@ -99,7 +99,7 @@ class BundleConditionalOrderTests(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-tp-test-"))
+        self.work = Path(tempfile.mkdtemp(prefix="lrvx-bundle-tp-test-"))
         self.strat = self.work / "strategy.py"
         self.strat.write_text(_TAKE_PROFIT_STRATEGY_SOURCE)
         self.tape_dir = _write_tape(self.work)
@@ -131,7 +131,7 @@ class BundleConditionalOrderTests(unittest.TestCase):
 
 class BundlePackTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        self.work = Path(tempfile.mkdtemp(prefix="lrvx-bundle-test-"))
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work, ignore_errors=True)
@@ -157,11 +157,11 @@ class BundlePackTests(unittest.TestCase):
         self.assertIn("expected_output.json", names)
         self.assertTrue(any(n.startswith("tape/") for n in names))
         # Every fresh bundle now also ships an
-        # expected.floxrun directory alongside the legacy JSON.
+        # expected.lrvxrun directory alongside the legacy JSON.
         self.assertTrue(
-            any(n.startswith("expected.floxrun/") or n == "expected.floxrun"
+            any(n.startswith("expected.lrvxrun/") or n == "expected.lrvxrun"
                 for n in names),
-            f"missing expected.floxrun in bundle entries: {sorted(names)}",
+            f"missing expected.lrvxrun in bundle entries: {sorted(names)}",
         )
 
     def test_pack_manifest_contains_required_fields(self) -> None:
@@ -175,7 +175,7 @@ class BundlePackTests(unittest.TestCase):
             manifest = json.loads(tf.extractfile("manifest.json").read())
 
         self.assertEqual(manifest["bundle_format_version"], 1)
-        self.assertIn("flox_version", manifest)
+        self.assertIn("lrvx_version", manifest)
         self.assertIn("created_at_ns", manifest)
         self.assertEqual(manifest["strategy_filename"], "strategy.py")
         self.assertIn("strategy_sha256", manifest)
@@ -184,7 +184,7 @@ class BundlePackTests(unittest.TestCase):
 
 class BundleReplayTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        self.work = Path(tempfile.mkdtemp(prefix="lrvx-bundle-test-"))
         strat = _write_strategy(self.work)
         tape_dir = _write_tape(self.work)
         self.bundle_path = self.work / "bundle.tar"
@@ -209,7 +209,7 @@ class BundleReplayTests(unittest.TestCase):
 
 class BundleValidateTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        self.work = Path(tempfile.mkdtemp(prefix="lrvx-bundle-test-"))
         strat = _write_strategy(self.work)
         tape_dir = _write_tape(self.work)
         self.bundle_path = self.work / "bundle.tar"
@@ -289,7 +289,7 @@ class BundleSecurityTests(unittest.TestCase):
     the strategy code inside it."""
 
     def setUp(self) -> None:
-        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        self.work = Path(tempfile.mkdtemp(prefix="lrvx-bundle-test-"))
         strat = _write_strategy(self.work)
         tape_dir = _write_tape(self.work)
         self.bundle_path = self.work / "bundle.tar"
@@ -323,11 +323,11 @@ class BundleSecurityTests(unittest.TestCase):
 class BundleIntegrityTests(unittest.TestCase):
     """The manifest's recorded strategy/tape hashes and
     engine version must actually be checked, and a bundle predating
-    the .floxrun ride-along must not be flagged as mismatched purely
+    the .lrvxrun ride-along must not be flagged as mismatched purely
     because of that."""
 
     def setUp(self) -> None:
-        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        self.work = Path(tempfile.mkdtemp(prefix="lrvx-bundle-test-"))
         self.strat = _write_strategy(self.work)
         self.tape_dir = _write_tape(self.work)
         self.bundle_path = self.work / "bundle.tar"
@@ -346,7 +346,7 @@ class BundleIntegrityTests(unittest.TestCase):
         # manifest + expected output for the new code), then splicing
         # its strategy.py and expected_output.json onto the ORIGINAL
         # bundle's manifest -- which still names the original hash.
-        tampered_dir = Path(tempfile.mkdtemp(prefix="flox-bundle-tampered-"))
+        tampered_dir = Path(tempfile.mkdtemp(prefix="lrvx-bundle-tampered-"))
         try:
             tampered_source = _STRATEGY_SOURCE.replace("self.qty = qty", "self.qty = qty * 5")
             tampered_strat = tampered_dir / "strategy.py"
@@ -382,23 +382,23 @@ class BundleIntegrityTests(unittest.TestCase):
     def test_faked_engine_version_is_detected(self) -> None:
         with tarfile.open(self.bundle_path, "r") as tf:
             manifest = json.loads(tf.extractfile("manifest.json").read())
-        manifest["flox_version"] = "0.0.1-attacker"
+        manifest["lrvx_version"] = "0.0.1-attacker"
         replaced = self.work / "fakeversion.tar"
         _repack_replacing_member(
             self.bundle_path, replaced,
             {"manifest.json": json.dumps(manifest).encode("utf-8")},
         )
         res = bundle.validate_bundle(replaced)
-        self.assertTrue(any(d.startswith("flox_version:") for d in res.diff), res.diff)
+        self.assertTrue(any(d.startswith("lrvx_version:") for d in res.diff), res.diff)
 
-    def test_bundle_without_floxrun_still_validates_on_matching_content(self) -> None:
-        # Simulate a bundle packed before the .floxrun ride-along
-        # landed: strip expected.floxrun/ entirely. Every other field
+    def test_bundle_without_lrvxrun_still_validates_on_matching_content(self) -> None:
+        # Simulate a bundle packed before the .lrvxrun ride-along
+        # landed: strip expected.lrvxrun/ entirely. Every other field
         # still matches byte-for-byte, so this must still validate --
         # comparing "actual has a fresh trace" against "expected never
         # had one" must not, on its own, fail the whole bundle.
         with tarfile.open(self.bundle_path, "r") as src:
-            members = [m for m in src.getmembers() if not m.name.startswith("expected.floxrun")]
+            members = [m for m in src.getmembers() if not m.name.startswith("expected.lrvxrun")]
             old_format = self.work / "old_format.tar"
             with tarfile.open(old_format, "w") as dst:
                 for m in members:
@@ -406,11 +406,48 @@ class BundleIntegrityTests(unittest.TestCase):
         res = bundle.validate_bundle(old_format)
         self.assertTrue(
             res.matches,
-            f"a bundle with no expected.floxrun/ but otherwise-matching "
+            f"a bundle with no expected.lrvxrun/ but otherwise-matching "
             f"content must still validate: diff={res.diff}",
         )
-        self.assertNotIn("floxrun_present", res.actual)
-        self.assertNotIn("floxrun_present", res.expected)
+        self.assertNotIn("lrvxrun_present", res.actual)
+        self.assertNotIn("lrvxrun_present", res.expected)
+
+    def test_flox_era_bundle_validates(self) -> None:
+        # A bundle packed under the FLOX name: `.floxlog` segments in the
+        # tape, the expected trace under expected.floxrun/ and the engine
+        # version under `flox_version`.
+        legacy_tape = self.work / "legacy_tape"
+        shutil.copytree(self.tape_dir, legacy_tape)
+        for seg in list(legacy_tape.glob("*.lrvx")):
+            seg.rename(seg.with_suffix(".floxlog"))
+        packed = self.work / "packed.tar"
+        bundle.pack_bundle(strategy=self.strat, tape=legacy_tape, output=packed)
+
+        legacy = self.work / "legacy.tar"
+        with tarfile.open(packed, "r") as src, tarfile.open(legacy, "w") as dst:
+            for member in src.getmembers():
+                data = src.extractfile(member) if member.isfile() else None
+                if member.name == "manifest.json":
+                    manifest = json.loads(data.read())
+                    manifest["flox_version"] = manifest.pop("lrvx_version")
+                    raw = json.dumps(manifest).encode("utf-8")
+                    member = tarfile.TarInfo(member.name)
+                    member.size = len(raw)
+                    data = io.BytesIO(raw)
+                elif member.name.startswith("expected.lrvxrun"):
+                    member.name = member.name.replace(
+                        "expected.lrvxrun", "expected.floxrun", 1)
+                dst.addfile(member, fileobj=data)
+
+        with tarfile.open(legacy, "r") as tf:
+            names = tf.getnames()
+        self.assertTrue(any(n.startswith("expected.floxrun") for n in names), names)
+        self.assertTrue(any(n.endswith(".floxlog") for n in names), names)
+
+        res = bundle.validate_bundle(legacy)
+        self.assertTrue(res.matches, f"diff={res.diff}")
+        self.assertTrue(res.expected.get("lrvxrun_present"))
+        self.assertIsNotNone(res.expected.get("lrvx_version"))
 
 
 if __name__ == "__main__":

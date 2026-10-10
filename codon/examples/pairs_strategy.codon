@@ -2,7 +2,7 @@
 # Mirrors C++ PairsStrategy from demo/include/demo/pairs_strategy.h.
 #
 # Compiles to native code via:
-#   codon build -exe -o pairs_strategy -lflox_capi examples/pairs_strategy.codon
+#   codon build -exe -o pairs_strategy -llrvx_capi examples/pairs_strategy.codon
 #
 # Same defect as sma_crossover.codon (see that file's header): no
 # module-level statement meant on_book_update was never realized, so the
@@ -18,14 +18,14 @@
 # jump to 22 that clears entry_z, then a reversion back near 5 that
 # clears exit_z. That is one entry and one exit -- 4 emitted orders.
 
-from C import flox_registry_create() -> cobj
-from C import flox_registry_destroy(cobj)
-from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_destroy(cobj)
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
 
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData, BUY, SELL
-from flox.runner import Runner, Signal
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData, BUY, SELL
+from lrvx.runner import Runner, Signal
 import math
 from collections import deque
 
@@ -175,10 +175,10 @@ def close_to(a: float, b: float) -> bool:
 
 
 def run():
-    registry = flox_registry_create()
+    registry = lrvx_registry_create()
     exch = "Binance"
-    leg1 = int(flox_registry_add_symbol(registry, exch.c_str(), "AAAUSDT".c_str(), 0.01))
-    leg2 = int(flox_registry_add_symbol(registry, exch.c_str(), "BBBUSDT".c_str(), 0.01))
+    leg1 = int(lrvx_registry_add_symbol(registry, exch.c_str(), "AAAUSDT".c_str(), 0.01))
+    leg2 = int(lrvx_registry_add_symbol(registry, exch.c_str(), "BBBUSDT".c_str(), 0.01))
 
     signals: List[Signal] = []
 
@@ -236,7 +236,7 @@ def run():
     check(strat.is_long_spread == False,
           f"is_long_spread left from the short entry (got {strat.is_long_spread})")
 
-    flox_registry_destroy(registry)
+    lrvx_registry_destroy(registry)
 
     if failed != 0:
         raise ValueError(f"codon pairs_strategy smoke: {failed} check(s) failed")

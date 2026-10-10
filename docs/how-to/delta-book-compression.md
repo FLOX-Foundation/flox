@@ -2,7 +2,7 @@
 
 A full L2 capture on a busy pair runs into hundreds of MB per minute. Most of those bytes are repeated levels: the bid at 100.05 sits at qty 12 for thirty consecutive snapshots before it moves. A delta encoder skips the repeats and writes only the actual changes.
 
-flox ships `DeltaBookEncoder` and `DeltaBookReplayer` in the C++ engine. The on-disk tape format already carries both event types (`BookSnapshot` and `BookDelta`); the encoder is the state-keeping layer that decides which one to emit at each step. The replayer reverses the process back into reconstructed snapshots.
+lrvx ships `DeltaBookEncoder` and `DeltaBookReplayer` in the C++ engine. The on-disk tape format already carries both event types (`BookSnapshot` and `BookDelta`); the encoder is the state-keeping layer that decides which one to emit at each step. The replayer reverses the process back into reconstructed snapshots.
 
 ## How delta encoding works
 
@@ -18,7 +18,7 @@ A snapshot carries the full sorted level set as before. Anchor snapshots fire on
 === "Python"
 
     ```python
-    from flox_py import DeltaBookEncoder, DeltaBookReplayer
+    from lrvx import DeltaBookEncoder, DeltaBookReplayer
 
     enc = DeltaBookEncoder(anchor_every=100)
     rep = DeltaBookReplayer()
@@ -35,10 +35,10 @@ A snapshot carries the full sorted level set as before. Anchor snapshots fire on
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
-    const enc = new flox.DeltaBookEncoder({ anchorEvery: 100 });
-    const rep = new flox.DeltaBookReplayer();
+    const enc = new lrvx.DeltaBookEncoder({ anchorEvery: 100 });
+    const rep = new lrvx.DeltaBookReplayer();
 
     const bids = [{ priceRaw: 10000, qtyRaw: 10 }];
     const asks = [{ priceRaw: 10001, qtyRaw: 8 }];
@@ -50,7 +50,7 @@ A snapshot carries the full sorted level set as before. Anchor snapshots fire on
 === "Codon"
 
     ```python
-    from flox.delta_book import DeltaBookEncoder, DeltaBookReplayer
+    from lrvx.delta_book import DeltaBookEncoder, DeltaBookReplayer
 
     enc = DeltaBookEncoder(100)
     rep = DeltaBookReplayer()
@@ -63,8 +63,8 @@ A snapshot carries the full sorted level set as before. Anchor snapshots fire on
 === "QuickJS"
 
     ```javascript
-    var enc = new flox.DeltaBookEncoder({ anchorEvery: 100 });
-    var rep = new flox.DeltaBookReplayer();
+    var enc = new lrvx.DeltaBookEncoder({ anchorEvery: 100 });
+    var rep = new lrvx.DeltaBookReplayer();
 
     var out = enc.encode(1,
       [{ priceRaw: 10000, qtyRaw: 10 }],
@@ -103,4 +103,4 @@ This is why anchor cadence bounds your seek cost: to read the state at an arbitr
 ## See also
 
 - [Record and replay tapes](tape-record.md). The CLI surface that consumes the encoder output.
-- [Tape format spec](../spec/floxlog.md). The `BookRecordHeader.type` field decides whether a payload is a snapshot or a delta.
+- [Tape format spec](../spec/lrvx.md). The `BookRecordHeader.type` field decides whether a payload is a snapshot or a delta.

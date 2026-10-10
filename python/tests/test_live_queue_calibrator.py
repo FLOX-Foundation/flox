@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import flox_py
+import lrvx
 
 
 def _synthetic_samples(calibrator, true_half_life_ns, true_shrink, n=200):
@@ -28,7 +28,7 @@ def _synthetic_samples(calibrator, true_half_life_ns, true_shrink, n=200):
 
 
 def test_fit_recovers_synthetic_parameters_within_10_percent():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     true_hl = 60_000_000_000  # 60s
     true_sf = 0.85
     _synthetic_samples(cal, true_hl, true_sf, n=300)
@@ -44,13 +44,13 @@ def test_fit_recovers_synthetic_parameters_within_10_percent():
 
 
 def test_fit_raises_on_empty_samples():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     with pytest.raises(RuntimeError):
         cal.fit()
 
 
 def test_clear_resets_sample_count():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     cal.record_sample(order_id=1, estimator_value=10.0, ground_truth=10.0)
     assert cal.sample_count() == 1
     cal.clear()
@@ -58,19 +58,19 @@ def test_clear_resets_sample_count():
 
 
 def test_export_and_load_roundtrip(tmp_path: Path):
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     _synthetic_samples(cal, 60_000_000_000, 0.85, n=50)
     out = tmp_path / "calibration.json"
     cal.export(out)
-    loaded = flox_py.LiveQueueCalibrator.load(out)
+    loaded = lrvx.LiveQueueCalibrator.load(out)
     assert loaded.half_life_ns > 0
     assert 0.0 < loaded.shrink_factor < 1.0
     assert loaded.sample_count == 50
 
 
 def test_apply_pushes_into_attached_estimator():
-    est = flox_py.LiveQueuePositionEstimator()
-    cal = flox_py.LiveQueueCalibrator(est)
+    est = lrvx.LiveQueuePositionEstimator()
+    cal = lrvx.LiveQueueCalibrator(est)
     _synthetic_samples(cal, 30_000_000_000, 0.70, n=50)
     result = cal.fit()
     # apply forwards to set_* on the estimator; the bindings only expose
@@ -79,14 +79,14 @@ def test_apply_pushes_into_attached_estimator():
 
 
 def test_apply_is_noop_without_estimator():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     cal.record_sample(order_id=1, estimator_value=10.0, ground_truth=10.0)
     result = cal.fit()
     cal.apply(result)  # no estimator attached: must not raise
 
 
 def test_test_order_helper_routes_samples_to_calibrator():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     helper = cal.test_order_helper(symbol=1, size=0.001)
     helper.place(order_id=42, price=50000.0, predicted_ahead=12.5,
                  submit_ns=1_000_000_000)
@@ -98,7 +98,7 @@ def test_test_order_helper_routes_samples_to_calibrator():
 # === scipy + analytical fit methods ===
 
 def test_fit_default_method_is_grid():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     _synthetic_samples(cal, 60_000_000_000, 0.85, n=50)
     grid = cal.fit()
     explicit_grid = cal.fit(method="grid")
@@ -107,7 +107,7 @@ def test_fit_default_method_is_grid():
 
 
 def test_fit_unknown_method_raises():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     _synthetic_samples(cal, 60_000_000_000, 0.85, n=10)
     with pytest.raises(ValueError):
         cal.fit(method="bogus")
@@ -118,7 +118,7 @@ def test_fit_scipy_matches_or_beats_grid_rmse():
         import scipy  # noqa: F401
     except ImportError:
         pytest.skip("scipy not installed")
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     # Off-grid parameters so scipy has room to improve.
     _synthetic_samples(cal, 45_000_000_000, 0.72, n=300)
     grid = cal.fit(method="grid")
@@ -127,7 +127,7 @@ def test_fit_scipy_matches_or_beats_grid_rmse():
 
 
 def test_fit_scipy_missing_dependency_error_message():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     cal.record_sample(order_id=1, estimator_value=10.0, ground_truth=10.0,
                        elapsed_ns=1_000_000_000, shrink_events=0)
     try:
@@ -143,7 +143,7 @@ def test_fit_scipy_missing_dependency_error_message():
 
 def test_fit_analytical_zero_shrink_recovers_half_life():
     # All samples zero shrink → closed-form fit on half-life.
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     true_hl = 45_000_000_000  # 45s, off-grid
     for i in range(200):
         elapsed = (i % 50 + 1) * 1_000_000_000
@@ -159,7 +159,7 @@ def test_fit_analytical_zero_shrink_recovers_half_life():
 
 
 def test_fit_analytical_mixed_shrink_raises():
-    cal = flox_py.LiveQueueCalibrator()
+    cal = lrvx.LiveQueueCalibrator()
     cal.record_sample(order_id=1, estimator_value=10.0, ground_truth=9.0,
                        elapsed_ns=1_000_000_000, shrink_events=0)
     cal.record_sample(order_id=2, estimator_value=10.0, ground_truth=8.0,

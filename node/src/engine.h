@@ -3,11 +3,11 @@
 #pragma once
 #include <napi.h>
 
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/common.h"
-#include "flox/error/flox_error.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/common.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include "bindings_common.h"
 #include "error_translator.h"
@@ -21,10 +21,10 @@
 #include <sstream>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
-using namespace flox;
+using namespace lrvx;
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ inline std::vector<OhlcvBar> parseCsv(const std::string& path)
   std::ifstream file(path);
   if (!file.is_open())
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_IO_001",
         "Cannot open file: '" + path +
             "'. Check the path is correct and the file is readable.");
@@ -381,7 +381,7 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
 
   Napi::Value LoadCsv(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value
+    return tryLrvx(info.Env(), [&]() -> Napi::Value
                    {
       std::string path = info[0].As<Napi::String>().Utf8Value();
       std::string sym = (info.Length() > 1 && info[1].IsString()) ? info[1].As<Napi::String>().Utf8Value() : inferSymbol(path);
@@ -391,7 +391,7 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
 
   Napi::Value LoadOhlcv(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value
+    return tryLrvx(info.Env(), [&]() -> Napi::Value
                    {
       auto obj = info[0].As<Napi::Object>();
       std::string sym = (info.Length() > 1 && info[1].IsString()) ? info[1].As<Napi::String>().Utf8Value() : "default";
@@ -416,7 +416,7 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
 
   Napi::Value Resample(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value
+    return tryLrvx(info.Env(), [&]() -> Napi::Value
                    {
       std::string src = info[0].As<Napi::String>().Utf8Value();
       std::string dst = info[1].As<Napi::String>().Utf8Value();
@@ -424,7 +424,7 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
       auto it = _syms.find(src);
       if (it == _syms.end())
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_SYM_001",
             "Symbol '" + src + "' is not loaded. Call loadCsv / loadOhlcv first.");
       }
@@ -546,4 +546,4 @@ inline void registerEngine(Napi::Env env, Napi::Object exports)
   exports.Set("SignalBuilder", SignalBuilderWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

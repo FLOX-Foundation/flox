@@ -44,9 +44,9 @@ Usage:
 
 The build directories are expected to be configured already:
 
-    cmake -S . -B build         -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON
-    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release        -DFLOX_BUILD_TESTS=ON
-    cmake -S . -B build-tsan    -DCMAKE_BUILD_TYPE=Debug -DFLOX_BUILD_TESTS=ON \\
+    cmake -S . -B build         -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON
+    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release        -DLRVX_BUILD_TESTS=ON
+    cmake -S . -B build-tsan    -DCMAKE_BUILD_TYPE=Debug -DLRVX_BUILD_TESTS=ON \\
         -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \\
         -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
 """
@@ -74,7 +74,7 @@ BUILD_DIRS = {
     "build-tsan": REPO / "build-tsan",
 }
 
-BUS = "include/flox/util/eventing/event_bus.h"
+BUS = "include/lrvx/util/eventing/event_bus.h"
 
 HEALTH = "test_event_bus_health"
 BATCH = "test_event_bus_batch"

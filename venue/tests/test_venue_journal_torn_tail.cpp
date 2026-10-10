@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -27,9 +27,9 @@
  * refused by name; the green control below is the record that says so with a
  * crc that passes.
  */
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -45,9 +45,9 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
@@ -206,7 +206,7 @@ void appendMisSizedRecord(const std::string& path)
   put(&body, sizeof body);
   const uint8_t oneMore = 0;
   put(&oneMore, sizeof oneMore);
-  const uint32_t crc = flox::util::Crc32::compute(rec.data(), rec.size());
+  const uint32_t crc = lrvx::util::Crc32::compute(rec.data(), rec.size());
   put(&crc, sizeof crc);
 
   std::FILE* f = std::fopen(path.c_str(), "ab");
@@ -241,7 +241,7 @@ void appendForeignVersionRecord(const std::string& path)
   put(&tag, sizeof tag);
   put(&len, sizeof len);
   put(&body, sizeof body);
-  const uint32_t crc = flox::util::Crc32::compute(rec.data(), rec.size());
+  const uint32_t crc = lrvx::util::Crc32::compute(rec.data(), rec.size());
   put(&crc, sizeof crc);
 
   std::FILE* f = std::fopen(path.c_str(), "ab");
@@ -558,7 +558,7 @@ TEST(VenueJournalTornTail, AnUnversionedRecordWithAValidCrcIsStillNamedAsVersion
     put(&tag, sizeof tag);
     put(&len, sizeof len);
     put(&body, sizeof body);
-    const uint32_t crc = flox::util::Crc32::compute(rec.data(), rec.size());
+    const uint32_t crc = lrvx::util::Crc32::compute(rec.data(), rec.size());
     put(&crc, sizeof crc);
     std::FILE* f = std::fopen(path.c_str(), "ab");
     ASSERT_NE(f, nullptr);

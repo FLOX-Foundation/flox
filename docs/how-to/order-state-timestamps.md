@@ -29,9 +29,9 @@ earlier stages carry their historical timestamps.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    class LatencyWatcher(flox.Strategy):
+    class LatencyWatcher(lrvx.Strategy):
         def on_order_update(self, ctx, ev):
             if ev.status == "ACCEPTED":
                 ack_ns = ev.accepted_at_ns - ev.submitted_at_ns
@@ -72,7 +72,7 @@ earlier stages carry their historical timestamps.
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
+    from lrvx.strategy import Strategy
 
     class LatencyWatcher(Strategy):
         def on_order_update(self, ctx, ev):

@@ -1,14 +1,14 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/writers/binary_log_writer.h"
-#include "flox/replay/ops/compression.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
+#include "lrvx/replay/ops/compression.h"
 
 #include <algorithm>
 #include <chrono>
@@ -16,7 +16,7 @@
 #include <cstring>
 #include <ctime>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 BinaryLogWriter::BinaryLogWriter(WriterConfig config) : _config(std::move(config))
@@ -102,15 +102,15 @@ std::filesystem::path BinaryLogWriter::generateSegmentPath()
   // Wall-clock names would sort before the requested one ('0' < most letters)
   // while holding later events, and readers that order a directory by
   // filename would then binary-search a vector that is not in time order.
-  // '_' sorts after '.', so "<stem>_0002.floxlog" lands right behind
-  // "<stem>.floxlog" and ahead of the next day's segment.
+  // '_' sorts after '.', so "<stem>_0002.lrvx" lands right behind
+  // "<stem>.lrvx" and ahead of the next day's segment.
   if (!_config.output_filename.empty())
   {
     const std::filesystem::path first(_config.output_filename);
     std::string ext = first.extension().string();
     if (ext.empty())
     {
-      ext = ".floxlog";
+      ext = ".lrvx";
     }
     char suffix[16];
     std::snprintf(suffix, sizeof(suffix), "_%04u", _segment_number);
@@ -121,7 +121,7 @@ std::filesystem::path BinaryLogWriter::generateSegmentPath()
   using namespace std::chrono;
   auto now = system_clock::now();
   auto ns = duration_cast<nanoseconds>(now.time_since_epoch()).count();
-  return _config.output_dir / (std::to_string(ns) + ".floxlog");
+  return _config.output_dir / (std::to_string(ns) + ".lrvx");
 }
 
 bool BinaryLogWriter::ensureOpen()
@@ -1019,4 +1019,4 @@ BinaryLogWriter::BlockSpan BinaryLogWriter::sortBlockBuffer()
   return BlockSpan{refs.front().timestamp, refs.back().timestamp};
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

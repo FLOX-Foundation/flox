@@ -1,4 +1,4 @@
-"""Tests for the MLflow integration in ``flox_py.mlflow``.
+"""Tests for the MLflow integration in ``lrvx.mlflow``.
 
 Each test uses a temp directory as the MLflow tracking root (a
 ``file:`` URI) so the tests are hermetic — no shared MLflow server,
@@ -32,12 +32,12 @@ except ImportError:
 @unittest.skipUnless(HAS_MLFLOW, "mlflow not installed")
 class MlflowIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="flox-mlflow-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="lrvx-mlflow-"))
         self.uri = f"file:{self.tmp}"
         # Reset the in-process default so each test sees a fresh root.
         import mlflow as _ml
         _ml.set_tracking_uri(self.uri)
-        _ml.set_experiment("flox-test")
+        _ml.set_experiment("lrvx-test")
         self._mlflow = _ml
 
     def tearDown(self) -> None:
@@ -52,7 +52,7 @@ class MlflowIntegrationTests(unittest.TestCase):
     # ── log_backtest ─────────────────────────────────────────────
 
     def test_log_backtest_records_metrics_and_params(self) -> None:
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
         stats = {
             "return_pct": 12.34,
@@ -63,12 +63,12 @@ class MlflowIntegrationTests(unittest.TestCase):
             # extra non-numeric:
             "first_trade": "2024-01-01T00:00:00",
         }
-        run_id = flox_mlflow.log_backtest(
+        run_id = lrvx_mlflow.log_backtest(
             stats=stats,
             params={"fast": 10, "slow": 30, "fee": 0.0004},
             run_name="test-1",
             tracking_uri=self.uri,
-            experiment="flox-test",
+            experiment="lrvx-test",
         )
         self.assertTrue(run_id)
         run = self._client().get_run(run_id)
@@ -83,7 +83,7 @@ class MlflowIntegrationTests(unittest.TestCase):
         self.assertEqual(run.data.params["slow"], "30")
 
     def test_log_backtest_writes_equity_and_trades_artifacts(self) -> None:
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
         equity_curve = [
             {"timestamp_ns": 1, "equity": 10000.0, "drawdown_pct": 0.0},
@@ -96,13 +96,13 @@ class MlflowIntegrationTests(unittest.TestCase):
              "quantity": 0.01, "pnl": 0.01,
              "fee": 0.001, "entry_time_ns": 1, "exit_time_ns": 2},
         ]
-        run_id = flox_mlflow.log_backtest(
+        run_id = lrvx_mlflow.log_backtest(
             stats={"return_pct": 0.5, "total_trades": 1},
             equity_curve=equity_curve,
             trades=trades,
             run_name="test-2",
             tracking_uri=self.uri,
-            experiment="flox-test",
+            experiment="lrvx-test",
         )
         names = {a.path for a in self._client().list_artifacts(run_id)}
         self.assertIn("equity_curve.csv", names)
@@ -124,16 +124,16 @@ class MlflowIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[1]["equity"], "10100.0")
 
     def test_log_backtest_attaches_html_report(self) -> None:
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
         report_path = self.tmp / "report.html"
-        report_path.write_text("<html><body>FLOX</body></html>")
-        run_id = flox_mlflow.log_backtest(
+        report_path.write_text("<html><body>lrvx</body></html>")
+        run_id = lrvx_mlflow.log_backtest(
             stats={"return_pct": 1.0},
             html_report=str(report_path),
             run_name="test-html",
             tracking_uri=self.uri,
-            experiment="flox-test",
+            experiment="lrvx-test",
         )
         names = {a.path for a in self._client().list_artifacts(run_id)}
         self.assertIn("report.html", names)
@@ -144,15 +144,15 @@ class MlflowIntegrationTests(unittest.TestCase):
         rather than silently dropped."""
         import math
 
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
-        run_id = flox_mlflow.log_backtest(
+        run_id = lrvx_mlflow.log_backtest(
             stats={"sharpe_ratio": float("nan"),
                    "max_drawdown_pct": float("inf"),
                    "return_pct": 5.0},
             run_name="test-nan",
             tracking_uri=self.uri,
-            experiment="flox-test",
+            experiment="lrvx-test",
         )
         run = self._client().get_run(run_id)
         self.assertIn("sharpe_ratio", run.data.tags)
@@ -162,12 +162,12 @@ class MlflowIntegrationTests(unittest.TestCase):
     # ── log_to_mlflow context manager ──────────────────────────────
 
     def test_context_manager_yields_logger_and_closes_run(self) -> None:
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
-        with flox_mlflow.log_to_mlflow(
+        with lrvx_mlflow.log_to_mlflow(
             run_name="ctx-1",
             tracking_uri=self.uri,
-            experiment="flox-test",
+            experiment="lrvx-test",
         ) as run:
             self.assertTrue(run.run_id)
             run.log_params({"fast": 5})
@@ -183,14 +183,14 @@ class MlflowIntegrationTests(unittest.TestCase):
         """Uncaught exception inside the block must still close the run
         (mlflow's start_run handles this; we just confirm we didn't
         break it)."""
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
         run_id = None
         with self.assertRaises(RuntimeError):
-            with flox_mlflow.log_to_mlflow(
+            with lrvx_mlflow.log_to_mlflow(
                 run_name="ctx-fail",
                 tracking_uri=self.uri,
-                experiment="flox-test",
+                experiment="lrvx-test",
             ) as run:
                 run_id = run.run_id
                 raise RuntimeError("boom")
@@ -199,14 +199,14 @@ class MlflowIntegrationTests(unittest.TestCase):
         self.assertNotEqual(info.status, "RUNNING")
 
     def test_context_manager_log_artifact(self) -> None:
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
 
         extra = self.tmp / "notes.txt"
         extra.write_text("custom artifact\n")
-        with flox_mlflow.log_to_mlflow(
+        with lrvx_mlflow.log_to_mlflow(
             run_name="ctx-art",
             tracking_uri=self.uri,
-            experiment="flox-test",
+            experiment="lrvx-test",
         ) as run:
             run.log_artifact(str(extra))
             run_id = run.run_id
@@ -220,7 +220,7 @@ class OptionalDependencyTests(unittest.TestCase):
     test mocks the import."""
 
     def test_clear_error_when_mlflow_missing(self) -> None:
-        from flox_py import mlflow as flox_mlflow
+        from lrvx import mlflow as lrvx_mlflow
         import builtins
 
         real_import = builtins.__import__
@@ -233,7 +233,7 @@ class OptionalDependencyTests(unittest.TestCase):
         builtins.__import__ = _fake_import
         try:
             with self.assertRaises(ImportError) as ctx:
-                flox_mlflow.log_backtest(stats={"return_pct": 1.0})
+                lrvx_mlflow.log_backtest(stats={"return_pct": 1.0})
             self.assertIn("mlflow", str(ctx.exception))
             self.assertIn("optional", str(ctx.exception).lower())
         finally:

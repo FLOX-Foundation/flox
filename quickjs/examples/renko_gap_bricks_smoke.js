@@ -2,8 +2,8 @@
 // Mirrors python/tests/test_renko_gap_bricks.py and
 // node/test/test_renko_gap_bricks.js: a trade that gaps past more than one
 // brick width used to collapse into a single zero-range bar, silently
-// dropping every brick in between. flox.renkoBars() goes through the same
-// shared C ABI aggregator Node does (flox_aggregate_renko_bars), which
+// dropping every brick in between. lrvx.renkoBars() goes through the same
+// shared C ABI aggregator Node does (lrvx_aggregate_renko_bars), which
 // never flushes a still-open trailing bar -- so, like the Node test, this
 // expects 5 bars for the gap case, not 6.
 //
@@ -26,7 +26,7 @@ function check(cond, msg) {
     const qty = [1.0, 1.0];
     const sides = [1, 1];
 
-    const bars = flox.renkoBars(ts, px, qty, sides, 10.0);
+    const bars = lrvx.renkoBars(ts, px, qty, sides, 10.0);
 
     check(bars.length === 5, '1 real bar + 4 synthesized bricks, got ' + bars.length);
     check(bars[0].open === 100 && bars[0].close === 110, 'real bar closes at the boundary the gapping trade crossed');
@@ -45,7 +45,7 @@ function check(cond, msg) {
     const qty = [1.0, 1.0];
     const sides = [1, 1];
 
-    const bars = flox.renkoBars(ts, px, qty, sides, 10.0);
+    const bars = lrvx.renkoBars(ts, px, qty, sides, 10.0);
 
     check(bars.length === 1, 'ordinary single-brick close is unaffected, got ' + bars.length);
     check(bars[0].open === 100 && bars[0].close === 110, 'brick runs 100 -> 110, one brick tall');

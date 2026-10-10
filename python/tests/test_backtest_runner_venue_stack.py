@@ -12,17 +12,17 @@ from collections import deque
 
 import pytest
 
-import flox_py as flox
+import lrvx
 
 # Resolve against the repo, not the caller's cwd: CI runs these files
 # from several working directories.
 CSV = str(
     pathlib.Path(__file__).resolve().parents[1]
-    / "flox_py/templates/research/data/btcusdt_sample.csv"
+    / "lrvx/templates/research/data/btcusdt_sample.csv"
 )
 
 
-class CrossAboveSMA(flox.Strategy):
+class CrossAboveSMA(lrvx.Strategy):
     def __init__(self, symbols, period: int = 20) -> None:
         super().__init__(symbols)
         self._w: deque[float] = deque(maxlen=period)
@@ -38,10 +38,10 @@ class CrossAboveSMA(flox.Strategy):
             self.close_position()
 
 
-def _runner_with(stack) -> tuple[flox.BacktestRunner, object]:  # noqa: ANN001
-    reg = flox.SymbolRegistry()
+def _runner_with(stack) -> tuple[lrvx.BacktestRunner, object]:  # noqa: ANN001
+    reg = lrvx.SymbolRegistry()
     btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
     bt.set_strategy(CrossAboveSMA([btc]))
     if stack is not None:
         bt.set_venue_stack(stack)
@@ -49,7 +49,7 @@ def _runner_with(stack) -> tuple[flox.BacktestRunner, object]:  # noqa: ANN001
 
 
 def test_venue_stack_run_produces_trades_and_venue_fills() -> None:
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     bt, _ = _runner_with(stack)
 
     stats = bt.run_csv(CSV, "BTCUSDT")
@@ -64,7 +64,7 @@ def test_venue_stack_matches_the_bare_runner_on_trade_count() -> None:
     bare, _ = _runner_with(None)
     bare_stats = bare.run_csv(CSV, "BTCUSDT")
 
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     venue, _ = _runner_with(stack)
     venue_stats = venue.run_csv(CSV, "BTCUSDT")
 
@@ -74,7 +74,7 @@ def test_venue_stack_matches_the_bare_runner_on_trade_count() -> None:
 
 
 def test_detaching_reverts_to_the_built_in_executor() -> None:
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     bt, _ = _runner_with(stack)
     bt.set_venue_stack(None)
 
@@ -87,7 +87,7 @@ def test_detaching_reverts_to_the_built_in_executor() -> None:
 
 
 def test_bare_venue_executor_is_refused_with_guidance() -> None:
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
     bt, _ = _runner_with(None)
 
     with pytest.raises(ValueError) as excinfo:

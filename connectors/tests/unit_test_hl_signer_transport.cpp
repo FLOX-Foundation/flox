@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -22,7 +22,7 @@
  * No network beyond loopback and a Unix socket the test creates itself.
  */
 
-#include "flox-connectors/hyperliquid/hl_signer.h"
+#include "lrvx-connectors/hyperliquid/hl_signer.h"
 
 #include <gtest/gtest.h>
 
@@ -47,7 +47,7 @@
 #include <unistd.h>
 #endif
 
-using namespace flox::hl;
+using namespace lrvx::hl;
 
 namespace
 {
@@ -228,7 +228,7 @@ HlSignParams params()
 
 std::string tempSocketPath(const char* name)
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_hl_signer_test";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_hl_signer_test";
   std::filesystem::create_directories(dir);
   return (dir / name).string();
 }
@@ -280,13 +280,13 @@ TEST(HlSignerTransport, NeverSendsThePrivateKeyOverLoopbackTcp)
 // another local user can either read the key or impersonate the signer.
 //
 // needs: a way to point the signer at a socket path, e.g. the environment
-// variable FLOX_HL_SIGNER_SOCKET read by hl_sign_with_sdk (today the path is
+// variable LRVX_HL_SIGNER_SOCKET read by hl_sign_with_sdk (today the path is
 // hardcoded to /dev/shm/hl_sign.sock, which does not even exist on macOS, so
 // every signature on that platform takes the TCP path above).
 TEST(HlSignerTransport, OnlyTrustsAPrivateUnixSocket)
 {
   const std::string path = tempSocketPath("sign.sock");
-  ::setenv("FLOX_HL_SIGNER_SOCKET", path.c_str(), 1);
+  ::setenv("LRVX_HL_SIGNER_SOCKET", path.c_str(), 1);
 
   {
     FramedServer priv;
@@ -318,7 +318,7 @@ TEST(HlSignerTransport, OnlyTrustsAPrivateUnixSocket)
         << "the private key was written to a socket any local user can open";
   }
 
-  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+  ::unsetenv("LRVX_HL_SIGNER_SOCKET");
 }
 
 // A symlink is not a socket, however private the thing it points at is: the
@@ -336,7 +336,7 @@ TEST(HlSignerTransport, RefusesASymlinkStandingInForTheSignerSocket)
   ASSERT_TRUE(priv.listenUnix(real, 0600));
   ASSERT_EQ(::symlink(real.c_str(), link.c_str()), 0) << "could not create the test symlink";
 
-  ::setenv("FLOX_HL_SIGNER_SOCKET", link.c_str(), 1);
+  ::setenv("LRVX_HL_SIGNER_SOCKET", link.c_str(), 1);
   const std::string body = validSignatureReply();
   priv.serveOnce({static_cast<uint32_t>(body.size()), body});
 
@@ -344,7 +344,7 @@ TEST(HlSignerTransport, RefusesASymlinkStandingInForTheSignerSocket)
 
   priv.stop();
   ::unlink(link.c_str());
-  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+  ::unsetenv("LRVX_HL_SIGNER_SOCKET");
 
   EXPECT_FALSE(sig.has_value()) << "a symlinked signer path must not be trusted";
   EXPECT_FALSE(priv.accepted()) << "the signer connected through a path it never checked";
@@ -358,7 +358,7 @@ TEST(HlSignerTransport, RefusesASymlinkStandingInForTheSignerSocket)
 TEST(HlSignerTransport, RefusesAGroupAccessibleSocket)
 {
   const std::string path = tempSocketPath("sign_group.sock");
-  ::setenv("FLOX_HL_SIGNER_SOCKET", path.c_str(), 1);
+  ::setenv("LRVX_HL_SIGNER_SOCKET", path.c_str(), 1);
 
   FramedServer group;
   ASSERT_TRUE(group.listenUnix(path, 0660));
@@ -368,7 +368,7 @@ TEST(HlSignerTransport, RefusesAGroupAccessibleSocket)
   const auto sig = hl_sign_with_sdk(params());
 
   group.stop();
-  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+  ::unsetenv("LRVX_HL_SIGNER_SOCKET");
 
   EXPECT_FALSE(sig.has_value()) << "a group-accessible signer socket must not be trusted";
   EXPECT_EQ(group.request().find(kSecretKey), std::string::npos)
@@ -383,7 +383,7 @@ TEST(HlSignerTransport, RefusesAGroupAccessibleSocket)
 TEST(HlSignerTransport, RefusesAnOtherReadableSocket)
 {
   const std::string path = tempSocketPath("sign_other_read.sock");
-  ::setenv("FLOX_HL_SIGNER_SOCKET", path.c_str(), 1);
+  ::setenv("LRVX_HL_SIGNER_SOCKET", path.c_str(), 1);
 
   FramedServer readable;
   ASSERT_TRUE(readable.listenUnix(path, 0604));
@@ -393,7 +393,7 @@ TEST(HlSignerTransport, RefusesAnOtherReadableSocket)
   const auto sig = hl_sign_with_sdk(params());
 
   readable.stop();
-  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+  ::unsetenv("LRVX_HL_SIGNER_SOCKET");
 
   EXPECT_FALSE(sig.has_value()) << "an other-readable signer socket must not be trusted";
   EXPECT_EQ(readable.request().find(kSecretKey), std::string::npos)
@@ -410,7 +410,7 @@ TEST(HlSignerTransport, RefusesAnOtherReadableSocket)
 TEST(HlSignerTransport, RefusesAResponseLengthAboveTheBound)
 {
   const std::string path = tempSocketPath("sign_big.sock");
-  ::setenv("FLOX_HL_SIGNER_SOCKET", path.c_str(), 1);
+  ::setenv("LRVX_HL_SIGNER_SOCKET", path.c_str(), 1);
 
   FramedServer unixSrv;
   ASSERT_TRUE(unixSrv.listenUnix(path, 0600));
@@ -436,7 +436,7 @@ TEST(HlSignerTransport, RefusesAResponseLengthAboveTheBound)
   {
     tcpSrv.stop();
   }
-  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+  ::unsetenv("LRVX_HL_SIGNER_SOCKET");
 
   EXPECT_FALSE(sig.has_value());
 

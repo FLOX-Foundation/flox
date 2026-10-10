@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
-#include "flox/position/hedge_cost.h"
+#include "lrvx/position/hedge_cost.h"
 
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 TEST(HedgeCostTest, DecomposesIntoComponents)
 {

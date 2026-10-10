@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>flox replay viewer</title>
+    <title>lrvx replay viewer</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">flox replay viewer</div>
-      <div class="status" id="status">drop a .floxlog or .floxrun directory, or a bundle .tar</div>
+      <div class="brand">lrvx replay viewer</div>
+      <div class="status" id="status">drop a .lrvx or .lrvxrun directory, or a bundle .tar</div>
     </header>
     <section class="dropzone" id="dropzone">
       <p>Drop files here, or pick:</p>
@@ -47,21 +47,21 @@
         <h3>Strategy signals</h3>
         <div id="view-signals"></div>
         <div class="emptystate" data-for="signals" hidden>
-          No `.floxrun` loaded. Drop one to see strategy decisions.
+          No `.lrvxrun` loaded. Drop one to see strategy decisions.
         </div>
       </section>
       <section class="view" data-view="orders">
         <h3>Orders timeline</h3>
         <div id="view-orders"></div>
         <div class="emptystate" data-for="orders" hidden>
-          No `.floxrun` loaded. Drop one to see orders + fills.
+          No `.lrvxrun` loaded. Drop one to see orders + fills.
         </div>
       </section>
       <section class="view" data-view="equity">
         <h3>Equity curve</h3>
         <canvas id="view-equity"></canvas>
         <div class="emptystate" data-for="equity" hidden>
-          No `.floxrun` loaded. PnL derives from orders + fills.
+          No `.lrvxrun` loaded. PnL derives from orders + fills.
         </div>
       </section>
     </main>

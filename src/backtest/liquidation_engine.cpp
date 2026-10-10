@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/liquidation_engine.h"
+#include "lrvx/backtest/liquidation_engine.h"
 
-#include "flox/backtest/account.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/execution/order.h"
+#include "lrvx/backtest/account.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/execution/order.h"
 
 #include <algorithm>
 #include <atomic>
@@ -19,7 +19,7 @@
 #include <cmath>
 #include <unordered_map>
 
-namespace flox
+namespace lrvx
 {
 
 namespace
@@ -965,4 +965,4 @@ LiquidationEngine LiquidationEngine::okx_swap()
   return e;
 }
 
-}  // namespace flox
+}  // namespace lrvx

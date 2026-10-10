@@ -30,7 +30,7 @@ struct ILogger {
 ```
 
 `minLevel()` is the lowest level the sink accepts. `setGlobalLogger()` reads it
-once and publishes it, and `FLOX_LOG_*` checks it *before* building the
+once and publishes it, and `LRVX_LOG_*` checks it *before* building the
 `LogStream`, so a line the sink would throw away costs neither the
 `std::ostringstream` nor the evaluation of its arguments. Override it in any
 sink that filters — `ConsoleLogger` and `AtomicLogger` both return the
@@ -80,6 +80,6 @@ This allows you to trade off between completeness and real-time guarantees.
 
 ## Related
 
-* `AtomicLogger`: lock-free logger implementation in FLOX
+* `AtomicLogger`: lock-free logger implementation in lrvx
 * `LogLevel`: enumeration for severity control
 * `OverflowPolicy`: controls log buffering behavior

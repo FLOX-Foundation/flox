@@ -1,8 +1,8 @@
-# Produce the same deterministic .floxrun directory through Codon as
-# scripts/floxrun_byte_identical_fixture.py. The cross-binding gate
+# Produce the same deterministic .lrvxrun directory through Codon as
+# scripts/lrvxrun_byte_identical_fixture.py. The cross-binding gate
 # hashes the segment files and asserts they match.
 
-from flox.run_trace import (TraceRecorder,
+from lrvx.run_trace import (TraceRecorder,
                               SIGNAL_FLAG_ENTER, SIGNAL_FLAG_EXIT,
                               ORDER_KIND_SUBMIT, LIQUIDITY_MAKER)
 

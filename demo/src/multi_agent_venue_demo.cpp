@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -25,18 +25,18 @@
  * price equals what was deposited, no matter who won.
  */
 
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_engine.h"
 
-#include "flox-venue/matching_book.h"
+#include "lrvx-venue/matching_book.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
 
-using namespace flox;
-namespace venue = flox::venue;  // qualify: flox::Trade / flox::SymbolConfig also exist
+using namespace lrvx;
+namespace venue = lrvx::venue;  // qualify: lrvx::Trade / lrvx::SymbolConfig also exist
 
 namespace
 {

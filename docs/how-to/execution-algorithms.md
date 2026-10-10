@@ -1,6 +1,6 @@
 # Execution algorithms (TWAP / VWAP / Iceberg / POV)
 
-A strategy emits a target intent ("buy 1.0 BTC over the next hour" or "sell into 5 percent of market volume"). The execution algorithm turns that intent into a stream of child orders. flox ships four of them. They live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface: `step(now_ns)` drives the state machine and yields any newly emitted child orders, the user dispatches them through whichever executor is running, and `report_fill(qty)` (plus `observe_volume(qty)` for POV) feeds state back so the next step makes the right decision.
+A strategy emits a target intent ("buy 1.0 BTC over the next hour" or "sell into 5 percent of market volume"). The execution algorithm turns that intent into a stream of child orders. lrvx ships four of them. They live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface: `step(now_ns)` drives the state machine and yields any newly emitted child orders, the user dispatches them through whichever executor is running, and `report_fill(qty)` (plus `observe_volume(qty)` for POV) feeds state back so the next step makes the right decision.
 
 ## When to reach for which algo
 
@@ -18,10 +18,10 @@ All four track `target_qty`, `submitted_qty`, `filled_qty`, and `remaining_qty`.
 === "Python"
 
     ```python
-    import flox_py as flox
-    from flox_py.execution_algos import TWAPExecutor
+    import lrvx
+    from lrvx.execution_algos import TWAPExecutor
 
-    sim = flox.SimulatedExecutor()
+    sim = lrvx.SimulatedExecutor()
 
     twap = TWAPExecutor(
         target_qty=10.0, side="buy", symbol=1,
@@ -41,9 +41,9 @@ All four track `target_qty`, `submitted_qty`, `filled_qty`, and `remaining_qty`.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
-    const twap = new flox.TWAPExecutor({
+    const twap = new lrvx.TWAPExecutor({
       targetQty: 10, side: 'buy', symbol: 1,
       durationNs: 3_600_000_000_000,
       sliceCount: 12, startTimeNs: nowNs,
@@ -61,7 +61,7 @@ All four track `target_qty`, `submitted_qty`, `filled_qty`, and `remaining_qty`.
 === "Codon"
 
     ```python
-    from flox.execution_algos import TWAPExecutor, SIDE_BUY, TYPE_MARKET
+    from lrvx.execution_algos import TWAPExecutor, SIDE_BUY, TYPE_MARKET
 
     twap = TWAPExecutor(10.0, SIDE_BUY, 1,
                         3_600_000_000_000, 12, 0,
@@ -72,7 +72,7 @@ All four track `target_qty`, `submitted_qty`, `filled_qty`, and `remaining_qty`.
 === "QuickJS"
 
     ```javascript
-    var twap = new flox.TWAPExecutor({
+    var twap = new lrvx.TWAPExecutor({
         targetQty: 10, side: 'buy', symbol: 1,
         durationNs: 3600000000000, sliceCount: 12, startTimeNs: 0,
     });
@@ -86,7 +86,7 @@ The same pattern works for the other three algos. The only differences are the c
 `VWAPExecutor` takes `volume_curve` as a sequence of `(bar_ts_ns, volume)` pairs ordered by timestamp. Each bar's slice is `(bar_volume / total_volume) * target_qty`. Bars with zero volume are skipped.
 
 ```python
-from flox_py.execution_algos import VWAPExecutor
+from lrvx.execution_algos import VWAPExecutor
 
 curve = [
     (bar_ts_ns(9, 30), 1_000.0),
@@ -107,7 +107,7 @@ Use a historical 5-day average curve as a starting point. If you have a live vol
 `IcebergExecutor` only emits a new child when the previous one is fully filled. The user app must call `report_fill(qty)` so the algo knows when to step again.
 
 ```python
-from flox_py.execution_algos import IcebergExecutor
+from lrvx.execution_algos import IcebergExecutor
 
 ice = IcebergExecutor(
     target_qty=100.0, side="sell", symbol=1,
@@ -127,7 +127,7 @@ The last slice is naturally smaller than `visible_qty` if the remainder does not
 `POVExecutor` chases a fixed share of observed market volume. You feed it volume, it decides how much to submit so that cumulative submitted is approximately `participation_rate * cumulative observed volume`.
 
 ```python
-from flox_py.execution_algos import POVExecutor
+from lrvx.execution_algos import POVExecutor
 
 pov = POVExecutor(
     target_qty=50.0, side="buy", symbol=1,
@@ -146,7 +146,7 @@ def on_trade(ts_ns, sym, price, qty, is_buy):
 
 - `AdaptiveExecutor` that switches strategies based on market conditions. The composition is non-trivial and this layer is intentionally simple.
 - An `ExecutionAlgo` that runs *inside* the engine off `ExecutionListener` callbacks. Today the algos are driven by the caller: you call `step()` and feed fills back with `report_fill` / `observe_volume`.
-- Backtest-fidelity tuning. Slippage and queue-aware fills already work through `flox_py.SimulatedExecutor`. Latency-aware fill timing pairs naturally with the `latency_models` module.
+- Backtest-fidelity tuning. Slippage and queue-aware fills already work through `lrvx.SimulatedExecutor`. Latency-aware fill timing pairs naturally with the `latency_models` module.
 
 ## See also
 

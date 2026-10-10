@@ -23,7 +23,7 @@ are swept for compile-time and structural regressions only.
 
 A handful of mutations live where no C++ binary can see them at all: the
 Python copy of the close path (python/aggregator_bindings.h) is only ever
-instantiated from python/flox_py.cpp. Those are built and run against a
+instantiated from python/lrvx.cpp. Those are built and run against a
 throwaway venv with pybind11 and checked with the existing Python test suite
 under python/tests/.
 
@@ -56,9 +56,9 @@ Usage:
 The build directory is expected to be configured already:
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-          -DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON -DFLOX_BUILD_CAPI=ON
+          -DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON -DLRVX_BUILD_CAPI=ON
 
-The Python build (build-py, FLOX_BUILD_PYTHON=ON against a venv with
+The Python build (build-py, LRVX_BUILD_PYTHON=ON against a venv with
 pybind11<3.1.0) is optional; --skip-python (or its absence) is reported, not
 treated as a failure -- see run_python_checks() below.
 """
@@ -84,13 +84,13 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 1800
 TEST_TIMEOUT = 180
 
-RENKO_H = "include/flox/aggregator/policies/renko_bar_policy.h"
-TIME_H = "include/flox/aggregator/policies/time_bar_policy.h"
-BAR_H = "include/flox/aggregator/bar.h"
-POLICY_H = "include/flox/aggregator/aggregation_policy.h"
-AGG_H = "include/flox/aggregator/bar_aggregator.h"
-MTF_H = "include/flox/aggregator/multi_timeframe_aggregator.h"
-CAPI_CPP = "src/capi/flox_capi.cpp"
+RENKO_H = "include/lrvx/aggregator/policies/renko_bar_policy.h"
+TIME_H = "include/lrvx/aggregator/policies/time_bar_policy.h"
+BAR_H = "include/lrvx/aggregator/bar.h"
+POLICY_H = "include/lrvx/aggregator/aggregation_policy.h"
+AGG_H = "include/lrvx/aggregator/bar_aggregator.h"
+MTF_H = "include/lrvx/aggregator/multi_timeframe_aggregator.h"
+CAPI_CPP = "src/capi/lrvx_capi.cpp"
 PY_H = "python/aggregator_bindings.h"
 
 T_BAR = "test_bar_aggregator"
@@ -130,7 +130,7 @@ class Mutation:
     # C++ gtest binaries expected to notice, run first with gtest_filter.
     cpp_targets: list[str] = field(default_factory=list)
     gtest_filter: str | None = None
-    # Whether this mutation reaches the flox_capi shared library (Renko/Time
+    # Whether this mutation reaches the lrvx_capi shared library (Renko/Time
     # policy headers do; the aggregator classes themselves do not).
     needs_capi: bool = False
     # This mutation's *only* observer is the Python binding (no C++ binary
@@ -436,7 +436,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="capi-doaggregatec-skips-the-late-trade-check",
         why="the C ABI's own copy of the close path (doAggregateC, called by every "
-            "flox_aggregate_*_bars entry point and every language binding beyond Python) "
+            "lrvx_aggregate_*_bars entry point and every language binding beyond Python) "
             "never gets the isLate branch at all -- no test in test_capi_bar_aggregation.cpp "
             "exercises a late trade through this path",
         file=CAPI_CPP,
@@ -461,7 +461,7 @@ MUTATIONS: list[Mutation] = [
             "binary even compiles this file, and no Python test asserts anything about a late "
             "trade, so this is checked against the Python build directly",
         file=PY_H,
-        old="""    if constexpr (flox::DetectsLateTrades<Policy>)
+        old="""    if constexpr (lrvx::DetectsLateTrades<Policy>)
     {
       if (policy.isLate(trade, currentBar))
       {
@@ -642,7 +642,7 @@ def control_cpp() -> bool:
         code, output = run_test(target, None)
         print(f"  control {target:<28} {'green' if code == 0 else 'RED'}   {ran_line(output)}")
         ok = ok and code == 0
-    if target_objects("flox_capi"):
+    if target_objects("lrvx_capi"):
         pass
     return ok
 
@@ -652,18 +652,18 @@ def python_available() -> bool:
 
 
 def run_python_tests() -> tuple[bool, str]:
-    """Rebuild _flox_py, copy the .so into the source tree, run the existing
+    """Rebuild _lrvx, copy the .so into the source tree, run the existing
     Python bar tests. Returns (all_green, summary)."""
-    for obj in find_objects(BUILD_PY, "-name", "*.o", "-path", "*_flox_py.dir*"):
+    for obj in find_objects(BUILD_PY, "-name", "*.o", "-path", "*_lrvx.dir*"):
         obj.unlink()
-    out = rebuild("_flox_py", build_dir=BUILD_PY)
+    out = rebuild("_lrvx", build_dir=BUILD_PY)
     compiled = sum(1 for line in out.splitlines() if "Building CXX" in line)
-    print(f"  rebuilt _flox_py: {compiled} 'Building CXX' line(s)")
+    print(f"  rebuilt _lrvx: {compiled} 'Building CXX' line(s)")
 
-    so_candidates = list((BUILD_PY / "python" / "flox_py").glob("_flox_py*.so"))
+    so_candidates = list((BUILD_PY / "python" / "lrvx").glob("_lrvx*.so"))
     if not so_candidates:
-        raise SystemExit("_flox_py rebuilt but no .so found under build-py/python/flox_py")
-    dest_dir = REPO / "python" / "flox_py"
+        raise SystemExit("_lrvx rebuilt but no .so found under build-py/python/lrvx")
+    dest_dir = REPO / "python" / "lrvx"
     for so in so_candidates:
         shutil.copy2(so, dest_dir / so.name)
 
@@ -703,14 +703,14 @@ def build_cpp_targets(targets: list[str], sources: list[str]) -> None:
     for target in targets:
         removed += target_objects(target)
     if any(t == T_CAPI for t in targets) or any(f == CAPI_CPP for f in sources):
-        removed += target_objects("flox_capi")
+        removed += target_objects("lrvx_capi")
     for obj in dict.fromkeys(removed):
         obj.unlink()
     print(f"  removed {len(set(removed))} object file(s) "
           f"(0 = already deleted by the previous restore)")
     build_order = []
     if any(t == T_CAPI for t in targets) or any(f == CAPI_CPP for f in sources):
-        build_order.append("flox_capi")
+        build_order.append("lrvx_capi")
     build_order += targets
     for target in dict.fromkeys(build_order):
         out = rebuild(target)
@@ -783,7 +783,7 @@ def run_mutation(m: Mutation, skip_python: bool) -> tuple[str, str]:
                       "by default, unverified")
                 detail_lines.append("python check skipped by flag")
             elif not python_available():
-                print("  NOT BUILT: build-py/ (FLOX_BUILD_PYTHON=ON) or the mutation venv is "
+                print("  NOT BUILT: build-py/ (LRVX_BUILD_PYTHON=ON) or the mutation venv is "
                       "not configured -- this mutation has no C++ observer and cannot be "
                       "evaluated without it")
                 return "no-compile", "python build unavailable (NOT BUILT)"
@@ -824,7 +824,7 @@ def run_mutation(m: Mutation, skip_python: bool) -> tuple[str, str]:
                 for obj in target_objects(target):
                     obj.unlink()
             if source == CAPI_CPP or source in (RENKO_H, TIME_H, POLICY_H, BAR_H):
-                for obj in target_objects("flox_capi"):
+                for obj in target_objects("lrvx_capi"):
                     obj.unlink()
 
     return verdict, "; ".join(detail_lines) if detail_lines else ("equivalent" if m.equivalent else "")
@@ -850,7 +850,7 @@ def main() -> int:
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
             f"  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo "
-            f"-DFLOX_BUILD_TESTS=ON -DFLOX_ENABLE_BACKTEST=ON -DFLOX_BUILD_CAPI=ON")
+            f"-DLRVX_BUILD_TESTS=ON -DLRVX_ENABLE_BACKTEST=ON -DLRVX_BUILD_CAPI=ON")
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]
     if not selected:

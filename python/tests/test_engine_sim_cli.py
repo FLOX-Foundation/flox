@@ -1,4 +1,4 @@
-"""Tests for ``flox engine sim`` — bootstrap a paper-trading engine
+"""Tests for ``lrvx engine sim`` — bootstrap a paper-trading engine
 in one command.
 
 Smoke-level: argparse wires, strategy loader rejects bad inputs,
@@ -24,7 +24,7 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-from flox_py import cli, engine_cli  # noqa: E402
+from lrvx import cli, engine_cli  # noqa: E402
 
 
 # ── Argparse wiring ────────────────────────────────────────────────
@@ -55,7 +55,7 @@ class EngineCliParserTests(unittest.TestCase):
 
 class StrategyLoaderTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="flox-engine-cli-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="lrvx-engine-cli-"))
 
     def tearDown(self) -> None:
         import shutil
@@ -70,14 +70,14 @@ class StrategyLoaderTests(unittest.TestCase):
         path.write_text("# nothing here\n")
         with self.assertRaises(SystemExit) as ctx:
             engine_cli._load_strategy_class(path)
-        self.assertIn("flox.Strategy subclass", str(ctx.exception))
+        self.assertIn("lrvx.Strategy subclass", str(ctx.exception))
 
     def test_multiple_subclasses_rejected(self) -> None:
         path = self.tmp / "two.py"
         path.write_text(
-            "import flox_py\n"
-            "class A(flox_py.Strategy): pass\n"
-            "class B(flox_py.Strategy): pass\n"
+            "import lrvx\n"
+            "class A(lrvx.Strategy): pass\n"
+            "class B(lrvx.Strategy): pass\n"
         )
         with self.assertRaises(SystemExit) as ctx:
             engine_cli._load_strategy_class(path)
@@ -86,8 +86,8 @@ class StrategyLoaderTests(unittest.TestCase):
     def test_single_subclass_loads(self) -> None:
         path = self.tmp / "ok.py"
         path.write_text(
-            "import flox_py\n"
-            "class MyStrat(flox_py.Strategy):\n"
+            "import lrvx\n"
+            "class MyStrat(lrvx.Strategy):\n"
             "    pass\n"
         )
         cls = engine_cli._load_strategy_class(path)
@@ -127,7 +127,7 @@ class KillSwitchStubTests(unittest.TestCase):
 
 class StateWriterTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="flox-state-writer-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="lrvx-state-writer-"))
         self.path = self.tmp / "runtime.json"
 
     def tearDown(self) -> None:

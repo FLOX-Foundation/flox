@@ -20,9 +20,9 @@ import traceback
 
 def main() -> int:
     try:
-        import flox_py
+        import lrvx
     except ImportError as exc:
-        print(f"smoke FAIL: flox_py import failed: {exc}", file=sys.stderr)
+        print(f"smoke FAIL: lrvx import failed: {exc}", file=sys.stderr)
         return 1
 
     failures: list[str] = []
@@ -38,7 +38,7 @@ def main() -> int:
     print("[smoke] venue-stack composition wiring check")
 
     # 1) Build the executor.
-    exec = flox_py.SimulatedExecutor()
+    exec = lrvx.SimulatedExecutor()
     must("create SimulatedExecutor", exec is not None)
 
     # 2) Queue model + new pro-rata variants.
@@ -59,20 +59,20 @@ def main() -> int:
     must("STP group membership", exec.stp_group_for(42) == 100)
 
     # 5) Rate-limit policy with per-endpoint families.
-    rl = flox_py.RateLimitPolicy()
+    rl = lrvx.RateLimitPolicy()
     rl.add_bucket("orders_10s", 10_000_000_000, 5)
     rl.add_family_bucket(
-        flox_py.RateLimitEndpointFamily.MarketData,
+        lrvx.RateLimitEndpointFamily.MarketData,
         "md_60s", 60_000_000_000, 6000)
     rl.add_family_bucket(
-        flox_py.RateLimitEndpointFamily.Account,
+        lrvx.RateLimitEndpointFamily.Account,
         "account_60s", 60_000_000_000, 1200)
     exec.set_rate_limit_policy(rl)
     must("per-endpoint rate-limit pools",
          rl.try_consume("query_market_data", 0))
 
     # 6) Venue downtime + outage pathology.
-    va = flox_py.VenueAvailability()
+    va = lrvx.VenueAvailability()
     va.schedule_outage_ex(
         start_ns=1_000_000_000, duration_ns=500_000_000,
         outage_type="slow_degradation",
@@ -83,12 +83,12 @@ def main() -> int:
          va.latency_multiplier(1_100_000_000) == 20.0)
 
     # 7) Funding schedule -- per-symbol tape via direct entries.
-    f = flox_py.FundingSchedule.tape_by_symbol([
-        flox_py.FundingTapeEntry(),  # default zeros (rate=0)
+    f = lrvx.FundingSchedule.tape_by_symbol([
+        lrvx.FundingTapeEntry(),  # default zeros (rate=0)
     ])
     must("FundingSchedule.tape_by_symbol", f is not None)
 
-    f2 = flox_py.FundingSchedule.binance_um_futures()
+    f2 = lrvx.FundingSchedule.binance_um_futures()
     payments = f2.tick(
         now_ns=9 * 3600 * 1_000_000_000,
         symbols=[1],
@@ -100,9 +100,9 @@ def main() -> int:
          detail=f"got {len(payments)} payments")
 
     # 8) LiquidationEngine + ADL ranking variants.
-    liq = flox_py.LiquidationEngine.binance_um_futures()
+    liq = lrvx.LiquidationEngine.binance_um_futures()
     must("binance ADL ranking == Binance",
-         liq.adl_ranking() == flox_py.AdlRanking.Binance)
+         liq.adl_ranking() == lrvx.AdlRanking.Binance)
     liq.set_executor(exec)
     must("LiquidationEngine.set_executor wired", True)
 
@@ -125,13 +125,13 @@ def main() -> int:
          isinstance(liq.cascade_sizes_per_tick(), list))
 
     # 12) Cross-margin Account: attach to engine + bind to FeeSchedule.
-    acct = flox_py.Account(account_id=42, equity=10_000.0)
+    acct = lrvx.Account(account_id=42, equity=10_000.0)
     acct.open_position(symbol=1, quantity=1.0, entry_price=50_000.0)
-    liq2 = flox_py.LiquidationEngine()
+    liq2 = lrvx.LiquidationEngine()
     liq2.add_tier(0.0, 0.005)
     liq2.attach_account(acct)
     must("LiquidationEngine.attach_account", True)
-    fees = flox_py.FeeSchedule.binance_um_futures()
+    fees = lrvx.FeeSchedule.binance_um_futures()
     fees.bind_account(acct)
     must("FeeSchedule.bind_account", fees.bound_account() is acct
          if hasattr(fees, "bound_account") else True)
@@ -140,13 +140,13 @@ def main() -> int:
          acct.rolling_notional_30d() == 100_000.0)
 
     # 13) VenueStack single-call factory.
-    stack = flox_py.VenueStack.binance_um_futures(account_id=7, equity=5_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=7, equity=5_000.0)
     must("VenueStack.binance_um_futures", stack.venue_name() == "binance_um_futures")
     must("VenueStack.account wired", stack.account().account_id() == 7)
     must("VenueStack.liquidation Binance ADL",
-         stack.liquidation().adl_ranking() == flox_py.AdlRanking.Binance)
+         stack.liquidation().adl_ranking() == lrvx.AdlRanking.Binance)
     must("VenueStack from_venue dispatch",
-         flox_py.VenueStack.from_venue("bybit_linear", 1, 1.0).venue_name()
+         lrvx.VenueStack.from_venue("bybit_linear", 1, 1.0).venue_name()
          == "bybit_linear")
 
     if failures:

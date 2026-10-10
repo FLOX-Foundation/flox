@@ -3,7 +3,7 @@
 Utility classes for order books, position tracking, profiles, data I/O, and statistics.
 
 ```codon
-from flox.tools import (
+from lrvx.tools import (
     OrderBook, L3Book, CompositeBook,
     PositionTracker, PositionGroupTracker, OrderTracker,
     VolumeProfile, MarketProfile, FootprintBar,
@@ -212,7 +212,7 @@ delta = fp.total_delta()
 ## Statistics
 
 ```codon
-from flox.tools import correlation, profit_factor, win_rate, permutation_test, bootstrap_ci
+from lrvx.tools import correlation, profit_factor, win_rate, permutation_test, bootstrap_ci
 
 r = correlation(x, y)
 pf = profit_factor(pnl_list)
@@ -238,7 +238,7 @@ See [Bar aggregation](../../how-to/bar-aggregation.md) for the same helpers
 in Python and Node.js.
 
 ```codon
-from flox.tools import aggregate_renko_bars
+from lrvx.tools import aggregate_renko_bars
 
 bars = aggregate_renko_bars(timestamps, prices, quantities, is_buy,
                             brick_size=2.0)
@@ -246,7 +246,7 @@ for b in bars:
     print(b.start_time_ns, b.open(), b.high(), b.low(), b.close())
 ```
 
-`AggBar` mirrors the C `FloxBar` struct: `*_raw` fields are fixed-point
+`AggBar` mirrors the C `LrvxBar` struct: `*_raw` fields are fixed-point
 (divide by `1e8`), plus float accessors `open()`, `high()`, `low()`,
 `close()`, `volume()`, `buy_volume()`, a plain `trade_count`, and
 `close_reason` -- why the bar closed (`0` threshold, `2` forced, `3` warmup;
@@ -331,7 +331,7 @@ hook.add_symbol(symbol_id, "BTCUSDT", base="BTC", quote="USDT")
 | `flush()` | Flush buffered bytes to disk. |
 | `stats()` | Returns trade / book / byte counters. |
 | `close()` | Stop the underlying writer (idempotent). |
-| `_as_recorder_handle()` | Borrowed `FloxMarketDataRecorderHandle` for runner attach. |
+| `_as_recorder_handle()` | Borrowed `LrvxMarketDataRecorderHandle` for runner attach. |
 
 ---
 
@@ -367,7 +367,7 @@ Calendar unit constants: `Partitioner.CALENDAR_DAILY = 0`, `CALENDAR_WEEKLY = 1`
 ## Segment operations
 
 ```codon
-from flox.tools import validate_segment, merge_segments, merge_dir, split_segment, export_segment
+from lrvx.tools import validate_segment, merge_segments, merge_dir, split_segment, export_segment
 
 validate_segment("path/to/seg")            # bool
 merge_segments("input_dir", "output.bin")  # bool

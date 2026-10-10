@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """scripts/sync_mcp_data.py
 
-Bundle canonical artifacts into the flox-mcp package data directory so
+Bundle canonical artifacts into the lrvx-mcp package data directory so
 the installable package works offline. Six artifacts:
 
 * ``c-api.snapshot``        copy of ``.api/c-api.snapshot``
 * ``errors/E_*.md``         copy of ``docs/errors/E_*.md``
 * ``ir.snapshot.json``      minimal IR (functions / structs / enums /
                             typedefs / function pointers) extracted
-                            from ``include/flox/capi/flox_capi_spec.hpp``
+                            from ``include/lrvx/capi/lrvx_capi_spec.hpp``
                             via libclang and projected into the v1
-                            schema in ``flox_codegen.manifest``.
+                            schema in ``lrvx_codegen.manifest``.
 * ``binding_manifest.json`` per-binding symbol map joined by IDL group
                             (``binding_parity.yaml`` + scans of
-                            ``flox_py/_flox_py/__init__.pyi``,
+                            ``lrvx/_lrvx/__init__.pyi``,
                             ``node/index.d.ts``, and the codon golden).
 * ``examples_index.json``   index of ``docs/examples/`` runnable corpus
                             (path, language, topic, sha256).
@@ -47,26 +47,26 @@ except ImportError:
     print("ERROR: PyYAML required. pip install pyyaml", file=sys.stderr)
     sys.exit(2)
 
-from flox_codegen import extractor, manifest  # noqa: E402
+from lrvx_codegen import extractor, manifest  # noqa: E402
 
 # ── Paths ─────────────────────────────────────────────────────────────
 
 SRC_SNAPSHOT = REPO_ROOT / ".api" / "c-api.snapshot"
 SRC_ERRORS_DIR = REPO_ROOT / "docs" / "errors"
-SRC_SPEC = REPO_ROOT / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
-SRC_PYI = REPO_ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
+SRC_SPEC = REPO_ROOT / "include" / "lrvx" / "capi" / "lrvx_capi_spec.hpp"
+SRC_PYI = REPO_ROOT / "python" / "lrvx" / "_lrvx" / "__init__.pyi"
 SRC_DTS = REPO_ROOT / "node" / "index.d.ts"
-SRC_CODON = REPO_ROOT / "tools" / "codegen" / "golden" / "flox_capi.codon"
+SRC_CODON = REPO_ROOT / "tools" / "codegen" / "golden" / "lrvx_capi.codon"
 # The surfaces the manifest used to omit or inventory at the wrong layer.
-SRC_CODON_API = REPO_ROOT / "codon" / "flox"
-SRC_CPP_HEADERS = REPO_ROOT / "include" / "flox"
+SRC_CODON_API = REPO_ROOT / "codon" / "lrvx"
+SRC_CPP_HEADERS = REPO_ROOT / "include" / "lrvx"
 SRC_QUICKJS_BINDINGS = REPO_ROOT / "src" / "quickjs" / "js_bindings.cpp"
 SRC_QUICKJS_PRELUDE = REPO_ROOT / "src" / "quickjs" / "js_strategy.cpp"
 SRC_PARITY = REPO_ROOT / "tools" / "codegen" / "binding_parity.yaml"
 SRC_EXAMPLES = REPO_ROOT / "docs" / "examples"
 SRC_DOCS = REPO_ROOT / "docs"
 
-DST_DATA = REPO_ROOT / "mcp" / "flox_mcp" / "data"
+DST_DATA = REPO_ROOT / "mcp" / "lrvx_mcp" / "data"
 DST_IR = DST_DATA / "ir.snapshot.json"
 DST_MANIFEST = DST_DATA / "binding_manifest.json"
 DST_EXAMPLES = DST_DATA / "examples_index.json"
@@ -320,7 +320,7 @@ def _validate_gotchas(gotchas_path: Path, ir_json: str,
     - exact key in IR functions / structs / enums / typedefs
     - any key segment matches a binding-local symbol name
     - last dot-segment matches an IR or binding name (snake-case
-      tolerant: ``market_buy`` matches ``flox_strategy_market_buy``)
+      tolerant: ``market_buy`` matches ``lrvx_strategy_market_buy``)
     """
     if not gotchas_path.exists():
         return []
@@ -409,7 +409,7 @@ def main(argv=None) -> int:
         drifts.append(str((DST_DATA / "c-api.snapshot").relative_to(REPO_ROOT)))
 
     # 2. Error catalog. Sync set of E_*.md files exactly; report extras
-    # under mcp/flox_mcp/data/errors/ that aren't in the canonical list.
+    # under mcp/lrvx_mcp/data/errors/ that aren't in the canonical list.
     dst_errors_dir = DST_DATA / "errors"
     src_pages = sorted(SRC_ERRORS_DIR.glob("E_*.md"))
     src_names = {p.name for p in src_pages}
@@ -455,7 +455,7 @@ def main(argv=None) -> int:
         total = sum(p.stat().st_size for p in DST_DATA.rglob("*") if p.is_file())
         if total > BUNDLE_BUDGET_BYTES:
             print(
-                f"::error::flox-mcp bundled data is "
+                f"::error::lrvx-mcp bundled data is "
                 f"{total / 1024 / 1024:.2f} MB, over the "
                 f"{BUNDLE_BUDGET_BYTES / 1024 / 1024:.0f} MB budget. "
                 f"Trim docs FTS scope or move it to an extra.",
@@ -465,14 +465,14 @@ def main(argv=None) -> int:
                 return 2
 
     if drifts:
-        print("::error::flox-mcp bundled data is out of sync:", file=sys.stderr)
+        print("::error::lrvx-mcp bundled data is out of sync:", file=sys.stderr)
         for d in drifts:
             print(f"  {d}", file=sys.stderr)
         print("Run: python3 scripts/sync_mcp_data.py", file=sys.stderr)
         return 1
 
     if args.check:
-        print(f"OK: flox-mcp bundled data in sync.")
+        print(f"OK: lrvx-mcp bundled data in sync.")
     else:
         n_pages = len(src_pages)
         n_gotchas = sum(

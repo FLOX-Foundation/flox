@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "flox/capi/flox_capi.h"
-#include "flox/capi/order_type_names.hpp"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/capi/order_type_names.hpp"
 
 #include <cstdint>
 #include <string>
@@ -47,13 +47,13 @@ struct PySignal
   double liquidity{0.0};
 };
 
-inline PySignal pySignalFromC(const FloxSignal* s)
+inline PySignal pySignalFromC(const LrvxSignal* s)
 {
   PySignal ps{};
   ps.order_id = s->order_id;
   ps.symbol = s->symbol;
   ps.side = s->side == 0 ? "buy" : "sell";
-  ps.order_type = flox::capi::signalTypeName(s->order_type);
+  ps.order_type = lrvx::capi::signalTypeName(s->order_type);
   ps.price = s->price;
   ps.quantity = s->quantity;
   ps.trigger_price = s->trigger_price;

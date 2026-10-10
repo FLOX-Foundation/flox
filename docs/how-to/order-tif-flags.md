@@ -75,19 +75,19 @@ that same scenario.
 === "QuickJS"
 
     ```javascript
-    __flox_simulated_executor_submit_ex(exec, 1n, 0, 50001.0, 1.0, 1, 1, 2, 0, 0n);
+    __lrvx_simulated_executor_submit_ex(exec, 1n, 0, 50001.0, 1.0, 1, 1, 2, 0, 0n);
     // tif=2 (FOK), reduce_only=0
     ```
 
 === "C++"
 
     ```cpp
-    flox::Order o{};
-    o.id = 1; o.side = flox::Side::BUY;
-    o.price = flox::Price::fromDouble(50001.0);
-    o.quantity = flox::Quantity::fromDouble(1.0);
-    o.type = flox::OrderType::LIMIT;
-    o.timeInForce = flox::TimeInForce::FOK;
+    lrvx::Order o{};
+    o.id = 1; o.side = lrvx::Side::BUY;
+    o.price = lrvx::Price::fromDouble(50001.0);
+    o.quantity = lrvx::Quantity::fromDouble(1.0);
+    o.type = lrvx::OrderType::LIMIT;
+    o.timeInForce = lrvx::TimeInForce::FOK;
     o.flags.reduceOnly = 1;
     sim.submitOrder(o);
     ```
@@ -140,6 +140,6 @@ clock and fire any market event after the deadline.
 - IOC partial fills emit `PARTIALLY_FILLED` for the taken portion;
   the unfilled remainder emits `CANCELED` without a free-text
   reason field on cancel (the TIF tag is on the order itself).
-- The C ABI ships `flox_simulated_executor_submit_order_ex` for
+- The C ABI ships `lrvx_simulated_executor_submit_order_ex` for
   the extended-flag path. The legacy `submit_order` stays
   byte-compatible.

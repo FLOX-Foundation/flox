@@ -7,7 +7,7 @@ Order book implementations for managing price levels and simulating market impac
 N-level order book with snapshot and delta support. Backed by the C++ `NLevelOrderBook<8192>`.
 
 ```python
-book = flox.OrderBook(tick_size=0.01)
+book = lrvx.OrderBook(tick_size=0.01)
 ```
 
 | Parameter | Type | Description |
@@ -116,7 +116,7 @@ Remove all price levels.
 Level-3 order book with individual order tracking. Backed by `L3OrderBook<8192>`.
 
 ```python
-book = flox.L3Book()
+book = lrvx.L3Book()
 ```
 
 ### Methods
@@ -180,7 +180,7 @@ book.build_from_snapshot([
 Cross-exchange composite order book. Tracks best bid/ask across up to 4 exchanges per symbol with lock-free atomic reads.
 
 ```python
-matrix = flox.CompositeBookMatrix(staleness_threshold_ms=5000)
+matrix = lrvx.CompositeBookMatrix(staleness_threshold_ms=5000)
 ```
 
 | Parameter | Type | Default | Description |

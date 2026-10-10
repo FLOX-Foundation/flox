@@ -142,7 +142,7 @@ private:
 `SymbolContext` is designed for cache efficiency:
 
 - 8,384 bytes per symbol in a release build; the 512-level book dominates at
-  8,320 of them. A build with `FLOX_SCALE_CHECKS` on (any build without
+  8,320 of them. A build with `LRVX_SCALE_CHECKS` on (any build without
   `NDEBUG`) carries a scale field on every `Decimal` and doubles this to 16,640
 - `Strategy` holds 256 of these by value through `SymbolStateMap`, so the
   strategy object is about 2 MB in release and about 4 MB in a checked build.

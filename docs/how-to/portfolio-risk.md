@@ -1,6 +1,6 @@
 # Aggregate risk across strategies
 
-Per-strategy daily-loss limits are common in trading frameworks. Portfolio-level caps that span strategies and accounts are commercial-only or homegrown. flox ships an open-source reference implementation in the C++ engine: a single-process, in-memory aggregator that combines PnL and exposure across N registered strategies, applies portfolio-level rules, and trips a kill switch when any rule is breached. Every binding (Python, Node, Codon, QuickJS) drives the same engine state through the C ABI.
+Per-strategy daily-loss limits are common in trading frameworks. Portfolio-level caps that span strategies and accounts are commercial-only or homegrown. lrvx ships an open-source reference implementation in the C++ engine: a single-process, in-memory aggregator that combines PnL and exposure across N registered strategies, applies portfolio-level rules, and trips a kill switch when any rule is breached. Every binding (Python, Node, Codon, QuickJS) drives the same engine state through the C ABI.
 
 Multi-process aggregation through shared state is a Phase 2 concern. The public API stays the same when that backend lands.
 
@@ -9,7 +9,7 @@ Multi-process aggregation through shared state is a Phase 2 concern. The public 
 === "Python"
 
     ```python
-    from flox_py.portfolio_risk import (
+    from lrvx.portfolio_risk import (
         PortfolioRiskAggregator, RiskRules,
     )
 
@@ -40,9 +40,9 @@ Multi-process aggregation through shared state is a Phase 2 concern. The public 
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
-    const aggregator = new flox.PortfolioRiskAggregator({
+    const aggregator = new lrvx.PortfolioRiskAggregator({
       rules: {
         maxDrawdownPct: 0.20,
         maxDailyLoss: 10_000,
@@ -64,7 +64,7 @@ Multi-process aggregation through shared state is a Phase 2 concern. The public 
 === "Codon"
 
     ```python
-    from flox.portfolio_risk import (
+    from lrvx.portfolio_risk import (
         PortfolioRiskAggregator, RiskRules, StrategyFields,
     )
 
@@ -79,7 +79,7 @@ Multi-process aggregation through shared state is a Phase 2 concern. The public 
 === "QuickJS"
 
     ```javascript
-    var agg = new flox.PortfolioRiskAggregator({
+    var agg = new lrvx.PortfolioRiskAggregator({
       rules: { maxDrawdownPct: 0.20, maxDailyLoss: 10000 },
       initialEquity: 100000,
     });
@@ -108,7 +108,7 @@ throws in Node and QuickJS, and returns a null handle through the C ABI. Pass
 the account's starting equity alongside the rule:
 
 ```python
-from flox_py.portfolio_risk import PortfolioRiskAggregator, RiskRules
+from lrvx.portfolio_risk import PortfolioRiskAggregator, RiskRules
 
 aggregator = PortfolioRiskAggregator(
     rules=RiskRules(max_drawdown_pct=0.20),

@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
-#include "flox/pricing/american.h"
-#include "flox/pricing/black_scholes.h"
+#include "lrvx/pricing/american.h"
+#include "lrvx/pricing/black_scholes.h"
 
 #include <cmath>
 
-using namespace flox;
-using namespace flox::pricing;
+using namespace lrvx;
+using namespace lrvx::pricing;
 
 // A positive-rate, zero-carry put has a real early-exercise premium: holding the
 // option forgoes interest on the strike you'd collect by exercising now.

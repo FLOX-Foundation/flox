@@ -1,20 +1,20 @@
-# FLOX_FORCE_INLINE
+# LRVX_FORCE_INLINE
 
 Cross-platform macro for forcing function inlining on performance-critical code paths.
 
 ## Header
 
 ```cpp
-#include "flox/util/performance/force_inline.h"
+#include "lrvx/util/performance/force_inline.h"
 ```
 
 ## Definition
 
 ```cpp
 #ifdef _MSC_VER
-#define FLOX_FORCE_INLINE __forceinline
+#define LRVX_FORCE_INLINE __forceinline
 #else
-#define FLOX_FORCE_INLINE __attribute__((always_inline)) inline
+#define LRVX_FORCE_INLINE __attribute__((always_inline)) inline
 #endif
 ```
 
@@ -23,7 +23,7 @@ Cross-platform macro for forcing function inlining on performance-critical code 
 ```cpp
 class MyClass {
 public:
-  FLOX_FORCE_INLINE void hotPathMethod() noexcept {
+  LRVX_FORCE_INLINE void hotPathMethod() noexcept {
     // Performance-critical code
   }
 };
@@ -31,7 +31,7 @@ public:
 
 ## When to Use
 
-Use `FLOX_FORCE_INLINE` on:
+Use `LRVX_FORCE_INLINE` on:
 - Hot path functions called millions of times per second
 - Small functions where call overhead exceeds function body
 - Template methods that must inline for performance
@@ -59,13 +59,13 @@ Avoid on:
 template <size_t MaxTimeframes>
 class MultiTimeframeAggregator {
 private:
-  FLOX_FORCE_INLINE void processSlot(size_t slotIdx, const TradeEvent& trade) {
+  LRVX_FORCE_INLINE void processSlot(size_t slotIdx, const TradeEvent& trade) {
     // Called for every trade, for every timeframe
     // ~10ns overhead if not inlined
   }
 
   template <typename Policy>
-  FLOX_FORCE_INLINE void processPolicy(Policy& policy, ...) {
+  LRVX_FORCE_INLINE void processPolicy(Policy& policy, ...) {
     // Policy dispatch - must inline for zero-cost abstraction
   }
 };

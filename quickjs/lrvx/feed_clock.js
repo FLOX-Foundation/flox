@@ -1,0 +1,72 @@
+// Multi-feed clock for QuickJS strategies. Mirrors the
+// NAPI / pybind11 / Codon surfaces. Pure JS facade over the C ABI
+// lrvx_feed_clock_* exports — the engine state lives in C++.
+
+var FeedClockPolicy = Object.freeze({
+    WaitForAll: 'WaitForAll',
+    FireOnAny: 'FireOnAny',
+    LeaderFollower: 'LeaderFollower',
+});
+
+var _FEED_POLICY_TO_INT = { 'WaitForAll': 0, 'FireOnAny': 1, 'LeaderFollower': 2 };
+
+function _resolveFeedPolicy(p) {
+    if (typeof p === 'string') {
+        var v = _FEED_POLICY_TO_INT[p];
+        if (v === undefined) {
+            throw new Error("Unknown FeedClock policy: '" + p + "'. Use 'WaitForAll' / 'FireOnAny' / 'LeaderFollower'.");
+        }
+        return v;
+    }
+    if (typeof p === 'number') return p;
+    return 0;
+}
+
+class MultiFeedClock {
+    constructor(opts) {
+        if (!opts || !Array.isArray(opts.symbols)) {
+            throw new Error("MultiFeedClock requires { symbols: number[] }");
+        }
+        var policy = _resolveFeedPolicy(opts.policy);
+        var timeout = opts.timeoutMs === undefined ? 200 : opts.timeoutMs;
+        var leader = opts.leaderSymbol === undefined ? 0 : opts.leaderSymbol;
+        var budget = opts.stalenessBudgetMs === undefined ? 200 : opts.stalenessBudgetMs;
+        // The handle is a numeric pointer (cobj) returned through the C ABI;
+        // we store it untouched and pass it back to every method.
+        // __lrvx_feed_clock_create takes (symbols_array, count, policy, timeoutMs, leader, budget).
+        this._h = __lrvx_feed_clock_create(opts.symbols, opts.symbols.length,
+            policy, timeout, leader, budget);
+        this._symbols = opts.symbols.slice();
+    }
+
+    symbolCount() { return __lrvx_feed_clock_symbol_count(this._h); }
+
+    tick(tsNs, symbol) {
+        var fired = __lrvx_feed_clock_tick(this._h, tsNs, symbol) !== 0;
+        var n = __lrvx_feed_clock_symbol_count(this._h);
+        var lastTsNs = {};
+        var stalenessNs = {};
+        for (var i = 0; i < n; i++) {
+            var s = __lrvx_feed_clock_symbol_at(this._h, i);
+            lastTsNs[s] = __lrvx_feed_clock_last_seen_at(this._h, i);
+            stalenessNs[s] = __lrvx_feed_clock_staleness_at(this._h, i);
+        }
+        return {
+            fired: fired,
+            triggeredBy: __lrvx_feed_clock_last_triggered_by(this._h),
+            lastTsNs: lastTsNs,
+            stalenessNs: stalenessNs,
+        };
+    }
+
+    reset() { __lrvx_feed_clock_reset(this._h); }
+
+    // Frees the underlying clock. Safe to call more than once, and safe
+    // to skip: the engine also frees it when this wrapper is garbage
+    // collected. Call it explicitly in a long-lived process (e.g. a live
+    // strategy that creates and discards clocks) so the memory is
+    // reclaimed promptly instead of waiting on the next GC pass.
+    destroy() {
+        if (this._h) { __lrvx_feed_clock_destroy(this._h); this._h = null; }
+    }
+}

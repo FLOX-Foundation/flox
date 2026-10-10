@@ -5,13 +5,13 @@
 #include <cstring>
 #include <vector>
 #include "bindings_common.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
-// Convert FloxBar array to JS array of objects
-inline Napi::Value barsToJs(Napi::Env env, const FloxBar* bars, uint32_t n)
+// Convert LrvxBar array to JS array of objects
+inline Napi::Value barsToJs(Napi::Env env, const LrvxBar* bars, uint32_t n)
 {
   auto arr = Napi::Array::New(env, n);
   for (uint32_t i = 0; i < n; i++)
@@ -29,7 +29,7 @@ inline Napi::Value barsToJs(Napi::Env env, const FloxBar* bars, uint32_t n)
     o.Set("volume", (double)bars[i].volume_raw / 1e8);
     o.Set("buyVolume", (double)bars[i].buy_volume_raw / 1e8);
     o.Set("tradeCount", bars[i].trade_count);
-    // flox::Bar::reason, carried through so a batch-aggregated bar says why
+    // lrvx::Bar::reason, carried through so a batch-aggregated bar says why
     // it closed the same way the live callback path's BarData does.
     o.Set("closeReason", bars[i].close_reason);
     arr.Set(i, o);
@@ -107,8 +107,8 @@ inline Napi::Value agg_time_bars(const Napi::CallbackInfo& info)
   auto t = extractTrades(info);
   double interval = info[4].As<Napi::Number>().DoubleValue();
   uint32_t maxBars = t.n;
-  std::vector<FloxBar> bars(maxBars);
-  uint32_t count = flox_aggregate_time_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, interval, bars.data(), maxBars);
+  std::vector<LrvxBar> bars(maxBars);
+  uint32_t count = lrvx_aggregate_time_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, interval, bars.data(), maxBars);
   return barsToJs(info.Env(), bars.data(), count);
 }
 
@@ -117,8 +117,8 @@ inline Napi::Value agg_tick_bars(const Napi::CallbackInfo& info)
   auto t = extractTrades(info);
   uint32_t tickCount = info[4].As<Napi::Number>().Uint32Value();
   uint32_t maxBars = t.n / tickCount + 1;
-  std::vector<FloxBar> bars(maxBars);
-  uint32_t count = flox_aggregate_tick_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, tickCount, bars.data(), maxBars);
+  std::vector<LrvxBar> bars(maxBars);
+  uint32_t count = lrvx_aggregate_tick_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, tickCount, bars.data(), maxBars);
   return barsToJs(info.Env(), bars.data(), count);
 }
 
@@ -127,8 +127,8 @@ inline Napi::Value agg_volume_bars(const Napi::CallbackInfo& info)
   auto t = extractTrades(info);
   double threshold = info[4].As<Napi::Number>().DoubleValue();
   uint32_t maxBars = t.n;
-  std::vector<FloxBar> bars(maxBars);
-  uint32_t count = flox_aggregate_volume_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, threshold, bars.data(), maxBars);
+  std::vector<LrvxBar> bars(maxBars);
+  uint32_t count = lrvx_aggregate_volume_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, threshold, bars.data(), maxBars);
   return barsToJs(info.Env(), bars.data(), count);
 }
 
@@ -137,8 +137,8 @@ inline Napi::Value agg_range_bars(const Napi::CallbackInfo& info)
   auto t = extractTrades(info);
   double range = info[4].As<Napi::Number>().DoubleValue();
   uint32_t maxBars = t.n;
-  std::vector<FloxBar> bars(maxBars);
-  uint32_t count = flox_aggregate_range_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, range, bars.data(), maxBars);
+  std::vector<LrvxBar> bars(maxBars);
+  uint32_t count = lrvx_aggregate_range_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, range, bars.data(), maxBars);
   return barsToJs(info.Env(), bars.data(), count);
 }
 
@@ -152,18 +152,18 @@ inline Napi::Value agg_renko_bars(const Napi::CallbackInfo& info)
   // forming brick AND synthesizes the bricks in between (see
   // closeAndReopen() in renko_bar_policy.h), so a single trade can produce
   // several bars -- up to RenkoBarPolicy::kMaxGapBricks of them.
-  // flox_aggregate_renko_bars() is bounds-checked and never writes past
+  // lrvx_aggregate_renko_bars() is bounds-checked and never writes past
   // maxBars, but if it reports more bars than that, the extra ones were
   // silently dropped rather than written -- reading `count` entries out of
   // a `t.n`-sized vector in that case would walk off the end of it. Redo
   // the call with a buffer sized to the real count instead.
   uint32_t maxBars = t.n;
-  std::vector<FloxBar> bars(maxBars);
-  uint32_t count = flox_aggregate_renko_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, brick, bars.data(), maxBars);
+  std::vector<LrvxBar> bars(maxBars);
+  uint32_t count = lrvx_aggregate_renko_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, brick, bars.data(), maxBars);
   if (count > maxBars)
   {
-    bars.assign(count, FloxBar{});
-    count = flox_aggregate_renko_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, brick, bars.data(), count);
+    bars.assign(count, LrvxBar{});
+    count = lrvx_aggregate_renko_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, brick, bars.data(), count);
   }
   return barsToJs(info.Env(), bars.data(), count);
 }
@@ -173,8 +173,8 @@ inline Napi::Value agg_heikin_ashi_bars(const Napi::CallbackInfo& info)
   auto t = extractTrades(info);
   double interval = info[4].As<Napi::Number>().DoubleValue();
   uint32_t maxBars = t.n;
-  std::vector<FloxBar> bars(maxBars);
-  uint32_t count = flox_aggregate_heikin_ashi_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, interval, bars.data(), maxBars);
+  std::vector<LrvxBar> bars(maxBars);
+  uint32_t count = lrvx_aggregate_heikin_ashi_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, interval, bars.data(), maxBars);
   return barsToJs(info.Env(), bars.data(), count);
 }
 
@@ -188,4 +188,4 @@ inline void registerAggregators(Napi::Env env, Napi::Object exports)
   exports.Set("aggregateHeikinAshiBars", Napi::Function::New(env, agg_heikin_ashi_bars));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

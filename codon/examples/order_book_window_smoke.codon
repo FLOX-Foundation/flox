@@ -1,7 +1,7 @@
 # Smoke test: OrderBook tick validation, sub-cent ticks, and the tick window
 # following a delta-only feed.
 
-from flox.tools import OrderBook
+from lrvx.tools import OrderBook
 
 failed = 0
 

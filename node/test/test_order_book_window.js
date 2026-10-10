@@ -2,7 +2,7 @@
 // binding, which reads the same C++ book the engine does.
 
 const assert = require('assert');
-const flox = require('../index.js');
+const lrvx = require('../index.js');
 
 let passed = 0;
 function check(cond, msg) {
@@ -23,15 +23,15 @@ function near(a, b, eps, msg) {
 // ── Tick size validation ──────────────────────────────────────────────
 // A zero tick divided by zero while building the reciprocal and left a book
 // that was dead for the rest of its life without a single diagnostic.
-throws(() => new flox.OrderBook(0), 'zero tick size is rejected');
-throws(() => new flox.OrderBook(-0.01), 'negative tick size is rejected');
-check(new flox.OrderBook(0.01) !== null, 'a positive tick size is accepted');
+throws(() => new lrvx.OrderBook(0), 'zero tick size is rejected');
+throws(() => new lrvx.OrderBook(-0.01), 'negative tick size is rejected');
+check(new lrvx.OrderBook(0.01) !== null, 'a positive tick size is accepted');
 
 // ── Sub-cent tick sizes ───────────────────────────────────────────────
 // A 1e-8 tick is a raw divisor of 1 at a price scale of 1e8. Every level used
 // to collapse onto one index, which left the book permanently crossed.
 {
-  const book = new flox.OrderBook(1e-8);
+  const book = new lrvx.OrderBook(1e-8);
   book.applySnapshot(Float64Array.from([1e-5]), Float64Array.from([1.0]),
                      Float64Array.from([1.002e-5]), Float64Array.from([1.0]));
   near(book.bestBid(), 1e-5, 1e-14, 'best bid at a 1e-8 tick');
@@ -48,7 +48,7 @@ check(new flox.OrderBook(0.01) !== null, 'a positive tick size is accepted');
 {
   const tick = 0.1;
   const depth = 10;
-  const book = new flox.OrderBook(tick);
+  const book = new lrvx.OrderBook(tick);
   const bidTop = 59999.9;
   const askTop = 60000.1;
 

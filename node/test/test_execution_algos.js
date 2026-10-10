@@ -5,7 +5,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -16,7 +16,7 @@ function check(cond, msg) {
 
 console.log('=== TWAP ===');
 {
-  const algo = new flox.TWAPExecutor({
+  const algo = new lrvx.TWAPExecutor({
     targetQty: 100, side: 'buy', symbol: 1,
     durationNs: 10_000, sliceCount: 5, startTimeNs: 0,
   });
@@ -29,7 +29,7 @@ console.log('=== TWAP ===');
   check(algo.isDone(), 'TWAP completes by end of duration');
 
   // startTimeNs is a clock reading and takes a BigInt as well as a Number.
-  const big = new flox.TWAPExecutor({
+  const big = new lrvx.TWAPExecutor({
     targetQty: 100, side: 'buy', symbol: 1,
     durationNs: 10_000, sliceCount: 5, startTimeNs: 0n,
   });
@@ -38,7 +38,7 @@ console.log('=== TWAP ===');
 
 console.log('=== VWAP ===');
 {
-  const algo = new flox.VWAPExecutor({
+  const algo = new lrvx.VWAPExecutor({
     targetQty: 100, side: 'buy', symbol: 1,
     volumeCurve: [[1000, 200], [2000, 300], [3000, 500]],
   });
@@ -53,7 +53,7 @@ console.log('=== VWAP ===');
 
 console.log('=== Iceberg ===');
 {
-  const algo = new flox.IcebergExecutor({
+  const algo = new lrvx.IcebergExecutor({
     targetQty: 50, side: 'buy', symbol: 1,
     type: 'limit', limitPrice: 100, visibleQty: 10,
   });
@@ -68,7 +68,7 @@ console.log('=== Iceberg ===');
 
 console.log('=== POV ===');
 {
-  const algo = new flox.POVExecutor({
+  const algo = new lrvx.POVExecutor({
     targetQty: 100, side: 'buy', symbol: 1,
     participationRate: 0.10, minSliceQty: 1,
   });
@@ -82,7 +82,7 @@ console.log('=== POV ===');
 console.log('=== Validation ===');
 {
   let threw = false;
-  try { new flox.TWAPExecutor({ targetQty: -1, side: 'buy', durationNs: 1, sliceCount: 1, startTimeNs: 0 }); }
+  try { new lrvx.TWAPExecutor({ targetQty: -1, side: 'buy', durationNs: 1, sliceCount: 1, startTimeNs: 0 }); }
   catch (e) { threw = true; check(e.code === 'E_VAL_002', 'negative targetQty rejected'); }
   check(threw, 'TWAP negative qty raises');
 }

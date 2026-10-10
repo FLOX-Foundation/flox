@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -31,10 +31,10 @@
  * this file checks the generated block is what is committed, so the written
  * automaton cannot drift from the running one.
  */
-#include "flox-venue/engine/session.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/messages.h"
+#include "lrvx-venue/engine/session.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/messages.h"
 
 #include <gtest/gtest.h>
 
@@ -46,16 +46,16 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::engine::FlagOp;
-using flox::venue::engine::kSessionEventCount;
-using flox::venue::engine::kSessionTransitions;
-using flox::venue::engine::Session;
-using flox::venue::engine::SessionEffect;
-using flox::venue::engine::SessionEvent;
-using flox::venue::engine::SessionGuard;
-using flox::venue::engine::SessionOutcome;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::engine::FlagOp;
+using lrvx::venue::engine::kSessionEventCount;
+using lrvx::venue::engine::kSessionTransitions;
+using lrvx::venue::engine::Session;
+using lrvx::venue::engine::SessionEffect;
+using lrvx::venue::engine::SessionEvent;
+using lrvx::venue::engine::SessionGuard;
+using lrvx::venue::engine::SessionOutcome;
 
 namespace
 {
@@ -899,7 +899,7 @@ TEST(VenueEngineSessionEngine, RehaltingAnAlreadyHaltedSymbolPublishesNothing)
 
 TEST(VenueEngineSessionDoc, TheWrittenAutomatonIsTheRunningOne)
 {
-  const std::string path = FLOX_VENUE_SESSION_DOC;
+  const std::string path = LRVX_VENUE_SESSION_DOC;
   std::ifstream in(path);
   ASSERT_TRUE(in.good()) << "cannot read " << path;
   std::stringstream buf;
@@ -914,7 +914,7 @@ TEST(VenueEngineSessionDoc, TheWrittenAutomatonIsTheRunningOne)
 
   const std::string want = generatedTable();
   const std::string have = doc.substr(bodyAt, close - bodyAt);
-  if (have != want && std::getenv("FLOX_UPDATE_SESSION_TABLE") != nullptr)
+  if (have != want && std::getenv("LRVX_UPDATE_SESSION_TABLE") != nullptr)
   {
     doc.replace(bodyAt, close - bodyAt, want);
     std::ofstream out(path, std::ios::trunc);
@@ -923,5 +923,5 @@ TEST(VenueEngineSessionDoc, TheWrittenAutomatonIsTheRunningOne)
     return;
   }
   EXPECT_EQ(have, want) << "the table moved and the documentation did not. Rerun with "
-                           "FLOX_UPDATE_SESSION_TABLE=1 to regenerate it.";
+                           "LRVX_UPDATE_SESSION_TABLE=1 to regenerate it.";
 }

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -19,17 +19,17 @@
 // to the strategy in setStrategy(); Strategy refreshes
 // `c.position` from the manager before each handler call.
 
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
 #include <chrono>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

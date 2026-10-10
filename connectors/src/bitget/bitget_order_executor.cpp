@@ -1,28 +1,28 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/bitget/bitget_order_executor.h"
-#include "flox-connectors/bitget/authenticated_rest_client.h"
-#include "flox-connectors/execution/order_tif.h"
+#include "lrvx-connectors/bitget/bitget_order_executor.h"
+#include "lrvx-connectors/bitget/authenticated_rest_client.h"
+#include "lrvx-connectors/execution/order_tif.h"
 
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/execution/events/order_event.h>
-#include <flox/execution/order_tracker.h>
-#include <flox/log/log.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/events/order_event.h>
+#include <lrvx/execution/order_tracker.h>
+#include <lrvx/log/log.h>
 
 #include <simdjson.h>
 
 #include <cmath>
 #include <cstdio>
 
-namespace flox
+namespace lrvx
 {
 
 template <typename Policies>
@@ -173,7 +173,7 @@ void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int 
       },
       [symbol]
       {
-        FLOX_LOG_WARN("[BitgetOE] setLeverage for " << symbol
+        LRVX_LOG_WARN("[BitgetOE] setLeverage for " << symbol
                                                     << " refused by the client-side rate limit");
       });
 }
@@ -205,17 +205,17 @@ void BitgetOrderExecutorT<Policies>::sendSetLeverage(const std::string& symbol, 
         auto doc = p.iterate(ps);
         if (std::string_view(doc["code"]) != "00000")
         {
-          FLOX_LOG_ERROR("[BitgetOE] setLeverage failed for " << symbol << ": "
+          LRVX_LOG_ERROR("[BitgetOE] setLeverage failed for " << symbol << ": "
                                                               << doc["msg"].get_string().value());
         }
         else
         {
-          FLOX_LOG_INFO("[BitgetOE] Leverage set to " << leverage << "x for " << symbol);
+          LRVX_LOG_INFO("[BitgetOE] Leverage set to " << leverage << "x for " << symbol);
         }
       },
       [symbol](std::string_view err)
       {
-        FLOX_LOG_ERROR("[BitgetOE] setLeverage transport: " << err);
+        LRVX_LOG_ERROR("[BitgetOE] setLeverage transport: " << err);
       });
 }
 
@@ -242,7 +242,7 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrderWithLeverage(const Order& or
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[BitgetOE] submitOrderWithLeverage: unknown symbolId=" << order.symbol);
+    LRVX_LOG_ERROR("[BitgetOE] submitOrderWithLeverage: unknown symbolId=" << order.symbol);
     publishRejection(order, "unknown symbol");
     return;
   }
@@ -272,11 +272,11 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrderWithLeverage(const Order& or
         if (std::string_view(doc["code"]) != "00000")
         {
           auto msg = std::string(doc["msg"].get_string().value());
-          FLOX_LOG_ERROR("[BitgetOE] setLeverage failed: " << msg);
+          LRVX_LOG_ERROR("[BitgetOE] setLeverage failed: " << msg);
           publishRejection(order, "setLeverage failed: " + msg);
           return;
         }
-        FLOX_LOG_INFO("[BitgetOE] Leverage " << leverage << "x, submitting order");
+        LRVX_LOG_INFO("[BitgetOE] Leverage " << leverage << "x, submitting order");
 
         if (slPrice <= 0 && tpPrice <= 0)
         {
@@ -367,7 +367,7 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrderWithLeverage(const Order& or
               if (std::string_view(doc2["code"]) != "00000")
               {
                 auto msg = std::string(doc2["msg"].get_string().value());
-                FLOX_LOG_ERROR("[BitgetOE] submitOrder failed: " << msg);
+                LRVX_LOG_ERROR("[BitgetOE] submitOrder failed: " << msg);
                 publishRejection(order, msg);
                 return;
               }
@@ -378,14 +378,14 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrderWithLeverage(const Order& or
             {
               _policies.timeout.clearPending(order.id);
               std::string msg(err2);
-              FLOX_LOG_ERROR("[BitgetOE] submitOrder transport: " << msg);
+              LRVX_LOG_ERROR("[BitgetOE] submitOrder transport: " << msg);
               publishRejection(order, msg);
             });
       },
       [this, order](std::string_view err)
       {
         std::string msg(err);
-        FLOX_LOG_ERROR("[BitgetOE] setLeverage transport: " << msg);
+        LRVX_LOG_ERROR("[BitgetOE] setLeverage transport: " << msg);
         publishRejection(order, "setLeverage transport: " + msg);
       });
 }
@@ -443,7 +443,7 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[BitgetOE] submitOrder: unknown symbolId=" << order.symbol);
+    LRVX_LOG_ERROR("[BitgetOE] submitOrder: unknown symbolId=" << order.symbol);
     publishRejection(order, "unknown symbol");
     return;
   }
@@ -530,7 +530,7 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
         if (std::string_view(doc["code"]) != "00000")
         {
           auto msg = std::string(doc["msg"].get_string().value());
-          FLOX_LOG_ERROR("[BitgetOE] submitOrder failed: " << msg);
+          LRVX_LOG_ERROR("[BitgetOE] submitOrder failed: " << msg);
           publishRejection(order, msg);
           return;
         }
@@ -542,7 +542,7 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
       {
         _policies.timeout.clearPending(order.id);
         std::string msg(err);
-        FLOX_LOG_ERROR("[BitgetOE] submitOrder transport: " << msg);
+        LRVX_LOG_ERROR("[BitgetOE] submitOrder transport: " << msg);
         publishRejection(order, msg);
       });
 }
@@ -617,7 +617,7 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
         if (std::string_view(doc["code"]) != "00000")
         {
           auto msg = std::string(doc["msg"].get_string().value());
-          FLOX_LOG_ERROR("[BitgetOE] submitPlanOrder failed: " << msg);
+          LRVX_LOG_ERROR("[BitgetOE] submitPlanOrder failed: " << msg);
           publishRejection(order, msg);
           return;
         }
@@ -629,7 +629,7 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
       {
         _policies.timeout.clearPending(order.id);
         std::string msg(err);
-        FLOX_LOG_ERROR("[BitgetOE] submitPlanOrder transport: " << msg);
+        LRVX_LOG_ERROR("[BitgetOE] submitPlanOrder transport: " << msg);
         publishRejection(order, msg);
       });
 }
@@ -645,7 +645,7 @@ void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
   auto st = _orderTracker->get(id);
   if (!st)
   {
-    FLOX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
+    LRVX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
     return;
   }
 
@@ -668,14 +668,14 @@ void BitgetOrderExecutorT<Policies>::sendCancelOrder(OrderId id)
   auto st = _orderTracker->get(id);
   if (!st)
   {
-    FLOX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
+    LRVX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
     return;
   }
 
   auto info = _registry->getSymbolInfo(st->localOrder.symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[BitgetOE] cancelOrder: no symbol info for id=" << st->localOrder.symbol);
+    LRVX_LOG_ERROR("[BitgetOE] cancelOrder: no symbol info for id=" << st->localOrder.symbol);
     return;
   }
 
@@ -724,13 +724,13 @@ void BitgetOrderExecutorT<Policies>::sendCancelOrder(OrderId id)
         }
         else
         {
-          FLOX_LOG_ERROR("[BitgetOE] cancelOrder failed: " << doc["msg"].get_string().value());
+          LRVX_LOG_ERROR("[BitgetOE] cancelOrder failed: " << doc["msg"].get_string().value());
         }
       },
       [this, id](std::string_view err)
       {
         _policies.timeout.clearPending(id);
-        FLOX_LOG_ERROR("[BitgetOE] cancelOrder transport: " << err);
+        LRVX_LOG_ERROR("[BitgetOE] cancelOrder transport: " << err);
       });
 }
 
@@ -740,7 +740,7 @@ void BitgetOrderExecutorT<Policies>::replaceOrder(OrderId oldId, const Order& ne
   auto st = _orderTracker->get(oldId);
   if (!st)
   {
-    FLOX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
+    LRVX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
     return;
   }
 
@@ -763,14 +763,14 @@ void BitgetOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldId, const Order
   auto st = _orderTracker->get(oldId);
   if (!st)
   {
-    FLOX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
+    LRVX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
     return;
   }
 
   auto info = _registry->getSymbolInfo(st->localOrder.symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[BitgetOE] replaceOrder: no symbol info for id=" << st->localOrder.symbol);
+    LRVX_LOG_ERROR("[BitgetOE] replaceOrder: no symbol info for id=" << st->localOrder.symbol);
     return;
   }
 
@@ -811,7 +811,7 @@ void BitgetOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldId, const Order
         auto doc = p.iterate(ps);
         if (std::string_view(doc["code"]) != "00000")
         {
-          FLOX_LOG_ERROR("[BitgetOE] replaceOrder failed: " << doc["msg"].get_string().value());
+          LRVX_LOG_ERROR("[BitgetOE] replaceOrder failed: " << doc["msg"].get_string().value());
           return;
         }
 
@@ -824,7 +824,7 @@ void BitgetOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldId, const Order
       [this, oldId](std::string_view err)
       {
         _policies.timeout.clearPending(oldId);
-        FLOX_LOG_ERROR("[BitgetOE] replaceOrder transport: " << err);
+        LRVX_LOG_ERROR("[BitgetOE] replaceOrder transport: " << err);
       });
 }
 
@@ -857,12 +857,12 @@ void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide 
   auto info = _registry->getSymbolInfo(symbol);
   if (!info)
   {
-    FLOX_LOG_ERROR("[BitgetOE] placePosTpsl: unknown symbolId=" << symbol);
+    LRVX_LOG_ERROR("[BitgetOE] placePosTpsl: unknown symbolId=" << symbol);
     return;
   }
   if (holdSide == HoldSide::Unspecified)
   {
-    FLOX_LOG_ERROR("[BitgetOE] placePosTpsl: holdSide must be Long or Short");
+    LRVX_LOG_ERROR("[BitgetOE] placePosTpsl: holdSide must be Long or Short");
     return;
   }
 
@@ -911,7 +911,7 @@ void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide 
         simdjson::ondemand::document doc;
         if (p.iterate(ps).get(doc))
         {
-          FLOX_LOG_ERROR("[BitgetOE] placePosTpsl: bad json");
+          LRVX_LOG_ERROR("[BitgetOE] placePosTpsl: bad json");
           return;
         }
         std::string_view code;
@@ -919,7 +919,7 @@ void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide 
         {
           std::string_view msg;
           (void)doc["msg"].get_string().get(msg);
-          FLOX_LOG_ERROR("[BitgetOE] placePosTpsl failed: " << std::string(msg));
+          LRVX_LOG_ERROR("[BitgetOE] placePosTpsl failed: " << std::string(msg));
           return;
         }
         // /data is an array; extract first orderId.
@@ -943,7 +943,7 @@ void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide 
       },
       [](std::string_view err)
       {
-        FLOX_LOG_ERROR("[BitgetOE] placePosTpsl transport: " << err);
+        LRVX_LOG_ERROR("[BitgetOE] placePosTpsl transport: " << err);
       });
 }
 
@@ -960,7 +960,7 @@ void BitgetOrderExecutorT<Policies>::modifyPosTpsl(SymbolId symbol,
       },
       [exchangeOrderId]
       {
-        FLOX_LOG_WARN("[BitgetOE] modifyPosTpsl for "
+        LRVX_LOG_WARN("[BitgetOE] modifyPosTpsl for "
                       << exchangeOrderId
                       << " refused by the client-side rate limit: the stop "
                          "stays where the venue last accepted it");
@@ -1016,14 +1016,14 @@ void BitgetOrderExecutorT<Policies>::sendModifyPosTpsl(SymbolId symbol,
         {
           std::string_view msg;
           (void)doc["msg"].get_string().get(msg);
-          FLOX_LOG_ERROR("[BitgetOE] modifyPosTpsl failed: " << std::string(msg)
+          LRVX_LOG_ERROR("[BitgetOE] modifyPosTpsl failed: " << std::string(msg)
                                                              << " (orderId=" << exchangeOrderId
                                                              << " new=" << newTriggerPrice << ")");
         }
       },
       [](std::string_view err)
       {
-        FLOX_LOG_ERROR("[BitgetOE] modifyPosTpsl transport: " << err);
+        LRVX_LOG_ERROR("[BitgetOE] modifyPosTpsl transport: " << err);
       });
 }
 
@@ -1033,4 +1033,4 @@ template class BitgetOrderExecutorT<WithRateLimit>;
 template class BitgetOrderExecutorT<WithTimeout>;
 template class BitgetOrderExecutorT<FullPolicies>;
 
-}  // namespace flox
+}  // namespace lrvx

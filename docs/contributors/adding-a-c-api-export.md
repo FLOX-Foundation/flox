@@ -1,27 +1,27 @@
 # Adding a C ABI Export
 
-Step-by-step for adding a new function to the FLOX public C ABI surface (anything in `flox_capi.h`).
+Step-by-step for adding a new function to the lrvx public C ABI surface (anything in `lrvx_capi.h`).
 
 If you're adding an extension hook (PnLTracker, Executor, etc.), follow [extension-hook-pattern.md](extension-hook-pattern.md) instead — that's a specialized variant of this flow.
 
 ## Mental model
 
 ```
-include/flox/capi/flox_capi_spec.hpp     ← you edit this (the IDL)
+include/lrvx/capi/lrvx_capi_spec.hpp     ← you edit this (the IDL)
         │
         │  bash tools/codegen/scripts/regenerate.sh
         ▼
-include/flox/capi/flox_capi.h            ← regenerated
+include/lrvx/capi/lrvx_capi.h            ← regenerated
 .api/c-api.snapshot                       ← regenerated (ABI signature gate)
-mcp/flox_mcp/data/c-api.snapshot          ← regenerated (MCP context)
-tools/codegen/golden/flox_capi.{h,codon,md}  ← regenerated
+mcp/lrvx_mcp/data/c-api.snapshot          ← regenerated (MCP context)
+tools/codegen/golden/lrvx_capi.{h,codon,md}  ← regenerated
         │
-        │  you implement in src/capi/flox_capi.cpp
+        │  you implement in src/capi/lrvx_capi.cpp
         ▼
-libflox_capi.so                           ← compiled
+liblrvx_capi.so                           ← compiled
 
 then bindings:
-  python/    pybind11 wrapper       (hand-written, calls flox_xxx_*)
+  python/    pybind11 wrapper       (hand-written, calls lrvx_xxx_*)
   node/      NAPI wrapper           (hand-written)
   codon/     auto-imported via golden
   quickjs/   hand-written wrapper
@@ -30,16 +30,16 @@ then docs sync (the four that matter here; full eight-step chain in ci-pipeline.
   scripts/gen_pyi_stubs.py     ← regenerates Python .pyi
   scripts/gen_api_index.py     ← regenerates docs/reference/python/_api_index.md
   scripts/gen_llms_txt.py      ← regenerates docs/llms*.txt
-  scripts/sync_mcp_data.py     ← regenerates mcp/flox_mcp/data/
+  scripts/sync_mcp_data.py     ← regenerates mcp/lrvx_mcp/data/
 ```
 
 ## Step 1: edit the IDL
 
-In [`include/flox/capi/flox_capi_spec.hpp`](../../include/flox/capi/flox_capi_spec.hpp):
+In [`include/lrvx/capi/lrvx_capi_spec.hpp`](../../include/lrvx/capi/lrvx_capi_spec.hpp):
 
 ```cpp
-FLOX_EXPORT(group = "your_group")
-void flox_your_function(FloxRunnerHandle runner,
+LRVX_EXPORT(group = "your_group")
+void lrvx_your_function(LrvxRunnerHandle runner,
                         uint32_t symbol,
                         double param);
 ```
@@ -55,10 +55,10 @@ bash tools/codegen/scripts/regenerate.sh
 ```
 
 This single command updates:
-- `include/flox/capi/flox_capi.h` (the live header)
-- `tools/codegen/golden/flox_capi.{h,codon,md}` (the golden reference)
+- `include/lrvx/capi/lrvx_capi.h` (the live header)
+- `tools/codegen/golden/lrvx_capi.{h,codon,md}` (the golden reference)
 - `.api/c-api.snapshot` (signature snapshot for ABI gating)
-- `mcp/flox_mcp/data/*` (data the flox-mcp server bundles)
+- `mcp/lrvx_mcp/data/*` (data the lrvx-mcp server bundles)
 
 Then verify nothing drifted:
 
@@ -68,10 +68,10 @@ bash tools/codegen/scripts/check.sh
 
 ## Step 3: implement in C++
 
-In [`src/capi/flox_capi.cpp`](../../src/capi/flox_capi.cpp):
+In [`src/capi/lrvx_capi.cpp`](../../src/capi/lrvx_capi.cpp):
 
 ```cpp
-void flox_your_function(FloxRunnerHandle h, uint32_t symbol, double param) {
+void lrvx_your_function(LrvxRunnerHandle h, uint32_t symbol, double param) {
   toRunner(h)->yourFunction(symbol, param);
 }
 ```
@@ -85,7 +85,7 @@ cmake --build build
 ctest --test-dir build
 ```
 
-Add a GTest case under `tests/` if the function has non-trivial semantics (anything beyond a one-line delegation). Pattern: `tests/test_capi_*.cpp` — link against `flox_capi`, exercise the function via the C ABI directly.
+Add a GTest case under `tests/` if the function has non-trivial semantics (anything beyond a one-line delegation). Pattern: `tests/test_capi_*.cpp` — link against `lrvx_capi`, exercise the function via the C ABI directly.
 
 ## Step 5: pybind11 wrapper
 
@@ -97,7 +97,7 @@ Example:
 class PyStrategyRunner {
   // ...
   void your_function(uint32_t symbol, double param) {
-    flox_your_function(_runner, symbol, param);
+    lrvx_your_function(_runner, symbol, param);
   }
 };
 ```
@@ -112,7 +112,7 @@ py::class_<PyStrategyRunner>(m, "Runner")
 Build the Python module:
 
 ```bash
-cmake --build build --target _flox_py
+cmake --build build --target _lrvx
 ```
 
 Regenerate the `.pyi` stubs (running pybind11 module is the source of truth):
@@ -129,7 +129,7 @@ Open [`node/src/strategy.h`](../../node/src/strategy.h) (or the appropriate `nod
 Napi::Value yourFunction(const Napi::CallbackInfo& info) {
   uint32_t sym = symId(info[0]);
   double param = info[1].As<Napi::Number>().DoubleValue();
-  flox_your_function(_handle, sym, param);
+  lrvx_your_function(_handle, sym, param);
   return info.Env().Undefined();
 }
 ```
@@ -155,7 +155,7 @@ If your group is new (not yet in `binding_parity.yaml`), add it. If your group e
 python3 scripts/check_binding_parity.py
 ```
 
-The gate scans the IDL for `FLOX_EXPORT(group = "X")` declarations and verifies every group has the declared classes / functions in pybind11 (`.pyi`) and NAPI (`.d.ts`).
+The gate scans the IDL for `LRVX_EXPORT(group = "X")` declarations and verifies every group has the declared classes / functions in pybind11 (`.pyi`) and NAPI (`.d.ts`).
 
 For function-shaped groups (no class wrapping), list expected function names:
 
@@ -193,13 +193,13 @@ If any drifts, the generated form differs from what's in the repo — re-run the
 Stage the regenerated artifacts plus your new code:
 
 ```bash
-git add include/flox/capi/flox_capi.h \
-        include/flox/capi/flox_capi_spec.hpp \
-        src/capi/flox_capi.cpp \
+git add include/lrvx/capi/lrvx_capi.h \
+        include/lrvx/capi/lrvx_capi_spec.hpp \
+        src/capi/lrvx_capi.cpp \
         .api/c-api.snapshot \
-        mcp/flox_mcp/data/c-api.snapshot \
+        mcp/lrvx_mcp/data/c-api.snapshot \
         tools/codegen/golden/ \
-        python/flox_py/_flox_py/__init__.pyi \
+        python/lrvx/_lrvx/__init__.pyi \
         docs/reference/python/_api_index.md \
         docs/llms*.txt \
         python/<your binding header> \

@@ -1,4 +1,4 @@
-"""Every FLOX surface must be inventoried, including C++ and QuickJS.
+"""Every lrvx surface must be inventoried, including C++ and QuickJS.
 
 The manifest used to cover four surfaces of six, and two of those at the wrong
 granularity:
@@ -10,7 +10,7 @@ granularity:
                invisible.
     quickjs    zero symbols — the tool answered "No QuickJS exports recorded
                yet" for a surface with ~500 registered globals.
-    codon      inventoried from the generated FFI golden, so it listed `flox_*`
+    codon      inventoried from the generated FFI golden, so it listed `lrvx_*`
                C names; a Codon user writing `BacktestRunner` found nothing.
     python     classes and module functions only, no methods, so `run_csv`
     node       resolved nowhere in any binding.
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from flox_mcp.tools import lookup
+from lrvx_mcp.tools import lookup
 
 ALL_SURFACES = ("cpp", "capi", "python", "node", "codon", "quickjs")
 

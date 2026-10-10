@@ -1,13 +1,13 @@
 """Deribit public archive round-trip — build synthetic Deribit-format
 CSVs in memory for a perpetual and an option-chain instrument, run
-`deribit.trades_to_floxlog` on each, and read the resulting
-`.floxlog` tapes back through `DataReader`.
+`deribit.trades_to_lrvx` on each, and read the resulting
+`.lrvx` tapes back through `DataReader`.
 
 CI-runnable companion to
 [Import multi-exchange archives](../how-to/import-multi-exchange-archives.md).
 
 Usage:
-    cd /path/to/flox
+    cd /path/to/lrvx
     PYTHONPATH=build/python python3 docs/examples/python_deribit_archive.py
 """
 from __future__ import annotations
@@ -18,8 +18,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import flox_py
-from flox_py.archives import deribit
+import lrvx
+from lrvx.archives import deribit
 
 
 _ROWS_PERP = [
@@ -46,12 +46,12 @@ def _build_gz(dest: Path, rows) -> Path:
 
 
 def main() -> None:
-    workdir = Path(tempfile.mkdtemp(prefix="flox-deribit-"))
+    workdir = Path(tempfile.mkdtemp(prefix="lrvx-deribit-"))
     try:
         perp_gz = workdir / "BTC-PERPETUAL-2024-01-15.csv.gz"
         _build_gz(perp_gz, _ROWS_PERP)
         perp_tape = workdir / "tape-perp"
-        ps = deribit.trades_to_floxlog(
+        ps = deribit.trades_to_lrvx(
             perp_gz, perp_tape,
             symbol_id=1, symbol_name="BTC-PERPETUAL", market="perpetual",
         )
@@ -60,14 +60,14 @@ def main() -> None:
         opt_gz = workdir / "BTC-29MAR24-50000-C-2024-01-15.csv.gz"
         _build_gz(opt_gz, _ROWS_OPT)
         opt_tape = workdir / "tape-option"
-        os_ = deribit.trades_to_floxlog(
+        os_ = deribit.trades_to_lrvx(
             opt_gz, opt_tape,
             symbol_id=1, symbol_name="BTC-29MAR24-50000-C", market="option",
         )
         print(f"option: rows_read={os_.rows_read} trades_written={os_.trades_written}")
 
         for label, tape in (("perp", perp_tape), ("option", opt_tape)):
-            r = flox_py.DataReader(str(tape))
+            r = lrvx.DataReader(str(tape))
             trades = r.read_trades()
             print(f"  {label}: {int(trades.size)} trades in tape")
     finally:

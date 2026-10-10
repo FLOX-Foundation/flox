@@ -3,11 +3,11 @@
 A pool-state tape is a delta log: a list of swaps, optionally with checkpoints. Replay
 it through the exact curve and you get a table over time — price, reserves, LP value,
 impermanent loss — that a quant can hand straight to pandas. The curve does the wei-exact
-math; `flox_py.dex.Tape` carries the decimals and turns the low-level pool tape into a
+math; `lrvx.dex.Tape` carries the decimals and turns the low-level pool tape into a
 backtest.
 
 ```python
-from flox_py import dex
+from lrvx import dex
 
 weth = dex.Token("WETH", 18)
 usdc = dex.Token("USDC", 6)

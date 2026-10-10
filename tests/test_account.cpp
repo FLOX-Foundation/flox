@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/account.h"
-#include "flox/backtest/fee_schedule.h"
-#include "flox/backtest/liquidation_engine.h"
+#include "lrvx/backtest/account.h"
+#include "lrvx/backtest/fee_schedule.h"
+#include "lrvx/backtest/liquidation_engine.h"
 
 #include <gtest/gtest.h>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -310,7 +310,7 @@ TEST(Account, RollingNotionalResetClearsCounter)
 
 // reset() exists so an Account can be reused across repeated
 // backtest / RL-training episodes on the same tape (python's rl_env
-// FloxTradingEnv.reset() calls it via the pybind11 binding). Without
+// LrvxTradingEnv.reset() calls it via the pybind11 binding). Without
 // it, a position and its equity delta from one episode survived into
 // the next -- openPosition()/closePosition() only ever mutate
 // `_positions`, nothing clears it between runs on its own.

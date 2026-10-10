@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -27,10 +27,10 @@
  * stay there, because this file needs the perimeter and venue-engine-only
  * configures without it.
  */
-#include "flox-venue/fix_session.h"
-#include "flox-venue/session_registry.h"
+#include "lrvx-venue/fix_session.h"
+#include "lrvx-venue/session_registry.h"
 
-#include "flox/util/crc32.h"
+#include "lrvx/util/crc32.h"
 
 #include <gtest/gtest.h>
 
@@ -40,8 +40,8 @@
 #include <cstring>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -132,8 +132,8 @@ void test_fix_session_sidecar_accounts_sorted()
   std::vector<uint8_t> out2;
   other.serialize(out2);
   CHECK(out == out2);
-  CHECK(flox::util::Crc32::compute(out.data(), out.size()) ==
-        flox::util::Crc32::compute(out2.data(), out2.size()));
+  CHECK(lrvx::util::Crc32::compute(out.data(), out.size()) ==
+        lrvx::util::Crc32::compute(out2.data(), out2.size()));
 }
 
 // The outbound half: SessionRegistry::serializeSeqs, into the same file.

@@ -1,8 +1,8 @@
-# Build a cross-sectional (T × S) panel from N floxlog tapes
+# Build a cross-sectional (T × S) panel from N lrvx tapes
 
 Cross-symbol research (XS momentum, pair stat-arb, rank-based long-short, dispersion) reduces to the same input: an aligned 2D array indexed by `(time bucket, symbol)`. The hand-rolled version is shared bug surface: intersection vs union join logic, NaN handling, symbol-ordering drift between calls, off-by-one in the alignment.
 
-`flox_py.panel` collapses the pattern into one call. The input is a list of symbol names plus either a `tape_root` whose immediate subdirectories are the per-symbol tapes, or an explicit `tape_paths` mapping.
+`lrvx.panel` collapses the pattern into one call. The input is a list of symbol names plus either a `tape_root` whose immediate subdirectories are the per-symbol tapes, or an explicit `tape_paths` mapping.
 
 ## Helpers
 

@@ -41,7 +41,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -144,9 +144,9 @@ function replay(runner) {
 }
 
 function scenario(onBar) {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   const rec = recordingListener();
   runner.addExecutionListener(rec.listener);
   let bar = 0;
@@ -212,9 +212,9 @@ console.log('\n=== A listener defining only some handlers is safe ===');
 {
   // Every bridge guards on its own reference being empty; a missing
   // guard is a call through an empty FunctionReference.
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   const fills = [];
   runner.addExecutionListener({ onFilled(o) { fills.push(o); } });
   let bar = 0;
@@ -230,9 +230,9 @@ console.log('\n=== A listener defining only some handlers is safe ===');
 
 console.log('\n=== An empty listener object is accepted and never called ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   let err = null;
   try {
     runner.addExecutionListener({});
@@ -248,9 +248,9 @@ console.log('\n=== An empty listener object is accepted and never called ===');
 
 console.log('\n=== Every attached listener sees every event ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
   const a = recordingListener();
   const b = recordingListener();
   runner.addExecutionListener(a.listener);

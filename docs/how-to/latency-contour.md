@@ -14,18 +14,18 @@ in the tail, and a mean hides them.
 ## Wiring
 
 ```cpp
-#include "flox/util/performance/latency_contour.h"
+#include "lrvx/util/performance/latency_contour.h"
 
-using Contour = flox::performance::LatencyContour<16>;
+using Contour = lrvx::performance::LatencyContour<16>;
 
 Contour contour;
 const auto segParse = contour.registerSegment("parse");
 const auto segBus = contour.registerSegment("bus");
 
 // hot path:
-const auto t0 = flox::performance::monotonicNs();
+const auto t0 = lrvx::performance::monotonicNs();
 parseMessage(buf);
-const auto t1 = flox::performance::monotonicNs();
+const auto t1 = lrvx::performance::monotonicNs();
 contour.recordSpan(segParse, t0, t1);
 ```
 
@@ -56,12 +56,12 @@ What to look for:
 
 A software clock starts counting when your thread runs, but the packet
 arrived earlier; scheduler wakeup time hides in between.
-`flox/net/rx_timestamp.h` enables kernel receive timestamps on a socket
+`lrvx/net/rx_timestamp.h` enables kernel receive timestamps on a socket
 (`SO_TIMESTAMPING` on Linux, `SO_TIMESTAMP` on macOS) and extracts them
 from `recvmsg` control messages, which turns "wire to parse" into a
 measured segment. On Linux with a capable NIC you can get hardware
 timestamps too; configuring the NIC (`ethtool -T`) is host setup and stays
-outside flox.
+outside lrvx.
 
 ## Caveats
 

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -21,9 +21,9 @@
  * wait-loop tick" (100 ms). The backoff wait must be interruptible.
  */
 
-#include "flox-connectors/net/ix_websocket_client.h"
+#include "lrvx-connectors/net/ix_websocket_client.h"
 
-#include <flox/log/abstract_logger.h>
+#include <lrvx/log/abstract_logger.h>
 
 #include <gtest/gtest.h>
 
@@ -35,7 +35,7 @@
 namespace
 {
 
-struct NullLogger final : public flox::ILogger
+struct NullLogger final : public lrvx::ILogger
 {
   void info(std::string_view) override {}
   void warn(std::string_view) override {}
@@ -49,7 +49,7 @@ TEST(IxWebSocketClientLifecycle, SendOnClosedSocketReturnsFailureInsteadOfLosing
   NullLogger logger;
   // Never started: the underlying ix::WebSocket exists (constructor creates
   // it unconditionally) but is not connected, so send() must fail.
-  flox::IxWebSocketClient client("ws://127.0.0.1:1", "", /*reconnectDelayMs*/ 1000, &logger,
+  lrvx::IxWebSocketClient client("ws://127.0.0.1:1", "", /*reconnectDelayMs*/ 1000, &logger,
                                  /*pingIntervalSec*/ 0);
 
   const bool ok = client.send(R"({"op":"ping"})");
@@ -63,7 +63,7 @@ TEST(IxWebSocketClientLifecycle, StopLatencyBoundedDuringReconnectBackoff)
   // is refused essentially instantly and the run() thread spends its time in
   // the reconnect backoff wait, not in a live connection attempt.
   // reconnectDelayMs=2000 matches BybitConfig's default.
-  auto client = std::make_unique<flox::IxWebSocketClient>("ws://127.0.0.1:1", "",
+  auto client = std::make_unique<lrvx::IxWebSocketClient>("ws://127.0.0.1:1", "",
                                                           /*reconnectDelayMs*/ 2000, &logger,
                                                           /*pingIntervalSec*/ 0);
   client->start();

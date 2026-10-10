@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Flox Engine - CPU Affinity Performance Profiling Script
-# Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+# lrvx Engine - CPU Affinity Performance Profiling Script
+# Developed by lrvx contributors (https://github.com/lrvx)
 # 
-# Copyright (c) 2025 FLOX Foundation
+# Copyright (c) 2025 lrvx contributors
 # Licensed under the MIT License. See LICENSE file in the project root for full
 # license information.
 
@@ -24,7 +24,7 @@ NC='\033[0m' # No Color
 
 print_header() {
     echo -e "${BLUE}================================================${NC}"
-    echo -e "${BLUE}  FLOX CPU Affinity Performance Profiling${NC}"
+    echo -e "${BLUE}  lrvx CPU Affinity Performance Profiling${NC}"
     echo -e "${BLUE}================================================${NC}"
     echo
     echo -e "${YELLOW}WARNING: This script should be run on an isolated machine${NC}"
@@ -60,7 +60,7 @@ check_requirements() {
         print_error "Benchmark binary not found at $BENCHMARK_BINARY"
         echo "Please build the project with benchmarks enabled:"
         echo "  mkdir -p build && cd build"
-        echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DFLOX_ENABLE_BENCHMARKS=ON"
+        echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DLRVX_BUILD_BENCHMARKS=ON"
         echo "  make -j\$(nproc)"
         exit 1
     fi
@@ -286,7 +286,7 @@ generate_summary_report() {
     local summary_file="$RESULTS_DIR/summary_report_${TIMESTAMP}.txt"
     
     cat > "$summary_file" << EOF
-FLOX CPU Affinity Performance Profiling Summary
+lrvx CPU Affinity Performance Profiling Summary
 ==============================================
 Timestamp: $TIMESTAMP
 System: $(uname -a)

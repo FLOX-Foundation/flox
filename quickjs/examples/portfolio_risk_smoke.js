@@ -1,4 +1,4 @@
-// Smoke test for flox.PortfolioRiskAggregator exposed on the flox global.
+// Smoke test for lrvx.PortfolioRiskAggregator exposed on the lrvx global.
 // Builds a small multi-strategy view and exercises the kill-switch path.
 
 let passed = 0;
@@ -10,7 +10,7 @@ function check(cond, msg) {
 
 // Construction.
 {
-    var agg = new flox.PortfolioRiskAggregator({
+    var agg = new lrvx.PortfolioRiskAggregator({
         rules: { maxDrawdownPct: 0.20, maxDailyLoss: 10000 },
         initialEquity: 100000,
     });
@@ -24,7 +24,7 @@ function check(cond, msg) {
 
 // Update + snapshot.
 {
-    var agg = new flox.PortfolioRiskAggregator({ initialEquity: 100000 });
+    var agg = new lrvx.PortfolioRiskAggregator({ initialEquity: 100000 });
     agg.update('ema', {
         realizedPnl: 120, unrealizedPnl: -30, fees: -5,
         grossExposure: 5000, netExposure: 4500, tradeCount: 12,
@@ -39,7 +39,7 @@ function check(cond, msg) {
 
 // Drawdown breach.
 {
-    var agg = new flox.PortfolioRiskAggregator({
+    var agg = new lrvx.PortfolioRiskAggregator({
         rules: { maxDrawdownPct: 0.10 },
         initialEquity: 100000,
     });
@@ -53,7 +53,7 @@ function check(cond, msg) {
 
 // Pre-trade check.
 {
-    var agg = new flox.PortfolioRiskAggregator({
+    var agg = new lrvx.PortfolioRiskAggregator({
         rules: { maxGrossExposure: 10000 },
     });
     agg.update('s1', { grossExposure: 7000 });
@@ -67,7 +67,7 @@ function check(cond, msg) {
 
 // The gate and the snapshot have to describe the same book.
 {
-    var agg = new flox.PortfolioRiskAggregator({
+    var agg = new lrvx.PortfolioRiskAggregator({
         rules: { maxConcentrationPct: 0.40 },
         initialEquity: 100000,
     });
@@ -81,7 +81,7 @@ function check(cond, msg) {
 
 // Risk-reducing orders pass the exposure cap.
 {
-    var agg = new flox.PortfolioRiskAggregator({
+    var agg = new lrvx.PortfolioRiskAggregator({
         rules: { maxGrossExposure: 50000 },
         initialEquity: 100000,
     });
@@ -97,7 +97,7 @@ function check(cond, msg) {
 {
     var threw = false;
     try {
-        new flox.PortfolioRiskAggregator({ rules: { maxDrawdownPct: 0.20 } });
+        new lrvx.PortfolioRiskAggregator({ rules: { maxDrawdownPct: 0.20 } });
     } catch (e) {
         threw = true;
     }

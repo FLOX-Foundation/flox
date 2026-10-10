@@ -1,6 +1,6 @@
 // node/src/order_group.h — Multi-leg order group state machine wrap.
 //
-// Thin NAPI wrap over the C ABI flox_order_group_* surface. The group
+// Thin NAPI wrap over the C ABI lrvx_order_group_* surface. The group
 // is a passive state machine — bindings record submit / fill / cancel
 // events and read back state + recommended actions; no I/O.
 
@@ -8,9 +8,9 @@
 
 #include <napi.h>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
@@ -95,29 +95,29 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
         }
       }
     }
-    _h = flox_order_group_create(parent, policy);
+    _h = lrvx_order_group_create(parent, policy);
   }
 
   ~OrderGroupWrap()
   {
     if (_h)
     {
-      flox_order_group_destroy(_h);
+      lrvx_order_group_destroy(_h);
       _h = nullptr;
     }
   }
 
  private:
-  FloxOrderGroupHandle _h{nullptr};
+  LrvxOrderGroupHandle _h{nullptr};
 
   Napi::Value AddMarketLeg(const Napi::CallbackInfo& info)
   {
     uint32_t sym = info[0].As<Napi::Number>().Uint32Value();
     uint8_t side = static_cast<uint8_t>(info[1].As<Napi::Number>().Uint32Value());
     double qty = info[2].As<Napi::Number>().DoubleValue();
-    int64_t qty_raw = flox_quantity_from_double(qty);
+    int64_t qty_raw = lrvx_quantity_from_double(qty);
     return Napi::Number::New(info.Env(),
-                             flox_order_group_add_market_leg(_h, sym, side, qty_raw));
+                             lrvx_order_group_add_market_leg(_h, sym, side, qty_raw));
   }
 
   Napi::Value AddLimitLeg(const Napi::CallbackInfo& info)
@@ -126,14 +126,14 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     uint8_t side = static_cast<uint8_t>(info[1].As<Napi::Number>().Uint32Value());
     double price = info[2].As<Napi::Number>().DoubleValue();
     double qty = info[3].As<Napi::Number>().DoubleValue();
-    return Napi::Number::New(info.Env(), flox_order_group_add_limit_leg(
-                                             _h, sym, side, flox_price_from_double(price),
-                                             flox_quantity_from_double(qty)));
+    return Napi::Number::New(info.Env(), lrvx_order_group_add_limit_leg(
+                                             _h, sym, side, lrvx_price_from_double(price),
+                                             lrvx_quantity_from_double(qty)));
   }
 
   Napi::Value LegCount(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_order_group_leg_count(_h));
+    return Napi::Number::New(info.Env(), lrvx_order_group_leg_count(_h));
   }
 
   Napi::Value LegState(const Napi::CallbackInfo& info)
@@ -141,7 +141,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
     static const char* const names[] = {
         "Pending", "Submitted", "PartiallyFilled", "Filled", "Cancelled", "Failed"};
-    uint8_t s = flox_order_group_leg_state(_h, idx);
+    uint8_t s = lrvx_order_group_leg_state(_h, idx);
     const char* name = (s < 6) ? names[s] : "Unknown";
     return Napi::String::New(info.Env(), name);
   }
@@ -150,14 +150,14 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
   {
     uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
     return Napi::Number::New(
-        info.Env(), flox_quantity_to_double(flox_order_group_leg_filled_raw(_h, idx)));
+        info.Env(), lrvx_quantity_to_double(lrvx_order_group_leg_filled_raw(_h, idx)));
   }
 
   Napi::Value LegOrderId(const Napi::CallbackInfo& info)
   {
     uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
     return Napi::Number::New(
-        info.Env(), static_cast<double>(flox_order_group_leg_order_id(_h, idx)));
+        info.Env(), static_cast<double>(lrvx_order_group_leg_order_id(_h, idx)));
   }
 
   void RecordSubmit(const Napi::CallbackInfo& info)
@@ -165,43 +165,43 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
     uint64_t order_id =
         static_cast<uint64_t>(info[1].As<Napi::Number>().Int64Value());
-    flox_order_group_record_submit(_h, idx, order_id);
+    lrvx_order_group_record_submit(_h, idx, order_id);
   }
 
   void RecordFill(const Napi::CallbackInfo& info)
   {
     uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
     double cum = info[1].As<Napi::Number>().DoubleValue();
-    flox_order_group_record_fill(_h, idx, flox_quantity_from_double(cum));
+    lrvx_order_group_record_fill(_h, idx, lrvx_quantity_from_double(cum));
   }
 
   void RecordCancel(const Napi::CallbackInfo& info)
   {
-    flox_order_group_record_cancel(_h, info[0].As<Napi::Number>().Uint32Value());
+    lrvx_order_group_record_cancel(_h, info[0].As<Napi::Number>().Uint32Value());
   }
 
   void RecordFailure(const Napi::CallbackInfo& info)
   {
-    flox_order_group_record_failure(_h, info[0].As<Napi::Number>().Uint32Value());
+    lrvx_order_group_record_failure(_h, info[0].As<Napi::Number>().Uint32Value());
   }
 
   void RecordReplaceAccepted(const Napi::CallbackInfo& info)
   {
     uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
     uint64_t new_id = static_cast<uint64_t>(info[1].As<Napi::Number>().Int64Value());
-    flox_order_group_record_replace_accepted(_h, idx, new_id);
+    lrvx_order_group_record_replace_accepted(_h, idx, new_id);
   }
 
   void RecordReplaceRejected(const Napi::CallbackInfo& info)
   {
-    flox_order_group_record_replace_rejected(_h,
+    lrvx_order_group_record_replace_rejected(_h,
                                              info[0].As<Napi::Number>().Uint32Value());
   }
 
   Napi::Value FindLegByOrderId(const Napi::CallbackInfo& info)
   {
     uint64_t order_id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
-    uint32_t idx = flox_order_group_find_leg_by_order_id(_h, order_id);
+    uint32_t idx = lrvx_order_group_find_leg_by_order_id(_h, order_id);
     if (idx == UINT32_MAX)
     {
       return info.Env().Null();
@@ -214,7 +214,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     static const char* const names[] = {
         "Pending", "Submitted", "PartiallyFilled", "Filled",
         "Cancelled", "Reverting", "Failed"};
-    uint8_t s = flox_order_group_state(_h);
+    uint8_t s = lrvx_order_group_state(_h);
     const char* name = (s < 7) ? names[s] : "Unknown";
     return Napi::String::New(info.Env(), name);
   }
@@ -223,7 +223,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
   {
     constexpr uint32_t kMaxActions = 32;
     int64_t buf[kMaxActions * 5];
-    uint32_t n = flox_order_group_recommended_actions(_h, buf, kMaxActions);
+    uint32_t n = lrvx_order_group_recommended_actions(_h, buf, kMaxActions);
     Napi::Array out = Napi::Array::New(info.Env(), n);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -239,7 +239,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
       {
         obj.Set("symbol", Napi::Number::New(info.Env(), static_cast<double>(slot[2])));
         obj.Set("side", Napi::Number::New(info.Env(), static_cast<double>(slot[3])));
-        obj.Set("qty", Napi::Number::New(info.Env(), flox_quantity_to_double(slot[4])));
+        obj.Set("qty", Napi::Number::New(info.Env(), lrvx_quantity_to_double(slot[4])));
       }
       out.Set(i, obj);
     }
@@ -251,7 +251,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     uint32_t leg = info[0].As<Napi::Number>().Uint32Value();
     std::string kind = info[1].As<Napi::String>().Utf8Value();
     uint8_t k = (kind == "cancel") ? 0 : 1;
-    flox_order_group_mark_action_dispatched(_h, leg, k);
+    lrvx_order_group_mark_action_dispatched(_h, leg, k);
   }
 
   void SetRiskLimits(const Napi::CallbackInfo& info)
@@ -266,8 +266,8 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     double max_leg = opts.Has("maxLegQty")
                          ? opts.Get("maxLegQty").As<Napi::Number>().DoubleValue()
                          : 0.0;
-    flox_order_group_set_risk_limits(_h, flox_quantity_from_double(max_gross), max_conc,
-                                     flox_quantity_from_double(max_leg));
+    lrvx_order_group_set_risk_limits(_h, lrvx_quantity_from_double(max_gross), max_conc,
+                                     lrvx_quantity_from_double(max_leg));
   }
 
   Napi::Value PrecheckSubmission(const Napi::CallbackInfo& info)
@@ -289,13 +289,13 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
         for (uint32_t i = 0; i < arr.Length(); ++i)
         {
           ref_prices.push_back(
-              flox_price_from_double(arr.Get(i).As<Napi::Number>().DoubleValue()));
+              lrvx_price_from_double(arr.Get(i).As<Napi::Number>().DoubleValue()));
         }
       }
     }
     char rule[64] = {0};
     char detail[256] = {0};
-    uint8_t denied = flox_order_group_precheck_submission(
+    uint8_t denied = lrvx_order_group_precheck_submission(
         _h, equity, ref_prices.empty() ? nullptr : ref_prices.data(),
         static_cast<uint32_t>(ref_prices.size()), rule, sizeof(rule), detail, sizeof(detail));
     Napi::Object out = Napi::Object::New(env);
@@ -308,7 +308,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
   void SetPairLatencyBudgetNs(const Napi::CallbackInfo& info)
   {
     int64_t budget = info[0].As<Napi::Number>().Int64Value();
-    flox_order_group_set_pair_latency_budget_ns(_h, budget);
+    lrvx_order_group_set_pair_latency_budget_ns(_h, budget);
   }
 
   Napi::Value PairLatencyDecision(const Napi::CallbackInfo& info)
@@ -319,7 +319,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     bool ack_received = opts.Has("ackReceived")
                             ? opts.Get("ackReceived").As<Napi::Boolean>().Value()
                             : false;
-    uint8_t d = flox_order_group_pair_latency_decision(_h, submit_ts, ack_ts,
+    uint8_t d = lrvx_order_group_pair_latency_decision(_h, submit_ts, ack_ts,
                                                        ack_received ? 1 : 0);
     const char* name = (d == 0) ? "wait" : (d == 1) ? "submit_follower"
                                                     : "cancel_leader";
@@ -339,7 +339,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
 
     constexpr uint32_t kMaxActions = 32;
     int64_t buf[kMaxActions * 5];
-    uint32_t n = flox_order_group_recommended_actions(_h, buf, kMaxActions);
+    uint32_t n = lrvx_order_group_recommended_actions(_h, buf, kMaxActions);
     uint32_t fired = 0;
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -350,7 +350,7 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
         // CancelLeg: strategy.emitCancel(orderId).
         Napi::Function fn = strategy.Get("emitCancel").As<Napi::Function>();
         fn.Call(strategy, {Napi::Number::New(env, static_cast<double>(slot[2]))});
-        flox_order_group_mark_action_dispatched(_h, leg, 0);
+        lrvx_order_group_mark_action_dispatched(_h, leg, 0);
       }
       else
       {
@@ -358,8 +358,8 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
         const char* method = (slot[3] == 0) ? "emitMarketBuy" : "emitMarketSell";
         Napi::Function fn = strategy.Get(method).As<Napi::Function>();
         fn.Call(strategy, {Napi::Number::New(env, static_cast<double>(slot[2])),
-                           Napi::Number::New(env, flox_quantity_to_double(slot[4]))});
-        flox_order_group_mark_action_dispatched(_h, leg, 1);
+                           Napi::Number::New(env, lrvx_quantity_to_double(slot[4]))});
+        lrvx_order_group_mark_action_dispatched(_h, leg, 1);
       }
       ++fired;
     }
@@ -372,7 +372,7 @@ inline void registerOrderGroup(Napi::Env env, Napi::Object exports)
   exports.Set("OrderGroup", OrderGroupWrap::Init(env));
 
   // Named constants so users can write
-  // `new OrderGroup({ policy: flox.OrderGroupPolicy.AllOrNothing })`.
+  // `new OrderGroup({ policy: lrvx.OrderGroupPolicy.AllOrNothing })`.
   Napi::Object policy = Napi::Object::New(env);
   policy.Set("BestEffort", Napi::String::New(env, "BestEffort"));
   policy.Set("AllOrNothing", Napi::String::New(env, "AllOrNothing"));
@@ -392,4 +392,4 @@ inline void registerOrderGroup(Napi::Env env, Napi::Object exports)
   exports.Set("OrderGroupState", groupState);
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

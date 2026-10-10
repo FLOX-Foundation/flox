@@ -1,0 +1,115 @@
+# Perpetual funding rate schedule for Codon strategies.
+# Mirrors include/lrvx/backtest/funding_schedule.h.
+
+# The C ABI handshake runs when this module is imported: see
+# lrvx/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from lrvx.abi import check_abi_version
+
+from C import lrvx_funding_schedule_create() -> cobj
+from C import lrvx_funding_schedule_destroy(cobj)
+from C import lrvx_funding_schedule_set_constant(cobj, i64, f64)
+from C import lrvx_funding_schedule_set_tape_by_symbol(cobj, cobj, cobj, cobj, u32)
+from C import lrvx_funding_schedule_load_tape(cobj, cobj) -> u8
+from C import lrvx_funding_schedule_load_profile(cobj, cobj) -> i32
+from C import lrvx_funding_schedule_set_constant_rate(cobj, f64)
+from C import lrvx_funding_schedule_reset(cobj)
+from C import lrvx_funding_schedule_tick(cobj, i64, cobj, cobj, cobj, u32, cobj, u32) -> u32
+
+
+def _cstr(s: str) -> cobj:
+    # `internal.gc.sys_alloc` does not exist in Codon 0.19.6, so this whole
+    # function failed to compile and took every method that calls it with it.
+    # run_trace.codon has always used the plain Ptr[byte] allocation.
+    n = len(s)
+    buf = Ptr[byte](n + 1)
+    for i in range(n):
+        buf[i] = byte(int(s.ptr[i]))
+    buf[n] = byte(0)
+    return cobj(buf)
+
+
+@dataclass
+class FundingPayment:
+    timestamp_ns: int
+    symbol: int
+    rate: float
+    mark_price: float
+    position_signed: float
+    amount: float
+
+
+class FundingSchedule:
+    """Perpetual funding-rate schedule. Build constant-interval or load
+    a canned profile, then call `tick(now_ns, symbols, positions, marks)`
+    to walk funding events."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = lrvx_funding_schedule_create()
+
+    def close(self):
+        if self._h != cobj():
+            lrvx_funding_schedule_destroy(self._h)
+            self._h = cobj()
+
+    def set_constant(self, interval_ns: int, rate: float):
+        lrvx_funding_schedule_set_constant(self._h, i64(interval_ns), f64(rate))
+
+    def set_tape_by_symbol(self, timestamps_ns: List[int], symbols: List[int],
+                           rates: List[float]):
+        """Per-symbol tape: each (ts, symbol, rate) row settles only the
+        matching symbol at that timestamp. symbol == 0 acts as a wildcard."""
+        n = len(timestamps_ns)
+        if n == 0:
+            return
+        ts = [i64(t) for t in timestamps_ns]
+        sy = [u32(s) for s in symbols]
+        rs = [f64(r) for r in rates]
+        lrvx_funding_schedule_set_tape_by_symbol(
+            self._h, cobj(ts.arr.ptr), cobj(sy.arr.ptr), cobj(rs.arr.ptr), u32(n))
+
+    def load_tape(self, path: str) -> bool:
+        """Read CSV with columns timestamp_ns, symbol, funding_rate."""
+        return bool(int(lrvx_funding_schedule_load_tape(self._h, _cstr(path))))
+
+    def load_profile(self, name: str):
+        """name: binance_um_futures | bybit_linear | okx_swap | bitget_hourly."""
+        if int(lrvx_funding_schedule_load_profile(self._h, _cstr(name))) == 0:
+            raise ValueError("unknown funding schedule profile: " + name)
+    def set_constant_rate(self, rate: float):
+        lrvx_funding_schedule_set_constant_rate(self._h, f64(rate))
+
+    def reset(self):
+        lrvx_funding_schedule_reset(self._h)
+
+    def tick(self, now_ns: int, symbols: List[int], positions: List[float],
+             mark_prices: List[float]) -> List[FundingPayment]:
+        n = len(symbols)
+        if n == 0:
+            return []
+        sy = [u32(s) for s in symbols]
+        ps = [f64(p) for p in positions]
+        mp = [f64(m) for m in mark_prices]
+        # First call: learn the event count.
+        count = int(lrvx_funding_schedule_tick(
+            self._h, i64(now_ns), cobj(sy.arr.ptr), cobj(ps.arr.ptr),
+            cobj(mp.arr.ptr), u32(n), cobj(), u32(0)))
+        if count == 0:
+            return []
+        buf = [f64(0.0)] * (count * 6)
+        lrvx_funding_schedule_tick(
+            self._h, i64(now_ns), cobj(sy.arr.ptr), cobj(ps.arr.ptr),
+            cobj(mp.arr.ptr), u32(n), cobj(buf.arr.ptr), u32(count))
+        out = list[FundingPayment]()
+        for i in range(count):
+            base = i * 6
+            out.append(FundingPayment(
+                timestamp_ns=int(buf[base + 0]),
+                symbol=int(buf[base + 1]),
+                rate=float(buf[base + 2]),
+                mark_price=float(buf[base + 3]),
+                position_signed=float(buf[base + 4]),
+                amount=float(buf[base + 5])))
+        return out

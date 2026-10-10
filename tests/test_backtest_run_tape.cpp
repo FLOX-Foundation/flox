@@ -1,27 +1,27 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 // Regression test for `BacktestRunner::runTape(path)` — the canonical
 // recorded-tape → backtest path. Without `runTape` the only way to
-// drive a strategy off a `.floxlog` was a sidecar (e.g. bars.npz) since
+// drive a strategy off a `.lrvx` was a sidecar (e.g. bars.npz) since
 // `replay_tape` is callback-based and doesn't feed the runner.
 //
 // Test writes a tiny tape via `BinaryLogWriter`, then drives a
 // counter strategy off it through `runTape` and asserts the
 // strategy's `onSymbolTrade` fires the expected number of times.
 
-#include "flox/backtest/backtest_runner.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/writers/binary_log_writer.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -29,7 +29,7 @@
 #include <filesystem>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -61,7 +61,7 @@ SymbolId addSymbol(SymbolRegistry& reg, const std::string& name)
 
 TEST(BacktestRunTape, RoundTripsRecordedSession)
 {
-  auto td = std::filesystem::temp_directory_path() / "flox_run_tape_test";
+  auto td = std::filesystem::temp_directory_path() / "lrvx_run_tape_test";
   std::filesystem::remove_all(td);
   std::filesystem::create_directories(td);
 
@@ -111,7 +111,7 @@ TEST(BacktestRunTape, ThrowsOnMissingDirectory)
 
   // The factory either returns nullptr (caught + thrown) or throws.
   // Either way the call must not silently produce zero-trade stats.
-  auto missing = std::filesystem::temp_directory_path() / "flox_run_tape_does_not_exist";
+  auto missing = std::filesystem::temp_directory_path() / "lrvx_run_tape_does_not_exist";
   std::filesystem::remove_all(missing);
   EXPECT_ANY_THROW(runner.runTape(missing));
 }

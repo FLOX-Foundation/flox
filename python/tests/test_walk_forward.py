@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.WalkForwardRunner``.
+"""Tests for ``lrvx.WalkForwardRunner``.
 
 Anchored and sliding modes against the bundled BTC sample. Asserts
 fold counts, that train/test windows partition the input correctly,
@@ -13,17 +13,17 @@ import unittest
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
-_CSV = os.path.join(os.path.dirname(__file__), "..", "flox_py",
+_CSV = os.path.join(os.path.dirname(__file__), "..", "lrvx",
                     "templates", "research", "data", "btcusdt_sample.csv")
 
 
-class _SmaStrategy(flox.Strategy):
+class _SmaStrategy(lrvx.Strategy):
     def __init__(self, syms, *, fast=10, slow=30):
         super().__init__(syms)
-        self.fast = flox.SMA(fast)
-        self.slow = flox.SMA(slow)
+        self.fast = lrvx.SMA(fast)
+        self.slow = lrvx.SMA(slow)
 
     def on_trade(self, ctx, t):
         f = self.fast.update(t.price)
@@ -41,14 +41,14 @@ class _SmaStrategy(flox.Strategy):
 class WalkForwardTests(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.reg = flox.SymbolRegistry()
+        self.reg = lrvx.SymbolRegistry()
         self.btc = self.reg.add_symbol("exchange", "BTCUSDT", 0.01)
 
     def test_anchored_mode_produces_expected_fold_count(self):
         # 500 bars, min_train=100, test=100, step=100 → splits at 100,
         # 200, 300, 400 → 4 folds (each with test_size=100, last
         # ending at 500).
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, fee_rate=0.0004, initial_capital=10_000,
             mode="anchored", test_size=100, step=100, min_train_size=100,
         )
@@ -57,7 +57,7 @@ class WalkForwardTests(unittest.TestCase):
         self.assertEqual(len(folds), 4)
 
     def test_anchored_train_window_grows(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, mode="anchored", test_size=100, step=100,
             min_train_size=100, fee_rate=0.0004, initial_capital=10_000,
         )
@@ -70,7 +70,7 @@ class WalkForwardTests(unittest.TestCase):
         self.assertEqual(train_ends[0], 100)
 
     def test_anchored_test_immediately_follows_train(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, mode="anchored", test_size=100, step=100,
             min_train_size=100, fee_rate=0.0004, initial_capital=10_000,
         )
@@ -82,7 +82,7 @@ class WalkForwardTests(unittest.TestCase):
                              f["test_start_bar"] + 100)
 
     def test_sliding_mode_window_is_constant(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, mode="sliding", train_size=200, test_size=100,
             step=100, fee_rate=0.0004, initial_capital=10_000,
         )
@@ -98,26 +98,26 @@ class WalkForwardTests(unittest.TestCase):
             self.assertEqual(f["test_end_bar"] - f["test_start_bar"], 100)
 
     def test_run_with_unknown_symbol_raises(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, mode="anchored", test_size=100, step=100,
             min_train_size=100, fee_rate=0.0004, initial_capital=10_000,
         )
         wfr.set_strategy_factory(lambda _i: _SmaStrategy([self.btc]))
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             wfr.run_csv(_CSV, "UNKNOWN_SYMBOL")
         self.assertEqual(cm.exception.code, "E_SYM_001")
 
     def test_run_without_factory_raises(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, mode="anchored", test_size=100, step=100,
             min_train_size=100, fee_rate=0.0004, initial_capital=10_000,
         )
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             wfr.run_csv(_CSV, "BTCUSDT")
         self.assertEqual(cm.exception.code, "E_RUN_001")
 
 
-class _IntrabarHighLowStrategy(flox.Strategy):
+class _IntrabarHighLowStrategy(lrvx.Strategy):
     """Bar-strategy diagnostic for high/low preservation.
 
     Enters long on any bar with a non-degenerate intrabar range
@@ -148,7 +148,7 @@ class WalkForwardRunBarsTests(unittest.TestCase):
     """Tests for WalkForwardRunner.run_bars (full OHLCV path)."""
 
     def setUp(self) -> None:
-        self.reg = flox.SymbolRegistry()
+        self.reg = lrvx.SymbolRegistry()
         self.btc = self.reg.add_symbol("exchange", "BTCUSDT", 0.01)
         # Load the bundled BTC sample into OHLCV arrays.
         import csv
@@ -175,7 +175,7 @@ class WalkForwardRunBarsTests(unittest.TestCase):
         self.v = np.array(v, dtype=np.float64)
 
     def test_run_bars_produces_folds(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, fee_rate=0.0, initial_capital=10_000,
             mode="sliding", train_size=200, test_size=100, step=100,
         )
@@ -198,7 +198,7 @@ class WalkForwardRunBarsTests(unittest.TestCase):
         produce >0 trades when bars carry full OHLCV. Under the legacy
         close-only path this strategy would see high == low == close
         and never trigger."""
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, fee_rate=0.0, initial_capital=10_000,
             mode="sliding", train_size=200, test_size=100, step=100,
         )
@@ -218,37 +218,37 @@ class WalkForwardRunBarsTests(unittest.TestCase):
                            "through to on_bar")
 
     def test_run_bars_without_factory_raises(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, fee_rate=0.0, initial_capital=10_000,
             mode="sliding", train_size=200, test_size=100, step=100,
         )
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             wfr.run_bars(self.start_ns, self.end_ns, self.o, self.h,
                          self.lo, self.c, self.v, symbol="BTCUSDT")
         self.assertEqual(cm.exception.code, "E_RUN_001")
 
     def test_run_bars_unknown_symbol_raises(self):
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, fee_rate=0.0, initial_capital=10_000,
             mode="sliding", train_size=200, test_size=100, step=100,
         )
         wfr.set_strategy_factory(
             lambda _i: _IntrabarHighLowStrategy([self.btc]))
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             wfr.run_bars(self.start_ns, self.end_ns, self.o, self.h,
                          self.lo, self.c, self.v, symbol="UNKNOWN")
         self.assertEqual(cm.exception.code, "E_SYM_001")
 
     def test_run_bars_length_mismatch_raises(self):
         import numpy as np
-        wfr = flox.WalkForwardRunner(
+        wfr = lrvx.WalkForwardRunner(
             self.reg, fee_rate=0.0, initial_capital=10_000,
             mode="sliding", train_size=200, test_size=100, step=100,
         )
         wfr.set_strategy_factory(
             lambda _i: _IntrabarHighLowStrategy([self.btc]))
         # truncate one array — should reject
-        with self.assertRaises(flox.FloxError) as cm:
+        with self.assertRaises(lrvx.LrvxError) as cm:
             wfr.run_bars(self.start_ns, self.end_ns[:-1], self.o,
                          self.h, self.lo, self.c, self.v, symbol="BTCUSDT")
         self.assertEqual(cm.exception.code, "E_LEN_001")

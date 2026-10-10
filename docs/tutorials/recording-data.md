@@ -1,29 +1,29 @@
 # Recording Data
 
-Capture live market data to disk for later replay and backtesting. The same `.floxlog` binary format is produced by every binding — record from Python or Node.js and replay from C++ later, or vice versa.
+Capture live market data to disk for later replay and backtesting. The same `.lrvx` binary format is produced by every binding — record from Python or Node.js and replay from C++ later, or vice versa.
 
 ## Prerequisites
 
 - Completed [First Strategy](first-strategy.md)
-- Optional: LZ4 library for compression (`-DFLOX_ENABLE_LZ4=ON`)
+- Optional: LZ4 library for compression (`-DLRVX_ENABLE_LZ4=ON`)
 
 ## What gets recorded
 
-FLOX writes a custom binary format optimised for sequential writes and fast sequential / indexed reads, with optional LZ4 compression and automatic segment rotation.
+lrvx writes a custom binary format optimised for sequential writes and fast sequential / indexed reads, with optional LZ4 compression and automatic segment rotation.
 
 ## Basic recording
 
-Two ways to write a `.floxlog`:
+Two ways to write a `.lrvx`:
 
 1. **Attach a `BinaryLogRecorderHook` to a `Runner`** (recommended). The runner feeds trades and book updates straight into the writer on the C++ side — no per-event managed-language callback.
-2. **Use the low-level `DataWriter`** directly when you're synthesising data outside a runner (e.g. converting an arbitrary archive into `.floxlog`).
+2. **Use the low-level `DataWriter`** directly when you're synthesising data outside a runner (e.g. converting an arbitrary archive into `.lrvx`).
 
 === "Python — runner attach"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    hook = flox.BinaryLogRecorderHook(
+    hook = lrvx.BinaryLogRecorderHook(
         "/data/btcusdt",
         max_segment_mb=256,
         exchange_id=0,
@@ -32,7 +32,7 @@ Two ways to write a `.floxlog`:
     hook.add_symbol(1, "BTCUSDT", base="BTC", quote="USDT",
                     price_precision=2, qty_precision=3)
 
-    runner = flox.Runner(registry, on_signal=lambda _s: None)
+    runner = lrvx.Runner(registry, on_signal=lambda _s: None)
     runner.set_market_data_recorder(hook)
     runner.start()
     # ... events flow through the runner ...
@@ -43,10 +43,10 @@ Two ways to write a `.floxlog`:
 === "Python — direct DataWriter"
 
     ```python
-    import flox_py as flox
+    import lrvx
     import numpy as np
 
-    w = flox.DataWriter("/data/btcusdt", max_segment_mb=256, exchange_id=0,
+    w = lrvx.DataWriter("/data/btcusdt", max_segment_mb=256, exchange_id=0,
                         compression="none")
     w.write_trade(exchange_ts_ns=ts_ns, recv_ts_ns=ts_ns,
                   price=10050.0, qty=0.5, trade_id=0, symbol_id=1, side=0)
@@ -62,7 +62,7 @@ Two ways to write a `.floxlog`:
 === "Node.js — runner attach"
 
     ```javascript
-    const hook = new flox.BinaryLogRecorderHook(
+    const hook = new lrvx.BinaryLogRecorderHook(
       "/data/btcusdt", 256, 0, "none");
     hook.addSymbol(1n, "BTCUSDT", "BTC", "USDT", 2, 3);
 
@@ -76,7 +76,7 @@ Two ways to write a `.floxlog`:
 === "Node.js — direct DataWriter"
 
     ```javascript
-    const w = new flox.DataWriter("/data/btcusdt", 256, 0);
+    const w = new lrvx.DataWriter("/data/btcusdt", 256, 0);
     w.writeTrade(tsNs, tsNs, 10050.0, 0.5, 0n, 1, 0);
     // Book levels are flat BigInt64Array: [price_raw, qty_raw, ...]
     const bids = new BigInt64Array([1005000000000n, 50000000n]);
@@ -88,8 +88,8 @@ Two ways to write a `.floxlog`:
 === "C++"
 
     ```cpp
-    #include "flox/replay/writers/binary_log_writer.h"
-    using namespace flox::replay;
+    #include "lrvx/replay/writers/binary_log_writer.h"
+    using namespace lrvx::replay;
 
     WriterConfig config;
     config.output_dir = "/data/market_data";
@@ -116,8 +116,8 @@ Two ways to write a `.floxlog`:
 Subscribe the writer to your market data buses:
 
 ```cpp
-// Bespoke subscriber that writes both buses into one .floxlog.
-// Functionally equivalent to flox::replay::BinaryLogRecorderHook, but
+// Bespoke subscriber that writes both buses into one .lrvx.
+// Functionally equivalent to lrvx::replay::BinaryLogRecorderHook, but
 // shown here as a worked example of the underlying writer surface.
 class CustomBusRecorder : public IMarketDataSubscriber
 {
@@ -196,23 +196,23 @@ bookBus->subscribe(recorder.get());
 
 ## File format
 
-FLOX creates `.floxlog` segment files with embedded index:
+lrvx creates `.lrvx` segment files with embedded index:
 
 ```
 /data/market_data/
 ├── metadata.json                    # Recording metadata (exchange, symbols, etc.)
 ├── .manifest                        # Optional: binary segment index, rebuildable
-├── 1735732800000000000.floxlog      # First segment (index embedded at end)
-├── 1735733700000000000.floxlog      # Second segment (after rotation)
-└── index.floxidx                    # Optional: global index across all segments
+├── 1735732800000000000.lrvx      # First segment (index embedded at end)
+├── 1735733700000000000.lrvx      # Second segment (after rotation)
+└── index.lrvxidx                    # Optional: global index across all segments
 ```
 
-Segments are named `<created_ns>.floxlog` by default — the wall-clock
+Segments are named `<created_ns>.lrvx` by default — the wall-clock
 nanosecond timestamp at which the writer opened them. Set a
 `rotation_callback` on the writer config to choose your own names.
 Trades and book updates are interleaved in one timestamp-ordered
 stream; there is no per-type file split. Full byte layout:
-[`.floxlog` format spec](../spec/floxlog.md).
+[`.lrvx` format spec](../spec/lrvx.md).
 
 Segment structure:
 ```
@@ -226,7 +226,7 @@ Segment structure:
 └──────────────────┘
 ```
 
-The global index (`index.floxidx`) can be built separately using `GlobalIndexBuilder` to enable fast lookup across multiple segment files.
+The global index (`index.lrvxidx`) can be built separately using `GlobalIndexBuilder` to enable fast lookup across multiple segment files.
 
 ## Recording metadata
 
@@ -264,22 +264,22 @@ Each recording includes a `metadata.json` file with source information:
 
 ### Using BinaryLogRecorderHook
 
-`flox::replay::BinaryLogRecorderHook` plugs into a Runner / LiveEngine
-via `flox_runner_set_market_data_recorder` and writes both trades and
+`lrvx::replay::BinaryLogRecorderHook` plugs into a Runner / LiveEngine
+via `lrvx_runner_set_market_data_recorder` and writes both trades and
 books on the engine thread:
 
 ```cpp
-#include "flox/replay/binary_log_recorder_hook.h"
+#include "lrvx/replay/binary_log_recorder_hook.h"
 
-flox::replay::BinaryLogRecorderHookConfig cfg;
+lrvx::replay::BinaryLogRecorderHookConfig cfg;
 cfg.output_dir = "/data/btcusdt";
 cfg.max_segment_bytes = 256ull << 20;
 cfg.exchange_id = 0;
-cfg.compression = flox::replay::CompressionType::None;
+cfg.compression = lrvx::replay::CompressionType::None;
 
-flox::replay::BinaryLogRecorderHook hook(std::move(cfg));
+lrvx::replay::BinaryLogRecorderHook hook(std::move(cfg));
 
-flox::replay::SymbolInfo sym;
+lrvx::replay::SymbolInfo sym;
 sym.symbol_id = 1;
 sym.name = "BTCUSDT";
 sym.base_asset = "BTC";
@@ -288,7 +288,7 @@ sym.price_precision = 2;
 sym.qty_precision = 3;
 hook.addSymbol(sym);
 
-// Attach via flox_runner_set_market_data_recorder (see the C-API
+// Attach via lrvx_runner_set_market_data_recorder (see the C-API
 // recorder-hook section); start/stop fire automatically with the
 // runner. metadata.json is written on stop().
 ```
@@ -296,7 +296,7 @@ hook.addSymbol(sym);
 ### Manual Metadata with BinaryLogWriter
 
 ```cpp
-#include "flox/replay/recording_metadata.h"
+#include "lrvx/replay/recording_metadata.h"
 
 RecordingMetadata meta;
 meta.exchange = "bybit";
@@ -330,7 +330,7 @@ std::cout << "Events: " << stats.events_written
 Enable LZ4 for 3-5x size reduction:
 
 ```bash
-cmake .. -DFLOX_ENABLE_LZ4=ON
+cmake .. -DLRVX_ENABLE_LZ4=ON
 ```
 
 ```cpp

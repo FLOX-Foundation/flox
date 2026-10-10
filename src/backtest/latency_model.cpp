@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/latency_model.h"
+#include "lrvx/backtest/latency_model.h"
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace flox
+namespace lrvx
 {
 
 namespace
@@ -154,4 +154,4 @@ int64_t EmpiricalLatency::feedDelay() { return draw(_feed_samples); }
 int64_t EmpiricalLatency::orderDelay() { return draw(_order_samples); }
 int64_t EmpiricalLatency::fillDelay() { return draw(_fill_samples); }
 
-}  // namespace flox
+}  // namespace lrvx

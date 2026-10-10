@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Mutation harness for the executor bar path across the bindings.
 
-`flox_simulated_executor_on_bar_ohlc` / `_begin_bar_callback_window` /
-`_end_bar_callback_window` / `_reset`, plus `close_reason` on `FloxBar`, were
+`lrvx_simulated_executor_on_bar_ohlc` / `_begin_bar_callback_window` /
+`_end_bar_callback_window` / `_reset`, plus `close_reason` on `LrvxBar`, were
 added to the C API and then projected into pybind11, napi, QuickJS and Codon
 (the manual bar path of the simulated executor).
 This script breaks that projection one piece and one binding at a time, and
@@ -10,23 +10,23 @@ checks that the test written for it goes red.
 
 Five build systems answer for the pieces below:
 
-  c        include/flox/capi/flox_capi.h, src/capi/flox_capi.cpp
-           -> rebuild the `flox_capi` target (and the two gtest binaries when
+  c        include/lrvx/capi/lrvx_capi.h, src/capi/lrvx_capi.cpp
+           -> rebuild the `lrvx_capi` target (and the two gtest binaries when
               a header both of them include is mutated) in build/, run
               tests/test_capi_executor_bar_ohlc and/or tests/test_capi_infra.
   quickjs  src/quickjs/js_bindings.cpp, src/quickjs/js_strategy.cpp
-           -> rebuild `flox_quickjs` then relink `test_quickjs` in build/.
+           -> rebuild `lrvx_quickjs` then relink `test_quickjs` in build/.
   python   python/backtest_bindings.h, python/aggregator_bindings.h
-           -> rebuild `_flox_py` in build-py/, run pytest under it.
+           -> rebuild `_lrvx` in build-py/, run pytest under it.
   node     node/src/backtest.h, node/src/aggregators.h
            -> `npm run build` in node/, run node/test/test_executor_bar_ohlc_parity.js.
-  codegen  codon/flox/*.codon, tools/codegen/binding_parity.yaml,
-           tools/codegen/golden/flox_capi.codon
+  codegen  codon/lrvx/*.codon, tools/codegen/binding_parity.yaml,
+           tools/codegen/golden/lrvx_capi.codon
            -> no compiler for Codon in this environment; these are plain-text
               files read by pytest tools/codegen/tests. No rebuild.
 
 Three of the five bindings that carry this bar path -- C, Python, Node -- are
-compiled from flox_capi.cpp/.h directly (each binding embeds its own copy of
+compiled from lrvx_capi.cpp/.h directly (each binding embeds its own copy of
 the C shim), so a mutation there can affect the c, python AND node systems at
 once. Anything that survives its primary system's test is swept across every
 OTHER system that same file feeds, before it is called a hole. QuickJS and
@@ -47,11 +47,11 @@ Usage (run from anywhere; paths below are resolved from this file):
 
 Build directories are expected to be configured already:
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON \\
-          -DFLOX_BUILD_CAPI=ON -DFLOX_BUILD_QUICKJS=ON -DFLOX_NATIVE=OFF
-    cmake -S . -B build-py -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_PYTHON=ON \\
-          -DFLOX_BUILD_TESTS=OFF -DFLOX_BUILD_CAPI=OFF -DFLOX_BUILD_QUICKJS=OFF \\
-          -DFLOX_NATIVE=OFF -Dpybind11_DIR=<pybind11.get_cmake_dir() of .venv-tests>
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON \\
+          -DLRVX_BUILD_CAPI=ON -DLRVX_BUILD_QUICKJS=ON -DLRVX_NATIVE=OFF
+    cmake -S . -B build-py -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_PYTHON=ON \\
+          -DLRVX_BUILD_TESTS=OFF -DLRVX_BUILD_CAPI=OFF -DLRVX_BUILD_QUICKJS=OFF \\
+          -DLRVX_NATIVE=OFF -Dpybind11_DIR=<pybind11.get_cmake_dir() of .venv-tests>
     (cd node && npm run build)   # once, to populate node_modules/build
 
 and a venv at .venv-tests/ with "pybind11<3.1.0" numpy pytest pyyaml installed.
@@ -85,17 +85,17 @@ NPM = shutil.which("npm") or "npm"
 NODE = shutil.which("node") or "node"
 
 # ── files ────────────────────────────────────────────────────────────────
-CAPI_H = "include/flox/capi/flox_capi.h"
-CAPI_CPP = "src/capi/flox_capi.cpp"
+CAPI_H = "include/lrvx/capi/lrvx_capi.h"
+CAPI_CPP = "src/capi/lrvx_capi.cpp"
 PY_BACKTEST = "python/backtest_bindings.h"
 PY_AGGREGATOR = "python/aggregator_bindings.h"
 NODE_BACKTEST = "node/src/backtest.h"
 NODE_AGGREGATORS = "node/src/aggregators.h"
 QJS_BINDINGS = "src/quickjs/js_bindings.cpp"
-CODON_BACKTEST = "codon/flox/backtest.codon"
-CODON_TOOLS = "codon/flox/tools.codon"
+CODON_BACKTEST = "codon/lrvx/backtest.codon"
+CODON_TOOLS = "codon/lrvx/tools.codon"
 YAML_MANIFEST = "tools/codegen/binding_parity.yaml"
-CODON_GOLDEN = "tools/codegen/golden/flox_capi.codon"
+CODON_GOLDEN = "tools/codegen/golden/lrvx_capi.codon"
 
 # ── test surfaces ───────────────────────────────────────────────────────
 CAPI_EXECUTOR_BIN = BUILD_C / "tests" / "test_capi_executor_bar_ohlc"
@@ -176,33 +176,33 @@ MUTATIONS: list[Mutation] = [
     # ── C: on_bar_ohlc's own projection ──────────────────────────────────
     Mutation(
         name="c-on-bar-ohlc-close-as-open",
-        why="flox_simulated_executor_on_bar_ohlc forwards close_price where open_price "
+        why="lrvx_simulated_executor_on_bar_ohlc forwards close_price where open_price "
             "belongs (and vice versa): a held callback order fills at the bar's close "
             "instead of the next bar's open",
         system="c", file=CAPI_CPP,
-        old="""  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+        old="""  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.onBar(
       symbol, Price::fromDouble(open_price), Price::fromDouble(high_price),
       Price::fromDouble(low_price), Price::fromDouble(close_price));""",
-        new="""  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+        new="""  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.onBar(
       symbol, Price::fromDouble(close_price), Price::fromDouble(high_price),
       Price::fromDouble(low_price), Price::fromDouble(open_price));""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter="CapiExecutorBarOhlc.AHeldOrderFillsAtTheOpenNotTheClose",
         also_feeds=["python", "node"],
     ),
     Mutation(
         name="c-on-bar-ohlc-high-low-swapped",
-        why="flox_simulated_executor_on_bar_ohlc forwards high_price and low_price "
+        why="lrvx_simulated_executor_on_bar_ohlc forwards high_price and low_price "
             "swapped, so the walk's intrabar extremes are inverted",
         system="c", file=CAPI_CPP,
-        old="""  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+        old="""  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.onBar(
       symbol, Price::fromDouble(open_price), Price::fromDouble(high_price),
       Price::fromDouble(low_price), Price::fromDouble(close_price));""",
-        new="""  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+        new="""  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.onBar(
       symbol, Price::fromDouble(open_price), Price::fromDouble(low_price),
       Price::fromDouble(high_price), Price::fromDouble(close_price));""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         # A single resting order cannot see this: a bar straddling it touches
         # it whichever way round the two extremes arrive. The bracket case can
@@ -213,85 +213,85 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="c-on-bar-ohlc-calls-close-only-overload",
-        why="flox_simulated_executor_on_bar_ohlc calls the two-argument close-only "
+        why="lrvx_simulated_executor_on_bar_ohlc calls the two-argument close-only "
             "onBar(symbol, close) overload instead of the four-price one, so it is the "
             "close-only path wearing a new name",
         system="c", file=CAPI_CPP,
-        old="""  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+        old="""  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.onBar(
       symbol, Price::fromDouble(open_price), Price::fromDouble(high_price),
       Price::fromDouble(low_price), Price::fromDouble(close_price));""",
-        new="""  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+        new="""  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.onBar(
       symbol, Price::fromDouble(close_price));
   (void)open_price;
   (void)high_price;
   (void)low_price;""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter="CapiExecutorBarOhlc.AHeldOrderFillsAtTheOpenNotTheClose",
         also_feeds=["python", "node"],
     ),
     Mutation(
         name="c-window-begin-not-forwarded",
-        why="flox_simulated_executor_begin_bar_callback_window is a no-op: a callback "
+        why="lrvx_simulated_executor_begin_bar_callback_window is a no-op: a callback "
             "order is never held, so it matches inside the bar it was submitted from",
         system="c", file=CAPI_CPP,
-        old="""void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle h)
+        old="""void lrvx_simulated_executor_begin_bar_callback_window(LrvxSimulatedExecutorHandle h)
 {
-  FLOX_CAPI_ENTER_VOID(h);
-  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.beginBarCallbackWindow();
-  FLOX_CAPI_LEAVE_VOID;
+  LRVX_CAPI_ENTER_VOID(h);
+  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.beginBarCallbackWindow();
+  LRVX_CAPI_LEAVE_VOID;
 }""",
-        new="""void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle h)
+        new="""void lrvx_simulated_executor_begin_bar_callback_window(LrvxSimulatedExecutorHandle h)
 {
-  FLOX_CAPI_ENTER_VOID(h);
+  LRVX_CAPI_ENTER_VOID(h);
   (void)h;
-  FLOX_CAPI_LEAVE_VOID;
+  LRVX_CAPI_LEAVE_VOID;
 }""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter="CapiExecutorBarOhlc.HandDrivenBarsMatchTheRunner",
         also_feeds=["python", "node"],
     ),
     Mutation(
         name="c-window-end-not-forwarded",
-        why="flox_simulated_executor_end_bar_callback_window is a no-op: the window "
+        why="lrvx_simulated_executor_end_bar_callback_window is a no-op: the window "
             "opened by begin() is never closed, so its depth counter only ever grows",
         system="c", file=CAPI_CPP,
-        old="""void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle h)
+        old="""void lrvx_simulated_executor_end_bar_callback_window(LrvxSimulatedExecutorHandle h)
 {
-  FLOX_CAPI_ENTER_VOID(h);
-  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.endBarCallbackWindow();
-  FLOX_CAPI_LEAVE_VOID;
+  LRVX_CAPI_ENTER_VOID(h);
+  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.endBarCallbackWindow();
+  LRVX_CAPI_LEAVE_VOID;
 }""",
-        new="""void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle h)
+        new="""void lrvx_simulated_executor_end_bar_callback_window(LrvxSimulatedExecutorHandle h)
 {
-  FLOX_CAPI_ENTER_VOID(h);
+  LRVX_CAPI_ENTER_VOID(h);
   (void)h;
-  FLOX_CAPI_LEAVE_VOID;
+  LRVX_CAPI_LEAVE_VOID;
 }""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter=None,  # whole binary: no single case names "the window never closes"
         also_feeds=["python", "node"],
     ),
     Mutation(
         name="c-reset-noop",
-        why="flox_simulated_executor_reset is a no-op: a second hand-driven run reports "
+        why="lrvx_simulated_executor_reset is a no-op: a second hand-driven run reports "
             "the sum of every run instead of just its own",
         system="c", file=CAPI_CPP,
-        old="""void flox_simulated_executor_reset(FloxSimulatedExecutorHandle h)
+        old="""void lrvx_simulated_executor_reset(LrvxSimulatedExecutorHandle h)
 {
-  FLOX_CAPI_ENTER_VOID(h);
-  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.reset();
-  FLOX_CAPI_LEAVE_VOID;
+  LRVX_CAPI_ENTER_VOID(h);
+  static_cast<LrvxSimulatedExecutorImpl*>(h)->executor.reset();
+  LRVX_CAPI_LEAVE_VOID;
 }""",
-        new="""void flox_simulated_executor_reset(FloxSimulatedExecutorHandle h)
+        new="""void lrvx_simulated_executor_reset(LrvxSimulatedExecutorHandle h)
 {
-  FLOX_CAPI_ENTER_VOID(h);
+  LRVX_CAPI_ENTER_VOID(h);
   (void)h;
-  FLOX_CAPI_LEAVE_VOID;
+  LRVX_CAPI_LEAVE_VOID;
 }""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter="CapiExecutorBarOhlc.ResetMakesASecondRunReportThatRun",
         also_feeds=["python", "node"],
@@ -299,15 +299,15 @@ MUTATIONS: list[Mutation] = [
 
     # ── C: close_reason ──────────────────────────────────────────────────
     Mutation(
-        name="c-close-reason-not-written-by-writeFloxBar",
-        why="toFloxBar, the one helper both the batch aggregation and the callback bar ring "
-            "(flox_strategy_last_closed_bar / _last_n_closed_bars) go through since the "
-            "aggregator refactor, drops close_reason, so every FloxBar carries its zero-init value",
+        name="c-close-reason-not-written-by-writeLrvxBar",
+        why="toLrvxBar, the one helper both the batch aggregation and the callback bar ring "
+            "(lrvx_strategy_last_closed_bar / _last_n_closed_bars) go through since the "
+            "aggregator refactor, drops close_reason, so every LrvxBar carries its zero-init value",
         system="c", file=CAPI_CPP,
         old="""          static_cast<uint32_t>(bar.tradeCount.raw()),
           static_cast<uint8_t>(bar.reason)};""",
         new="""          static_cast<uint32_t>(bar.tradeCount.raw())};""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         # AggregatedBarsCarryACloseReason goes through doAggregateC and cannot
         # see this writer; the bar-ring case reads exactly what it produces.
@@ -316,13 +316,13 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="c-close-reason-wrong-field-doAggregateC",
-        why="toFloxBar writes trade_count's value into close_reason instead of the bar's own reason",
+        why="toLrvxBar writes trade_count's value into close_reason instead of the bar's own reason",
         system="c", file=CAPI_CPP,
         old="""          static_cast<uint32_t>(bar.tradeCount.raw()),
           static_cast<uint8_t>(bar.reason)};""",
         new="""          static_cast<uint32_t>(bar.tradeCount.raw()),
           static_cast<uint8_t>(bar.tradeCount.raw())};""",
-        build_targets=["flox_capi"], purge=["flox_capi"],
+        build_targets=["lrvx_capi"], purge=["lrvx_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter="CapiExecutorBarOhlc.AggregatedBarsCarryACloseReason",
         also_feeds=["python", "node"],
@@ -331,14 +331,14 @@ MUTATIONS: list[Mutation] = [
     # ── C: ABI version ───────────────────────────────────────────────────
     Mutation(
         name="c-abi-version-left-at-2",
-        why="FLOX_CAPI_ABI_VERSION in the compiled header (flox_capi.h, not the IDL "
-            "spec) stays 2 even though FloxBar's shape changed (close_reason added), so "
-            "flox_capi_abi_version() under-reports the ABI a consumer is actually loading",
+        why="LRVX_CAPI_ABI_VERSION in the compiled header (lrvx_capi.h, not the IDL "
+            "spec) stays 2 even though LrvxBar's shape changed (close_reason added), so "
+            "lrvx_capi_abi_version() under-reports the ABI a consumer is actually loading",
         system="c", file=CAPI_H,
-        old="#define FLOX_CAPI_ABI_VERSION 3",
-        new="#define FLOX_CAPI_ABI_VERSION 2",
-        build_targets=["flox_capi", "test_capi_executor_bar_ohlc", "test_capi_infra"],
-        purge=["flox_capi", "test_capi_executor_bar_ohlc", "test_capi_infra"],
+        old="#define LRVX_CAPI_ABI_VERSION 3",
+        new="#define LRVX_CAPI_ABI_VERSION 2",
+        build_targets=["lrvx_capi", "test_capi_executor_bar_ohlc", "test_capi_infra"],
+        purge=["lrvx_capi", "test_capi_executor_bar_ohlc", "test_capi_infra"],
         gtest_binary=CAPI_INFRA_BIN,
         gtest_filter=None,
         also_feeds=["python", "node"],
@@ -357,7 +357,7 @@ MUTATIONS: list[Mutation] = [
                     Price::fromDouble(lowPrice), Price::fromDouble(closePrice));""",
         new="""    _executor.onBar(symbol, Price::fromDouble(closePrice), Price::fromDouble(highPrice),
                     Price::fromDouble(lowPrice), Price::fromDouble(openPrice));""",
-        build_targets=["_flox_py"], purge=["_flox_py"],
+        build_targets=["_lrvx"], purge=["_lrvx"],
         pytest_nodeids=[f"{PY_TEST_FILE}::test_a_held_order_fills_at_the_open_not_the_close"],
     ),
     Mutation(
@@ -368,7 +368,7 @@ MUTATIONS: list[Mutation] = [
                     Price::fromDouble(lowPrice), Price::fromDouble(closePrice));""",
         new="""    _executor.onBar(symbol, Price::fromDouble(openPrice), Price::fromDouble(lowPrice),
                     Price::fromDouble(highPrice), Price::fromDouble(closePrice));""",
-        build_targets=["_flox_py"], purge=["_flox_py"],
+        build_targets=["_lrvx"], purge=["_lrvx"],
         # As on the C side: one resting order cannot tell the two extremes
         # apart, the bracket case can.
         pytest_nodeids=[f"{PY_TEST_FILE}::test_the_walk_reaches_the_low_before_the_high"],
@@ -379,7 +379,7 @@ MUTATIONS: list[Mutation] = [
         system="python", file=PY_BACKTEST,
         old="void beginBarCallbackWindow() { _executor.beginBarCallbackWindow(); }",
         new="void beginBarCallbackWindow() { /* mutated: no-op */ }",
-        build_targets=["_flox_py"], purge=["_flox_py"],
+        build_targets=["_lrvx"], purge=["_lrvx"],
         pytest_nodeids=[f"{PY_TEST_FILE}::test_hand_driven_bars_match_the_runner"],
     ),
     Mutation(
@@ -388,7 +388,7 @@ MUTATIONS: list[Mutation] = [
         system="python", file=PY_BACKTEST,
         old="void endBarCallbackWindow() { _executor.endBarCallbackWindow(); }",
         new="void endBarCallbackWindow() { /* mutated: no-op */ }",
-        build_targets=["_flox_py"], purge=["_flox_py"],
+        build_targets=["_lrvx"], purge=["_lrvx"],
         pytest_nodeids=[f"{PY_TEST_FILE}::test_hand_driven_bars_match_the_runner"],
     ),
     Mutation(
@@ -397,7 +397,7 @@ MUTATIONS: list[Mutation] = [
         system="python", file=PY_BACKTEST,
         old="void reset() { _executor.reset(); }",
         new="void reset() { /* mutated: no-op */ }",
-        build_targets=["_flox_py"], purge=["_flox_py"],
+        build_targets=["_lrvx"], purge=["_lrvx"],
         pytest_nodeids=[f"{PY_TEST_FILE}::test_reset_makes_a_second_run_report_that_run"],
     ),
     Mutation(
@@ -410,7 +410,7 @@ MUTATIONS: list[Mutation] = [
                        close_raw, volume_raw, buy_volume_raw, trade_count, close_reason);""",
         new="""  PYBIND11_NUMPY_DTYPE(PyExtBar, start_time_ns, end_time_ns, open_raw, high_raw, low_raw,
                        close_raw, volume_raw, buy_volume_raw, trade_count);""",
-        build_targets=["_flox_py"], purge=["_flox_py"],
+        build_targets=["_lrvx"], purge=["_lrvx"],
         pytest_nodeids=[f"{PY_TEST_FILE}::test_aggregated_bars_carry_a_close_reason"],
     ),
 
@@ -420,12 +420,12 @@ MUTATIONS: list[Mutation] = [
         why="SimulatedExecutorWrap::OnBarOhlc forwards info[4] (close) where info[1] "
             "(open) belongs and vice versa",
         system="node", file=NODE_BACKTEST,
-        old="""    flox_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
+        old="""    lrvx_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
                                         info[1].As<Napi::Number>().DoubleValue(),
                                         info[2].As<Napi::Number>().DoubleValue(),
                                         info[3].As<Napi::Number>().DoubleValue(),
                                         info[4].As<Napi::Number>().DoubleValue());""",
-        new="""    flox_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
+        new="""    lrvx_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
                                         info[4].As<Napi::Number>().DoubleValue(),
                                         info[2].As<Napi::Number>().DoubleValue(),
                                         info[3].As<Napi::Number>().DoubleValue(),
@@ -437,12 +437,12 @@ MUTATIONS: list[Mutation] = [
         why="SimulatedExecutorWrap::OnBarOhlc forwards info[2] (high) and info[3] (low) "
             "swapped",
         system="node", file=NODE_BACKTEST,
-        old="""    flox_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
+        old="""    lrvx_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
                                         info[1].As<Napi::Number>().DoubleValue(),
                                         info[2].As<Napi::Number>().DoubleValue(),
                                         info[3].As<Napi::Number>().DoubleValue(),
                                         info[4].As<Napi::Number>().DoubleValue());""",
-        new="""    flox_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
+        new="""    lrvx_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
                                         info[1].As<Napi::Number>().DoubleValue(),
                                         info[3].As<Napi::Number>().DoubleValue(),
                                         info[2].As<Napi::Number>().DoubleValue(),
@@ -455,7 +455,7 @@ MUTATIONS: list[Mutation] = [
         system="node", file=NODE_BACKTEST,
         old="""  void BeginBarCallbackWindow(const Napi::CallbackInfo&)
   {
-    flox_simulated_executor_begin_bar_callback_window(_h);
+    lrvx_simulated_executor_begin_bar_callback_window(_h);
   }""",
         new="""  void BeginBarCallbackWindow(const Napi::CallbackInfo&)
   {
@@ -469,7 +469,7 @@ MUTATIONS: list[Mutation] = [
         system="node", file=NODE_BACKTEST,
         old="""  void EndBarCallbackWindow(const Napi::CallbackInfo&)
   {
-    flox_simulated_executor_end_bar_callback_window(_h);
+    lrvx_simulated_executor_end_bar_callback_window(_h);
   }""",
         new="""  void EndBarCallbackWindow(const Napi::CallbackInfo&)
   {
@@ -481,13 +481,13 @@ MUTATIONS: list[Mutation] = [
         name="node-reset-noop",
         why="SimulatedExecutorWrap::Reset is a no-op",
         system="node", file=NODE_BACKTEST,
-        old="  void Reset(const Napi::CallbackInfo&) { flox_simulated_executor_reset(_h); }",
+        old="  void Reset(const Napi::CallbackInfo&) { lrvx_simulated_executor_reset(_h); }",
         new="  void Reset(const Napi::CallbackInfo&) { /* mutated: no-op */ }",
         node_test=True,
     ),
     Mutation(
         name="node-close-reason-wrong-byte",
-        why="barsToJs reads closeReason off trade_count (the adjacent field in FloxBar's "
+        why="barsToJs reads closeReason off trade_count (the adjacent field in LrvxBar's "
             "layout) instead of close_reason",
         system="node", file=NODE_AGGREGATORS,
         old='    o.Set("closeReason", bars[i].close_reason);',
@@ -501,15 +501,15 @@ MUTATIONS: list[Mutation] = [
         why="js_executor_on_bar_ohlc forwards argv[5] (close) where argv[2] (open) "
             "belongs and vice versa",
         system="quickjs", file=QJS_BINDINGS,
-        old="""  flox_simulated_executor_on_bar_ohlc(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+        old="""  lrvx_simulated_executor_on_bar_ohlc(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toUint32(ctx, argv[1]), toDouble(ctx, argv[2]), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));""",
-        new="""  flox_simulated_executor_on_bar_ohlc(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+        new="""  lrvx_simulated_executor_on_bar_ohlc(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       toUint32(ctx, argv[1]), toDouble(ctx, argv[5]), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[2]));""",
-        build_targets=["flox_quickjs", "test_quickjs"], purge=["flox_quickjs", "test_quickjs"],
+        build_targets=["lrvx_quickjs", "test_quickjs"], purge=["lrvx_quickjs", "test_quickjs"],
         gtest_binary=QUICKJS_BIN, gtest_filter=None,
         # JsIntegrationTest.SimulatedExecutorDrivesTheBarPath drives the JS
         # SimulatedExecutor over the tape and compares the realised pnl with a
@@ -523,8 +523,8 @@ MUTATIONS: list[Mutation] = [
         old="""static JSValue js_executor_begin_bar_callback_window(JSContext* ctx, JSValueConst, int,
                                                      JSValueConst* argv)
 {
-  flox_simulated_executor_begin_bar_callback_window(
-      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  lrvx_simulated_executor_begin_bar_callback_window(
+      static_cast<LrvxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }""",
         new="""static JSValue js_executor_begin_bar_callback_window(JSContext* ctx, JSValueConst, int,
@@ -534,7 +534,7 @@ MUTATIONS: list[Mutation] = [
   (void)argv;
   return JS_UNDEFINED;
 }""",
-        build_targets=["flox_quickjs", "test_quickjs"], purge=["flox_quickjs", "test_quickjs"],
+        build_targets=["lrvx_quickjs", "test_quickjs"], purge=["lrvx_quickjs", "test_quickjs"],
         gtest_binary=QUICKJS_BIN, gtest_filter=None,
         # Same test: it drives the tape once with the window and once without,
         # and the two runs have to realise different numbers.
@@ -545,13 +545,13 @@ MUTATIONS: list[Mutation] = [
             "the field the Python and Node aggregator bindings both carry",
         system="quickjs", file=QJS_BINDINGS,
         old="""    JS_SetPropertyStr(ctx, o, "trades", JS_NewUint32(ctx, b.trade_count));
-    // flox::Bar::reason, carried through so a batch-aggregated bar says why
+    // lrvx::Bar::reason, carried through so a batch-aggregated bar says why
     // it closed the same way the live callback path's bar object does.
     JS_SetPropertyStr(ctx, o, "closeReason", JS_NewUint32(ctx, b.close_reason));""",
         new="""    JS_SetPropertyStr(ctx, o, "trades", JS_NewUint32(ctx, b.trade_count));""",
-        build_targets=["flox_quickjs", "test_quickjs"], purge=["flox_quickjs", "test_quickjs"],
+        build_targets=["lrvx_quickjs", "test_quickjs"], purge=["lrvx_quickjs", "test_quickjs"],
         gtest_binary=QUICKJS_BIN, gtest_filter=None,
-        # Same test reads closeReason off the bars flox.timeBars returns.
+        # Same test reads closeReason off the bars lrvx.timeBars returns.
     ),
 
     # ── Codon: no Codon compiler in this environment at all ───────────────
@@ -560,8 +560,8 @@ MUTATIONS: list[Mutation] = [
         why="SimulatedExecutor.on_bar_ohlc in backtest.codon forwards close where open "
             "belongs, and vice versa",
         system="codegen", file=CODON_BACKTEST,
-        old="        flox_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), open, high, low, close)",
-        new="        flox_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), close, high, low, open)",
+        old="        lrvx_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), open, high, low, close)",
+        new="        lrvx_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), close, high, low, open)",
         codegen_nodeids=[CODEGEN_TEST_FILE],
         equivalent_reason="untestable in this environment, not a missing test: no Codon "
             "compiler is installed (`which codon` finds nothing) and nothing under tests/ "
@@ -588,19 +588,19 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="codon-reset-noop-tools",
         why="SimulatedExecutor.reset in tools.codon (the second of the two Codon wrappers) "
-            "never calls flox_simulated_executor_reset",
+            "never calls lrvx_simulated_executor_reset",
         system="codegen", file=CODON_TOOLS,
         old="""    def reset(self):
         \"\"\"Drop fills and run-scoped state while keeping installed
         configuration (slippage, queue model, latency, ...), so a second
         hand-driven run reports that run and not the sum of every run.\"\"\"
-        flox_simulated_executor_reset(self._h)""",
+        lrvx_simulated_executor_reset(self._h)""",
         new="""    def reset(self):
         pass""",
         codegen_nodeids=[CODEGEN_TEST_FILE],
         equivalent_reason="untestable in this environment: no Codon compiler, and the "
             "text-level test covers backtest.codon's declarations only (CODON_MODULE = "
-            "codon/flox/backtest.codon). A method body emptied out in tools.codon is "
+            "codon/lrvx/backtest.codon). A method body emptied out in tools.codon is "
             "invisible to any text scan; reaching it needs a Codon toolchain in CI.",
     ),
 
@@ -627,11 +627,11 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="codon-golden-entry-dropped",
-        why="tools/codegen/golden/flox_capi.codon drops the "
-            "flox_simulated_executor_reset import -- the golden the parity gate accepts as "
+        why="tools/codegen/golden/lrvx_capi.codon drops the "
+            "lrvx_simulated_executor_reset import -- the golden the parity gate accepts as "
             "Codon's coverage no longer lists the whole bar path",
         system="codegen", file=CODON_GOLDEN,
-        old="from C import flox_simulated_executor_reset(cobj)\n",
+        old="from C import lrvx_simulated_executor_reset(cobj)\n",
         new="",
         codegen_nodeids=[f"{CODEGEN_TEST_FILE}::test_the_codon_golden_imports_the_bar_path"],
     ),
@@ -819,7 +819,7 @@ def rebuild_for(m: Mutation) -> str:
         return out
     if m.system == "node":
         node_build_dir = NODE_DIR / "build"
-        for obj in object_files(node_build_dir, "flox_node"):
+        for obj in object_files(node_build_dir, "lrvx_node"):
             obj.unlink()
         out = npm_build()
         require_compiled(out, "node/ (npm run build)")
@@ -833,17 +833,17 @@ def rebuild_system(system: str) -> None:
     """Rebuild a system with today's (unmutated, or already-restored) source, for the
     sweep of an OTHER system's survivor."""
     if system == "python":
-        for obj in object_files(BUILD_PY, "_flox_py"):
+        for obj in object_files(BUILD_PY, "_lrvx"):
             obj.unlink()
-        cmake_build(BUILD_PY, ["_flox_py"])
+        cmake_build(BUILD_PY, ["_lrvx"])
     elif system == "node":
-        for obj in object_files(NODE_DIR / "build", "flox_node"):
+        for obj in object_files(NODE_DIR / "build", "lrvx_node"):
             obj.unlink()
         npm_build()
     elif system == "c":
-        for obj in object_files(BUILD_C, "flox_capi"):
+        for obj in object_files(BUILD_C, "lrvx_capi"):
             obj.unlink()
-        cmake_build(BUILD_C, ["flox_capi"])
+        cmake_build(BUILD_C, ["lrvx_capi"])
     else:
         raise SystemExit(f"rebuild_system: unhandled {system!r}")
 
@@ -1005,7 +1005,7 @@ def run_mutation(m: Mutation) -> tuple[str, str]:
                         obj.unlink()
                 cmake_build(BUILD_PY, m.build_targets)
             elif m.system == "node":
-                for obj in object_files(NODE_DIR / "build", "flox_node"):
+                for obj in object_files(NODE_DIR / "build", "lrvx_node"):
                     obj.unlink()
                 npm_build()
         except BuildFailed as e:

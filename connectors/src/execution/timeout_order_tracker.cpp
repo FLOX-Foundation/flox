@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/execution/timeout_order_tracker.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx-connectors/execution/timeout_order_tracker.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
-#include <flox/log/log.h>
+#include <lrvx/log/log.h>
 
-namespace flox
+namespace lrvx
 {
 
 TimeoutOrderTracker::TimeoutOrderTracker(OrderTimeoutConfig config) : _config(std::move(config)) {}
@@ -127,12 +127,12 @@ void TimeoutOrderTracker::checkTimeouts()
     switch (_config.policy)
     {
       case TimeoutPolicy::LOG_ONLY:
-        FLOX_LOG_WARN("[TimeoutOrderTracker] Operation timed out: orderId=" << op.orderId
+        LRVX_LOG_WARN("[TimeoutOrderTracker] Operation timed out: orderId=" << op.orderId
                                                                             << " op=" << opStr);
         break;
 
       case TimeoutPolicy::REJECT:
-        FLOX_LOG_WARN("[TimeoutOrderTracker] Rejecting timed out order: orderId="
+        LRVX_LOG_WARN("[TimeoutOrderTracker] Rejecting timed out order: orderId="
                       << op.orderId << " op=" << opStr);
         if (_config.onReject)
         {
@@ -148,13 +148,13 @@ void TimeoutOrderTracker::checkTimeouts()
         }
         else
         {
-          FLOX_LOG_WARN("[TimeoutOrderTracker] Timeout but no callback: orderId="
+          LRVX_LOG_WARN("[TimeoutOrderTracker] Timeout but no callback: orderId="
                         << op.orderId << " op=" << opStr);
         }
         break;
 
       case TimeoutPolicy::RECONCILE:
-        FLOX_LOG_INFO("[TimeoutOrderTracker] Reconcile needed: orderId=" << op.orderId
+        LRVX_LOG_INFO("[TimeoutOrderTracker] Reconcile needed: orderId=" << op.orderId
                                                                          << " op=" << opStr);
         if (_config.onTimeout)
         {
@@ -193,4 +193,4 @@ std::string_view TimeoutOrderTracker::opTypeToString(OpType opType)
   return "unknown";
 }
 
-}  // namespace flox
+}  // namespace lrvx

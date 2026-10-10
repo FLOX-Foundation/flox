@@ -38,7 +38,7 @@ SCENARIOS_DIR = FIXTURES / "scenarios"
 def _ensure_python_path() -> None:
     # Prefer a build directory whose compiled extension matches the
     # running interpreter's ABI tag; a mismatched .so is invisible to
-    # the import system and flox_py degrades into its typing-stub
+    # the import system and lrvx degrades into its typing-stub
     # namespace package. Fall back to the first existing candidate so
     # the error surfaced on import stays the informative one.
     import sysconfig
@@ -50,7 +50,7 @@ def _ensure_python_path() -> None:
     ]
     chosen = next(
         (p for p in candidates
-         if suffix and (p / "flox_py" / f"_flox_py{suffix}").exists()),
+         if suffix and (p / "lrvx" / f"_lrvx{suffix}").exists()),
         candidates[0] if candidates else None,
     )
     if chosen is not None and str(chosen) not in sys.path:
@@ -82,7 +82,7 @@ def _diff_dicts(actual, expected, path: str = "") -> list[str]:
 def run(*, regen: bool = False) -> int:
     _ensure_python_path()
 
-    from flox_py.bundle import _run_strategy_against_tape  # type: ignore
+    from lrvx.bundle import _run_strategy_against_tape  # type: ignore
     from build_tape import build_tape  # type: ignore
 
     scenarios = sorted(
@@ -94,7 +94,7 @@ def run(*, regen: bool = False) -> int:
               file=sys.stderr)
         return 1
 
-    work = Path(tempfile.mkdtemp(prefix="flox-replay-eq-"))
+    work = Path(tempfile.mkdtemp(prefix="lrvx-replay-eq-"))
     failed: list[str] = []
     try:
         tape_dir = work / "tape"

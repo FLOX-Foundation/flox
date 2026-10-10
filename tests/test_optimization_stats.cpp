@@ -1,26 +1,26 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/optimization_stats.h"
+#include "lrvx/backtest/optimization_stats.h"
 
 #include <gtest/gtest.h>
 #include <cmath>
 #include <filesystem>
 
-using namespace flox;
+using namespace lrvx;
 
 class OptimizationStatsTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_opt_stats_test";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_opt_stats_test";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }

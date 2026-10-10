@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,15 +16,15 @@
 // run a strategy that emits one entry order on the first tick (and
 // optionally an exit later), and assert the gate behaves as expected.
 
-#include "flox/backtest/backtest_runner.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/killswitch/abstract_killswitch.h"
-#include "flox/metrics/abstract_pnl_tracker.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/writers/binary_log_writer.h"
-#include "flox/risk/abstract_risk_manager.h"
-#include "flox/strategy/strategy.h"
-#include "flox/validation/abstract_order_validator.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/killswitch/abstract_killswitch.h"
+#include "lrvx/metrics/abstract_pnl_tracker.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
+#include "lrvx/risk/abstract_risk_manager.h"
+#include "lrvx/strategy/strategy.h"
+#include "lrvx/validation/abstract_order_validator.h"
 
 #include <gtest/gtest.h>
 
@@ -32,7 +32,7 @@
 #include <filesystem>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -139,7 +139,7 @@ SymbolId addSymbol(SymbolRegistry& reg, const std::string& name)
 
 std::filesystem::path writeTinyTape(SymbolId sym, size_t n)
 {
-  auto td = std::filesystem::temp_directory_path() / "flox_bt_hooks_test";
+  auto td = std::filesystem::temp_directory_path() / "lrvx_bt_hooks_test";
   std::filesystem::remove_all(td);
   std::filesystem::create_directories(td);
   constexpr int64_t base_ns = 1'700'000'000'000'000'000;

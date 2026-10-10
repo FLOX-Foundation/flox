@@ -1,22 +1,22 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
-#include "flox/common.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_exchange_connector.h"
+#include "lrvx/common.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/book/events/book_update_event.h>
-#include <flox/book/events/trade_event.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/log/atomic_logger.h>
-#include <flox/log/log.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/book/events/book_update_event.h>
+#include <lrvx/book/events/trade_event.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/log/atomic_logger.h>
+#include <lrvx/log/log.h>
 
 #include <gtest/gtest.h>
 
@@ -26,14 +26,14 @@
 #include <memory>
 #include <thread>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
 
 std::string getTempLogDir()
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_test_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_test_logs";
   std::filesystem::create_directories(dir);
   return dir.string();
 }

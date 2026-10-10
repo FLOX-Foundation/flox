@@ -1,6 +1,6 @@
-"""Tests for ``flox_py.ccxt.CcxtBroker``.
+"""Tests for ``lrvx.ccxt.CcxtBroker``.
 
-The broker is pure-Python glue around ``ccxt.pro`` plus a FLOX
+The broker is pure-Python glue around ``ccxt.pro`` plus a lrvx
 ``Runner``. To run without ccxt actually installed we inject a
 ``FakeCcxtExchange`` that records calls and feeds canned WebSocket
 data through ``asyncio.Queue``s.
@@ -36,8 +36,8 @@ import unittest
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-import flox_py as flox
-from flox_py.ccxt import (
+import lrvx
+from lrvx.ccxt import (
     CcxtBroker, UnsupportedOrderType, _market_tick_size, _precision_digits,
     _precision_step,
 )
@@ -149,8 +149,8 @@ class FakeCcxtExchange:
 def _make_signal(*, symbol_id, order_type, side="", quantity=0.0, price=0.0,
                  trigger_price=0.0, trailing_offset=0.0, trailing_bps=0,
                  order_id=0, new_price=0.0, new_quantity=0.0):
-    """Construct a ``flox.Signal`` with the requested fields set."""
-    s = flox.Signal()
+    """Construct a ``lrvx.Signal`` with the requested fields set."""
+    s = lrvx.Signal()
     s.symbol = symbol_id
     s.order_type = order_type
     s.side = side
@@ -243,7 +243,7 @@ class CcxtBrokerTests(unittest.TestCase):
         broker = CcxtBroker("binance", exchange=fake)
         seen = []
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_trade(self, ctx, trade):
                 seen.append((trade.price, trade.quantity, trade.is_buy))
 
@@ -273,7 +273,7 @@ class CcxtBrokerTests(unittest.TestCase):
         broker = CcxtBroker("binance", exchange=fake)
         seen = []
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_book_update(self, ctx):
                 seen.append((ctx.best_bid, ctx.best_ask))
 
@@ -307,7 +307,7 @@ class CcxtBrokerTests(unittest.TestCase):
         broker = CcxtBroker("binance", exchange=fake)
         updates = []
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_order_update(self, sym, status, filled, avg):
                 updates.append((sym, status, filled, avg))
 
@@ -343,7 +343,7 @@ class CcxtBrokerTests(unittest.TestCase):
 
         async def go():
             btc = await broker.add_symbol("BTC/USDT")
-            broker.add_strategy(flox.Strategy([btc]))
+            broker.add_strategy(lrvx.Strategy([btc]))
             fake.init_queues()
             sig = _make_signal(symbol_id=int(btc), **sig_kwargs)
             run_task = asyncio.create_task(
@@ -436,13 +436,13 @@ class CcxtBrokerTests(unittest.TestCase):
         self.assertTrue(any("UnsupportedOrderType" in t for _, t, _ in errs))
 
     def test_cancel_uses_tracked_ccxt_id(self):
-        # Place a limit order first, then cancel by flox order_id.
+        # Place a limit order first, then cancel by lrvx order_id.
         fake = FakeCcxtExchange()
         broker = CcxtBroker("binance", exchange=fake)
 
         async def go():
             btc = await broker.add_symbol("BTC/USDT")
-            broker.add_strategy(flox.Strategy([btc]))
+            broker.add_strategy(lrvx.Strategy([btc]))
             fake.init_queues()
             run_task = asyncio.create_task(broker.run(streams=(), reconcile=False))
             await asyncio.sleep(0)
@@ -475,7 +475,7 @@ class CcxtBrokerTests(unittest.TestCase):
 
         async def go():
             btc = await broker.add_symbol("BTC/USDT")
-            broker.add_strategy(flox.Strategy([btc]))
+            broker.add_strategy(lrvx.Strategy([btc]))
             fake.init_queues()
             run_task = asyncio.create_task(broker.run(streams=(), reconcile=False))
             await asyncio.sleep(0)
@@ -504,7 +504,7 @@ class CcxtBrokerTests(unittest.TestCase):
 
         async def go():
             btc = await broker.add_symbol("BTC/USDT")
-            broker.add_strategy(flox.Strategy([btc]))
+            broker.add_strategy(lrvx.Strategy([btc]))
             fake.init_queues()
             run_task = asyncio.create_task(broker.run(streams=(), reconcile=False))
             await asyncio.sleep(0)
@@ -540,7 +540,7 @@ class CcxtBrokerTests(unittest.TestCase):
         broker = CcxtBroker("binance", exchange=fake)
         seen = []
 
-        class S(flox.Strategy):
+        class S(lrvx.Strategy):
             def on_initial_position(self, sym, qty, avg):
                 seen.append((sym, qty, avg))
 
@@ -568,7 +568,7 @@ class CcxtBrokerTests(unittest.TestCase):
 
         async def go():
             btc = await broker.add_symbol("BTC/USDT")
-            broker.add_strategy(flox.Strategy([btc]))
+            broker.add_strategy(lrvx.Strategy([btc]))
             fake.init_queues()
             run_task = asyncio.create_task(broker.run(streams=()))
             await asyncio.sleep(0.02)
@@ -596,7 +596,7 @@ class CcxtBrokerTests(unittest.TestCase):
             delays.append(d)
             await real_sleep(0)
 
-        from flox_py import ccxt as ccxt_mod
+        from lrvx import ccxt as ccxt_mod
 
         broker = CcxtBroker(
             "binance", exchange=FakeCcxtExchange(),
@@ -659,7 +659,7 @@ class CcxtBrokerTests(unittest.TestCase):
             delays.append(d)
             await real_sleep(0)
 
-        from flox_py import ccxt as ccxt_mod
+        from lrvx import ccxt as ccxt_mod
 
         broker = CcxtBroker(
             "binance", exchange=FakeCcxtExchange(),

@@ -1,0 +1,51 @@
+/*
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
+ *
+ * Copyright (c) 2025 lrvx contributors
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
+#pragma once
+
+#include <lrvx/common.h>
+#include <lrvx/util/base/move_only_function.h>
+#include <lrvx/util/rate_limiter.h>
+
+#include <chrono>
+#include <cstdint>
+
+namespace lrvx
+{
+
+/// Policy for handling rate limit exceeded
+enum class RateLimitPolicy
+{
+  REJECT,   ///< Immediately reject the order
+  WAIT,     ///< Defer the request to the executor's sender thread until a token is there
+  CALLBACK  ///< Call user-provided callback with wait time
+};
+
+/// Rate limit configuration for order executors
+/// No default values - must be explicitly configured
+struct RateLimitConfig
+{
+  uint32_t capacity;    ///< Max burst tokens (required)
+  uint32_t refillRate;  ///< Tokens per second (required)
+
+  RateLimitPolicy policy;
+
+  /// Callback for CALLBACK policy: receives OrderId and wait duration
+  using RateLimitCallback = MoveOnlyFunction<void(OrderId, std::chrono::nanoseconds waitTime)>;
+  RateLimitCallback onRateLimited;
+
+  bool isValid() const { return capacity > 0 && refillRate > 0; }
+
+  RateLimiter::Config toRateLimiterConfig() const
+  {
+    return RateLimiter::Config{capacity, refillRate};
+  }
+};
+
+}  // namespace lrvx

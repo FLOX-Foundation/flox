@@ -3,7 +3,7 @@
  * node/test/test_backtest_timestamps.js — regression test:
  * BacktestRunner.runBars / .runOhlcv document their timestamps as already
  * nanoseconds (see node/index.d.ts), but the shared C ABI they call into
- * (flox_backtest_runner_run_bars / run_ohlcv in src/capi/flox_capi.cpp)
+ * (lrvx_backtest_runner_run_bars / run_ohlcv in src/capi/lrvx_capi.cpp)
  * used to run every one of them back through a unit-guessing helper meant
  * for CSV columns, where the unit really is unknown. Any nanosecond value
  * under 1e12 -- an ordinary timestamp for synthetic test data built from
@@ -17,7 +17,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -33,9 +33,9 @@ const END_NS = 119_999_999_999n;
 
 console.log('=== BacktestRunner.runBars passes nanoseconds through unmodified ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
 
   const seenBars = [];
   btr.setStrategy({
@@ -63,9 +63,9 @@ console.log('=== BacktestRunner.runBars passes nanoseconds through unmodified ==
 
 console.log('\n=== BacktestRunner.runOhlcv passes nanoseconds through unmodified ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const btr = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
 
   const seenTrades = [];
   btr.setStrategy({

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -32,13 +32,13 @@
 // return whether the failure reproduced. Anything it carries over between
 // calls makes the result meaningless.
 
-#include "flox-venue/messages.h"
+#include "lrvx-venue/messages.h"
 
 #include <cstddef>
 #include <cstdio>
 #include <vector>
 
-namespace flox::venue::fuzz
+namespace lrvx::venue::fuzz
 {
 
 struct ShrinkLimits
@@ -171,4 +171,4 @@ inline void printCounterexample(const ShrinkReport& r)
   std::printf("--- end counterexample ---\n\n");
 }
 
-}  // namespace flox::venue::fuzz
+}  // namespace lrvx::venue::fuzz

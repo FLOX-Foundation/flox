@@ -1,22 +1,22 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #pragma once
 
-#include "flox/engine/engine.h"
-#include "flox/engine/engine_config.h"
+#include "lrvx/engine/engine.h"
+#include "lrvx/engine/engine_config.h"
 
 #include <memory>
 
 namespace demo
 {
-using namespace flox;
+using namespace lrvx;
 
 class DemoBuilder
 {

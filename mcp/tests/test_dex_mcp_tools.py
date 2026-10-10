@@ -1,8 +1,8 @@
 """Unit tests for the DEX DX MCP tools.
 
 route_amm_swap / amm_price_impact / replay_pool_tape are thin server tools over the
-flox.dex comfort layer. These tests pin each tool's JSON output to the flox.dex layer it
-wraps. They need the compiled `flox_py` (with flox_py.dex) and are skipped otherwise --
+lrvx.dex comfort layer. These tests pin each tool's JSON output to the lrvx.dex layer it
+wraps. They need the compiled `lrvx` (with lrvx.dex) and are skipped otherwise --
 the MCP-only CI job has no compiled module.
 """
 from __future__ import annotations
@@ -17,16 +17,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "mcp"))
 sys.path.insert(0, str(REPO_ROOT / "build" / "python"))
 
-from flox_mcp.tools import runtime  # noqa: E402
+from lrvx_mcp.tools import runtime  # noqa: E402
 
 try:
-    import flox_py  # noqa: F401
-    from flox_py import dex  # noqa: F401
-    HAS_FLOX = True
+    import lrvx  # noqa: F401
+    from lrvx import dex  # noqa: F401
+    HAS_LRVX = True
 except ImportError:
-    HAS_FLOX = False
+    HAS_LRVX = False
 
-skip_no_flox = pytest.mark.skipif(not HAS_FLOX, reason="flox_py.dex not importable")
+skip_no_lrvx = pytest.mark.skipif(not HAS_LRVX, reason="lrvx.dex not importable")
 
 WETH = {"symbol": "WETH", "decimals": 18}
 USDC = {"symbol": "USDC", "decimals": 6}
@@ -45,20 +45,20 @@ def _ray(reserves, trade_fee="0.25%"):
 # ── route_amm_swap ────────────────────────────────────────────────────
 
 
-@skip_no_flox
+@skip_no_lrvx
 def test_route_amm_swap_picks_best_and_matches_layer():
     venues = [_v2(["1000 WETH", "2000000 USDC"]), _ray(["1000 WETH", "2000000 USDC"])]
     out = json.loads(runtime.route_amm_swap(venues, "50000 USDC", into="WETH"))
     # Lower fee (Raydium 0.25%) fills the most.
     assert out["best"]["venue"] == "RaydiumCp"
-    # The reported best matches a direct flox.dex Router call to the wei.
+    # The reported best matches a direct lrvx.dex Router call to the wei.
     ray = dex.RaydiumCp(dex.Token("WETH", 18), dex.Token("USDC", 6),
                         reserves=("1000 WETH", "2000000 USDC"), trade_fee="0.25%")
     assert out["best"]["out_wei"] == str(ray.quote("50000 USDC", into="WETH").exact_wei)
     assert out["venues"][0]["venue"] == "RaydiumCp"   # sorted best-first
 
 
-@skip_no_flox
+@skip_no_lrvx
 def test_route_amm_swap_bad_input():
     assert "non-empty list" in runtime.route_amm_swap([], "50000 USDC")
 
@@ -66,7 +66,7 @@ def test_route_amm_swap_bad_input():
 # ── amm_price_impact ──────────────────────────────────────────────────
 
 
-@skip_no_flox
+@skip_no_lrvx
 def test_amm_price_impact_monotone_and_matches_layer():
     out = json.loads(runtime.amm_price_impact(_v2(["1000 WETH", "2000000 USDC"]),
                                               ["1 WETH", "50 WETH", "200 WETH"]))
@@ -78,13 +78,13 @@ def test_amm_price_impact_monotone_and_matches_layer():
 # ── replay_pool_tape ──────────────────────────────────────────────────
 
 
-@skip_no_flox
+@skip_no_lrvx
 def test_replay_pool_tape_matches_layer():
     pool = _v2(["1000 WETH", "2000000 USDC"])
     out = json.loads(runtime.replay_pool_tape(
         pool, swaps=[[1, "50 WETH"], [2, "50 WETH"], [3, "100000 USDC"]]))
     # Drive the same swaps through the raw curve and compare the final reserves.
-    c = flox_py.AmmCurve.constant_product(1000 * 10**18, 2_000_000 * 10**6, 997, 1000)
+    c = lrvx.AmmCurve.constant_product(1000 * 10**18, 2_000_000 * 10**6, 997, 1000)
     c.apply_swap(0, 1, 50 * 10**18)
     c.apply_swap(0, 1, 50 * 10**18)
     c.apply_swap(1, 0, 100_000 * 10**6)
@@ -94,7 +94,7 @@ def test_replay_pool_tape_matches_layer():
     assert out["drift_count"] == 0
 
 
-@skip_no_flox
+@skip_no_lrvx
 def test_replay_pool_tape_flags_drift():
     pool = _v2(["1000 WETH", "2000000 USDC"])
     # Drive it via evm_logs: one 1-WETH sell (amount0In = 1e18).
@@ -102,21 +102,21 @@ def test_replay_pool_tape_flags_drift():
     zero = (0).to_bytes(32, "big").hex()
     logs = [{"blockNumber": "0x10", "data": "0x" + one + zero + zero + zero}]
     out = json.loads(runtime.replay_pool_tape(pool, evm_logs=logs))
-    c = flox_py.AmmCurve.constant_product(1000 * 10**18, 2_000_000 * 10**6, 997, 1000)
+    c = lrvx.AmmCurve.constant_product(1000 * 10**18, 2_000_000 * 10**6, 997, 1000)
     c.apply_swap(0, 1, 10**18)
     assert out["series"][-1]["reserve0"] == str(c.balances()[0])
 
 
-@skip_no_flox
+@skip_no_lrvx
 def test_replay_pool_tape_requires_input():
     assert "supply either" in runtime.replay_pool_tape(_v2(["1000 WETH", "2000000 USDC"]))
 
 
-def test_tools_report_missing_flox_cleanly(monkeypatch):
-    """With flox_py absent the tools return a clean install hint, never a traceback."""
+def test_tools_report_missing_lrvx_cleanly(monkeypatch):
+    """With lrvx absent the tools return a clean install hint, never a traceback."""
     monkeypatch.setattr(runtime, "_import_dex_or_error",
-                        lambda: (None, "this tool requires the optional `flox-py` package."))
+                        lambda: (None, "this tool requires the optional `lrvx` package."))
     for call in (lambda: runtime.route_amm_swap([{}], "1 WETH"),
                  lambda: runtime.amm_price_impact({}, ["1 WETH"]),
                  lambda: runtime.replay_pool_tape({}, swaps=[[1, "1 WETH"]])):
-        assert "flox-py" in call()
+        assert "lrvx" in call()

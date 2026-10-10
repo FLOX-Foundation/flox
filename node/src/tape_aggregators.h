@@ -2,7 +2,7 @@
 //
 // NAPI surface for the streaming tape aggregator framework.
 // Five ObjectWrap classes thinly wrap the C ABI
-// (`flox_*_aggregator_create` + `flox_*_read_result`); the matching
+// (`lrvx_*_aggregator_create` + `lrvx_*_read_result`); the matching
 // `DataReader.run([...])` / `MergedTapeReader.run([...])` methods live
 // on the reader wraps in data_ops.h and reach in via the public
 // `collectAggregatorHandles` helper here.
@@ -11,14 +11,14 @@
 
 #include <napi.h>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 // ── Aggregator wrap helpers ─────────────────────────────────────────
@@ -26,8 +26,8 @@ namespace node_flox
 namespace tape_agg_detail
 {
 
-inline FloxAggregatorEventFilter readEventFilter(const Napi::CallbackInfo& info, size_t idx,
-                                                 FloxAggregatorEventFilter default_value)
+inline LrvxAggregatorEventFilter readEventFilter(const Napi::CallbackInfo& info, size_t idx,
+                                                 LrvxAggregatorEventFilter default_value)
 {
   if (info.Length() <= idx || !info[idx].IsNumber())
   {
@@ -36,10 +36,10 @@ inline FloxAggregatorEventFilter readEventFilter(const Napi::CallbackInfo& info,
   int32_t raw = info[idx].As<Napi::Number>().Int32Value();
   switch (raw)
   {
-    case FLOX_AGG_FILTER_TRADES:
-    case FLOX_AGG_FILTER_BOOKS_ONLY:
-    case FLOX_AGG_FILTER_BOTH:
-      return static_cast<FloxAggregatorEventFilter>(raw);
+    case LRVX_AGG_FILTER_TRADES:
+    case LRVX_AGG_FILTER_BOOKS_ONLY:
+    case LRVX_AGG_FILTER_BOTH:
+      return static_cast<LrvxAggregatorEventFilter>(raw);
     default:
       return default_value;
   }
@@ -126,29 +126,29 @@ class EventTypeStatsAggregatorWrap
   EventTypeStatsAggregatorWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<EventTypeStatsAggregatorWrap>(info)
   {
-    auto filter = tape_agg_detail::readEventFilter(info, 0, FLOX_AGG_FILTER_BOTH);
+    auto filter = tape_agg_detail::readEventFilter(info, 0, LRVX_AGG_FILTER_BOTH);
     auto sf = tape_agg_detail::readSymbolFilter(info, 1);
-    _h = flox_event_type_stats_aggregator_create(filter, sf.empty() ? nullptr : sf.data(),
+    _h = lrvx_event_type_stats_aggregator_create(filter, sf.empty() ? nullptr : sf.data(),
                                                  static_cast<uint32_t>(sf.size()));
   }
   ~EventTypeStatsAggregatorWrap()
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_event_type_stats_read_result(_h, nullptr, 0);
-    std::vector<FloxEventTypeStatsRow> rows(n);
+    uint32_t n = lrvx_event_type_stats_read_result(_h, nullptr, 0);
+    std::vector<LrvxEventTypeStatsRow> rows(n);
     if (n > 0)
     {
-      flox_event_type_stats_read_result(_h, rows.data(), n);
+      lrvx_event_type_stats_read_result(_h, rows.data(), n);
     }
     auto env = info.Env();
     auto arr = Napi::Array::New(env, n);
@@ -164,7 +164,7 @@ class EventTypeStatsAggregatorWrap
     return arr;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── BinCountAggregator ──────────────────────────────────────────────
@@ -204,9 +204,9 @@ class BinCountAggregatorWrap : public Napi::ObjectWrap<BinCountAggregatorWrap>
     }
     uint8_t by_side = info.Length() > 1 && info[1].IsBoolean() && info[1].As<Napi::Boolean>().Value();
     uint8_t by_symbol = info.Length() > 2 && info[2].IsBoolean() && info[2].As<Napi::Boolean>().Value();
-    auto filter = tape_agg_detail::readEventFilter(info, 3, FLOX_AGG_FILTER_BOTH);
+    auto filter = tape_agg_detail::readEventFilter(info, 3, LRVX_AGG_FILTER_BOTH);
     auto sf = tape_agg_detail::readSymbolFilter(info, 4);
-    _h = flox_bin_count_aggregator_create(bucket_ns, by_side, by_symbol, filter,
+    _h = lrvx_bin_count_aggregator_create(bucket_ns, by_side, by_symbol, filter,
                                           sf.empty() ? nullptr : sf.data(),
                                           static_cast<uint32_t>(sf.size()));
   }
@@ -214,20 +214,20 @@ class BinCountAggregatorWrap : public Napi::ObjectWrap<BinCountAggregatorWrap>
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_bin_count_read_result(_h, nullptr, 0);
-    std::vector<FloxBinCountRow> rows(n);
+    uint32_t n = lrvx_bin_count_read_result(_h, nullptr, 0);
+    std::vector<LrvxBinCountRow> rows(n);
     if (n > 0)
     {
-      flox_bin_count_read_result(_h, rows.data(), n);
+      lrvx_bin_count_read_result(_h, rows.data(), n);
     }
     auto env = info.Env();
     auto arr = Napi::Array::New(env, n);
@@ -243,7 +243,7 @@ class BinCountAggregatorWrap : public Napi::ObjectWrap<BinCountAggregatorWrap>
     return arr;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── VolumeBinAggregator ─────────────────────────────────────────────
@@ -284,9 +284,9 @@ class VolumeBinAggregatorWrap : public Napi::ObjectWrap<VolumeBinAggregatorWrap>
     }
     uint8_t by_side = info.Length() > 1 && info[1].IsBoolean() && info[1].As<Napi::Boolean>().Value();
     uint8_t by_symbol = info.Length() > 2 && info[2].IsBoolean() && info[2].As<Napi::Boolean>().Value();
-    auto filter = tape_agg_detail::readEventFilter(info, 3, FLOX_AGG_FILTER_TRADES);
+    auto filter = tape_agg_detail::readEventFilter(info, 3, LRVX_AGG_FILTER_TRADES);
     auto sf = tape_agg_detail::readSymbolFilter(info, 4);
-    _h = flox_volume_bin_aggregator_create(bucket_ns, by_side, by_symbol, filter,
+    _h = lrvx_volume_bin_aggregator_create(bucket_ns, by_side, by_symbol, filter,
                                            sf.empty() ? nullptr : sf.data(),
                                            static_cast<uint32_t>(sf.size()));
   }
@@ -294,20 +294,20 @@ class VolumeBinAggregatorWrap : public Napi::ObjectWrap<VolumeBinAggregatorWrap>
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_volume_bin_read_result(_h, nullptr, 0);
-    std::vector<FloxVolumeBinRow> rows(n);
+    uint32_t n = lrvx_volume_bin_read_result(_h, nullptr, 0);
+    std::vector<LrvxVolumeBinRow> rows(n);
     if (n > 0)
     {
-      flox_volume_bin_read_result(_h, rows.data(), n);
+      lrvx_volume_bin_read_result(_h, rows.data(), n);
     }
     auto env = info.Env();
     auto arr = Napi::Array::New(env, n);
@@ -323,7 +323,7 @@ class VolumeBinAggregatorWrap : public Napi::ObjectWrap<VolumeBinAggregatorWrap>
     return arr;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── OHLCBinAggregator ───────────────────────────────────────────────
@@ -363,9 +363,9 @@ class OHLCBinAggregatorWrap : public Napi::ObjectWrap<OHLCBinAggregatorWrap>
       }
     }
     uint8_t by_symbol = info.Length() > 1 && info[1].IsBoolean() && info[1].As<Napi::Boolean>().Value();
-    auto filter = tape_agg_detail::readEventFilter(info, 2, FLOX_AGG_FILTER_TRADES);
+    auto filter = tape_agg_detail::readEventFilter(info, 2, LRVX_AGG_FILTER_TRADES);
     auto sf = tape_agg_detail::readSymbolFilter(info, 3);
-    _h = flox_ohlc_bin_aggregator_create(bucket_ns, by_symbol, filter,
+    _h = lrvx_ohlc_bin_aggregator_create(bucket_ns, by_symbol, filter,
                                          sf.empty() ? nullptr : sf.data(),
                                          static_cast<uint32_t>(sf.size()));
   }
@@ -373,20 +373,20 @@ class OHLCBinAggregatorWrap : public Napi::ObjectWrap<OHLCBinAggregatorWrap>
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_ohlc_bin_read_result(_h, nullptr, 0);
-    std::vector<FloxOHLCBinRow> rows(n);
+    uint32_t n = lrvx_ohlc_bin_read_result(_h, nullptr, 0);
+    std::vector<LrvxOHLCBinRow> rows(n);
     if (n > 0)
     {
-      flox_ohlc_bin_read_result(_h, rows.data(), n);
+      lrvx_ohlc_bin_read_result(_h, rows.data(), n);
     }
     auto env = info.Env();
     auto arr = Napi::Array::New(env, n);
@@ -404,7 +404,7 @@ class OHLCBinAggregatorWrap : public Napi::ObjectWrap<OHLCBinAggregatorWrap>
     return arr;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── PeakAggregator ──────────────────────────────────────────────────
@@ -439,9 +439,9 @@ class PeakAggregatorWrap : public Napi::ObjectWrap<PeakAggregatorWrap>
     uint32_t oversample = info.Length() > 2 && info[2].IsNumber()
                               ? info[2].As<Napi::Number>().Uint32Value()
                               : 100;
-    auto filter = tape_agg_detail::readEventFilter(info, 3, FLOX_AGG_FILTER_TRADES);
+    auto filter = tape_agg_detail::readEventFilter(info, 3, LRVX_AGG_FILTER_TRADES);
     auto sf = tape_agg_detail::readSymbolFilter(info, 4);
-    _h = flox_peak_aggregator_create(windows.empty() ? nullptr : windows.data(),
+    _h = lrvx_peak_aggregator_create(windows.empty() ? nullptr : windows.data(),
                                      static_cast<uint32_t>(windows.size()), top_n,
                                      oversample, filter,
                                      sf.empty() ? nullptr : sf.data(),
@@ -451,20 +451,20 @@ class PeakAggregatorWrap : public Napi::ObjectWrap<PeakAggregatorWrap>
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_peak_read_result(_h, nullptr, 0);
-    std::vector<FloxPeakRow> rows(n);
+    uint32_t n = lrvx_peak_read_result(_h, nullptr, 0);
+    std::vector<LrvxPeakRow> rows(n);
     if (n > 0)
     {
-      flox_peak_read_result(_h, rows.data(), n);
+      lrvx_peak_read_result(_h, rows.data(), n);
     }
     // Result shape: Array<{windowNs: bigint, peaks: Array<{count, startNs}>}>.
     // One outer entry per distinct window scale; peaks within each
@@ -502,7 +502,7 @@ class PeakAggregatorWrap : public Napi::ObjectWrap<PeakAggregatorWrap>
     return outer;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── QuantileAggregator ──────────────────────────────────────────────
@@ -538,9 +538,9 @@ class QuantileAggregatorWrap : public Napi::ObjectWrap<QuantileAggregatorWrap>
     {
       quantiles = tape_agg_detail::readDoubleArray(info[1].As<Napi::Array>());
     }
-    auto filter = tape_agg_detail::readEventFilter(info, 2, FLOX_AGG_FILTER_TRADES);
+    auto filter = tape_agg_detail::readEventFilter(info, 2, LRVX_AGG_FILTER_TRADES);
     auto sf = tape_agg_detail::readSymbolFilter(info, 3);
-    _h = flox_quantile_aggregator_create(
+    _h = lrvx_quantile_aggregator_create(
         windows.empty() ? nullptr : windows.data(), static_cast<uint32_t>(windows.size()),
         quantiles.empty() ? nullptr : quantiles.data(),
         static_cast<uint32_t>(quantiles.size()), filter,
@@ -550,20 +550,20 @@ class QuantileAggregatorWrap : public Napi::ObjectWrap<QuantileAggregatorWrap>
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_quantile_read_result(_h, nullptr, 0);
-    std::vector<FloxQuantileRow> rows(n);
+    uint32_t n = lrvx_quantile_read_result(_h, nullptr, 0);
+    std::vector<LrvxQuantileRow> rows(n);
     if (n > 0)
     {
-      flox_quantile_read_result(_h, rows.data(), n);
+      lrvx_quantile_read_result(_h, rows.data(), n);
     }
     auto env = info.Env();
     // Result shape: Array<{windowNs: bigint, thresholds:
@@ -602,7 +602,7 @@ class QuantileAggregatorWrap : public Napi::ObjectWrap<QuantileAggregatorWrap>
     return outer;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── BookSnapshotBinAggregator ───────────────────────────────────────
@@ -647,9 +647,9 @@ class BookSnapshotBinAggregatorWrap
     {
       levels = static_cast<uint16_t>(info[1].As<Napi::Number>().Uint32Value());
     }
-    auto filter = tape_agg_detail::readEventFilter(info, 2, FLOX_AGG_FILTER_BOOKS_ONLY);
+    auto filter = tape_agg_detail::readEventFilter(info, 2, LRVX_AGG_FILTER_BOOKS_ONLY);
     auto sf = tape_agg_detail::readSymbolFilter(info, 3);
-    _h = flox_book_snapshot_bin_aggregator_create(
+    _h = lrvx_book_snapshot_bin_aggregator_create(
         bucket_ns, levels, filter, sf.empty() ? nullptr : sf.data(),
         static_cast<uint32_t>(sf.size()));
   }
@@ -657,20 +657,20 @@ class BookSnapshotBinAggregatorWrap
   {
     if (_h)
     {
-      flox_aggregator_destroy(_h);
+      lrvx_aggregator_destroy(_h);
     }
   }
 
-  FloxAggregatorHandle nativeHandle() const { return _h; }
+  LrvxAggregatorHandle nativeHandle() const { return _h; }
 
  private:
   Napi::Value Result(const Napi::CallbackInfo& info)
   {
-    uint32_t n = flox_book_snapshot_bin_read_result(_h, nullptr, 0);
-    std::vector<FloxBookSnapshotBinRow> rows(n);
+    uint32_t n = lrvx_book_snapshot_bin_read_result(_h, nullptr, 0);
+    std::vector<LrvxBookSnapshotBinRow> rows(n);
     if (n > 0)
     {
-      flox_book_snapshot_bin_read_result(_h, rows.data(), n);
+      lrvx_book_snapshot_bin_read_result(_h, rows.data(), n);
     }
     auto env = info.Env();
     auto arr = Napi::Array::New(env, n);
@@ -690,17 +690,17 @@ class BookSnapshotBinAggregatorWrap
     return arr;
   }
 
-  FloxAggregatorHandle _h = nullptr;
+  LrvxAggregatorHandle _h = nullptr;
 };
 
 // ── Public helpers + registration ──────────────────────────────────
 
 // Walk a JS array of aggregator wraps and produce a flat list of
-// FloxAggregatorHandle pointers. Returns true on success; sets a JS
+// LrvxAggregatorHandle pointers. Returns true on success; sets a JS
 // TypeError and returns false if any element isn't one of the five
 // recognised wrap classes.
 inline bool collectAggregatorHandles(Napi::Env env, Napi::Array js_aggregators,
-                                     std::vector<FloxAggregatorHandle>& out)
+                                     std::vector<LrvxAggregatorHandle>& out)
 {
   out.clear();
   out.reserve(js_aggregators.Length());
@@ -714,7 +714,7 @@ inline bool collectAggregatorHandles(Napi::Env env, Napi::Array js_aggregators,
       return false;
     }
     auto obj = v.As<Napi::Object>();
-    FloxAggregatorHandle h = nullptr;
+    LrvxAggregatorHandle h = nullptr;
     if (obj.InstanceOf(EventTypeStatsAggregatorWrap::Ctor().Value()))
     {
       h = Napi::ObjectWrap<EventTypeStatsAggregatorWrap>::Unwrap(obj)->nativeHandle();
@@ -769,10 +769,10 @@ inline void registerTapeAggregators(Napi::Env env, Napi::Object exports)
 
   // Mirror the C ABI enum values so JS callers can pass them positionally.
   auto filterEnum = Napi::Object::New(env);
-  filterEnum.Set("Trades", Napi::Number::New(env, FLOX_AGG_FILTER_TRADES));
-  filterEnum.Set("BooksOnly", Napi::Number::New(env, FLOX_AGG_FILTER_BOOKS_ONLY));
-  filterEnum.Set("Both", Napi::Number::New(env, FLOX_AGG_FILTER_BOTH));
+  filterEnum.Set("Trades", Napi::Number::New(env, LRVX_AGG_FILTER_TRADES));
+  filterEnum.Set("BooksOnly", Napi::Number::New(env, LRVX_AGG_FILTER_BOOKS_ONLY));
+  filterEnum.Set("Both", Napi::Number::New(env, LRVX_AGG_FILTER_BOTH));
   exports.Set("AggregatorEventFilter", filterEnum);
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

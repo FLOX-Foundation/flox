@@ -11,10 +11,10 @@ order and fills at 101.50.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 
 
-class TakeProfitScenario(flox.Strategy):
+class TakeProfitScenario(lrvx.Strategy):
     def __init__(self, symbols, qty: float = 0.25):
         super().__init__(symbols)
         self.qty = qty

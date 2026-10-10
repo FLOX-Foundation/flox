@@ -39,4 +39,4 @@ class SmaCrossover extends Strategy {
     onStop() { console.log("SmaCrossover stopped"); }
 }
 
-flox.register(new SmaCrossover());
+lrvx.register(new SmaCrossover());

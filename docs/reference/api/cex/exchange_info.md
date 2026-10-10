@@ -5,7 +5,7 @@ Exchange metadata with fixed-size name storage.
 ## Header
 
 ```cpp
-#include "flox/exchange/exchange_info.h"
+#include "lrvx/exchange/exchange_info.h"
 ```
 
 ## Synopsis

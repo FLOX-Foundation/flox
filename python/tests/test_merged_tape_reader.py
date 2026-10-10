@@ -1,4 +1,4 @@
-"""Tests for `flox_py.MergedTapeReader` + `flox_py.tape.replay_tapes`.
+"""Tests for `lrvx.MergedTapeReader` + `lrvx.tape.replay_tapes`.
 
 Covers the following acceptance criteria (Python slice):
   - single tape ≡ DataReader read (after rekey)
@@ -15,28 +15,28 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import flox_py as flox
-from flox_py import tape as tape_mod
+import lrvx
+from lrvx import tape as tape_mod
 
 
 def _write_tape(out_dir: str, exchange: str, symbol_name: str,
                 trades: list[tuple[int, float, float, bool]],
                 books: list[tuple[int, list, list, list, list]] | None = None,
                 exchange_id: int = 0) -> None:
-    """Write one .floxlog with the given trades + (optional) book snapshots.
+    """Write one .lrvx with the given trades + (optional) book snapshots.
 
     `trades`: [(ts_ns, price, qty, is_buy), ...]
     `books`:  [(ts_ns, bid_prices, bid_qtys, ask_prices, ask_qtys), ...]
     """
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol(exchange, symbol_name, tick_size=0.01)
-    hook = flox.BinaryLogRecorderHook(
+    hook = lrvx.BinaryLogRecorderHook(
         out_dir, max_segment_mb=4, exchange_id=exchange_id,
         compression="none", exchange_name=exchange,
         instrument_type="perpetual",
     )
     hook.add_symbol(sym, symbol_name, "", "", 2, 6)
-    runner = flox.Runner(registry, on_signal=lambda _s: None)
+    runner = lrvx.Runner(registry, on_signal=lambda _s: None)
     runner.set_market_data_recorder(hook)
     runner.start()
     for ts_ns, price, qty, is_buy in trades:
@@ -60,8 +60,8 @@ class MergedTapeReaderTests(unittest.TestCase):
                         [(base + i * 1_000_000, 50000.0 + i, 0.1, i % 2 == 0)
                          for i in range(5)])
 
-            dr = flox.DataReader(t)
-            mr = flox.MergedTapeReader([t])
+            dr = lrvx.DataReader(t)
+            mr = lrvx.MergedTapeReader([t])
             single = dr.read_trades()
             merged = mr.read_trades()
 
@@ -90,7 +90,7 @@ class MergedTapeReaderTests(unittest.TestCase):
                          for i in range(3)],
                         exchange_id=2)
 
-            mr = flox.MergedTapeReader([t1, t2])
+            mr = lrvx.MergedTapeReader([t1, t2])
             t = mr.read_trades()
             self.assertEqual(t.size, 8)
 
@@ -117,7 +117,7 @@ class MergedTapeReaderTests(unittest.TestCase):
                          for i in range(2)],
                         exchange_id=2)
 
-            mr = flox.MergedTapeReader([t1, t2])
+            mr = lrvx.MergedTapeReader([t1, t2])
             tbl = mr.symbol_table()
             exchanges = {s["exchange"] for s in tbl}
             self.assertEqual(exchanges, {"bybit", "binance"})
@@ -144,7 +144,7 @@ class MergedTapeReaderTests(unittest.TestCase):
                         exchange_id=1)
 
             with self.assertRaises(Exception) as ctx:
-                flox.MergedTapeReader([t1, t2])
+                lrvx.MergedTapeReader([t1, t2])
             self.assertIn("overlapping", str(ctx.exception).lower())
 
     def test_stream_events_matches_eager_read(self):
@@ -163,14 +163,14 @@ class MergedTapeReaderTests(unittest.TestCase):
                          for i in range(5)],
                         exchange_id=2)
 
-            mr_eager = flox.MergedTapeReader([t1, t2])
+            mr_eager = lrvx.MergedTapeReader([t1, t2])
             eager = [
                 (int(t["exchange_ts_ns"]), int(t["symbol_id"]),
                  int(t["price_raw"]), int(t["qty_raw"]), int(t["side"]))
                 for t in mr_eager.read_trades()
             ]
 
-            mr_stream = flox.MergedTapeReader([t1, t2])
+            mr_stream = lrvx.MergedTapeReader([t1, t2])
             streamed = []
 
             def on_trade(ets, rts, p, q, sid, ti, side):
@@ -190,7 +190,7 @@ class MergedTapeReaderTests(unittest.TestCase):
                         [(base + i * 1_000_000, 100.0 + i, 1.0, True)
                          for i in range(10)])
 
-            mr = flox.MergedTapeReader([t1])
+            mr = lrvx.MergedTapeReader([t1])
             seen = []
 
             def on_trade(ets, rts, p, q, sid, ti, side):
@@ -246,16 +246,16 @@ class BacktestRunTapesTests(unittest.TestCase):
                         [(base + i * 1_000_000, 50000.0 + i, 0.1, i % 2 == 0)
                          for i in range(20)])
 
-            reg1 = flox.SymbolRegistry()
-            bt1 = flox.BacktestRunner(reg1, fee_rate=0.0,
+            reg1 = lrvx.SymbolRegistry()
+            bt1 = lrvx.BacktestRunner(reg1, fee_rate=0.0,
                                        initial_capital=10000.0)
-            bt1.set_strategy(flox.Strategy(symbols=[]))
+            bt1.set_strategy(lrvx.Strategy(symbols=[]))
             single = bt1.run_tape(t)
 
-            reg2 = flox.SymbolRegistry()
-            bt2 = flox.BacktestRunner(reg2, fee_rate=0.0,
+            reg2 = lrvx.SymbolRegistry()
+            bt2 = lrvx.BacktestRunner(reg2, fee_rate=0.0,
                                        initial_capital=10000.0)
-            bt2.set_strategy(flox.Strategy(symbols=[]))
+            bt2.set_strategy(lrvx.Strategy(symbols=[]))
             multi = bt2.run_tapes([t])
 
             # Both paths drove the engine through the same event sequence.
@@ -268,9 +268,9 @@ class BacktestRunTapesTests(unittest.TestCase):
                                   f"single={single[key]} multi={multi[key]}")
 
     def test_run_tapes_empty_paths_raises(self):
-        reg = flox.SymbolRegistry()
-        bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=10000.0)
-        bt.set_strategy(flox.Strategy(symbols=[]))
+        reg = lrvx.SymbolRegistry()
+        bt = lrvx.BacktestRunner(reg, fee_rate=0.0, initial_capital=10000.0)
+        bt.set_strategy(lrvx.Strategy(symbols=[]))
         with self.assertRaises(Exception):
             bt.run_tapes([])
 
@@ -286,10 +286,10 @@ class BacktestRunTapesTests(unittest.TestCase):
                         [(base + 500_000 + i * 1_000_000, 3000.0 + i, 1.0, False)
                          for i in range(3)])
 
-            reg = flox.SymbolRegistry()
-            bt = flox.BacktestRunner(reg, fee_rate=0.0,
+            reg = lrvx.SymbolRegistry()
+            bt = lrvx.BacktestRunner(reg, fee_rate=0.0,
                                       initial_capital=10000.0)
-            bt.set_strategy(flox.Strategy(symbols=[]))
+            bt.set_strategy(lrvx.Strategy(symbols=[]))
             stats = bt.run_tapes([t1, t2])
             self.assertEqual(stats["initial_capital"], 10000.0)
             self.assertEqual(stats["final_capital"], 10000.0)
@@ -312,7 +312,7 @@ class BacktestRunTapesTests(unittest.TestCase):
                          for i in range(3)],
                         exchange_id=2)
 
-            mr = flox.MergedTapeReader([t1, t2])
+            mr = lrvx.MergedTapeReader([t1, t2])
             s = mr.summary()
             self.assertEqual(s["tape_count"], 2)
             self.assertEqual(s["symbol_count"], 2)
@@ -347,7 +347,7 @@ class BacktestRunTapesTests(unittest.TestCase):
                 exchange_id=2,
             )
 
-            mr = flox.MergedTapeReader([t1, t2])
+            mr = lrvx.MergedTapeReader([t1, t2])
             stats = mr.per_tape_stats()
             self.assertEqual(len(stats), 2)
 
@@ -371,7 +371,7 @@ class BacktestRunTapesTests(unittest.TestCase):
                 exchange_id=1,
             )
 
-            mr = flox.MergedTapeReader([t])
+            mr = lrvx.MergedTapeReader([t])
             before = mr.per_tape_stats()[0]["trades"]
             mr.read_trades()
             mr.read_trades()

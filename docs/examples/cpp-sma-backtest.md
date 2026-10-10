@@ -16,9 +16,9 @@ A C++ backtest of an SMA(10/30) crossover. Same model as the [Python example](py
 
 ## What it shows
 
-- Inheriting from `flox::Strategy` (not `IStrategy`) — `Strategy` exposes `emitMarketBuy/Sell` which `BacktestRunner` intercepts as signals.
+- Inheriting from `lrvx::Strategy` (not `IStrategy`) — `Strategy` exposes `emitMarketBuy/Sell` which `BacktestRunner` intercepts as signals.
 - Using `SymbolContext::position` indirectly via the `_long` / `_short` state — the bookkeeping `BacktestRunner` does in `BacktestResult::computeStats()`.
-- Feeding `BacktestRunner::run` an `IMultiSegmentReader` — the same reader interface used for `.floxlog` segments.
+- Feeding `BacktestRunner::run` an `IMultiSegmentReader` — the same reader interface used for `.lrvx` segments.
 - Reading stats off `BacktestResult::computeStats()` — same fields exposed in Python and Node.js.
 
 ## Compare to other languages

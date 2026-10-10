@@ -1,8 +1,8 @@
 # Error code reference
 
-Each FloxError carries a stable code (e.g. `E_SYM_001`), a human message,
+Each LrvxError carries a stable code (e.g. `E_SYM_001`), a human message,
 and a help URL pointing to the per-code page in this section. AI agents
-reading FLOX errors can resolve the code to a documented fix without
+reading lrvx errors can resolve the code to a documented fix without
 parsing free-text messages.
 
 ## Code format
@@ -50,7 +50,7 @@ Browse the full set by opening any `E_*.md` in this folder.
 4. Use the code at the throw site:
 
     ```cpp
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_SYM_001",
         "Symbol '" + name + "' is not registered. ...");
     ```

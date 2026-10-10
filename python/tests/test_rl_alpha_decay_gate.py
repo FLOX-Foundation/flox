@@ -25,7 +25,7 @@ else:
 class AlphaDecayGateTests(unittest.TestCase):
     def test_gate_passes_under_default_cap(self) -> None:
         if not BUILD_PY:
-            self.skipTest("flox_py build not found")
+            self.skipTest("lrvx build not found")
         env = dict(os.environ)
         env["PYTHONPATH"] = BUILD_PY + os.pathsep + env.get("PYTHONPATH", "")
         script = REPO_ROOT / "scripts" / "rl_alpha_decay_gate.py"
@@ -43,7 +43,7 @@ class AlphaDecayGateTests(unittest.TestCase):
 
     def test_gate_fails_under_impossibly_tight_cap(self) -> None:
         if not BUILD_PY:
-            self.skipTest("flox_py build not found")
+            self.skipTest("lrvx build not found")
         env = dict(os.environ)
         env["PYTHONPATH"] = BUILD_PY + os.pathsep + env.get("PYTHONPATH", "")
         script = REPO_ROOT / "scripts" / "rl_alpha_decay_gate.py"

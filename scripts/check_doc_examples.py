@@ -12,11 +12,11 @@ What it does:
 * `docs/examples/*.js` — `node --check` (syntax only; running them needs the
   built NAPI addon). Skipped with a notice when `node` is not on PATH.
 
-The Python extension `flox_py` is a compiled artifact. When it is not
+The Python extension `lrvx` is a compiled artifact. When it is not
 importable (a docs-only CI job, or a fresh checkout with no build), the
 Python examples are **syntax-checked** instead of executed and the script
 says so. Pass `--require-runtime` in a job that has built the bindings to
-turn "cannot import flox_py" into a failure — that is where the real
+turn "cannot import lrvx" into a failure — that is where the real
 execution coverage comes from.
 
 `build/python` is prepended to `PYTHONPATH` automatically when it exists, so
@@ -68,11 +68,11 @@ def _child_env() -> Dict[str, str]:
 def _runtime_available(env: Dict[str, str]) -> bool:
     """True when the *compiled* extension is usable, not just importable.
 
-    `flox_py/__init__.py` imports fine from a source tree and only raises on
+    `lrvx/__init__.py` imports fine from a source tree and only raises on
     first attribute access, so the probe touches a native symbol.
     """
     probe = subprocess.run(
-        [sys.executable, "-c", "import flox_py; flox_py.SymbolRegistry"],
+        [sys.executable, "-c", "import lrvx; lrvx.SymbolRegistry"],
         cwd=REPO_ROOT, env=env, capture_output=True, text=True,
     )
     return probe.returncode == 0
@@ -94,7 +94,7 @@ def main() -> int:
                     "docs/examples/*.js."
     )
     parser.add_argument("--require-runtime", action="store_true",
-                        help="fail if flox_py cannot be imported instead of "
+                        help="fail if lrvx cannot be imported instead of "
                              "degrading to a syntax check")
     parser.add_argument("--quiet", action="store_true",
                         help="only print failures")
@@ -114,13 +114,13 @@ def main() -> int:
     runtime = _runtime_available(env)
     if not runtime:
         if args.require_runtime:
-            print("::error::flox_py is not importable, but "
+            print("::error::lrvx is not importable, but "
                   "--require-runtime was passed. Build the Python bindings "
-                  "(-DFLOX_BUILD_PYTHON=ON) or set PYTHONPATH.",
+                  "(-DLRVX_BUILD_PYTHON=ON) or set PYTHONPATH.",
                   file=sys.stderr)
             return 1
         notices.append(
-            "::notice::flox_py is not importable — Python examples are "
+            "::notice::lrvx is not importable — Python examples are "
             "syntax-checked only. Run with a built extension "
             "(PYTHONPATH=build/python) for full execution coverage."
         )

@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.OrderBook`` tick handling and delta-fed window tracking.
+"""Tests for ``lrvx.OrderBook`` tick handling and delta-fed window tracking.
 
 Mirrors tests/test_nlevel_order_book_window.cpp through the Python binding,
 which reads the same book the engine does.
@@ -21,7 +21,7 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
 
 def _arr(values) -> np.ndarray:
@@ -31,14 +31,14 @@ def _arr(values) -> np.ndarray:
 class TickSizeValidationTests(unittest.TestCase):
     def test_zero_tick_size_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            flox_py.OrderBook(0.0)
+            lrvx.OrderBook(0.0)
 
     def test_negative_tick_size_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            flox_py.OrderBook(-0.01)
+            lrvx.OrderBook(-0.01)
 
     def test_positive_tick_size_is_accepted(self) -> None:
-        book = flox_py.OrderBook(0.01)
+        book = lrvx.OrderBook(0.01)
         self.assertIsNone(book.best_bid())
 
 
@@ -47,7 +47,7 @@ class TinyTickSizeTests(unittest.TestCase):
     the sub-cent pairs quote in. Every level used to collapse onto one index."""
 
     def test_levels_stay_apart_at_one_satoshi(self) -> None:
-        book = flox_py.OrderBook(1e-8)
+        book = lrvx.OrderBook(1e-8)
         book.apply_snapshot(_arr([1e-5]), _arr([1.0]),
                             _arr([1.002e-5]), _arr([1.0]))
 
@@ -58,7 +58,7 @@ class TinyTickSizeTests(unittest.TestCase):
         self.assertAlmostEqual(book.mid(), 1.001e-5, places=12)
 
     def test_levels_stay_apart_at_two_satoshi(self) -> None:
-        book = flox_py.OrderBook(2e-8)
+        book = lrvx.OrderBook(2e-8)
         book.apply_snapshot(_arr([1e-5]), _arr([1.0]),
                             _arr([1.002e-5]), _arr([1.0]))
 
@@ -69,7 +69,7 @@ class TinyTickSizeTests(unittest.TestCase):
 
 class MidTests(unittest.TestCase):
     def test_mid_is_the_average_of_both_sides(self) -> None:
-        book = flox_py.OrderBook(5e-8)
+        book = lrvx.OrderBook(5e-8)
         book.apply_snapshot(_arr([1e-5]), _arr([1.0]),
                             _arr([1.01e-5]), _arr([1.0]))
 
@@ -83,7 +83,7 @@ class DeltaDriftTests(unittest.TestCase):
 
     def test_book_survives_a_long_delta_only_drift(self) -> None:
         tick = 0.1
-        book = flox_py.OrderBook(tick)
+        book = lrvx.OrderBook(tick)
 
         bid_top, ask_top = 59999.9, 60000.1
         depth = 10

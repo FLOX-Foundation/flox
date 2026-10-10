@@ -1,7 +1,7 @@
 // Composite-condition DSL for Node strategies. Mirrors
-// python/flox_py/composite.py and quickjs/flox/composite.js.
+// python/lrvx/composite.py and quickjs/lrvx/composite.js.
 //
-//   const { when, BAR_TYPE_TIME } = require('flox/composite');
+//   const { when, BAR_TYPE_TIME } = require('lrvx/composite');
 //   const fast = when(strat, sym, BAR_TYPE_TIME, M5_NS).ema(50);
 //   const slow = when(strat, sym, BAR_TYPE_TIME, M5_NS).ema(200);
 //   const crossUp = fast.gt(slow);

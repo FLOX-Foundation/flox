@@ -13,14 +13,14 @@ Exercises:
 - Stale-mark guard for liquidation safety
 """
 
-import flox_py as flox
+import lrvx
 
 BTC = 1
 ETH = 2
 
 
 def main():
-    stack = flox.VenueStack.binance_um_futures(account_id=7, equity=50_000.0)
+    stack = lrvx.VenueStack.binance_um_futures(account_id=7, equity=50_000.0)
     acct = stack.account()
     liq = stack.liquidation()
 

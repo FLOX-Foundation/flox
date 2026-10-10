@@ -59,7 +59,7 @@ connection and the process keeps running.
     it exists. The hand-written list this replaced covered the six order-flow
     commands and missed the ones that move money, close positions and set
     another account's entitlements.
-- **Rate limiting**, per session, via `flox::RateLimitPolicy` -- and the
+- **Rate limiting**, per session, via `lrvx::RateLimitPolicy` -- and the
   policy is a SETTING (`SessionRateLimit`, applied with
   `setRateLimit(...)` on `TcpGateway`, `TlsGateway` and `WsGateway`), not a
   fixed profile. `SessionRateLimit::off()` is one of its values.
@@ -261,15 +261,15 @@ monotonic `seq`:
     event is simply not encoded on FIX sessions (no seq is consumed).
   - The sequencing/framing building block (`FixSession` in `fix_codec.h`)
     stays for embedded/test use.
-  - **The other end of this session is `flox::fix::FixInitiator`**
-    (`flox/connector/fix/`, in the core rather than the venue module -- see
+  - **The other end of this session is `lrvx::fix::FixInitiator`**
+    (`lrvx/connector/fix/`, in the core rather than the venue module -- see
     [Connecting to another venue over FIX](fix-initiator.md) for why). It
     opens the Logon, keeps the same liveness timers, serves a `ResendRequest`
     with the same PossDup/GapFill split, and closes its own gaps under the
     same no-reorder-buffer rule. Both ends frame through one shared
-    implementation in `flox/connector/fix/fix_wire.h` (field parsing, the
+    implementation in `lrvx/connector/fix/fix_wire.h` (field parsing, the
     checksum, the header field order, SendingTime) and print decimals through
-    one shared `flox/util/decimal_wire.h`, so the bytes cannot drift apart.
+    one shared `lrvx/util/decimal_wire.h`, so the bytes cannot drift apart.
     `venue/tests/test_venue_fix_initiator.cpp` runs the pair against each
     other in one process.
 
@@ -303,7 +303,7 @@ market-data path.
 |---|---|
 | `SbeOrderEntryCodec` | SBE binary order entry + exec reports, full fidelity: every field round-trips, including `reduceOnly`, `peg`, `expiryNs`, `ocoGroup`, `lastLook`; schema version 8 adds inbound `QuoteLadder` (template 7), a maker's whole set of levels in one frame (schema `venue/schema/order-entry-sbe.xml`) |
 | `FixCodec` | FIX 4.4: `D`/`F`/`G` in, `ExecutionReport` out, with `BodyLength` and validated `CheckSum`; `MassQuote` (`i`) / `QuoteCancel` (`Z`) in, `QuoteStatusReport` (`AI`) out -- a maker's whole ladder on one symbol, see [fix-quoting.md](fix-quoting.md) |
-| `flox::fix::ClientCodec` | the mirror, for talking TO a venue: `D`/`F`/`G` out, `35=8`/`9`/`3`/`j` in ([FIX initiator](fix-initiator.md)) |
+| `lrvx::fix::ClientCodec` | the mirror, for talking TO a venue: `D`/`F`/`G` out, `35=8`/`9`/`3`/`j` in ([FIX initiator](fix-initiator.md)) |
 | `RestJson` | REST/JSON adoption path (simdjson) |
 | `SbeMdCodec` | outbound market data (SBE, schema `venue/schema/md-sbe.xml`) |
 
@@ -315,9 +315,9 @@ into one that can open a position.
 
 The perimeter is fuzzed, and the rules are explicit:
 
-- **Length prefixes are capped before allocation**: `flox::net::kMaxFrame`
-  (`flox/util/transport.h`) and `flox::ws::kMaxFramePayload`
-  (`flox/util/websocket.h`), 16 MiB, both in core alongside the framing they
+- **Length prefixes are capped before allocation**: `lrvx::net::kMaxFrame`
+  (`lrvx/util/transport.h`) and `lrvx::ws::kMaxFramePayload`
+  (`lrvx/util/websocket.h`), 16 MiB, both in core alongside the framing they
   guard. A 4-byte header cannot reserve gigabytes.
 - **WebSocket extended length is overflow-safe.** The naive completeness check
   `n < off + len` wraps for a 64-bit length; the comparison is done as
@@ -331,7 +331,7 @@ The perimeter is fuzzed, and the rules are explicit:
   receive timeout so session timers and shutdown can run, and that timeout
   fires mid-message whenever a peer's write lands in two packets. Read state
   survives it: the bytes already taken are kept and the frame resumes on the
-  next call (`flox::net::FrameReader` for the plain framed transport, the
+  next call (`lrvx::net::FrameReader` for the plain framed transport, the
   equivalent state in the TLS and WebSocket gateways). Dropping them would
   offset the stream by exactly that many bytes, and every length prefix after
   it would be read from the middle of a message.
@@ -339,7 +339,7 @@ The perimeter is fuzzed, and the rules are explicit:
   `OrderType`, `TimeInForce`, `STPMode` and `PegRef` each cross the wire as
   one byte, and a byte holds 256 values where these name at most eight.
   `SbeOrderEntryCodec::decode` range-checks every one of them (`inRange`,
-  `flox-venue/messages.h`) before it builds a command, on `EnterOrder` and on
+  `lrvx-venue/messages.h`) before it builds a command, on `EnterOrder` and on
   `QuoteLadder` alike, and a value outside the set is a decode failure like
   any other -- `RejectReason::MalformedMessage` to the client, and
   `decode(p, n, err)` naming the field for the operator's log. Carrying such
@@ -477,7 +477,7 @@ feed-breaker state). `prometheus.h` renders the exposition format and
 `MetricsServer` serves it over HTTP for scraping.
 
 Every number on the page and in a control reply is rendered from its raw by
-`fixedPointToStr` (`flox-venue/fixed_point_text.h`): sign, integral part, and
+`fixedPointToStr` (`lrvx-venue/fixed_point_text.h`): sign, integral part, and
 exactly as many fractional digits as the scale carries, written as digits with
 no float in between. `Gauges::fundingRateRaw` is a raw at `kFundingRateScale`
 for that reason, so the page says `fme_funding_rate 0.00030000` and a
@@ -533,7 +533,7 @@ other accessor carries that permission; `hasHold()` / `forEachHold()` state
 their own consumer-thread rule and mean it.
 
 The first two hand back a **snapshot by value**, taken under
-`engine::SnapshotLock` (`venue/include/flox-venue/engine/snapshot_lock.h`) --
+`engine::SnapshotLock` (`venue/include/lrvx-venue/engine/snapshot_lock.h`) --
 a spinlock the consumer takes when it writes one of those containers and the
 sampler takes for the length of one copy. A reference into live storage would
 be neither safe nor useful: unsafe because an insert can rehash the map under

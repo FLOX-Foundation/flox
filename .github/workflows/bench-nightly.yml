@@ -1,6 +1,6 @@
 name: Benchmarks (nightly)
 
-# ci.yml still compiles the benchmarks on every PR (FLOX_BUILD_BENCHMARKS=ON
+# ci.yml still compiles the benchmarks on every PR (LRVX_BUILD_BENCHMARKS=ON
 # stays on there) so a benchmark that stops building fails a PR immediately.
 # It stopped *running* them on every PR -- the 4-5 min per Linux job that
 # cost -- and running them is what this workflow is for: a schedule so
@@ -84,7 +84,7 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
-    # FLOX_NATIVE=OFF: CMakeLists.txt defaults Release builds to
+    # LRVX_NATIVE=OFF: CMakeLists.txt defaults Release builds to
     # -march=native, safe only when the compiling machine is the running
     # machine. ccache breaks that assumption across runner instances -- a
     # cache hit can hand this job an object gcc built on a different
@@ -100,14 +100,14 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
-              -DFLOX_NATIVE=OFF \
+              -DLRVX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_BUILD_BENCHMARKS=ON \
-              -DFLOX_BUILD_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON \
-              -DFLOX_BUILD_CAPI=ON
+              -DLRVX_BUILD_TESTS=ON \
+              -DLRVX_BUILD_BENCHMARKS=ON \
+              -DLRVX_BUILD_DEMO=ON \
+              -DLRVX_ENABLE_LZ4=ON \
+              -DLRVX_ENABLE_BACKTEST=ON \
+              -DLRVX_BUILD_CAPI=ON
 
     - name: ccache zero stats
       run: ccache -z
@@ -194,7 +194,7 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
-    # FLOX_NATIVE=OFF: see bench-gcc's identical Configure step.
+    # LRVX_NATIVE=OFF: see bench-gcc's identical Configure step.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
@@ -203,14 +203,14 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
-              -DFLOX_NATIVE=OFF \
+              -DLRVX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_BUILD_BENCHMARKS=ON \
-              -DFLOX_BUILD_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON \
-              -DFLOX_BUILD_CAPI=ON
+              -DLRVX_BUILD_TESTS=ON \
+              -DLRVX_BUILD_BENCHMARKS=ON \
+              -DLRVX_BUILD_DEMO=ON \
+              -DLRVX_ENABLE_LZ4=ON \
+              -DLRVX_ENABLE_BACKTEST=ON \
+              -DLRVX_BUILD_CAPI=ON
 
     - name: ccache zero stats
       run: ccache -z

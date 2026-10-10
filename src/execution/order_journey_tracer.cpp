@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/execution/order_journey_tracer.h"
+#include "lrvx/execution/order_journey_tracer.h"
 
 #include <algorithm>
 #include <cmath>
 
-namespace flox
+namespace lrvx
 {
 
 OrderJourneyTracer::OrderJourneyTracer() : OrderJourneyTracer(Config{}, kDefaultId)
@@ -288,4 +288,4 @@ void OrderJourneyTracer::clear()
   _insertionOrder.clear();
 }
 
-}  // namespace flox
+}  // namespace lrvx

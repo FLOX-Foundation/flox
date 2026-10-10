@@ -7,8 +7,8 @@ includes from gated header prefixes. Fails the check when a test
 includes a gated header but lives outside the matching block.
 
 Examples of gated headers:
-- `flox/backtest/...`   → requires FLOX_ENABLE_BACKTEST
-- `flox/capi/...`       → requires FLOX_BUILD_CAPI
+- `lrvx/backtest/...`   → requires LRVX_ENABLE_BACKTEST
+- `lrvx/capi/...`       → requires LRVX_BUILD_CAPI
 
 The check is conservative — only direct `#include` lines are inspected,
 so transitive includes through engine headers are not chased. A past
@@ -16,10 +16,10 @@ manual audit caught one case (`test_live_queue_position`); this script automates
 audit for every future PR.
 
 This also runs the reverse pass: every `tests/*.cpp` file must be named
-by some `add_flox_test(...)` call or a manual `add_executable(...)` in
+by some `add_lrvx_test(...)` call or a manual `add_executable(...)` in
 `tests/CMakeLists.txt`, or it is never compiled and never run — ctest
 can only run what CMake was told to configure. A file left off the list
-(add_flox_test) or off the manual add_executable() source list fails
+(add_lrvx_test) or off the manual add_executable() source list fails
 the check. This only covers tests/ itself; venue/tests/ and
 connectors/tests/ use file(GLOB ...) instead of a name list, so a file
 dropped there is auto-discovered rather than silently orphaned, and
@@ -37,18 +37,18 @@ TESTS_DIR = REPO_ROOT / "tests"
 
 # header prefix → required cmake flag
 GATED_PREFIXES: dict[str, str] = {
-    "flox/backtest/": "FLOX_ENABLE_BACKTEST",
-    "flox/capi/": "FLOX_BUILD_CAPI",
-    "flox/ml/": "FLOX_ENABLE_ONNX",
+    "lrvx/backtest/": "LRVX_ENABLE_BACKTEST",
+    "lrvx/capi/": "LRVX_BUILD_CAPI",
+    "lrvx/ml/": "LRVX_ENABLE_ONNX",
 }
 
 # Hard-prereq implications expressed in CMakeLists.txt. When a flag
 # is active, every flag it implies is also guaranteed active. Mirrors
 # the message(FATAL_ERROR ...) guards at config time.
 FLAG_IMPLIES: dict[str, set[str]] = {
-    "FLOX_BUILD_CAPI": {"FLOX_ENABLE_BACKTEST"},
-    "FLOX_BUILD_CODON": {"FLOX_BUILD_CAPI", "FLOX_ENABLE_BACKTEST"},
-    "FLOX_BUILD_QUICKJS": {"FLOX_BUILD_CAPI", "FLOX_ENABLE_BACKTEST"},
+    "LRVX_BUILD_CAPI": {"LRVX_ENABLE_BACKTEST"},
+    "LRVX_BUILD_CODON": {"LRVX_BUILD_CAPI", "LRVX_ENABLE_BACKTEST"},
+    "LRVX_BUILD_QUICKJS": {"LRVX_BUILD_CAPI", "LRVX_ENABLE_BACKTEST"},
 }
 
 
@@ -65,8 +65,8 @@ def expand_flags(flags: list[str]) -> set[str]:
                     changed = True
     return out
 
-ADD_TEST_RE = re.compile(r"^\s*add_flox_test\(\s*([A-Za-z0-9_]+)\s*\)")
-# Manual registration path (bypasses add_flox_test entirely): e.g.
+ADD_TEST_RE = re.compile(r"^\s*add_lrvx_test\(\s*([A-Za-z0-9_]+)\s*\)")
+# Manual registration path (bypasses add_lrvx_test entirely): e.g.
 #   add_executable(test_capi_logger test_capi_logger.cpp)
 # The function's own template line, `add_executable(${name} ${name}.cpp)`,
 # does not match this — `${name}` contains characters outside
@@ -106,7 +106,7 @@ def parse_cmake_gating(cmake_text: str) -> dict[str, list[str]]:
 
 
 def find_unregistered(cmake_text: str) -> list[str]:
-    """Return tests/*.cpp basenames that no add_flox_test(...) or manual
+    """Return tests/*.cpp basenames that no add_lrvx_test(...) or manual
     add_executable(...) call in tests/CMakeLists.txt compiles.
 
     ctest only runs what CMake was told to configure; a source file that
@@ -164,7 +164,7 @@ def main() -> int:
     for name in unregistered:
         failures.append(
             f"::error::tests/{name} exists but is not named by any "
-            f"add_flox_test(...) or add_executable(...) call in "
+            f"add_lrvx_test(...) or add_executable(...) call in "
             f"{CMAKE_PATH.relative_to(REPO_ROOT)} — it is never compiled "
             f"and never runs."
         )

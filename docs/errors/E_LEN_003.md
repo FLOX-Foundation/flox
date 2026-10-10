@@ -21,11 +21,11 @@ row:
     ```python
     # If you have one strategy and a single return series:
     returns = single_series.reshape(1, -1)
-    out = flox.whites_reality_check(returns, num_bootstrap=10_000)
+    out = lrvx.whites_reality_check(returns, num_bootstrap=10_000)
 
     # Multiple strategies — stack them:
     returns = np.stack([strat_a, strat_b, strat_c])
-    out = flox.whites_reality_check(returns, num_bootstrap=10_000)
+    out = lrvx.whites_reality_check(returns, num_bootstrap=10_000)
     ```
 
 ## Common causes

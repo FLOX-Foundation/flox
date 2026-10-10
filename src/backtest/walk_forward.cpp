@@ -1,18 +1,18 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/backtest/walk_forward.h"
+#include "lrvx/backtest/walk_forward.h"
 
-#include "flox/backtest/backtest_runner.h"
-#include "flox/log/log.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/log/log.h"
 
-namespace flox
+namespace lrvx
 {
 
 WalkForwardRunner::WalkForwardRunner(const BacktestConfig& backtestConfig,
@@ -34,7 +34,7 @@ std::vector<std::vector<double>> WalkForwardRunner::gridPoints() const
   {
     if (!_grid.empty())
     {
-      FLOX_LOG_ERROR(
+      LRVX_LOG_ERROR(
           "WalkForwardRunner: a parameter grid is set but the "
           "strategy factory takes only a fold index, so no "
           "parameter can reach the strategy; the grid is ignored");
@@ -48,7 +48,7 @@ std::vector<std::vector<double>> WalkForwardRunner::gridPoints() const
       // An axis with no candidates would multiply the product by zero and
       // leave nothing to evaluate. Treat it as "this parameter is not being
       // searched" rather than cancelling the whole fold.
-      FLOX_LOG_WARN("WalkForwardRunner: empty parameter axis skipped");
+      LRVX_LOG_WARN("WalkForwardRunner: empty parameter axis skipped");
       continue;
     }
     std::vector<std::vector<double>> next;
@@ -157,7 +157,7 @@ bool foldDeclined(WalkForwardFold& f, const GridSelection& winner)
   {
     return false;
   }
-  FLOX_LOG_WARN(
+  LRVX_LOG_WARN(
       "WalkForwardRunner: the strategy factory declined every grid "
       "point of fold "
       << f.foldIndex << "; the fold is reported empty");
@@ -175,7 +175,7 @@ bool testBuildDeclined(const WalkForwardFold& f, const IStrategy* strategy)
   {
     return false;
   }
-  FLOX_LOG_WARN(
+  LRVX_LOG_WARN(
       "WalkForwardRunner: the strategy factory declined the winning "
       "point of fold "
       << f.foldIndex
@@ -191,12 +191,12 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   std::vector<WalkForwardFold> folds;
   if (!_factory)
   {
-    FLOX_LOG_ERROR("WalkForwardRunner: no strategy factory set");
+    LRVX_LOG_ERROR("WalkForwardRunner: no strategy factory set");
     return folds;
   }
   if (_wfConfig.testSize == 0)
   {
-    FLOX_LOG_ERROR("WalkForwardRunner: testSize must be > 0");
+    LRVX_LOG_ERROR("WalkForwardRunner: testSize must be > 0");
     return folds;
   }
   const std::size_t step = _wfConfig.step == 0 ? _wfConfig.testSize : _wfConfig.step;
@@ -254,7 +254,7 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   {
     if (_wfConfig.trainSize == 0)
     {
-      FLOX_LOG_ERROR("WalkForwardRunner: sliding mode requires trainSize > 0");
+      LRVX_LOG_ERROR("WalkForwardRunner: sliding mode requires trainSize > 0");
       return folds;
     }
     for (std::size_t trainStart = 0;
@@ -318,12 +318,12 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   std::vector<WalkForwardFold> folds;
   if (!_factory)
   {
-    FLOX_LOG_ERROR("WalkForwardRunner: no strategy factory set");
+    LRVX_LOG_ERROR("WalkForwardRunner: no strategy factory set");
     return folds;
   }
   if (_wfConfig.testSize == 0)
   {
-    FLOX_LOG_ERROR("WalkForwardRunner: testSize must be > 0");
+    LRVX_LOG_ERROR("WalkForwardRunner: testSize must be > 0");
     return folds;
   }
   const std::size_t step = _wfConfig.step == 0 ? _wfConfig.testSize : _wfConfig.step;
@@ -381,7 +381,7 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   {
     if (_wfConfig.trainSize == 0)
     {
-      FLOX_LOG_ERROR("WalkForwardRunner: sliding mode requires trainSize > 0");
+      LRVX_LOG_ERROR("WalkForwardRunner: sliding mode requires trainSize > 0");
       return folds;
     }
     for (std::size_t trainStart = 0;
@@ -429,4 +429,4 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   return folds;
 }
 
-}  // namespace flox
+}  // namespace lrvx

@@ -7,14 +7,14 @@ Find good strategy parameters by sweeping a grid and ranking results. The patter
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
     import pandas as pd
 
     def run_one(fast: int, slow: int) -> dict:
-        reg = flox.SymbolRegistry()
+        reg = lrvx.SymbolRegistry()
         btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
         strat = SmaCrossover([btc], fast=fast, slow=slow)
-        bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+        bt = lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
         bt.set_strategy(strat)
         return bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
 
@@ -31,18 +31,18 @@ Find good strategy parameters by sweeping a grid and ranking results. The patter
     df.to_csv("grid_results.csv", index=False)
     ```
 
-    For parallelism, wrap `run_one` in `multiprocessing.Pool` or `concurrent.futures.ProcessPoolExecutor`. FLOX releases the GIL during the C++ backtest, so threads work too.
+    For parallelism, wrap `run_one` in `multiprocessing.Pool` or `concurrent.futures.ProcessPoolExecutor`. lrvx releases the GIL during the C++ backtest, so threads work too.
 
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
     function runOne(fast, slow) {
-      const reg = new flox.SymbolRegistry();
+      const reg = new lrvx.SymbolRegistry();
       const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
       const strat = new SmaCrossover([btc], fast, slow);
-      const bt = new flox.BacktestRunner(reg, 0.0004, 10_000);
+      const bt = new lrvx.BacktestRunner(reg, 0.0004, 10_000);
       bt.setStrategy(strat);
       return bt.runCsv("data/btcusdt_1m.csv", "BTCUSDT");
     }
@@ -61,8 +61,8 @@ Find good strategy parameters by sweeping a grid and ranking results. The patter
 === "C++"
 
     ```cpp
-    #include "flox/backtest/backtest_optimizer.h"
-    #include "flox/backtest/optimization_stats.h"
+    #include "lrvx/backtest/backtest_optimizer.h"
+    #include "lrvx/backtest/optimization_stats.h"
 
     struct MAParams {
       int fastPeriod, slowPeriod;
@@ -108,13 +108,13 @@ All three ratios are on this dict. `BacktestResult.stats()` carries the same nam
 
 ## Filtering, stability, statistical tests
 
-The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permutation tests as templated utilities (see [`optimization_stats.h`](../reference/api/backtest/optimization_stats.md)). The same primitives are exposed as free functions in `flox_py` — prefer them over hand-rolling with `scipy`:
+The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permutation tests as templated utilities (see [`optimization_stats.h`](../reference/api/backtest/optimization_stats.md)). The same primitives are exposed as free functions in `lrvx` — prefer them over hand-rolling with `scipy`:
 
 === "Python"
 
     ```python
     import numpy as np
-    import flox_py as flox
+    import lrvx
 
     sharpes = df["sharpe_ratio"].values
     returns = df["return_pct"].values
@@ -122,18 +122,18 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
     print("corr(Sharpe, return):", np.corrcoef(sharpes, returns)[0, 1])
 
     # Bootstrap 95% CI for mean Sharpe -> (lower, median, upper)
-    print("CI:", flox.bootstrap_ci(sharpes, confidence=0.95, num_samples=10_000))
+    print("CI:", lrvx.bootstrap_ci(sharpes, confidence=0.95, num_samples=10_000))
 
     # Two-sample permutation test: top-10 vs bottom-10 -> p-value
     top, bot = np.sort(sharpes)[-10:], np.sort(sharpes)[:10]
-    print("p =", flox.permutation_test(top, bot, num_permutations=10_000))
+    print("p =", lrvx.permutation_test(top, bot, num_permutations=10_000))
 
     # Multiple-comparison correction across K candidate strategies.
     # excess: shape (K, T) of EXCESS returns -> {p_value, best_stat, best_index}
-    print(flox.whites_reality_check(excess, num_bootstrap=10_000))
+    print(lrvx.whites_reality_check(excess, num_bootstrap=10_000))
     ```
 
-    `flox_py` also ships `profit_factor(returns)`, `win_rate(trade_pnls)` and
+    `lrvx` also ships `profit_factor(returns)`, `win_rate(trade_pnls)` and
     `trade_pnl(signal_long, signal_short, log_returns)`. Node.js has the same set
     camelCased — `bootstrapCI`, `permutationTest`, `whitesRealityCheck`,
     `profitFactor`, `winRate`, `tradePnl` — but `whitesRealityCheck` takes a flat
@@ -171,14 +171,14 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
 
 ## Type-erased `GridSearch` class (Python / Node / Codon)
 
-The template-based `BacktestOptimizer<ParamsT, GridT>` shown above is C++-only. For the language bindings, FLOX exposes a type-erased `GridSearch` class that takes axes of `double` values and a factory callback. Last axis varies fastest (row-major flatten).
+The template-based `BacktestOptimizer<ParamsT, GridT>` shown above is C++-only. For the language bindings, lrvx exposes a type-erased `GridSearch` class that takes axes of `double` values and a factory callback. Last axis varies fastest (row-major flatten).
 
 ### Python
 
 ```python
-import flox_py as flox
+import lrvx
 
-reg = flox.SymbolRegistry()
+reg = lrvx.SymbolRegistry()
 btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 
 
@@ -187,23 +187,23 @@ def factory(params):
     if fast >= slow:
         return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
-    class _S(flox.Strategy):
+    class _S(lrvx.Strategy):
         def __init__(self, syms):
             super().__init__(syms)
-            self.fast = flox.SMA(fast)
-            self.slow = flox.SMA(slow)
+            self.fast = lrvx.SMA(fast)
+            self.slow = lrvx.SMA(slow)
         def on_trade(self, ctx, t):
             f = self.fast.update(t.price); s = self.slow.update(t.price)
             if f is None or s is None or not self.slow.ready: return
             if f > s and ctx.is_flat(): self.market_buy(0.01)
             elif f < s and ctx.is_long(): self.market_sell(0.01)
 
-    bt = flox.BacktestRunner(reg, 0.0004, 10_000)
+    bt = lrvx.BacktestRunner(reg, 0.0004, 10_000)
     bt.set_strategy(_S([btc]))
     return bt.run_csv("data/btcusdt_sample.csv", symbol="BTCUSDT")
 
 
-gs = flox.GridSearch()
+gs = lrvx.GridSearch()
 gs.add_axis([5.0, 10.0, 20.0])
 gs.add_axis([30.0, 50.0, 100.0])
 gs.set_factory(factory)
@@ -219,7 +219,7 @@ The factory takes `list[float]` and returns the same dict shape as `BacktestRunn
 ### Node
 
 ```js
-const gs = new flox.GridSearch();
+const gs = new lrvx.GridSearch();
 gs.addAxis([5, 10, 20]);
 gs.addAxis([30, 50, 100]);
 gs.setFactory((params) => {

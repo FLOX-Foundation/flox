@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Synchronise the project version across every artifact that publishes a version:
-#   - root CMakeLists.txt   (flox C++ core)
-#   - pyproject.toml        (flox-py PyPI package; at the root so the sdist
+#   - root CMakeLists.txt   (lrvx C++ core)
+#   - pyproject.toml        (lrvx PyPI package; at the root so the sdist
 #                            can carry the C++ sources -- see the layout rule there)
-#   - node/package.json     (@flox-foundation/flox npm package)
-#   - mcp/pyproject.toml    (flox-mcp PyPI package — bundled IR / docs index
+#   - node/package.json     (lrvx npm package)
+#   - mcp/pyproject.toml    (lrvx-mcp PyPI package — bundled IR / docs index
 #                            must track the binding versions users install)
 #
 # Usage: scripts/set-version.sh <version>
@@ -26,9 +26,9 @@ fi
 # which Node.js can then resolve correctly. Falls back to plain pwd elsewhere.
 ROOT="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 
-# 1. Root CMakeLists.txt — `project(flox VERSION X.Y.Z LANGUAGES CXX C)`
+# 1. Root CMakeLists.txt — `project(lrvx VERSION X.Y.Z LANGUAGES CXX C)`
 #    Use Perl for cross-platform in-place edit (BSD sed and GNU sed disagree on -i).
-perl -i -pe "s/^(project\(flox VERSION )[^ )]+/\${1}${VERSION}/" "$ROOT/CMakeLists.txt"
+perl -i -pe "s/^(project\(lrvx VERSION )[^ )]+/\${1}${VERSION}/" "$ROOT/CMakeLists.txt"
 
 # 2. pyproject.toml — `version = "X.Y.Z"`
 perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/pyproject.toml"
@@ -42,15 +42,15 @@ node -e "
   fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
 "
 
-# 4. mcp/pyproject.toml — flox-mcp ships bundled IR / docs / examples
-#    snapshots that mirror the just-built flox-py / flox-node surface.
-#    Lockstep version means an installed `flox-mcp x.y.z` was built off
-#    the same source tree as the matching `flox-py` / npm package, so
+# 4. mcp/pyproject.toml — lrvx-mcp ships bundled IR / docs / examples
+#    snapshots that mirror the just-built lrvx / lrvx-node surface.
+#    Lockstep version means an installed `lrvx-mcp x.y.z` was built off
+#    the same source tree as the matching `lrvx` / npm package, so
 #    bundled data can never describe a surface the user doesn't have.
 perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/mcp/pyproject.toml"
 
 echo "Set version to ${VERSION} in:"
-echo "  CMakeLists.txt   ($(grep -E '^project\(flox VERSION' "$ROOT/CMakeLists.txt"))"
+echo "  CMakeLists.txt   ($(grep -E '^project\(lrvx VERSION' "$ROOT/CMakeLists.txt"))"
 echo "  pyproject        ($(grep -E '^version = ' "$ROOT/pyproject.toml"))"
 echo "  node/package     (\"version\": \"$(node -e "console.log(require('$ROOT/node/package.json').version)")\")"
 echo "  mcp/pyproject    ($(grep -E '^version = ' "$ROOT/mcp/pyproject.toml"))"

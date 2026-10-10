@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -30,9 +30,9 @@
 
 #include <gtest/gtest.h>
 
-#include "flox/net/socket.h"
+#include "lrvx/net/socket.h"
 
-using namespace flox::net;
+using namespace lrvx::net;
 
 namespace
 {
@@ -154,7 +154,7 @@ TEST(SocketPoll, AWaitThatCannotSucceedDoesNotSpin)
 // The "documented" ending needs no interface, only the sentence.
 TEST(SocketAddressFamily, TheLimitIsEitherLiftedOrWrittenDown)
 {
-  const std::string doc = readFile(std::string(FLOX_DOCS_DIR) + "/reference/portable-sockets.md");
+  const std::string doc = readFile(std::string(LRVX_DOCS_DIR) + "/reference/portable-sockets.md");
   ASSERT_FALSE(doc.empty()) << "could not read docs/reference/portable-sockets.md";
 
   EXPECT_NE(doc.find("IPv6"), std::string::npos)

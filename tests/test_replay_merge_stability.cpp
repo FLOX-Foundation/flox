@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -18,17 +18,17 @@
 // makes a replay reproducible.
 //
 // The contract is already written down: MergedTapeReader's own class comment
-// in include/flox/replay/merged_tape_reader.h promises "Tie-break:
+// in include/lrvx/replay/merged_tape_reader.h promises "Tie-break:
 // (exchange_ts_ns, tape_index, source order)", and the multi-tape design it
 // implements adds seq as the last key for book records.
 
-#include "flox/common.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/merged_tape_reader.h"
-#include "flox/replay/ops/segment_ops.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/recording_metadata.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/merged_tape_reader.h"
+#include "lrvx/replay/ops/segment_ops.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/recording_metadata.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -38,8 +38,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -55,7 +55,7 @@ class ReplayMergeStabilityTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _root = std::filesystem::temp_directory_path() / "flox_replay_merge_stability";
+    _root = std::filesystem::temp_directory_path() / "lrvx_replay_merge_stability";
     std::filesystem::remove_all(_root);
     std::filesystem::create_directories(_root);
   }
@@ -77,7 +77,7 @@ class ReplayMergeStabilityTest : public ::testing::Test
     {
       WriterConfig cfg{};
       cfg.output_dir = dir;
-      cfg.output_filename = "tape.floxlog";
+      cfg.output_filename = "tape.lrvx";
       BinaryLogWriter writer(cfg);
       for (size_t i = 0; i < count; ++i)
       {
@@ -105,7 +105,7 @@ class ReplayMergeStabilityTest : public ::testing::Test
     {
       WriterConfig cfg{};
       cfg.output_dir = dir;
-      cfg.output_filename = "tape.floxlog";
+      cfg.output_filename = "tape.lrvx";
       BinaryLogWriter writer(cfg);
       for (size_t i = 0; i < count; ++i)
       {
@@ -137,7 +137,7 @@ class ReplayMergeStabilityTest : public ::testing::Test
     {
       WriterConfig cfg{};
       cfg.output_dir = dir;
-      cfg.output_filename = "tape.floxlog";
+      cfg.output_filename = "tape.lrvx";
       BinaryLogWriter writer(cfg);
       for (size_t i = 0; i < count; ++i)
       {
@@ -168,7 +168,7 @@ class ReplayMergeStabilityTest : public ::testing::Test
     meta.exchange = "test";
     meta.has_trades = !has_book;
     meta.has_book_snapshots = has_book;
-    ::flox::replay::SymbolInfo s{};
+    ::lrvx::replay::SymbolInfo s{};
     s.symbol_id = 1;
     s.name = "BTCUSDT";
     s.base_asset = "BTC";
@@ -266,7 +266,7 @@ TEST_F(ReplayMergeStabilityTest, MergedSegmentsKeepRecordedOrderOnTiedTimestamps
   auto in = tapeDir("in");
   auto out = tapeDir("out");
 
-  const std::vector<std::string> names{"a.floxlog", "b.floxlog"};
+  const std::vector<std::string> names{"a.lrvx", "b.lrvx"};
   for (size_t s = 0; s < names.size(); ++s)
   {
     WriterConfig cfg{};
@@ -289,7 +289,7 @@ TEST_F(ReplayMergeStabilityTest, MergedSegmentsKeepRecordedOrderOnTiedTimestamps
 
   MergeConfig mcfg{};
   mcfg.output_dir = out;
-  mcfg.output_name = "merged.floxlog";
+  mcfg.output_name = "merged.lrvx";
   mcfg.sort_by_timestamp = true;
   auto result = SegmentOps::merge({in / names[0], in / names[1]}, mcfg);
   ASSERT_TRUE(result.success);
@@ -329,7 +329,7 @@ TEST_F(ReplayMergeStabilityTest, DistinctTimestampsStillMergeInTimeOrder)
     {
       WriterConfig cfg{};
       cfg.output_dir = dir;
-      cfg.output_filename = "tape.floxlog";
+      cfg.output_filename = "tape.lrvx";
       BinaryLogWriter writer(cfg);
       for (size_t i = 0; i < 32; ++i)
       {

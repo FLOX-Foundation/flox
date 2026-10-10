@@ -5,7 +5,7 @@
 # checkpoint scenarios). All three are 16 hex digits.
 #
 # This file is written ONLY by hand, by running the test with
-# FLOX_UPDATE_GOLDEN=1, and only when the behaviour change that moved a
+# LRVX_UPDATE_GOLDEN=1, and only when the behaviour change that moved a
 # number is intended and explained in the same commit. A diff here is a
 # claim that the venue now behaves differently; it is never housekeeping.
 #

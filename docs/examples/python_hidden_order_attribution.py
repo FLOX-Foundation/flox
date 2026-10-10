@@ -1,7 +1,7 @@
 """Configure hidden / iceberg order attribution on the live queue estimator."""
-import flox_py as flox
+import lrvx
 
-est = flox.LiveQueuePositionEstimator()
+est = lrvx.LiveQueuePositionEstimator()
 
 # Mode A: trust the venue's per-trade is_hidden flag.
 est.set_hidden_order_policy("trust_trade_flag")
@@ -23,7 +23,7 @@ print(f"queue_ahead_est={snap['queue_ahead_est']:.3f}  "
       f"confidence={snap['confidence']:.3f}")
 
 # Mode B: infer when trade volume exceeds the cached visible total.
-est2 = flox.LiveQueuePositionEstimator()
+est2 = lrvx.LiveQueuePositionEstimator()
 est2.set_hidden_order_policy("infer_if_trade_exceeds_visible")
 est2.on_order_placed(symbol=1, side=0, price=50_000.0, order_id=99,
                      order_qty=0.5, level_qty_now=2.0, ts_ns=0)

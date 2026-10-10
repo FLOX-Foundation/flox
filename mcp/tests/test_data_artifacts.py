@@ -1,7 +1,7 @@
 """Schema + content validation for the bundled MCP data artifacts.
 
 These tests run against the committed copies under
-``mcp/flox_mcp/data/`` — they catch:
+``mcp/lrvx_mcp/data/`` — they catch:
 
 * Schema regressions in the IR snapshot, binding manifest, and
   examples index (key set + value shapes).
@@ -25,9 +25,9 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DATA = REPO_ROOT / "mcp" / "flox_mcp" / "data"
+DATA = REPO_ROOT / "mcp" / "lrvx_mcp" / "data"
 
-# Make ``flox_mcp`` importable when running pytest from the repo root.
+# Make ``lrvx_mcp`` importable when running pytest from the repo root.
 sys.path.insert(0, str(REPO_ROOT / "mcp"))
 
 
@@ -53,7 +53,7 @@ def test_ir_snapshot_function_shape(ir_snapshot: dict) -> None:
     assert len(ir_snapshot["functions"]) > 0, "expected non-empty functions"
     for fn in ir_snapshot["functions"][:5]:
         assert "name" in fn
-        assert fn["name"].startswith("flox_"), fn["name"]
+        assert fn["name"].startswith("lrvx_"), fn["name"]
         assert "return_type" in fn
         assert isinstance(fn["params"], list)
         assert "group" in fn
@@ -64,7 +64,7 @@ def test_ir_snapshot_function_shape(ir_snapshot: dict) -> None:
 def test_ir_snapshot_struct_shape(ir_snapshot: dict) -> None:
     assert len(ir_snapshot["structs"]) > 0
     for st in ir_snapshot["structs"][:5]:
-        assert st["name"].startswith("Flox"), st["name"]
+        assert st["name"].startswith("Lrvx"), st["name"]
         assert isinstance(st["fields"], list)
         for f in st["fields"]:
             assert {"name", "type"} <= f.keys()
@@ -73,13 +73,13 @@ def test_ir_snapshot_struct_shape(ir_snapshot: dict) -> None:
 def test_ir_snapshot_known_symbols(ir_snapshot: dict) -> None:
     fn_names = {f["name"] for f in ir_snapshot["functions"]}
     # Sanity-check well-known C-API entries.
-    assert "flox_indicator_ema" in fn_names
-    assert "flox_aggregate_time_bars" in fn_names
-    assert "flox_backtest_runner_run_csv" in fn_names
+    assert "lrvx_indicator_ema" in fn_names
+    assert "lrvx_aggregate_time_bars" in fn_names
+    assert "lrvx_backtest_runner_run_csv" in fn_names
 
     struct_names = {s["name"] for s in ir_snapshot["structs"]}
-    assert "FloxBarData" in struct_names
-    assert "FloxTradeData" in struct_names
+    assert "LrvxBarData" in struct_names
+    assert "LrvxTradeData" in struct_names
 
 
 def test_ir_snapshot_is_byte_stable() -> None:
@@ -87,7 +87,7 @@ def test_ir_snapshot_is_byte_stable() -> None:
     when re-dumped via the canonical writer — guards against any
     accidental dependence on dict-iteration order."""
     sys.path.insert(0, str(REPO_ROOT / "tools" / "codegen"))
-    from flox_codegen import manifest
+    from lrvx_codegen import manifest
 
     raw = (DATA / "ir.snapshot.json").read_bytes()
     payload = json.loads(raw.decode("utf-8"))
@@ -131,8 +131,8 @@ def test_binding_manifest_quickjs_group_matches_parity_yaml(
     functions must show that, not just a bare `status`."""
     composite_book = binding_manifest["groups"]["composite_book"]["quickjs"]
     assert composite_book["status"] == "required"
-    assert "__flox_cb_apply_snapshot" in composite_book["functions"]
-    assert "__flox_cb_apply_delta" in composite_book["functions"]
+    assert "__lrvx_cb_apply_snapshot" in composite_book["functions"]
+    assert "__lrvx_cb_apply_delta" in composite_book["functions"]
 
 
 def test_binding_manifest_capi_symbols_have_kinds(binding_manifest: dict) -> None:
@@ -189,7 +189,7 @@ def gotchas() -> dict:
     path = DATA / "gotchas.json"
     assert path.exists(), (
         f"missing {path}; gotchas are hand-curated, see "
-        f"mcp/flox_mcp/data/gotchas.json")
+        f"mcp/lrvx_mcp/data/gotchas.json")
     return json.loads(path.read_text())
 
 

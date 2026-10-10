@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,16 +15,16 @@
 // and BacktestConfig had to document feeRate as a "maker/taker average".
 // These tests pin the flag's trip into Fill, and the fee split it enables.
 
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
 
 #include <gtest/gtest.h>
 
 #include <memory_resource>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

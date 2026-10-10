@@ -75,13 +75,13 @@ SKIP_NAMES = {
 
 
 def python_smoke(verbose: bool, root: Path) -> list[str]:
-    """Reflect over flox_py and call every zero-arg method we can reach."""
+    """Reflect over lrvx and call every zero-arg method we can reach."""
     probe = r'''
 import inspect, json, sys
 try:
-    import flox_py
+    import lrvx
 except Exception as exc:
-    print(json.dumps({"fatal": f"cannot import flox_py: {exc}"})); raise SystemExit(0)
+    print(json.dumps({"fatal": f"cannot import lrvx: {exc}"})); raise SystemExit(0)
 
 SKIP = set(json.loads(sys.argv[1]))
 BAD = json.loads(sys.argv[2])
@@ -91,8 +91,8 @@ def looks_binding_level(msg):
     return any(b in msg for b in BAD)
 
 roots = []
-for name in dir(flox_py):
-    obj = getattr(flox_py, name, None)
+for name in dir(lrvx):
+    obj = getattr(lrvx, name, None)
     if not isinstance(obj, type):
         continue
     try:
@@ -170,10 +170,10 @@ def node_smoke(verbose: bool, root: Path) -> list[str]:
         return [f"node: {entry} not found — the addon was never built"]
     probe = r'''
 const path = require('path');
-const SKIP = new Set(JSON.parse(process.env.FLOX_SMOKE_SKIP));
-const BAD = JSON.parse(process.env.FLOX_SMOKE_BAD);
-let flox;
-try { flox = require(path.join(process.cwd(), 'index.js')); }
+const SKIP = new Set(JSON.parse(process.env.LRVX_SMOKE_SKIP));
+const BAD = JSON.parse(process.env.LRVX_SMOKE_BAD);
+let lrvx;
+try { lrvx = require(path.join(process.cwd(), 'index.js')); }
 catch (e) { console.log(JSON.stringify({fatal: String(e.message)})); process.exit(0); }
 
 const bindingLevel = (m) => BAD.some(b => String(m).includes(b));
@@ -181,8 +181,8 @@ const problems = [];
 let checked = 0, roots = 0;
 
 const instances = [];
-for (const name of Object.keys(flox)) {
-  const C = flox[name];
+for (const name of Object.keys(lrvx)) {
+  const C = lrvx[name];
   if (typeof C !== 'function') continue;
   // Static factories first: they are how a configured object is obtained, and
   // they were the broken part.
@@ -214,8 +214,8 @@ console.log(JSON.stringify({checked, roots, problems}));
 '''
     import os
     env = dict(os.environ,
-               FLOX_SMOKE_SKIP=json.dumps(sorted(SKIP_NAMES)),
-               FLOX_SMOKE_BAD=json.dumps(list(BINDING_LEVEL)))
+               LRVX_SMOKE_SKIP=json.dumps(sorted(SKIP_NAMES)),
+               LRVX_SMOKE_BAD=json.dumps(list(BINDING_LEVEL)))
     r = subprocess.run(["node", "-e", probe], capture_output=True, text=True,
                        cwd=node_dir, env=env)
     line = (r.stdout or "").strip().splitlines()

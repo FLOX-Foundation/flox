@@ -1,14 +1,14 @@
 # JavaScript Bindings (QuickJS)
 
-Flox embeds [QuickJS](https://bellard.org/quickjs/) to run trading strategies written in JavaScript.
+lrvx embeds [QuickJS](https://bellard.org/quickjs/) to run trading strategies written in JavaScript.
 Strategies use string symbol names, options objects for orders, and get TypeScript declarations for IDE autocompletion.
 
 ## Building
 
 ```bash
 cmake -B build \
-  -DFLOX_BUILD_CAPI=ON \
-  -DFLOX_BUILD_QUICKJS=ON \
+  -DLRVX_BUILD_CAPI=ON \
+  -DLRVX_BUILD_QUICKJS=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
@@ -16,12 +16,12 @@ cmake --build build
 
 This produces:
 
-- `build/src/quickjs/flox_js_runner` -- CLI to load and run JS strategies
-- `build/src/quickjs/libflox_quickjs.a` -- static library for embedding
+- `build/src/quickjs/lrvx_js_runner` -- CLI to load and run JS strategies
+- `build/src/quickjs/liblrvx_quickjs.a` -- static library for embedding
 
 ## Writing a Strategy
 
-Create a `.js` file. Extend the `Strategy` base class, override `onTrade`, and call `flox.register`:
+Create a `.js` file. Extend the `Strategy` base class, override `onTrade`, and call `lrvx.register`:
 
 ```javascript
 class MyStrategy extends Strategy {
@@ -41,13 +41,13 @@ class MyStrategy extends Strategy {
     onStop()  { console.log("Stopped"); }
 }
 
-flox.register(new MyStrategy());
+lrvx.register(new MyStrategy());
 ```
 
 Run it:
 
 ```bash
-./build/src/quickjs/flox_js_runner my_strategy.js
+./build/src/quickjs/lrvx_js_runner my_strategy.js
 ```
 
 ## Symbol Configuration
@@ -194,7 +194,7 @@ executor.advanceClock(ts);
 executor.fillCount;         // number of fills
 ```
 
-For the realistic venue stack (cross-margin Account, MM tier ladder + ADL, VIP fee schedule, funding, rate limits) drive the same strategy file from Node.js via [`flox.VenueStack.binanceUmFutures(...)`](../how-to/realistic-backtest.md) — the QuickJS strategy class is unchanged. Paper trading and live (ccxt.pro) wrap the same executor; see [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+For the realistic venue stack (cross-margin Account, MM tier ladder + ADL, VIP fee schedule, funding, rate limits) drive the same strategy file from Node.js via [`lrvx.VenueStack.binanceUmFutures(...)`](../how-to/realistic-backtest.md) — the QuickJS strategy class is unchanged. Paper trading and live (ccxt.pro) wrap the same executor; see [Paper trading](../how-to/paper-trading.md) and [Connect lrvx to a CCXT exchange](../how-to/ccxt-adapter.md).
 
 One strategy file runs backtest, paper, and live.
 
@@ -242,26 +242,26 @@ fp.totalVolume();
 ## Statistics
 
 ```javascript
-flox.correlation([1,2,3], [1,2,3]);      // 1.0
-flox.profitFactor([100, -50, 200, -30]);  // gross_profit / gross_loss
-flox.winRate([100, -50, 200, -30]);       // 0.5
+lrvx.correlation([1,2,3], [1,2,3]);      // 1.0
+lrvx.profitFactor([100, -50, 200, -30]);  // gross_profit / gross_loss
+lrvx.winRate([100, -50, 200, -30]);       // 0.5
 
-flox.bootstrapCI([1,2,3,4,5], 0.95, 10000);
+lrvx.bootstrapCI([1,2,3,4,5], 0.95, 10000);
 // { lower: ..., median: ..., upper: ... }
 
-flox.permutationTest([1,2,3], [4,5,6], 10000);  // p-value
+lrvx.permutationTest([1,2,3], [4,5,6], 10000);  // p-value
 ```
 
 ## Segment Operations
 
 ```javascript
-flox.validateSegment("/path/to/segment.flx");
-flox.mergeSegments("/path/to/input_dir", "/path/to/output_dir");
+lrvx.validateSegment("/path/to/segment.flx");
+lrvx.mergeSegments("/path/to/input_dir", "/path/to/output_dir");
 ```
 
 ## IDE Support
 
-Copy `quickjs/types/flox.d.ts` and `quickjs/jsconfig.json` into your project directory for VS Code autocompletion.
+Copy `quickjs/types/lrvx.d.ts` and `quickjs/jsconfig.json` into your project directory for VS Code autocompletion.
 
 ## Error Handling
 
@@ -270,47 +270,47 @@ Invalid symbol names or side values throw immediately with descriptive errors.
 
 ## Memory Limit
 
-The JS runtime defaults to 32MB per strategy. When embedding via C++, pass a custom limit to the `FloxJsEngine` constructor:
+The JS runtime defaults to 32MB per strategy. When embedding via C++, pass a custom limit to the `LrvxJsEngine` constructor:
 
 ```cpp
-FloxJsEngine engine(64 * 1024 * 1024);  // 64MB
-FloxJsEngine engine(0);                  // unlimited
+LrvxJsEngine engine(64 * 1024 * 1024);  // 64MB
+LrvxJsEngine engine(0);                  // unlimited
 ```
 
 ## Threads
 
-A `FloxJsStrategy` is single-threaded by construction. It owns one QuickJS
+A `LrvxJsStrategy` is single-threaded by construction. It owns one QuickJS
 runtime, and that runtime may only be entered from the thread that created
-it. `flox_js_runner` and every test in this repo already work that way (one
+it. `lrvx_js_runner` and every test in this repo already work that way (one
 thread, one call at a time), so most embeddings never have to think about
 this at all.
 
-A live engine is different. `flox_live_engine_add_strategy` subscribes a
+A live engine is different. `lrvx_live_engine_add_strategy` subscribes a
 strategy to three independently-threaded event buses (trades, book
 updates, bars), each with its own consumer thread, and calls straight into
 the strategy's callbacks from whichever thread that is. Hand a bare
-`FloxJsStrategy`'s callbacks to a live engine and up to three threads can
+`LrvxJsStrategy`'s callbacks to a live engine and up to three threads can
 enter the same runtime at once. QuickJS was not built for that, and it
 does not fail safely when it happens.
 
 For any embedding that dispatches events from more than one thread, build
-a `FloxJsExecutor` instead of a `FloxJsStrategy`:
+a `LrvxJsExecutor` instead of a `LrvxJsStrategy`:
 
 ```cpp
 #include "js_executor.h"
 
-flox::SymbolRegistry registry;
-flox::FloxJsExecutor executor("strategy.js", registry);
+lrvx::SymbolRegistry registry;
+lrvx::LrvxJsExecutor executor("strategy.js", registry);
 
-auto strategy = flox_strategy_create(
+auto strategy = lrvx_strategy_create(
     1, executor.symbolIds().data(), executor.symbolIds().size(),
     registryHandle, executor.getCallbacks());
 executor.injectHandle(strategy);
 
-flox_live_engine_add_strategy(engine, strategy, onSignal, userData);
+lrvx_live_engine_add_strategy(engine, strategy, onSignal, userData);
 ```
 
-`FloxJsExecutor` builds the runtime on one dedicated thread and keeps it
+`LrvxJsExecutor` builds the runtime on one dedicated thread and keeps it
 there for the object's whole lifetime. The callbacks it hands back only
 ever enqueue an event onto a bounded queue: the JS side of every callback
 (market data, fills, order updates, start, stop, a hot-reload's callback
@@ -319,7 +319,7 @@ thread rather than dropping the event. Default capacity is 65,536,
 configurable through the constructor.
 
 If an embedder reaches into the runtime from a second thread anyway (say,
-by calling into a `FloxJsStrategy` it obtained some other way), it gets a
+by calling into a `LrvxJsStrategy` it obtained some other way), it gets a
 loud failure in a debug build, or a refused and logged call in a release
 build. Not memory corruption.
 

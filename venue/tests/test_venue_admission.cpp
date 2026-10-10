@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -19,9 +19,9 @@
 // entitlement that is documented and unenforced is the same thing as no
 // entitlement at all.
 
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox/book/ladder_book.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx/book/ladder_book.h"
 
 #include <gtest/gtest.h>
 
@@ -29,8 +29,8 @@
 #include <functional>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

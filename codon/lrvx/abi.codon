@@ -1,0 +1,41 @@
+# lrvx/abi.codon -- the C ABI version handshake, run once when the module
+# is imported.
+#
+# include/lrvx/capi/lrvx_capi.h asks every caller to "compare
+# LRVX_CAPI_ABI_VERSION against lrvx_capi_abi_version() once at startup
+# and refuse the mismatch". This binding is where that matters most: it
+# links a prebuilt liblrvx_capi against declarations transcribed from a
+# header that may not be the one that library was built from, and the
+# structs on that boundary carry no reserved tail -- the skew reads as
+# wrong numbers rather than a failed load.
+#
+# LRVX_CAPI_ABI_VERSION below mirrors the macro in lrvx_capi.h and moves
+# with it; tools/codegen emits the same constant into
+# tools/codegen/golden/lrvx_capi.codon from the same spec.
+
+from sys import exit
+
+from C import lrvx_capi_abi_version() -> u32
+
+LRVX_CAPI_ABI_VERSION: int = 4
+
+
+def check_abi_version():
+    """Exits the process when the header and the library disagree."""
+    runtime = int(lrvx_capi_abi_version())
+    if runtime != LRVX_CAPI_ABI_VERSION:
+        print(
+            "lrvx C ABI version mismatch: this binding was built against "
+            + "version "
+            + str(LRVX_CAPI_ABI_VERSION)
+            + ", the loaded lrvx library reports version "
+            + str(runtime)
+            + ". The structs on that boundary have no reserved tail, so "
+            + "continuing would read wrong numbers rather than fail. "
+            + "Rebuild the binding against the library it loads, or "
+            + "install the library the binding was built for."
+        )
+        exit(1)
+
+
+check_abi_version()

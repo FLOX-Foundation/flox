@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One-shot importer: convert hand-written flox_capi.h into an annotated spec.
+"""One-shot importer: convert hand-written lrvx_capi.h into an annotated spec.
 
-Reads include/flox/capi/flox_capi.h, infers a section banner ("group=") for
+Reads include/lrvx/capi/lrvx_capi.h, infers a section banner ("group=") for
 each declaration based on the nearest preceding `// === ... ===` comment block,
-and writes a complete flox_capi_spec.hpp with FLOX_EXPORT annotations on every
+and writes a complete lrvx_capi_spec.hpp with LRVX_EXPORT annotations on every
 function declaration.
 
 This is intentionally not a round-trippable import — it is run once
@@ -13,8 +13,8 @@ truth and changes go there directly.
 Usage:
     PYTHONPATH=tools/codegen tools/codegen/.venv/bin/python \
         tools/codegen/scripts/import_capi.py \
-        --capi include/flox/capi/flox_capi.h \
-        --out  include/flox/capi/flox_capi_spec.hpp
+        --capi include/lrvx/capi/lrvx_capi.h \
+        --out  include/lrvx/capi/lrvx_capi_spec.hpp
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # Relative import from the package — the script runs with PYTHONPATH=tools/codegen.
-from flox_codegen import extractor
+from lrvx_codegen import extractor
 
 
 # Banners look like one of:
@@ -111,7 +111,7 @@ def _group_for_function(
 
 @dataclass
 class CapiDecl:
-    """One declaration as captured from flox_capi.h via libclang."""
+    """One declaration as captured from lrvx_capi.h via libclang."""
 
     kind: str  # "handle" | "struct" | "fnptr" | "enum" | "function"
     name: str
@@ -215,22 +215,22 @@ def import_capi(capi_path: Path, out_path: Path) -> None:
     # Emit the spec. We rebuild the file from scratch, preserving:
     # - The original banner sections (verbatim comments).
     # - Each declaration's source text (verbatim).
-    # - FLOX_EXPORT annotations on every function declaration.
+    # - LRVX_EXPORT annotations on every function declaration.
     out_lines: List[str] = []
     out_lines.append("/*\n")
-    out_lines.append(" * Flox Engine\n")
-    out_lines.append(" * Developed by FLOX Foundation"
-                    " (https://github.com/FLOX-Foundation)\n")
+    out_lines.append(" * lrvx Engine\n")
+    out_lines.append(" * Developed by lrvx contributors"
+                    " (https://github.com/lrvx)\n")
     out_lines.append(" *\n")
-    out_lines.append(" * Copyright (c) 2025 FLOX Foundation\n")
+    out_lines.append(" * Copyright (c) 2025 lrvx contributors\n")
     out_lines.append(" * Licensed under the MIT License. See LICENSE file"
                     " in the project root for full\n")
     out_lines.append(" * license information.\n")
     out_lines.append(" */\n")
     out_lines.append("\n")
-    out_lines.append("// flox_capi_spec.hpp — IDL spec for the FLOX C API.\n")
+    out_lines.append("// lrvx_capi_spec.hpp — IDL spec for the lrvx C API.\n")
     out_lines.append("//\n")
-    out_lines.append("// Generated from flox_capi.h via"
+    out_lines.append("// Generated from lrvx_capi.h via"
                     " tools/codegen/scripts/import_capi.py.\n")
     out_lines.append("// After bootstrap, this file is the source of truth"
                     " — edit here, regenerate\n")
@@ -241,7 +241,7 @@ def import_capi(capi_path: Path, out_path: Path) -> None:
     out_lines.append("#include <stddef.h>\n")
     out_lines.append("#include <stdint.h>\n")
     out_lines.append("\n")
-    out_lines.append('#include "flox/capi/flox_export.h"\n')
+    out_lines.append('#include "lrvx/capi/lrvx_export.h"\n')
     out_lines.append("\n")
     out_lines.append("#ifdef __cplusplus\n")
     out_lines.append('extern "C"\n')
@@ -301,7 +301,7 @@ def import_capi(capi_path: Path, out_path: Path) -> None:
 
         decl_text = "".join(text_lines[decl.line - 1: decl_end_line - 1])
 
-        # Inject FLOX_EXPORT annotation on functions.
+        # Inject LRVX_EXPORT annotation on functions.
         if decl.kind == "function":
             # Find the line where the function starts in decl_text.
             decl_lines = decl_text.splitlines(keepends=True)
@@ -319,7 +319,7 @@ def import_capi(capi_path: Path, out_path: Path) -> None:
             # Inject the annotation as its own line right before the decl.
             indent = re.match(r"^( *)", decl_lines[inject_at]).group(1)
             anno_line = (
-                f'{indent}FLOX_EXPORT(group = "{decl.group}")\n'
+                f'{indent}LRVX_EXPORT(group = "{decl.group}")\n'
             )
             decl_lines.insert(inject_at, anno_line)
             decl_text = "".join(decl_lines)
@@ -357,7 +357,7 @@ def import_capi(capi_path: Path, out_path: Path) -> None:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--capi", required=True, type=Path,
-                   help="Path to existing flox_capi.h")
+                   help="Path to existing lrvx_capi.h")
     p.add_argument("--out", required=True, type=Path,
                    help="Path to write spec to (overwrites)")
     args = p.parse_args(argv)

@@ -18,13 +18,13 @@ Pass a period of `1` or more:
 
 === "Python"
     ```python
-    import flox_py as flox
+    import lrvx
 
     # OK
-    flox.sma(prices, period=20)
+    lrvx.sma(prices, period=20)
 
     # Raises E_IND_001
-    # flox.sma(prices, period=0)
+    # lrvx.sma(prices, period=0)
     ```
 
 ## Common causes

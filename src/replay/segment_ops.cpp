@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/ops/segment_ops.h"
+#include "lrvx/replay/ops/segment_ops.h"
 
-#include "flox/log/log.h"
+#include "lrvx/log/log.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -18,7 +18,7 @@
 #include <map>
 #include <sstream>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 static std::vector<std::filesystem::path> collectSegmentPaths(const std::filesystem::path& dir)
@@ -32,7 +32,7 @@ static std::vector<std::filesystem::path> collectSegmentPaths(const std::filesys
 
   for (const auto& entry : std::filesystem::directory_iterator(dir))
   {
-    if (entry.is_regular_file() && entry.path().extension() == ".floxlog")
+    if (entry.is_regular_file() && isSegmentExtension(entry.path().extension().string()))
     {
       paths.push_back(entry.path());
     }
@@ -142,7 +142,7 @@ MergeResult SegmentOps::merge(const std::vector<std::filesystem::path>& input_pa
     auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();
-    output_name = std::to_string(now_ns) + "_merged.floxlog";
+    output_name = std::to_string(now_ns) + "_merged.lrvx";
   }
 
   result.output_path = config.output_dir / output_name;
@@ -470,7 +470,7 @@ std::filesystem::path SegmentOps::generateSplitPath(const std::filesystem::path&
       break;
   }
 
-  oss << ".floxlog";
+  oss << ".lrvx";
   return output_dir / oss.str();
 }
 
@@ -978,7 +978,7 @@ uint64_t SegmentOps::extractTimeRange(const std::filesystem::path& input_path,
   }
   if (out.requested_from_before_data || out.requested_to_after_data)
   {
-    FLOX_LOG_WARN("extractTimeRange: requested ["
+    LRVX_LOG_WARN("extractTimeRange: requested ["
                   << from_ns << ", " << to_ns << "] reaches outside " << input_path.string()
                   << ", which holds [" << out.input_first_ns << ", " << out.input_last_ns
                   << "]. The result covers the overlap only.");
@@ -1032,4 +1032,4 @@ uint64_t SegmentOps::extractTimeRange(const std::filesystem::path& input_path,
   return count;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

@@ -11,7 +11,7 @@ gate is red and names what went missing.
 
 `--root` is the seam these tests need: the gate must resolve every file it
 reads under that directory instead of under its own location. The
-`flox_codegen` import stays bound to the script's own path -- the fixture
+`lrvx_codegen` import stays bound to the script's own path -- the fixture
 tree carries no codegen package.
 """
 
@@ -61,12 +61,12 @@ IDL = """\
 #pragma once
 extern "C"
 {
-  FLOX_EXPORT(group = "widget")
-  FloxWidgetHandle flox_widget_create(void);
-  FLOX_EXPORT(group = "widget")
-  void flox_widget_destroy(FloxWidgetHandle widget);
-  FLOX_EXPORT(group = "widget")
-  int32_t flox_widget_size(FloxWidgetHandle widget);
+  LRVX_EXPORT(group = "widget")
+  LrvxWidgetHandle lrvx_widget_create(void);
+  LRVX_EXPORT(group = "widget")
+  void lrvx_widget_destroy(LrvxWidgetHandle widget);
+  LRVX_EXPORT(group = "widget")
+  int32_t lrvx_widget_size(LrvxWidgetHandle widget);
 }
 """
 
@@ -80,40 +80,40 @@ groups:
       status: required
       classes: [Widget]
       functions:
-        flox_widget_create: __flox_widget_create
-        flox_widget_destroy: __flox_widget_destroy
-        flox_widget_size: __flox_widget_size
+        lrvx_widget_create: __lrvx_widget_create
+        lrvx_widget_destroy: __lrvx_widget_destroy
+        lrvx_widget_size: __lrvx_widget_size
 """
 
 # Generated from the same IDL the gate reads, so every group is present here
 # by construction. A Codon check that reads this file can never fail.
 CODON_GOLDEN = """\
-# Generated from flox_capi_spec.hpp. Do not edit.
+# Generated from lrvx_capi_spec.hpp. Do not edit.
 
 # ── widget ──
-from C import flox_widget_create() -> cobj
-from C import flox_widget_destroy(cobj)
-from C import flox_widget_size(cobj) -> i32
+from C import lrvx_widget_create() -> cobj
+from C import lrvx_widget_destroy(cobj)
+from C import lrvx_widget_size(cobj) -> i32
 """
 
 # The shipped Codon module. Unlike the golden, this is hand-written and can
 # fall behind the C ABI -- which is the whole point of checking it instead.
 CODON_MODULE = """\
-# flox/widget.codon -- the shipped Codon wrapper.
+# lrvx/widget.codon -- the shipped Codon wrapper.
 
-from C import flox_widget_create() -> cobj
-from C import flox_widget_destroy(cobj)
-from C import flox_widget_size(cobj) -> i32
+from C import lrvx_widget_create() -> cobj
+from C import lrvx_widget_destroy(cobj)
+from C import lrvx_widget_size(cobj) -> i32
 
 
 class Widget:
     _handle: cobj
 
     def __init__(self):
-        self._handle = flox_widget_create()
+        self._handle = lrvx_widget_create()
 
     def size(self) -> int:
-        return int(flox_widget_size(self._handle))
+        return int(lrvx_widget_size(self._handle))
 """
 
 PYI = """\
@@ -130,29 +130,29 @@ export class Widget {
 """
 
 PYBIND_SOURCE = """\
-#include <flox/capi/flox_capi.h>
+#include <lrvx/capi/lrvx_capi.h>
 
 void registerWidget(py::module_& m)
 {
   py::class_<Widget>(m, "Widget")
-      .def(py::init([]() { return flox_widget_create(); }))
-      .def("size", [](Widget& w) { return flox_widget_size(w.handle); });
-  m.add_object("_widget_cleanup", py::capsule(flox_widget_destroy));
+      .def(py::init([]() { return lrvx_widget_create(); }))
+      .def("size", [](Widget& w) { return lrvx_widget_size(w.handle); });
+  m.add_object("_widget_cleanup", py::capsule(lrvx_widget_destroy));
 }
 """
 
 NAPI_SOURCE = """\
-#include <flox/capi/flox_capi.h>
+#include <lrvx/capi/lrvx_capi.h>
 
 Napi::Value WidgetNew(const Napi::CallbackInfo& info)
 {
-  return Wrap(flox_widget_create());
+  return Wrap(lrvx_widget_create());
 }
 Napi::Value WidgetSize(const Napi::CallbackInfo& info)
 {
-  return Napi::Number::New(info.Env(), flox_widget_size(Handle(info)));
+  return Napi::Number::New(info.Env(), lrvx_widget_size(Handle(info)));
 }
-void WidgetFinalize(void* h) { flox_widget_destroy(h); }
+void WidgetFinalize(void* h) { lrvx_widget_destroy(h); }
 """
 
 QUICKJS_BINDINGS = """\
@@ -160,9 +160,9 @@ QUICKJS_BINDINGS = """\
 
 static void registerWidget(JSContext* ctx)
 {
-  addGlobalFunc(ctx, "__flox_widget_create", jsWidgetCreate, 0);
-  addGlobalFunc(ctx, "__flox_widget_destroy", jsWidgetDestroy, 1);
-  addGlobalFunc(ctx, "__flox_widget_size", jsWidgetSize, 1);
+  addGlobalFunc(ctx, "__lrvx_widget_create", jsWidgetCreate, 0);
+  addGlobalFunc(ctx, "__lrvx_widget_destroy", jsWidgetDestroy, 1);
+  addGlobalFunc(ctx, "__lrvx_widget_size", jsWidgetSize, 1);
 }
 """
 
@@ -172,8 +172,8 @@ QUICKJS_PRELUDE = R'''
 static const char* kPrelude = R"JS(
   (function() {
     class Widget {
-      constructor() { this.h = __flox_widget_create(); }
-      size() { return __flox_widget_size(this.h); }
+      constructor() { this.h = __lrvx_widget_create(); }
+      size() { return __lrvx_widget_size(this.h); }
     }
     globalThis.Widget = Widget;
   })();
@@ -185,11 +185,11 @@ class ParityTree:
     """A miniature repository the parity gate can be pointed at."""
 
     FILES = {
-        "include/flox/capi/flox_capi_spec.hpp": IDL,
+        "include/lrvx/capi/lrvx_capi_spec.hpp": IDL,
         "tools/codegen/binding_parity.yaml": PARITY_YAML,
-        "tools/codegen/golden/flox_capi.codon": CODON_GOLDEN,
-        "codon/flox/widget.codon": CODON_MODULE,
-        "python/flox_py/_flox_py/__init__.pyi": PYI,
+        "tools/codegen/golden/lrvx_capi.codon": CODON_GOLDEN,
+        "codon/lrvx/widget.codon": CODON_MODULE,
+        "python/lrvx/_lrvx/__init__.pyi": PYI,
         "python/widget_bindings.h": PYBIND_SOURCE,
         "node/index.d.ts": DTS,
         "node/src/widget.h": NAPI_SOURCE,

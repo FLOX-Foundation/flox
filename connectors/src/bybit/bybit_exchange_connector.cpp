@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/bybit/bybit_exchange_connector.h"
-#include "flox-connectors/net/ix_websocket_client.h"
-#include "flox-connectors/util/safe_parse.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/util/concurrency/thread_body.h"
+#include "lrvx-connectors/bybit/bybit_exchange_connector.h"
+#include "lrvx-connectors/net/ix_websocket_client.h"
+#include "lrvx-connectors/util/safe_parse.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/util/concurrency/thread_body.h"
 
-#include <flox/log/atomic_logger.h>
-#include <flox/log/log.h>
-#include <flox/util/base/hash.h>
+#include <lrvx/log/atomic_logger.h>
+#include <lrvx/log/log.h>
+#include <lrvx/util/base/hash.h>
 
 #include <openssl/hmac.h>
 #include <cctype>
@@ -29,7 +29,7 @@
 
 #include <simdjson.h>
 
-namespace flox
+namespace lrvx
 {
 
 static constexpr auto BYBIT_ORIGIN = "https://www.bybit.com";
@@ -201,7 +201,7 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
   info.type = InstrumentType::Option;
   info.strike = Price::fromDouble(strike);
   // expiry_tp is a system_clock (wall/unix) time_point; TimePoint is
-  // FloxClock (steady_clock). A duration_cast between them silently
+  // LrvxClock (steady_clock). A duration_cast between them silently
   // reinterprets a unix epoch as a steady-clock reading -- fromUnixMs is the
   // documented conversion (time.h) for exactly this crossing. The mapping it
   // reads is anchored by Engine::start(), before any connector runs; this
@@ -276,7 +276,7 @@ void BybitExchangeConnector::start()
 {
   if (!_config.isValid())
   {
-    FLOX_LOG_ERROR("[Bybit] Invalid connector config");
+    LRVX_LOG_ERROR("[Bybit] Invalid connector config");
     _logger->error("[Bybit] Invalid connector config");
     return;
   }
@@ -321,7 +321,7 @@ void BybitExchangeConnector::start()
 
           sub += "]}";
 
-          FLOX_LOG("[Bybit] Sending subscription batch " << (i / BATCH_SIZE + 1) << ": " << sub);
+          LRVX_LOG("[Bybit] Sending subscription batch " << (i / BATCH_SIZE + 1) << ": " << sub);
           _wsClient->send(sub);
         }
 
@@ -339,7 +339,7 @@ void BybitExchangeConnector::start()
         }
         catch (const std::exception& e)
         {
-          FLOX_LOG_ERROR("[Bybit] Exception while handling message: " << e.what());
+          LRVX_LOG_ERROR("[Bybit] Exception while handling message: " << e.what());
           _logger->error(std::string("[Bybit] Exception while handling message: ") + e.what());
         }
       });
@@ -443,7 +443,7 @@ void BybitExchangeConnector::stop()
 void BybitExchangeConnector::handleDisconnect(int code, std::string_view reason)
 {
   const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
-  FLOX_LOG("[Bybit] WebSocket closed: " << detail);
+  LRVX_LOG("[Bybit] WebSocket closed: " << detail);
   if (_logger)
   {
     _logger->info("[Bybit] WebSocket closed: " + detail);
@@ -538,7 +538,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       {
         _logger->error(
             "[Bybit] Book pool exhausted, dropping orderbook update. Increase "
-            "FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
+            "LRVX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
             "enough.");
         return;
       }
@@ -790,7 +790,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         }
       }
 
-      FLOX_LOG("[Bybit] service op=" << op);
+      LRVX_LOG("[Bybit] service op=" << op);
       _logger->info(std::string("[Bybit] service op=") + std::string(op));
       return;
     }
@@ -798,7 +798,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
     auto topicField = doc["topic"];
     if (topicField.error())
     {
-      FLOX_LOG_ERROR("[Bybit] frame without topic, skip");
+      LRVX_LOG_ERROR("[Bybit] frame without topic, skip");
       _logger->warn("[Bybit] frame without topic, skip");
       return;
     }
@@ -1065,7 +1065,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
   }
   catch (const simdjson::simdjson_error& e)
   {
-    FLOX_LOG_ERROR("[Bybit] simdjson private error: " << e.what());
+    LRVX_LOG_ERROR("[Bybit] simdjson private error: " << e.what());
     _logger->warn(std::string("[Bybit] simdjson private error: ") + e.what());
   }
 }
@@ -1114,7 +1114,7 @@ bool BybitConfig::isValid() const
 {
   if (publicEndpoint.empty())
   {
-    FLOX_LOG_ERROR("BybitConfig validation failed: public endpoint is empty");
+    LRVX_LOG_ERROR("BybitConfig validation failed: public endpoint is empty");
     return false;
   }
 
@@ -1122,13 +1122,13 @@ bool BybitConfig::isValid() const
   {
     if (s.name.empty())
     {
-      FLOX_LOG_ERROR("BybitConfig validation failed: symbol name is empty");
+      LRVX_LOG_ERROR("BybitConfig validation failed: symbol name is empty");
       return false;
     }
 
     if (s.depth == BookDepth::Invalid)
     {
-      FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
+      LRVX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
                                                               << " has invalid BookDepth");
       return false;
     }
@@ -1139,7 +1139,7 @@ bool BybitConfig::isValid() const
         if (s.depth != BookDepth::Top1 && s.depth != BookDepth::Top50 &&
             s.depth != BookDepth::Top200)
         {
-          FLOX_LOG_ERROR("BybitConfig validation failed: symbol "
+          LRVX_LOG_ERROR("BybitConfig validation failed: symbol "
                          << s.name << " (Spot) has unsupported BookDepth: "
                          << static_cast<int>(s.depth) << ". Allowed: 1, 50, 200");
           return false;
@@ -1150,7 +1150,7 @@ bool BybitConfig::isValid() const
         if (s.depth != BookDepth::Top1 && s.depth != BookDepth::Top50 &&
             s.depth != BookDepth::Top200 && s.depth != BookDepth::Top500)
         {
-          FLOX_LOG_ERROR("BybitConfig validation failed: symbol "
+          LRVX_LOG_ERROR("BybitConfig validation failed: symbol "
                          << s.name << " (Future) has unsupported BookDepth: "
                          << static_cast<int>(s.depth) << ". Allowed: 1, 50, 200, 500");
           return false;
@@ -1160,7 +1160,7 @@ bool BybitConfig::isValid() const
       case InstrumentType::Option:
         if (s.depth != BookDepth::Top25 && s.depth != BookDepth::Top100)
         {
-          FLOX_LOG_ERROR("BybitConfig validation failed: symbol "
+          LRVX_LOG_ERROR("BybitConfig validation failed: symbol "
                          << s.name << " (Option) has unsupported BookDepth: "
                          << static_cast<int>(s.depth) << ". Allowed: 25, 100");
           return false;
@@ -1168,7 +1168,7 @@ bool BybitConfig::isValid() const
         break;
 
       default:
-        FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
+        LRVX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
                                                                 << " has unknown InstrumentType");
         return false;
     }
@@ -1178,17 +1178,17 @@ bool BybitConfig::isValid() const
   {
     if (privateEndpoint.empty())
     {
-      FLOX_LOG_ERROR("BybitConfig validation failed: private endpoint is empty");
+      LRVX_LOG_ERROR("BybitConfig validation failed: private endpoint is empty");
       return false;
     }
 
     if (apiKey.empty() || apiSecret.empty())
     {
-      FLOX_LOG_ERROR("BybitConfig validation failed: private API credentials missing");
+      LRVX_LOG_ERROR("BybitConfig validation failed: private API credentials missing");
       return false;
     }
   }
 
   return true;
 }
-}  // namespace flox
+}  // namespace lrvx

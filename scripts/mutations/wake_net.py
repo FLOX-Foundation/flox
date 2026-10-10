@@ -9,8 +9,8 @@ bound a loaded runner is free to miss. That only proves something if a
 broken wake path still makes the tests go red. Each mutation below removes
 one wake, rebuilds the test, and requires it to fail.
 
-Run from the repository root with a configured `build/` (FLOX_BUILD_TESTS=ON,
-FLOX_BUILD_VENUE=ON):
+Run from the repository root with a configured `build/` (LRVX_BUILD_TESTS=ON,
+LRVX_BUILD_VENUE=ON):
 
     python3 scripts/mutations/wake_net.py
 """
@@ -26,8 +26,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
-BUS = "include/flox/util/eventing/event_bus.h"
-SET = "include/flox/util/eventing/wake_set.h"
+BUS = "include/lrvx/util/eventing/event_bus.h"
+SET = "include/lrvx/util/eventing/wake_set.h"
 TARGETS = ["test_event_bus_wake_set", "test_event_bus_park", "test_venue_shard_wake_set"]
 
 MUTATIONS = [
@@ -79,7 +79,7 @@ def run_one(target: str) -> str:
         return "NOBIN"
     try:
         r = subprocess.run([str(exes[0])], cwd=REPO, capture_output=True, text=True, timeout=900,
-                           env=dict(os.environ, FLOX_REPO_ROOT=str(REPO)))
+                           env=dict(os.environ, LRVX_REPO_ROOT=str(REPO)))
     except subprocess.TimeoutExpired:
         return "TIMEOUT"
     return "GREEN" if r.returncode == 0 else "RED"

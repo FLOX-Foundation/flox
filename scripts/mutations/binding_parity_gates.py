@@ -9,33 +9,33 @@ Covers, one piece at a time:
                                           allowlist, the QuickJS name map
     scripts/check_binding_smoke.py        the fatal-import path, the missing
                                           node/index.js path, the exit code
-    tools/codegen/flox_codegen/emit_layout.py
+    tools/codegen/lrvx_codegen/emit_layout.py
                                           offset/alignment/nesting/array/
                                           padding computation for the two
                                           generated layout artifacts
-    codon/flox/layout.codon               a generated-but-committed artifact,
-    codon/flox/dispatch.codon             direct drift simulation
-    include/flox/capi/flox_capi_layout.h  ditto, checked against offsetof
+    codon/lrvx/layout.codon               a generated-but-committed artifact,
+    codon/lrvx/dispatch.codon             direct drift simulation
+    include/lrvx/capi/lrvx_capi_layout.h  ditto, checked against offsetof
     .github/workflows/ci.yml              the two gate-wiring assertions
 
 Three kinds of check answer for a mutation, depending on where it lands:
 
     pytest    run the pytest node id(s) named for the mutation; on green,
               fall back to the full sweep below before calling it alive
-    codegen   mutate tools/codegen/flox_codegen/emit_layout.py, then run
+    codegen   mutate tools/codegen/lrvx_codegen/emit_layout.py, then run
               tools/codegen/scripts/check.sh -- it regenerates both layout
               artifacts into temp files and diffs them against the committed
               ones (plus runs tools/codegen/tests itself), so a real
               behavioural change shows up as drift without ever touching a
               tracked file
-    cpp       mutate include/flox/capi/flox_capi_layout.h directly (it is
+    cpp       mutate include/lrvx/capi/lrvx_capi_layout.h directly (it is
               generated, but the mutation simulates the drift check.sh exists
               to catch), delete test_capi_event_layout's object files, rebuild,
               and run the gtest binary
 
 Every source-file mutation is restored by writing the original text back and
 re-hashing to confirm it matches. Direct edits to a *generated* file
-(flox_capi_layout.h, codon/flox/layout.codon) are restored with
+(lrvx_capi_layout.h, codon/lrvx/layout.codon) are restored with
 `git show HEAD:path > path` instead, never `git checkout --`, per policy.
 
 Unexplained survivors (green everywhere, no `equivalent_reason`) fail the run.
@@ -51,7 +51,7 @@ Expected environment (already set up by this run):
     tools/codegen/.venv                          (tools/codegen/setup.sh)
     build/ configured with
         cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \\
-              -DFLOX_BUILD_TESTS=ON -DFLOX_BUILD_CAPI=ON -DFLOX_NATIVE=OFF
+              -DLRVX_BUILD_TESTS=ON -DLRVX_BUILD_CAPI=ON -DLRVX_NATIVE=OFF
     build/tests/test_capi_event_layout already built once
 """
 
@@ -80,10 +80,10 @@ CPP_TARGET = "test_capi_event_layout"
 
 PARITY = "scripts/check_binding_parity.py"
 SMOKE = "scripts/check_binding_smoke.py"
-EMIT_LAYOUT = "tools/codegen/flox_codegen/emit_layout.py"
-LAYOUT_CODON = "codon/flox/layout.codon"
-DISPATCH_CODON = "codon/flox/dispatch.codon"
-LAYOUT_HEADER = "include/flox/capi/flox_capi_layout.h"
+EMIT_LAYOUT = "tools/codegen/lrvx_codegen/emit_layout.py"
+LAYOUT_CODON = "codon/lrvx/layout.codon"
+DISPATCH_CODON = "codon/lrvx/dispatch.codon"
+LAYOUT_HEADER = "include/lrvx/capi/lrvx_capi_layout.h"
 CI_YAML = ".github/workflows/ci.yml"
 
 FULL_SCRIPTS_TESTS = "scripts/tests"
@@ -137,17 +137,17 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="mut-codon-reads-golden",
-        why="scan_codon_imports ignores the `tree` it was called with (codon/flox/, the "
-            "shipped module) and reads tools/codegen/golden/flox_capi.codon instead -- the "
+        why="scan_codon_imports ignores the `tree` it was called with (codon/lrvx/, the "
+            "shipped module) and reads tools/codegen/golden/lrvx_capi.codon instead -- the "
             "file generated from the same IDL the gate just parsed, which cannot disagree "
             "with it, exactly the bug the parity gate was rewritten to stop trusting",
         file=PARITY,
         old='''def scan_codon_imports(tree: Path) -> set[str]:
     """C API functions imported by the shipped Codon modules.
 
-    `from C import flox_x(...)` is the only way Codon can call into the C
+    `from C import lrvx_x(...)` is the only way Codon can call into the C
     ABI, so it is what "Codon reaches this function" means. Read from
-    `codon/flox/`, deliberately not from the IDL-generated golden: the
+    `codon/lrvx/`, deliberately not from the IDL-generated golden: the
     golden is generated from the same spec this gate parses, so a check
     against it can never fail.
     """
@@ -161,7 +161,7 @@ MUTATIONS: list[Mutation] = [
     return found''',
         new='''def scan_codon_imports(tree: Path) -> set[str]:
     found: set[str] = set()
-    golden = tree.parent.parent / "tools" / "codegen" / "golden" / "flox_capi.codon"
+    golden = tree.parent.parent / "tools" / "codegen" / "golden" / "lrvx_capi.codon"
     if not golden.exists():
         return found
     _groups, imports = codegen_manifest.scan_codon(
@@ -240,10 +240,10 @@ MUTATIONS: list[Mutation] = [
         file=PARITY,
         old='''    @property
     def pyi(self) -> Path:
-        return self.root / "python" / "flox_py" / "_flox_py" / "__init__.pyi"''',
+        return self.root / "python" / "lrvx" / "_lrvx" / "__init__.pyi"''',
         new='''    @property
     def pyi(self) -> Path:
-        return SCRIPT_ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"''',
+        return SCRIPT_ROOT / "python" / "lrvx" / "_lrvx" / "__init__.pyi"''',
         primary_tests=("scripts/tests/test_binding_parity_gate.py::"
                        "test_a_function_dropped_from_the_pybind11_source_turns_the_gate_red",),
     ),
@@ -401,7 +401,7 @@ MUTATIONS: list[Mutation] = [
                        "test_a_python_binding_that_cannot_be_imported_is_a_failure",),
     ),
 
-    # ── tools/codegen/flox_codegen/emit_layout.py (checked via check.sh) ─
+    # ── tools/codegen/lrvx_codegen/emit_layout.py (checked via check.sh) ─
     Mutation(
         name="mut-emit-layout-offset-off-by-one",
         why="every field offset gets +1 past the alignment rounding -- every field in every "
@@ -422,7 +422,7 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="mut-emit-layout-nested-struct-flattened",
-        why="a nested struct field (FloxSymbolContext.book) is laid out using its own size but "
+        why="a nested struct field (LrvxSymbolContext.book) is laid out using its own size but "
             "alignment 1 instead of its real alignment -- the nested struct is effectively "
             "flattened byte-wise instead of respecting its own layout",
         file=EMIT_LAYOUT,
@@ -464,7 +464,7 @@ MUTATIONS: list[Mutation] = [
     # ── generated/shipped artifacts, mutated directly ───────────────────
     Mutation(
         name="mut-codon-reject-reason-dropped",
-        why="_EV_REJECT_REASON is dropped from the generated codon/flox/layout.codon, "
+        why="_EV_REJECT_REASON is dropped from the generated codon/lrvx/layout.codon, "
             "simulating a regenerate that silently lost the one constant the whole feature "
             "exists to add",
         file=LAYOUT_CODON,
@@ -490,14 +490,14 @@ MUTATIONS: list[Mutation] = [
         restore_kind="git-show",
     ),
 
-    # ── include/flox/capi/flox_capi_layout.h, mutated directly (C++) ────
+    # ── include/lrvx/capi/lrvx_capi_layout.h, mutated directly (C++) ────
     Mutation(
         name="mut-capi-layout-struct-size-wrong",
-        why="FloxBar's generated size entry is dropped from 72 to 71 -- offsetof/sizeof "
+        why="LrvxBar's generated size entry is dropped from 72 to 71 -- offsetof/sizeof "
             "disagree with the table this simulates a drifted generated header",
         file=LAYOUT_HEADER,
-        old='{"FloxBar", 72, 8},',
-        new='{"FloxBar", 71, 8},',
+        old='{"LrvxBar", 72, 8},',
+        new='{"LrvxBar", 71, 8},',
         kind="cpp",
         restore_kind="git-show",
     ),

@@ -1,11 +1,11 @@
-#include "flox-connectors/hyperliquid/hl_signer.h"
+#include "lrvx-connectors/hyperliquid/hl_signer.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <string>
 
-#include <flox/log/log.h>
+#include <lrvx/log/log.h>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -28,7 +28,7 @@ using socket_t = int;
 constexpr socket_t INVALID_SOCK = -1;
 #endif
 
-namespace flox::hl
+namespace lrvx::hl
 {
 
 namespace
@@ -119,17 +119,17 @@ static bool is_private_signer_socket(const char* path)
   }
   if (!S_ISSOCK(st.st_mode))
   {
-    FLOX_LOG_ERROR("[HL] signer path is not a socket: " << path);
+    LRVX_LOG_ERROR("[HL] signer path is not a socket: " << path);
     return false;
   }
   if (st.st_uid != ::geteuid())
   {
-    FLOX_LOG_ERROR("[HL] signer socket is owned by another user, refusing: " << path);
+    LRVX_LOG_ERROR("[HL] signer socket is owned by another user, refusing: " << path);
     return false;
   }
   if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0)
   {
-    FLOX_LOG_ERROR("[HL] signer socket is accessible beyond its owner (mode "
+    LRVX_LOG_ERROR("[HL] signer socket is accessible beyond its owner (mode "
                    << (st.st_mode & 07777) << "), refusing: " << path);
     return false;
   }
@@ -229,7 +229,7 @@ static std::string build_request_json(const HlSignParams& p)
 
 // Where hl_signerd listens, overridable because /dev/shm is Linux-only.
 static constexpr const char* HL_SIGNER_DEFAULT_SOCKET = "/dev/shm/hl_sign.sock";
-static constexpr const char* HL_SIGNER_SOCKET_ENV = "FLOX_HL_SIGNER_SOCKET";
+static constexpr const char* HL_SIGNER_SOCKET_ENV = "LRVX_HL_SIGNER_SOCKET";
 
 // A signature reply is {"r","s","v"} -- a couple of hundred bytes. The length
 // header comes from the peer, so it is a request for an allocation, not a
@@ -246,7 +246,7 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   (void)HL_SIGNER_DEFAULT_SOCKET;
   (void)HL_SIGNER_SOCKET_ENV;
   (void)HL_SIGNER_MAX_RESPONSE;
-  FLOX_LOG_ERROR("[HL] no signer transport on this platform: hl_signerd needs a Unix socket");
+  LRVX_LOG_ERROR("[HL] no signer transport on this platform: hl_signerd needs a Unix socket");
   return std::nullopt;
 #else
   const char* envPath = std::getenv(HL_SIGNER_SOCKET_ENV);
@@ -264,7 +264,7 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   socket_t fd = connect_unix(path.c_str(), /*timeout_ms=*/50);
   if (fd == INVALID_SOCK)
   {
-    FLOX_LOG_ERROR("[HL] connect hl_signerd failed on " << path);
+    LRVX_LOG_ERROR("[HL] connect hl_signerd failed on " << path);
     return std::nullopt;
   }
 
@@ -272,7 +272,7 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   if (!send_all(fd, &len, 4) || !send_all(fd, req.data(), req.size()))
   {
     close_socket(fd);
-    FLOX_LOG_ERROR("[HL] send req failed");
+    LRVX_LOG_ERROR("[HL] send req failed");
     return std::nullopt;
   }
 
@@ -286,7 +286,7 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   if (rlen == 0 || rlen > HL_SIGNER_MAX_RESPONSE)
   {
     close_socket(fd);
-    FLOX_LOG_ERROR("[HL] signer declared a " << rlen << "-byte response, above the "
+    LRVX_LOG_ERROR("[HL] signer declared a " << rlen << "-byte response, above the "
                                              << HL_SIGNER_MAX_RESPONSE << "-byte bound");
     return std::nullopt;
   }
@@ -336,11 +336,11 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   std::string r = findv("r"), s = findv("s"), v = findv("v");
   if (r.empty() || s.empty() || v.empty())
   {
-    FLOX_LOG_ERROR("[HL] signer bad json: " + out);
+    LRVX_LOG_ERROR("[HL] signer bad json: " + out);
     return std::nullopt;
   }
   return HlSig{std::move(r), std::move(s), std::atoi(v.c_str())};
 #endif
 }
 
-}  // namespace flox::hl
+}  // namespace lrvx::hl

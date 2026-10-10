@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -23,26 +23,26 @@
 //   5. The drawdown percentage is scaled to percent once by the result and a
 //      second time by the report that prints it.
 
-#include "flox/backtest/backtest_config.h"
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/funding_schedule.h"
-#include "flox/backtest/latency_model.h"
-#include "flox/backtest/liquidation_engine.h"
-#include "flox/backtest/optimization_stats.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/backtest/venue_stack.h"
-#include "flox/backtest/walk_forward.h"
-#include "flox/clearing/account.h"
-#include "flox/clearing/fee_schedule.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/log/abstract_logger.h"
-#include "flox/log/log_stream.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/ohlcv_replay_source.h"
-#include "flox/replay/writers/binary_log_writer.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/backtest/backtest_config.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/funding_schedule.h"
+#include "lrvx/backtest/latency_model.h"
+#include "lrvx/backtest/liquidation_engine.h"
+#include "lrvx/backtest/optimization_stats.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/backtest/venue_stack.h"
+#include "lrvx/backtest/walk_forward.h"
+#include "lrvx/clearing/account.h"
+#include "lrvx/clearing/fee_schedule.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/log/abstract_logger.h"
+#include "lrvx/log/log_stream.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/ohlcv_replay_source.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -57,7 +57,7 @@
 #include <type_traits>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -362,7 +362,7 @@ TEST(BacktestEconomics, OptimizationReportPrintsDrawdownAsPercentOnce)
   std::vector<OptimizationResult<ReportParams>> results(1);
   results[0].setFromStats(stats);
 
-  const auto dir = std::filesystem::temp_directory_path() / "flox_bt_econ_report";
+  const auto dir = std::filesystem::temp_directory_path() / "lrvx_bt_econ_report";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto path = dir / "report.md";
@@ -494,8 +494,8 @@ TEST(BacktestEconomics, RunOnAVenueStackPaysThatStacksFeeTier)
   // Regular (tier 0) charges 4.0 bps = 80.00; VIP 8 charges 2.1 bps = 42.00.
   // A rate read off the ladder moves between the two; a constant does not.
   const Case cases[] = {
-      {0.0, 0u, 80.00, "flox_bt_econ_fee_tape_t0"},
-      {500'000'000.0, 8u, 42.00, "flox_bt_econ_fee_tape_t8"},
+      {0.0, 0u, 80.00, "lrvx_bt_econ_fee_tape_t0"},
+      {500'000'000.0, 8u, 42.00, "lrvx_bt_econ_fee_tape_t8"},
   };
 
   for (const auto& c : cases)
@@ -1305,7 +1305,7 @@ TEST(BacktestEconomics, AVenueLadderIsRereadAsTheRunClimbsIt)
   SymbolRegistry reg;
   const SymbolId sym = registerBtc(reg);
   const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/4.0,
-                                  "flox_bt_econ_fee_tape_climb");
+                                  "lrvx_bt_econ_fee_tape_climb");
 
   RoundTripStrategy strat(1, sym, reg, /*qty=*/4.0);
 
@@ -1350,7 +1350,7 @@ TEST(BacktestEconomics, ExtractResultPricesTheRunWithTheVenueLadder)
   SymbolRegistry reg;
   const SymbolId sym = registerBtc(reg);
   const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/2.0,
-                                  "flox_bt_econ_fee_tape_extract");
+                                  "lrvx_bt_econ_fee_tape_extract");
 
   RoundTripStrategy strat(1, sym, reg, /*qty=*/2.0);
 
@@ -1386,7 +1386,7 @@ TEST(BacktestEconomics, AnExplicitFixedFeeOutranksTheVenueLadder)
   SymbolRegistry reg;
   const SymbolId sym = registerBtc(reg);
   const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/2.0,
-                                  "flox_bt_econ_fee_tape_fixed");
+                                  "lrvx_bt_econ_fee_tape_fixed");
 
   RoundTripStrategy strat(1, sym, reg, /*qty=*/2.0);
 
@@ -1423,7 +1423,7 @@ TEST(BacktestEconomics, AVenueScheduleWithNoTiersFallsBackToTheFlatRate)
   SymbolRegistry reg;
   const SymbolId sym = registerBtc(reg);
   const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/2.0,
-                                  "flox_bt_econ_fee_tape_empty_ladder");
+                                  "lrvx_bt_econ_fee_tape_empty_ladder");
 
   RoundTripStrategy strat(1, sym, reg, /*qty=*/2.0);
 

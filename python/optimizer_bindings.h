@@ -5,8 +5,8 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
-#include "flox/error/flox_error.h"
-#include "flox/stats/whites_reality_check.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/stats/whites_reality_check.h"
 
 #include <algorithm>
 #include <cmath>
@@ -158,7 +158,7 @@ inline void bindOptimizer(py::module_& m)
       {
         if (x.size() != y.size())
         {
-          throw flox::FloxError(
+          throw lrvx::LrvxError(
               "E_LEN_001",
               "x and y arrays must have the same length.");
         }
@@ -184,7 +184,7 @@ inline void bindOptimizer(py::module_& m)
         size_t n = data.size();
         if (n == 0)
         {
-          throw flox::FloxError(
+          throw lrvx::LrvxError(
               "E_LEN_002",
               "Input array must not be empty.");
         }
@@ -206,7 +206,7 @@ inline void bindOptimizer(py::module_& m)
       {
         if (returns.ndim() != 2)
         {
-          throw flox::FloxError(
+          throw lrvx::LrvxError(
               "E_LEN_003",
               "returns must be a 2D array (strategies x periods).");
         }
@@ -214,16 +214,16 @@ inline void bindOptimizer(py::module_& m)
         const auto T = static_cast<size_t>(returns.shape(1));
         if (K == 0 || T == 0)
         {
-          throw flox::FloxError(
+          throw lrvx::LrvxError(
               "E_LEN_002",
               "returns matrix must not be empty.");
         }
         const double* data = returns.data();
 
-        flox::stats::WhitesRealityCheckResult res{};
+        lrvx::stats::WhitesRealityCheckResult res{};
         {
           py::gil_scoped_release release;
-          res = flox::stats::whitesRealityCheck(
+          res = lrvx::stats::whitesRealityCheck(
               data, K, T, numBootstrap, avgBlockSize, seed);
         }
         py::dict out;

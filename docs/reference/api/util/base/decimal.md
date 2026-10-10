@@ -45,18 +45,18 @@ build was optimized.
 
 Every fixed-point division checks its divisor first:
 
-* In a checked build (`FLOX_SCALE_CHECKS`, on by default without `NDEBUG`) a
+* In a checked build (`LRVX_SCALE_CHECKS`, on by default without `NDEBUG`) a
   zero divisor trips the guardrail and the process stops there.
 * In an unchecked build the result saturates: `INT64_MAX` for a positive
   numerator, `INT64_MIN` for a negative one, zero for `0 / 0`. Fixed-point
   overflow is already treated this way. The point is a number at the int64
   boundary, which no real price or quantity can be mistaken for.
-* `flox::fixedPointDivisionsByZero()` counts how often that happened, so a
-  release build has something to read; `flox::resetFixedPointDivisionsByZero()`
+* `lrvx::fixedPointDivisionsByZero()` counts how often that happened, so a
+  release build has something to read; `lrvx::resetFixedPointDivisionsByZero()`
   clears the counter. An ordinary division touches neither.
 
 This covers `Decimal / Decimal`, `Decimal / int64_t`, and the
-`Volume / Quantity` and `Volume / Price` overloads in `flox/common.h`.
+`Volume / Quantity` and `Volume / Price` overloads in `lrvx/common.h`.
 
 ## Overflow
 
@@ -73,7 +73,7 @@ instead of letting it happen:
   quotient, which fits; an out-of-range quotient saturates the same way.
 * `Decimal / int64_t` covers `INT64_MIN / -1`, the one division that
   overflows.
-* In a checked build (`FLOX_SCALE_CHECKS`) each of these trips the guardrail
+* In a checked build (`LRVX_SCALE_CHECKS`) each of these trips the guardrail
   first, so a debug or CI run stops at the operation rather than carrying a
   boundary value forward.
 
@@ -85,13 +85,13 @@ not.
 
 Fixed-point `*`, `/` and `rescale()` want a 128-bit intermediate. GCC and
 Clang have `__int128`; MSVC does not, and those builds use the software
-multiply-and-divide in `flox/util/base/scale_check.h`. Both paths produce the
+multiply-and-divide in `lrvx/util/base/scale_check.h`. Both paths produce the
 same numbers, including the rounding (toward zero) and the saturation.
 
 That second path is the one nobody's machine compiles, so it is built
 deliberately:
 
-* `FLOX_FORCE_PORTABLE_INT128=1` compiles the native intermediate out of an
+* `LRVX_FORCE_PORTABLE_INT128=1` compiles the native intermediate out of an
   otherwise ordinary build. `tests/test_decimal_portable` is built twice, once
   each way, so the MSVC arithmetic runs on macOS and Linux as well.
 * `Decimal::mulPath<Portable>`, `divPath<Portable>` and
@@ -106,7 +106,7 @@ and computes exactly the same result.
 
 `fromDouble` scales its argument before narrowing it to `int64_t`. A cast whose
 value the target cannot represent is undefined behaviour, and the two
-architectures FLOX builds for answer it differently: AArch64 clamps toward the
+architectures lrvx builds for answer it differently: AArch64 clamps toward the
 bound, x86-64 hands back the sentinel. The caller gets a number unrelated to
 what it asked for either way, and nothing reports it.
 
@@ -133,4 +133,4 @@ operator something a silently clamped limit never would.
 * Scale is enforced at compile time — `Decimal<PriceTag, 1000>` is a distinct type from `Decimal<QuantityTag, 1000>`.
 * No virtual overhead, heap allocation, or runtime type checks.
 * Supports tick-based alignment and arithmetic directly without conversions.
-* Used throughout FLOX for price, quantity, and other numeric domains.
+* Used throughout lrvx for price, quantity, and other numeric domains.

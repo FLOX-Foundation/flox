@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -13,9 +13,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/common.h"
-#include "flox/execution/events/order_event.h"
-#include "flox/execution/order_journey_tracer.h"
+#include "lrvx/common.h"
+#include "lrvx/execution/events/order_event.h"
+#include "lrvx/execution/order_journey_tracer.h"
 
 namespace py = pybind11;
 
@@ -43,7 +43,7 @@ struct PyOrderTraceRow
   int64_t expired_at_ns;
 };
 
-inline PyOrderTraceRow toPyRow(const flox::OrderTraceRecord& r)
+inline PyOrderTraceRow toPyRow(const lrvx::OrderTraceRecord& r)
 {
   PyOrderTraceRow out{};
   out.order_id = r.orderId;
@@ -75,22 +75,22 @@ inline void registerOrderJourneyTracer(py::module_& m)
                        last_fill_at_ns, canceled_at_ns, rejected_at_ns,
                        triggered_at_ns, expired_at_ns);
 
-  py::class_<flox::OrderJourneyTracer>(m, "OrderJourneyTracer")
+  py::class_<lrvx::OrderJourneyTracer>(m, "OrderJourneyTracer")
       .def(py::init([](size_t max_orders, size_t max_records_per_order,
                        double sample_rate, uint64_t sample_salt)
                     {
-                      flox::OrderJourneyTracer::Config cfg{};
+                      lrvx::OrderJourneyTracer::Config cfg{};
                       cfg.maxOrders = max_orders;
                       cfg.maxRecordsPerOrder = max_records_per_order;
                       cfg.sampleRate = sample_rate;
                       cfg.sampleSalt = sample_salt;
-                      return std::make_unique<flox::OrderJourneyTracer>(cfg); }),
+                      return std::make_unique<lrvx::OrderJourneyTracer>(cfg); }),
            py::arg("max_orders") = 1'000'000, py::arg("max_records_per_order") = 64,
            py::arg("sample_rate") = 1.0,
            py::arg("sample_salt") = 0x9E3779B97F4A7C15ULL)
       .def(
           "result",
-          [](const flox::OrderJourneyTracer& self)
+          [](const lrvx::OrderJourneyTracer& self)
           {
             auto rows = self.result();
             py::array_t<PyOrderTraceRow> arr(rows.size());
@@ -104,7 +104,7 @@ inline void registerOrderJourneyTracer(py::module_& m)
           "Return the full trace as a numpy structured array, one row per event.")
       .def(
           "journey",
-          [](const flox::OrderJourneyTracer& self, uint64_t order_id)
+          [](const lrvx::OrderJourneyTracer& self, uint64_t order_id)
           {
             auto rows = self.journey(order_id);
             py::array_t<PyOrderTraceRow> arr(rows.size());
@@ -117,12 +117,12 @@ inline void registerOrderJourneyTracer(py::module_& m)
           },
           py::arg("order_id"),
           "Return the trace for one order as a numpy structured array.")
-      .def("order_count", &flox::OrderJourneyTracer::orderCount)
-      .def("record_count", &flox::OrderJourneyTracer::recordCount)
-      .def("median_ack_latency_ns", &flox::OrderJourneyTracer::medianAckLatencyNs)
+      .def("order_count", &lrvx::OrderJourneyTracer::orderCount)
+      .def("record_count", &lrvx::OrderJourneyTracer::recordCount)
+      .def("median_ack_latency_ns", &lrvx::OrderJourneyTracer::medianAckLatencyNs)
       .def("median_time_to_first_fill_ns",
-           &flox::OrderJourneyTracer::medianTimeToFirstFillNs)
-      .def("maker_fill_ratio", &flox::OrderJourneyTracer::makerFillRatio)
-      .def("cancel_race_loss_rate", &flox::OrderJourneyTracer::cancelRaceLossRate)
-      .def("clear", &flox::OrderJourneyTracer::clear);
+           &lrvx::OrderJourneyTracer::medianTimeToFirstFillNs)
+      .def("maker_fill_ratio", &lrvx::OrderJourneyTracer::makerFillRatio)
+      .def("cancel_race_loss_rate", &lrvx::OrderJourneyTracer::cancelRaceLossRate)
+      .def("clear", &lrvx::OrderJourneyTracer::clear);
 }

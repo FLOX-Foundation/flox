@@ -1,7 +1,7 @@
 """Simulate venue downtime: a scheduled outage and Poisson random outages."""
-import flox_py as flox
+import lrvx
 
-va = flox.VenueAvailability()
+va = lrvx.VenueAvailability()
 
 t0 = 1_700_000_000_000_000_000  # arbitrary epoch ns
 ONE_HOUR_NS = 3600 * 10**9
@@ -25,7 +25,7 @@ print("up at t0 + 1h + 60s (mid outage):  ", va.is_up(t0 + ONE_HOUR_NS + 60 * 10
 print("up at t0 + 1h + 5min (post outage):", va.is_up(t0 + ONE_HOUR_NS + 5 * 60 * 10**9))
 
 # Attach to a SimulatedExecutor; submits during outages buffer + flush at recovery.
-exec = flox.SimulatedExecutor()
+exec = lrvx.SimulatedExecutor()
 exec.set_venue_availability(va)
 print("attached venue availability")
 exec.set_venue_availability(None)

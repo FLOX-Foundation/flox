@@ -8,18 +8,18 @@ since: 0.6.0
 # E_INPUT_002 — Cannot load tape metadata.json
 
 A consumer that needs `metadata.json` (e.g. `MergedTapeReader`) tried
-to open it from a `.floxlog` directory and got nothing back. Either
+to open it from a `.lrvx` directory and got nothing back. Either
 the file is missing, unreadable, or the path itself is wrong.
 
 ## How to fix
 
-Verify the directory layout. Every `.floxlog` directory written by
-flox carries a `metadata.json` next to its segment files:
+Verify the directory layout. Every `.lrvx` directory written by
+lrvx carries a `metadata.json` next to its segment files:
 
 ```
 mytape/
 ├── metadata.json
-├── 1778572198427000000.floxlog
+├── 1778572198427000000.lrvx
 └── ...
 ```
 

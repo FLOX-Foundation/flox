@@ -1,11 +1,11 @@
 # BinaryLogRecorderHook
 
-`flox::replay::BinaryLogRecorderHook` is the built-in market-data
+`lrvx::replay::BinaryLogRecorderHook` is the built-in market-data
 recorder that plugs into the recorder slot on a `Runner` or
-`LiveEngine` and writes both trades and book updates to a `.floxlog`
+`LiveEngine` and writes both trades and book updates to a `.lrvx`
 directory.
 
-Lives at `include/flox/replay/binary_log_recorder_hook.h`; replaced
+Lives at `include/lrvx/replay/binary_log_recorder_hook.h`; replaced
 the older `MarketDataRecorder` class in v0.6.0.
 
 ```cpp
@@ -46,22 +46,22 @@ public:
 The hook is wired through the C-API:
 
 ```cpp
-auto handle = flox_binary_log_recorder_hook_create(
+auto handle = lrvx_binary_log_recorder_hook_create(
     "/data/btcusdt", 256, /*exchange_id=*/0, /*compression=*/0);
 
-flox_binary_log_recorder_hook_add_symbol(handle, 1, "BTCUSDT", "BTC",
+lrvx_binary_log_recorder_hook_add_symbol(handle, 1, "BTCUSDT", "BTC",
                                          "USDT", 2, 3);
 
-flox_runner_set_market_data_recorder(
-    runner, flox_binary_log_recorder_hook_as_recorder(handle));
+lrvx_runner_set_market_data_recorder(
+    runner, lrvx_binary_log_recorder_hook_as_recorder(handle));
 
 // ... runner runs ...
 
-flox_binary_log_recorder_hook_destroy(handle);
+lrvx_binary_log_recorder_hook_destroy(handle);
 ```
 
-`flox_runner_set_market_data_recorder` accepts the same handle type
-that `flox_market_data_recorder_create` (user-callback flavour) yields,
+`lrvx_runner_set_market_data_recorder` accepts the same handle type
+that `lrvx_market_data_recorder_create` (user-callback flavour) yields,
 so the two flavours of recorder are interchangeable at the attach
 point. Internally `start()` / `stop()` fire on the engine's lifecycle.
 
@@ -69,8 +69,8 @@ point. Internally `start()` / `stop()` fire on the engine's lifecycle.
 
 | Language | Class |
 |----------|-------|
-| Python | `flox_py.BinaryLogRecorderHook` |
-| Node.js | `flox.BinaryLogRecorderHook` |
+| Python | `lrvx.BinaryLogRecorderHook` |
+| Node.js | `lrvx.BinaryLogRecorderHook` |
 | QuickJS | `BinaryLogRecorderHook` |
 | Codon | `BinaryLogRecorderHook` |
 
@@ -93,4 +93,4 @@ max_segment_mb, exchange_id, compression)` and expose `add_symbol`,
 - [BinaryLogWriter](binary_log_writer.md) — low-level writer.
 - [BinaryLogReader](binary_log_reader.md) — reading recorded data.
 - [Recording Data Tutorial](../../../tutorials/recording-data.md).
-- [`flox tape` CLI](../../../how-to/tape-record.md).
+- [`lrvx tape` CLI](../../../how-to/tape-record.md).

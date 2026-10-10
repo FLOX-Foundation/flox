@@ -1,4 +1,4 @@
-// TypeScript definitions for @flox-foundation/flox.
+// TypeScript definitions for lrvx.
 //
 // Hand-written from the N-API binding in node/src/. Kept in sync with the
 // C++ surface by:
@@ -10,12 +10,12 @@
 // ── Errors ────────────────────────────────────────────────────────────
 
 /**
- * Structured FLOX error. Thrown by Engine / BacktestRunner / etc. when
+ * Structured lrvx error. Thrown by Engine / BacktestRunner / etc. when
  * a stable error code is appropriate. Compatible with `instanceof Error`.
  *
  * The `code` follows the convention `E_<DOMAIN>_<NNN>` (e.g. `E_IO_001`,
  * `E_RUN_002`). The `helpUrl` points to the canonical fix-recipe page on
- * the FLOX docs site.
+ * the lrvx docs site.
  *
  * Example:
  *
@@ -28,7 +28,7 @@
  * }
  * ```
  */
-export interface FloxError extends Error {
+export interface LrvxError extends Error {
   readonly code: string;
   readonly helpUrl: string;
 }
@@ -44,7 +44,7 @@ export interface FloxError extends Error {
  */
 export const CAPI_ABI_VERSION: number;
 
-/** C ABI version the loaded flox library reports. */
+/** C ABI version the loaded lrvx library reports. */
 export function capiAbiVersion(): number;
 
 // ── Common types ──────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ export interface BarData {
   startTimeNs: bigint;
   endTimeNs: bigint;
   /** 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi, 6=BpsRange.
-   *  Mirrors `flox::BarType` (include/flox/aggregator/bar.h) and the
+   *  Mirrors `lrvx::BarType` (include/lrvx/aggregator/bar.h) and the
    *  `composite.BAR_TYPE_*` constants. */
   barType: number;
   /** Interval / threshold for the active bar policy. */
@@ -142,7 +142,7 @@ export interface TradeData {
   exchangeTsNs?: bigint;
 }
 
-/** Order-event lifecycle status, mirrored from `FloxOrderEventStatus`. */
+/** Order-event lifecycle status, mirrored from `LrvxOrderEventStatus`. */
 export type OrderEventStatus =
   | "NEW"
   | "ACCEPTED"
@@ -227,7 +227,7 @@ export interface OrderEventData {
 }
 
 /** Closed bar read back from the per-(symbol, timeframe) ring by
- *  `EmitMethods.lastClosedBar` / `lastNClosedBars`. Mirrors `FloxBar`;
+ *  `EmitMethods.lastClosedBar` / `lastNClosedBars`. Mirrors `LrvxBar`;
  *  narrower than `BarData` (no `buyVolume` / `barType` / `closeReason`). */
 export interface ClosedBar {
   open: number;
@@ -438,7 +438,7 @@ export interface ExecutionListener {
   onTrailingStopUpdated?(order: Order, newTriggerPrice: number): void;
 }
 
-/** Install a Node callable as the global FLOX log sink. Pass null to
+/** Install a Node callable as the global lrvx log sink. Pass null to
  *  detach. Receives `(level: number, msg: string)`; level: 0=info,
  *  1=warn, 2=error. */
 export function setLogCallback(
@@ -619,7 +619,7 @@ export class Runner {
    *  Runner denied what. */
   hookErrors(): HookErrorRecord[];
 
-  /** Auto-capture every signal into the given `.floxrun` recorder.
+  /** Auto-capture every signal into the given `.lrvxrun` recorder.
    *  Pass `null` to detach. Sync mode only; throws otherwise.
    *  Order / fill auto-capture is a follow-up — wire those through
    *  the executor's listener bus today. */
@@ -819,12 +819,12 @@ export class BacktestRunner {
     barType?: number,
     barTypeParam?: number,
   ): RunnerStats;
-  /** Replay a `.floxlog` tape directory through the backtest. The tape
-   *  is the canonical recording format written by `flox tape record`
+  /** Replay a `.lrvx` tape directory through the backtest. The tape
+   *  is the canonical recording format written by `lrvx tape record`
    *  (live) or `scripts/backfill_to_tape.py` (historical). Returns
    *  `null` if the tape cannot be read. */
   runTape(path: string): RunnerStats | null;
-  /** Merge N `.floxlog` tape directories on read and replay the merged
+  /** Merge N `.lrvx` tape directories on read and replay the merged
    *  event stream through the backtest. Symbols are rekeyed by
    *  `(metadata.exchange, name)` so two venues stay distinct.
    *  `runTapes([t])` is equivalent to `runTape(t)`. Throws on bad paths
@@ -835,10 +835,10 @@ export class BacktestRunner {
   /** Attach a listener for order lifecycle events. Multiple listeners
    *  may be attached; each fires for every order event. */
   addExecutionListener(listener: ExecutionListener): void;
-  /** Equity curve from the most recent run. Throws FloxError(E_RUN_002)
+  /** Equity curve from the most recent run. Throws LrvxError(E_RUN_002)
    *  if no run has completed. */
   equityCurve(): EquityCurve;
-  /** Closed trades from the most recent run. Throws FloxError(E_RUN_002)
+  /** Closed trades from the most recent run. Throws LrvxError(E_RUN_002)
    *  if no run has completed. */
   trades(): BacktestTrades;
 }
@@ -2156,7 +2156,7 @@ export class BookSnapshotBinAggregator {
   result(): BookSnapshotBinRow[];
 }
 
-/** Built-in `.floxlog` recorder. Owns a `BinaryLogWriter` on the engine
+/** Built-in `.lrvx` recorder. Owns a `BinaryLogWriter` on the engine
  *  thread — trade/book events are persisted in C++ on the hot path without
  *  bouncing through JS. Attach via `runner.setMarketDataRecorder(hook)`. */
 export interface BinaryLogRecorderHookStats {
@@ -2635,8 +2635,8 @@ export interface TapeDiffResult {
   equal: boolean;
 }
 
-/** Compare two .floxlog directories trade-by-trade. The walk runs in
- *  the C++ engine; result fields match the Python `flox_py.tape.diff_tapes`
+/** Compare two .lrvx directories trade-by-trade. The walk runs in
+ *  the C++ engine; result fields match the Python `lrvx.tape.diff_tapes`
  *  output. */
 export function tapeDiff(leftPath: string, rightPath: string,
                          opts?: TapeDiffOptions): TapeDiffResult;
@@ -3078,7 +3078,7 @@ export class DeltaBookReplayer {
 }
 
 // ---------------------------------------------------------------------------
-// .floxrun strategy-trace recorder + reader.
+// .lrvxrun strategy-trace recorder + reader.
 // ---------------------------------------------------------------------------
 
 export interface TraceRecorderOptions {
@@ -3173,7 +3173,7 @@ export interface TraceFillRecord {
   liquidity: number;
 }
 
-/** Writes signals, order events, and fills into a `.floxrun` directory. */
+/** Writes signals, order events, and fills into a `.lrvxrun` directory. */
 export class TraceRecorder {
   constructor(opts: TraceRecorderOptions);
   addTapeRef(opts: TraceTapeRefInput): void;
@@ -3184,7 +3184,7 @@ export class TraceRecorder {
   close(): void;
 }
 
-/** Reads back a `.floxrun` directory written by TraceRecorder. */
+/** Reads back a `.lrvxrun` directory written by TraceRecorder. */
 export class TraceReader {
   constructor(path: string);
   strategyId(): string;
@@ -3208,7 +3208,7 @@ export class TraceReader {
 //
 // Implementations: node/lib/composite.js, node/lib/dex.js. The `dex`
 // surface is also published standalone as node/lib/dex.d.ts for
-// `require('@flox-foundation/flox/lib/dex')`.
+// `require('lrvx/lib/dex')`.
 
 /**
  * Composite-condition DSL. Builds multi-symbol / multi-timeframe entry
@@ -3220,14 +3220,14 @@ export class TraceReader {
  * live for the whole run. Nothing is cached and nothing is mutated.
  *
  * ```js
- * const { when, BAR_TYPE_TIME } = require("@flox-foundation/flox").composite;
+ * const { when, BAR_TYPE_TIME } = require("@lrvx/lrvx").composite;
  * const fast = when(emit, symbolId, BAR_TYPE_TIME, M5_NS).ema(50);
  * const slow = when(emit, symbolId, BAR_TYPE_TIME, M5_NS).ema(200);
  * const crossUp = fast.gt(slow);
  * if (crossUp.isReady() && crossUp.value()) emit.marketBuy(0.01);
  * ```
  *
- * Mirrors `flox_py.composite` and `quickjs/flox/composite.js`.
+ * Mirrors `lrvx.composite` and `quickjs/lrvx/composite.js`.
  */
 export namespace composite {
   /** Time bars. `param` is the interval in nanoseconds. */
@@ -3379,10 +3379,10 @@ export namespace composite {
  *
  * This layer only carries the decimals and the token order — every curve
  * evaluation is `ammCurve*` on the top level of this module, so the
- * figures match `flox_py.dex` to the wei.
+ * figures match `lrvx.dex` to the wei.
  *
  * ```js
- * const { dex } = require("@flox-foundation/flox");
+ * const { dex } = require("@lrvx/lrvx");
  * const weth = new dex.Token("WETH", 18), usdc = new dex.Token("USDC", 6);
  * const pool = new dex.UniswapV2(weth, usdc,
  *   { reserves: ["1000 WETH", "2000000 USDC"], fee: "0.30%" });

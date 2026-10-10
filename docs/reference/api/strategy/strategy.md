@@ -24,7 +24,7 @@ Every strategy in a process needs its own. Nothing checks it, and the id does
 double duty: the event buses route on it, and it is also the namespace for the
 strategy's order ids, which number from 1 within each strategy. Two strategies
 built with the same id hand out the same order ids, and the executor, the order
-tracker and the `.floxrun` trace cannot tell their orders apart.
+tracker and the `.lrvxrun` trace cannot tell their orders apart.
 
 Numbering within the strategy rather than across the process is what makes a
 second run of the same tape in the same process reproducible. A grid search or

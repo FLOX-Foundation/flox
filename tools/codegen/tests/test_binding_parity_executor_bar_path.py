@@ -2,7 +2,7 @@
 
 `BacktestRunner::runBars` walks a bar open -> low -> high -> close, holds what
 the bar callback submits and releases it at the next open. The C ABI carries
-none of that: `flox_simulated_executor_on_bar(handle, symbol, close)` is the
+none of that: `lrvx_simulated_executor_on_bar(handle, symbol, close)` is the
 whole of the bar path a binding can reach, so a caller driving the executor by
 hand gets neither the open nor the intrabar extremes, and a held order has
 nowhere to be held.
@@ -10,8 +10,8 @@ nowhere to be held.
 This file pins the declarations the other three bindings are generated and
 checked against:
 
-  * the IDL spec (`include/flox/capi/flox_capi_spec.hpp`) -- the source every
-    binding is derived from, plus `close_reason` on `FloxBar`;
+  * the IDL spec (`include/lrvx/capi/lrvx_capi_spec.hpp`) -- the source every
+    binding is derived from, plus `close_reason` on `LrvxBar`;
   * the Codon golden, which the parity gate accepts as Codon's coverage, and
     the shipped Codon module, which it does not look at;
   * `tools/codegen/binding_parity.yaml`, the manifest
@@ -35,20 +35,20 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[3]
-SPEC = REPO / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
+SPEC = REPO / "include" / "lrvx" / "capi" / "lrvx_capi_spec.hpp"
 MANIFEST = REPO / "tools" / "codegen" / "binding_parity.yaml"
-CODON_GOLDEN = REPO / "tools" / "codegen" / "golden" / "flox_capi.codon"
-CAPI_HEADER = REPO / "include" / "flox" / "capi" / "flox_capi.h"
-CAPI_GOLDEN = REPO / "tools" / "codegen" / "golden" / "flox_capi.h"
-CODON_MODULE = REPO / "codon" / "flox" / "backtest.codon"
+CODON_GOLDEN = REPO / "tools" / "codegen" / "golden" / "lrvx_capi.codon"
+CAPI_HEADER = REPO / "include" / "lrvx" / "capi" / "lrvx_capi.h"
+CAPI_GOLDEN = REPO / "tools" / "codegen" / "golden" / "lrvx_capi.h"
+CODON_MODULE = REPO / "codon" / "lrvx" / "backtest.codon"
 
 # The C entry points the bar path needs, on top of the close-only
-# `flox_simulated_executor_on_bar` that already exists.
+# `lrvx_simulated_executor_on_bar` that already exists.
 C_FUNCTIONS = [
-    "flox_simulated_executor_on_bar_ohlc",
-    "flox_simulated_executor_begin_bar_callback_window",
-    "flox_simulated_executor_end_bar_callback_window",
-    "flox_simulated_executor_reset",
+    "lrvx_simulated_executor_on_bar_ohlc",
+    "lrvx_simulated_executor_begin_bar_callback_window",
+    "lrvx_simulated_executor_end_bar_callback_window",
+    "lrvx_simulated_executor_reset",
 ]
 
 EXPECTED_MANIFEST_ENTRIES = {
@@ -61,12 +61,12 @@ EXPECTED_MANIFEST_ENTRIES = {
     "napi": {"referenced": C_FUNCTIONS},
     "quickjs": {
         "mapped": {
-            "flox_simulated_executor_on_bar_ohlc": "__flox_simulated_executor_on_bar_ohlc",
-            "flox_simulated_executor_begin_bar_callback_window":
-                "__flox_simulated_executor_begin_bar_callback_window",
-            "flox_simulated_executor_end_bar_callback_window":
-                "__flox_simulated_executor_end_bar_callback_window",
-            "flox_simulated_executor_reset": "__flox_simulated_executor_reset",
+            "lrvx_simulated_executor_on_bar_ohlc": "__lrvx_simulated_executor_on_bar_ohlc",
+            "lrvx_simulated_executor_begin_bar_callback_window":
+                "__lrvx_simulated_executor_begin_bar_callback_window",
+            "lrvx_simulated_executor_end_bar_callback_window":
+                "__lrvx_simulated_executor_end_bar_callback_window",
+            "lrvx_simulated_executor_reset": "__lrvx_simulated_executor_reset",
         }
     },
 }
@@ -85,7 +85,7 @@ def _manifest_group(name: str) -> dict:
 def test_the_idl_declares_the_bar_path() -> None:
     text = _spec_text()
     # Green control: the close-only form is declared, and is all there is.
-    assert "flox_simulated_executor_on_bar(" in text
+    assert "lrvx_simulated_executor_on_bar(" in text
 
     missing = [fn for fn in C_FUNCTIONS if f"{fn}(" not in text]
     assert missing == [], (
@@ -100,9 +100,9 @@ def test_on_bar_ohlc_takes_the_open() -> None:
     """The mutation this is shaped against: a four-argument signature that
     drops the open and leaves a held order with nothing to be released at."""
     text = _spec_text()
-    marker = "flox_simulated_executor_on_bar_ohlc("
+    marker = "lrvx_simulated_executor_on_bar_ohlc("
     index = text.find(marker)
-    assert index >= 0, "flox_simulated_executor_on_bar_ohlc is not declared"
+    assert index >= 0, "lrvx_simulated_executor_on_bar_ohlc is not declared"
 
     declaration = text[index : text.find(";", index)]
     for parameter in ("open_price", "high_price", "low_price", "close_price"):
@@ -113,16 +113,16 @@ def test_on_bar_ohlc_takes_the_open() -> None:
 
 
 def test_the_aggregation_struct_carries_a_close_reason() -> None:
-    """`FloxBarData` (the live callback) has `close_reason`; `FloxBar` (batch
+    """`LrvxBarData` (the live callback) has `close_reason`; `LrvxBar` (batch
     aggregation) does not, so why a bar closed is readable on one path only."""
     text = _spec_text()
     start = text.find("typedef struct", text.find("Bar aggregation"))
-    end = text.find("} FloxBar;", start)
-    assert start >= 0 and end > start, "could not locate the FloxBar declaration"
+    end = text.find("} LrvxBar;", start)
+    assert start >= 0 and end > start, "could not locate the LrvxBar declaration"
 
     assert "close_reason" in text[start:end], (
-        "FloxBar has no close_reason; add `uint8_t close_reason;` and carry "
-        "flox::Bar::reason through the batch aggregation path"
+        "LrvxBar has no close_reason; add `uint8_t close_reason;` and carry "
+        "lrvx::Bar::reason through the batch aggregation path"
     )
 
 
@@ -212,10 +212,10 @@ def test_the_manifest_keeps_codon_declared() -> None:
 
 
 def _abi_version(path: Path) -> int:
-    """The FLOX_CAPI_ABI_VERSION a header declares."""
+    """The LRVX_CAPI_ABI_VERSION a header declares."""
     text = path.read_text(encoding="utf-8")
-    match = re.search(r"^#define\s+FLOX_CAPI_ABI_VERSION\s+(\d+)\s*$", text, re.MULTILINE)
-    assert match, f"{path.relative_to(REPO)} declares no FLOX_CAPI_ABI_VERSION"
+    match = re.search(r"^#define\s+LRVX_CAPI_ABI_VERSION\s+(\d+)\s*$", text, re.MULTILINE)
+    assert match, f"{path.relative_to(REPO)} declares no LRVX_CAPI_ABI_VERSION"
     return int(match.group(1))
 
 
@@ -233,25 +233,25 @@ def test_the_abi_number_agrees_across_the_spec_and_the_headers() -> None:
     live = _abi_version(CAPI_HEADER)
 
     assert spec == golden == live, (
-        "FLOX_CAPI_ABI_VERSION disagrees: "
+        "LRVX_CAPI_ABI_VERSION disagrees: "
         f"{SPEC.relative_to(REPO)}={spec}, {CAPI_GOLDEN.relative_to(REPO)}={golden}, "
         f"{CAPI_HEADER.relative_to(REPO)}={live}. The shipped header is what a "
-        "consumer compiles against and what flox_capi_abi_version() returns."
+        "consumer compiles against and what lrvx_capi_abi_version() returns."
     )
 
 
 def test_the_abi_number_moved_with_the_struct_shape() -> None:
-    """`FloxBar` gained `close_reason`, which is a shape change on the
+    """`LrvxBar` gained `close_reason`, which is a shape change on the
     boundary: a header that has the field and still calls itself 2 is
     describing a struct it does not have."""
     text = CAPI_HEADER.read_text(encoding="utf-8")
-    end = text.find("} FloxBar;")
-    assert end > 0, "could not locate the FloxBar declaration"
+    end = text.find("} LrvxBar;")
+    assert end > 0, "could not locate the LrvxBar declaration"
     start = text.rfind("typedef struct", 0, end)
-    assert start >= 0, "could not locate the FloxBar declaration"
+    assert start >= 0, "could not locate the LrvxBar declaration"
 
     if "close_reason" in text[start:end]:
         assert _abi_version(CAPI_HEADER) >= 3, (
-            "FloxBar carries close_reason but the header reports ABI "
+            "LrvxBar carries close_reason but the header reports ABI "
             f"{_abi_version(CAPI_HEADER)}"
         )

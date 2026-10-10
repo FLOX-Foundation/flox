@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,10 +15,10 @@
 // This binary replaces the global operator new with a counter, which is why it
 // is a separate executable rather than a case in a shared test binary.
 
-#include "flox/book/events/book_update_event.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/util/eventing/event_bus.h"
-#include "flox/util/memory/pool.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/util/eventing/event_bus.h"
+#include "lrvx/util/memory/pool.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -34,23 +34,23 @@
 // sanitizers: they interpose new/delete themselves, so an allocation served
 // by the sanitizer's operator new and released through this file's delete
 // (which goes to free) is reported as alloc-dealloc-mismatch -- on gtest's
-// own memory, before any flox code runs. Under a sanitizer build the counter
+// own memory, before any lrvx code runs. Under a sanitizer build the counter
 // is left alone and the cases skip; the guard still runs in every normal
 // build, which is where it does its job.
 #if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-#define FLOX_TEST_UNDER_SANITIZER 1
+#define LRVX_TEST_UNDER_SANITIZER 1
 #elif defined(__has_feature)
 #if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || \
     __has_feature(memory_sanitizer)
-#define FLOX_TEST_UNDER_SANITIZER 1
+#define LRVX_TEST_UNDER_SANITIZER 1
 #endif
 #endif
 
-#ifndef FLOX_TEST_UNDER_SANITIZER
-#define FLOX_TEST_UNDER_SANITIZER 0
+#ifndef LRVX_TEST_UNDER_SANITIZER
+#define LRVX_TEST_UNDER_SANITIZER 0
 #endif
 
-#if FLOX_TEST_UNDER_SANITIZER
+#if LRVX_TEST_UNDER_SANITIZER
 #define SKIP_UNDER_SANITIZER()                                         \
   GTEST_SKIP() << "allocation counting replaces global operator new, " \
                   "which the sanitizers interpose; covered by the "    \
@@ -76,7 +76,7 @@ struct CountingScope
   long count() const { return g_allocations.load(std::memory_order_relaxed); }
 };
 
-using namespace flox;
+using namespace lrvx;
 
 // The bus slot holds the Handle until that slot is overwritten, so a pool
 // smaller than the ring drains permanently and nothing circulates. Keep the
@@ -119,7 +119,7 @@ void publish(BookPool& pool, TestBus& bus, int events, int depth)
 
 }  // namespace
 
-#if !FLOX_TEST_UNDER_SANITIZER
+#if !LRVX_TEST_UNDER_SANITIZER
 
 void* operator new(size_t bytes)
 {
@@ -182,7 +182,7 @@ void operator delete(void* p, size_t) noexcept { std::free(p); }
 void operator delete(void* p, std::align_val_t) noexcept { alignedFree(p); }
 void operator delete(void* p, size_t, std::align_val_t) noexcept { alignedFree(p); }
 
-#endif  // !FLOX_TEST_UNDER_SANITIZER
+#endif  // !LRVX_TEST_UNDER_SANITIZER
 
 TEST(HotPathAllocation, SteadyStatePublishDoesNotAllocate)
 {

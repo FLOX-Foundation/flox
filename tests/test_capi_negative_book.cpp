@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 
@@ -21,89 +21,89 @@
 // negative tick as an empty side.
 TEST(CapiNegativeBook, BestQuotesCarryANegativePrice)
 {
-  FloxBookHandle book = flox_book_create(1.0);
+  LrvxBookHandle book = lrvx_book_create(1.0);
   ASSERT_NE(book, nullptr);
 
   double p = 0;
   // Green control: an untouched book has no quote on either side.
-  EXPECT_EQ(flox_book_best_bid(book, &p), 0);
-  EXPECT_EQ(flox_book_best_ask(book, &p), 0);
+  EXPECT_EQ(lrvx_book_best_bid(book, &p), 0);
+  EXPECT_EQ(lrvx_book_best_ask(book, &p), 0);
 
   double bidsP[] = {-100.4};
   double bidsQ[] = {3.0};
   double asksP[] = {-99.6};
   double asksQ[] = {2.0};
-  flox_book_apply_snapshot(book, bidsP, bidsQ, 1, asksP, asksQ, 1);
+  lrvx_book_apply_snapshot(book, bidsP, bidsQ, 1, asksP, asksQ, 1);
 
   // The levels are in the book: the depth accessors read them through the level
   // walk rather than the cached tick, and they report them.
   double lvlP[8] = {0}, lvlQ[8] = {0};
-  ASSERT_EQ(flox_book_get_bids(book, lvlP, lvlQ, 8), 1u)
+  ASSERT_EQ(lrvx_book_get_bids(book, lvlP, lvlQ, 8), 1u)
       << "the negative bid was not stored at all";
   ASSERT_LT(lvlP[0], 0.0);
   const double storedBid = lvlP[0];
-  ASSERT_EQ(flox_book_get_asks(book, lvlP, lvlQ, 8), 1u)
+  ASSERT_EQ(lrvx_book_get_asks(book, lvlP, lvlQ, 8), 1u)
       << "the negative ask was not stored at all";
   ASSERT_LT(lvlP[0], 0.0);
   const double storedAsk = lvlP[0];
 
   double bid = 0;
-  ASSERT_EQ(flox_book_best_bid(book, &bid), 1)
-      << "flox_book_best_bid signals no quote while the book holds one at " << storedBid;
+  ASSERT_EQ(lrvx_book_best_bid(book, &bid), 1)
+      << "lrvx_book_best_bid signals no quote while the book holds one at " << storedBid;
   EXPECT_NEAR(bid, storedBid, 1e-9);
 
   double ask = 0;
-  ASSERT_EQ(flox_book_best_ask(book, &ask), 1)
-      << "flox_book_best_ask signals no quote while the book holds one at " << storedAsk;
+  ASSERT_EQ(lrvx_book_best_ask(book, &ask), 1)
+      << "lrvx_book_best_ask signals no quote while the book holds one at " << storedAsk;
   EXPECT_NEAR(ask, storedAsk, 1e-9);
 
   // Green control: clearing puts the side back to "no quote", and that answer
   // has to stay distinguishable from a negative price.
-  flox_book_clear(book);
-  EXPECT_EQ(flox_book_best_bid(book, &p), 0);
-  EXPECT_EQ(flox_book_best_ask(book, &p), 0);
+  lrvx_book_clear(book);
+  EXPECT_EQ(lrvx_book_best_bid(book, &p), 0);
+  EXPECT_EQ(lrvx_book_best_ask(book, &p), 0);
 
-  flox_book_destroy(book);
+  lrvx_book_destroy(book);
 }
 
 TEST(CapiNegativeBook, MidSpreadAndCrossedAreReportedBelowZero)
 {
-  FloxBookHandle book = flox_book_create(1.0);
+  LrvxBookHandle book = lrvx_book_create(1.0);
   ASSERT_NE(book, nullptr);
 
   double bidsP[] = {-101.0};
   double bidsQ[] = {1.0};
   double asksP[] = {-99.0};
   double asksQ[] = {1.0};
-  flox_book_apply_snapshot(book, bidsP, bidsQ, 1, asksP, asksQ, 1);
+  lrvx_book_apply_snapshot(book, bidsP, bidsQ, 1, asksP, asksQ, 1);
 
   double mid = 0;
-  ASSERT_EQ(flox_book_mid(book, &mid), 1) << "no mid on a book quoted below zero";
+  ASSERT_EQ(lrvx_book_mid(book, &mid), 1) << "no mid on a book quoted below zero";
   EXPECT_NEAR(mid, -100.0, 1e-9);
 
   double spread = 0;
-  ASSERT_EQ(flox_book_spread(book, &spread), 1) << "no spread on a book quoted below zero";
+  ASSERT_EQ(lrvx_book_spread(book, &spread), 1) << "no spread on a book quoted below zero";
   EXPECT_NEAR(spread, 2.0, 1e-9);
 
-  EXPECT_EQ(flox_book_is_crossed(book), 0);
+  EXPECT_EQ(lrvx_book_is_crossed(book), 0);
 
   double crossBidP[] = {-99.0};
   double crossBidQ[] = {1.0};
   double crossAskP[] = {-101.0};
   double crossAskQ[] = {1.0};
-  flox_book_apply_snapshot(book, crossBidP, crossBidQ, 1, crossAskP, crossAskQ, 1);
-  EXPECT_EQ(flox_book_is_crossed(book), 1)
+  lrvx_book_apply_snapshot(book, crossBidP, crossBidQ, 1, crossAskP, crossAskQ, 1);
+  EXPECT_EQ(lrvx_book_is_crossed(book), 1)
       << "a bid at -99.0 over an ask at -101.0 reads as a clean book";
 
-  flox_book_destroy(book);
+  lrvx_book_destroy(book);
 }
 
-// needs: uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
-// needs: uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
-// needs: uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+// needs: uint8_t lrvx_best_bid_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+// needs: uint8_t lrvx_best_ask_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+// needs: uint8_t lrvx_mid_price_raw_opt(LrvxStrategyHandle s, uint32_t symbol, int64_t* price_out);
 //
 // The strategy-side raw accessors spend the value 0 as their "no quote" answer
-// (flox_capi.cpp: `return bid ? bid->raw() : 0;`), and the JS binding on top of
+// (lrvx_capi.cpp: `return bid ? bid->raw() : 0;`), and the JS binding on top of
 // them turns that into the number 0.0 rather than null. A raw of 0 is a price
 // of exactly 0.0, which a book quoting through zero reaches, so the two answers
 // collide inside the return type itself. That cannot be repaired without a
@@ -111,17 +111,17 @@ TEST(CapiNegativeBook, MidSpreadAndCrossedAreReportedBelowZero)
 // and is enabled once they exist.
 TEST(CapiNegativeBook, StrategyRawBestQuotesSeparateNoQuoteFromAPriceOfZero)
 {
-#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
-  FloxStrategyHandle s = currentStrategyUnderTest();
+#if defined(LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+  LrvxStrategyHandle s = currentStrategyUnderTest();
   int64_t raw = 12345;
-  EXPECT_EQ(flox_best_bid_raw_opt(s, 0, &raw), 0) << "an empty side must not report a quote";
-  EXPECT_EQ(flox_best_bid_raw_opt(s, 1, &raw), 1) << "a bid at 0.0 must be reported";
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, 0, &raw), 0) << "an empty side must not report a quote";
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, 1, &raw), 1) << "a bid at 0.0 must be reported";
   EXPECT_EQ(raw, 0);
 #else
-  FAIL() << "flox_best_bid_raw returns 0 both for 'no quote' and for a quote at a "
+  FAIL() << "lrvx_best_bid_raw returns 0 both for 'no quote' and for a quote at a "
             "price of exactly 0.0; the ABI has no way to tell them apart. Needs "
-            "flox_best_bid_raw_opt / flox_best_ask_raw_opt / flox_mid_price_raw_opt "
-            "with a presence flag, and FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE to enable "
+            "lrvx_best_bid_raw_opt / lrvx_best_ask_raw_opt / lrvx_mid_price_raw_opt "
+            "with a presence flag, and LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE to enable "
             "this case.";
 #endif
 }
@@ -133,64 +133,64 @@ TEST(CapiNegativeBook, StrategyRawBestQuotesSeparateNoQuoteFromAPriceOfZero)
 // price written out, absent with the flag clear.
 TEST(CapiNegativeBook, OptionalRawBestQuotesAnswerEveryBookState)
 {
-#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+#if defined(LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE)
   const auto& books = bookStatesUnderTest();
-  FloxStrategyHandle s = books.strategy;
+  LrvxStrategyHandle s = books.strategy;
   int64_t raw = 0;
 
   // A book holding a bid and no ask: the bid is a real quote at 0.0, and the
   // two accessors that need an ask have nothing to answer with.
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.bidAtZero, &raw), 1)
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.bidAtZero, &raw), 1)
       << "a bid at exactly 0.0 is reported as no bid";
   EXPECT_EQ(raw, 0);
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.bidAtZero, &raw), 0)
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.bidAtZero, &raw), 0)
       << "an empty ask side reports a quote";
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.bidAtZero, &raw), 0)
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.bidAtZero, &raw), 0)
       << "a one-sided book has a mid";
 
   // The mirror image: an ask and no bid.
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.askOnly, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(5.0));
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askOnly, &raw), 0)
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.askOnly, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(5.0));
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.askOnly, &raw), 0)
       << "an empty bid side reports a quote";
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.askOnly, &raw), 0);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.askOnly, &raw), 0);
 
   // An ask at exactly 0.0 -- the value the plain int64_t accessors spend as
   // their "no quote" answer.
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.askAtZero, &raw), 1)
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.askAtZero, &raw), 1)
       << "an ask at exactly 0.0 is reported as no ask";
   EXPECT_EQ(raw, 0);
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askAtZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(-2.0));
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.askAtZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(-1.0));
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.askAtZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(-2.0));
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.askAtZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(-1.0));
 
   // A mid of exactly 0.0, from a two-sided book quoting either side of zero.
   // The mid has to be the mid and not one of the two quotes it is built from.
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.midAtZero, &raw), 1)
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.midAtZero, &raw), 1)
       << "a mid of exactly 0.0 is reported as no mid";
   EXPECT_EQ(raw, 0);
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.midAtZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(-1.0));
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.midAtZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(1.0));
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.midAtZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(-1.0));
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.midAtZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(1.0));
 
   // A book quoted entirely below zero: three distinct prices, so a mid that
   // answers with the bid, or an ask that answers with the bid, is visible.
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.belowZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(-101.0));
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.belowZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(-99.0));
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.belowZero, &raw), 1);
-  EXPECT_EQ(raw, flox_price_from_double(-100.0));
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.belowZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(-101.0));
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.belowZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(-99.0));
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.belowZero, &raw), 1);
+  EXPECT_EQ(raw, lrvx_price_from_double(-100.0));
 
   // A symbol with no book at all: all three absent.
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.noSymbol, &raw), 0);
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.noSymbol, &raw), 0);
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.noSymbol, &raw), 0);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.noSymbol, &raw), 0);
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.noSymbol, &raw), 0);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.noSymbol, &raw), 0);
 #else
-  FAIL() << "needs flox_best_bid_raw_opt / flox_best_ask_raw_opt / "
-            "flox_mid_price_raw_opt and FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
+  FAIL() << "needs lrvx_best_bid_raw_opt / lrvx_best_ask_raw_opt / "
+            "lrvx_mid_price_raw_opt and LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE";
 #endif
 }
 
@@ -202,43 +202,43 @@ TEST(CapiNegativeBook, OptionalRawBestQuotesAnswerEveryBookState)
 // shows the last write.
 TEST(CapiNegativeBook, OptionalRawBestQuotesLeavePriceOutUntouchedWhenThereIsNoQuote)
 {
-#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+#if defined(LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE)
   const auto& books = bookStatesUnderTest();
-  FloxStrategyHandle s = books.strategy;
+  LrvxStrategyHandle s = books.strategy;
   constexpr int64_t kSentinel = -987654321;
 
   int64_t bidOnEmptySide = kSentinel;
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askOnly, &bidOnEmptySide), 0);
-  EXPECT_EQ(bidOnEmptySide, kSentinel) << "flox_best_bid_raw_opt wrote a price it has none of";
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.askOnly, &bidOnEmptySide), 0);
+  EXPECT_EQ(bidOnEmptySide, kSentinel) << "lrvx_best_bid_raw_opt wrote a price it has none of";
 
   int64_t bidOnAbsentBook = kSentinel;
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.noSymbol, &bidOnAbsentBook), 0);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.noSymbol, &bidOnAbsentBook), 0);
   EXPECT_EQ(bidOnAbsentBook, kSentinel);
 
   int64_t askOnEmptySide = kSentinel;
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.bidAtZero, &askOnEmptySide), 0);
-  EXPECT_EQ(askOnEmptySide, kSentinel) << "flox_best_ask_raw_opt wrote a price it has none of";
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.bidAtZero, &askOnEmptySide), 0);
+  EXPECT_EQ(askOnEmptySide, kSentinel) << "lrvx_best_ask_raw_opt wrote a price it has none of";
 
   int64_t askOnAbsentBook = kSentinel;
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.noSymbol, &askOnAbsentBook), 0);
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.noSymbol, &askOnAbsentBook), 0);
   EXPECT_EQ(askOnAbsentBook, kSentinel);
 
   int64_t midOnOneSidedBook = kSentinel;
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.bidAtZero, &midOnOneSidedBook), 0);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.bidAtZero, &midOnOneSidedBook), 0);
   EXPECT_EQ(midOnOneSidedBook, kSentinel)
-      << "flox_mid_price_raw_opt wrote a price it has none of";
+      << "lrvx_mid_price_raw_opt wrote a price it has none of";
 
   int64_t midOnAbsentBook = kSentinel;
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.noSymbol, &midOnAbsentBook), 0);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.noSymbol, &midOnAbsentBook), 0);
   EXPECT_EQ(midOnAbsentBook, kSentinel);
 
   // Green control: the same locals are written when there is a quote, so the
   // assertions above are pinning "untouched on absence" and not "never writes".
   int64_t present = kSentinel;
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.bidAtZero, &present), 1);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.bidAtZero, &present), 1);
   EXPECT_EQ(present, 0);
 #else
-  FAIL() << "needs FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
+  FAIL() << "needs LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE";
 #endif
 }
 
@@ -248,32 +248,32 @@ TEST(CapiNegativeBook, OptionalRawBestQuotesLeavePriceOutUntouchedWhenThereIsNoQ
 // a dereference that stopped checking would never be noticed here.
 TEST(CapiNegativeBook, OptionalRawBestQuotesAcceptANullPriceOut)
 {
-#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+#if defined(LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE)
   const auto& books = bookStatesUnderTest();
-  FloxStrategyHandle s = books.strategy;
+  LrvxStrategyHandle s = books.strategy;
 
   // With a quote on the other end: the flag still comes back, nothing is
   // written anywhere.
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.bidAtZero, nullptr), 1);
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.askAtZero, nullptr), 1);
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.midAtZero, nullptr), 1);
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.belowZero, nullptr), 1);
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.belowZero, nullptr), 1);
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.belowZero, nullptr), 1);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.bidAtZero, nullptr), 1);
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.askAtZero, nullptr), 1);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.midAtZero, nullptr), 1);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.belowZero, nullptr), 1);
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.belowZero, nullptr), 1);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.belowZero, nullptr), 1);
 
   // And with nothing to report.
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askOnly, nullptr), 0);
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.bidAtZero, nullptr), 0);
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.bidAtZero, nullptr), 0);
-  EXPECT_EQ(flox_best_bid_raw_opt(s, books.noSymbol, nullptr), 0);
-  EXPECT_EQ(flox_best_ask_raw_opt(s, books.noSymbol, nullptr), 0);
-  EXPECT_EQ(flox_mid_price_raw_opt(s, books.noSymbol, nullptr), 0);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.askOnly, nullptr), 0);
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.bidAtZero, nullptr), 0);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.bidAtZero, nullptr), 0);
+  EXPECT_EQ(lrvx_best_bid_raw_opt(s, books.noSymbol, nullptr), 0);
+  EXPECT_EQ(lrvx_best_ask_raw_opt(s, books.noSymbol, nullptr), 0);
+  EXPECT_EQ(lrvx_mid_price_raw_opt(s, books.noSymbol, nullptr), 0);
 #else
-  FAIL() << "needs FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
+  FAIL() << "needs LRVX_HAS_OPTIONAL_RAW_BEST_QUOTE";
 #endif
 }
 
-// The snapshot a strategy reads out of flox_get_symbol_context carried the same
+// The snapshot a strategy reads out of lrvx_get_symbol_context carried the same
 // collision the raw accessors had: a bid at 0.0 and no bid both wrote 0 into
 // bid_price_raw. The two presence flags are what a consumer of the struct reads
 // before it believes a price, so they are asserted against the same set of
@@ -281,10 +281,10 @@ TEST(CapiNegativeBook, OptionalRawBestQuotesAcceptANullPriceOut)
 TEST(CapiNegativeBook, SymbolContextSnapshotSeparatesNoQuoteFromAPriceOfZero)
 {
   const auto& books = bookStatesUnderTest();
-  FloxStrategyHandle s = books.strategy;
-  FloxSymbolContext ctx{};
+  LrvxStrategyHandle s = books.strategy;
+  LrvxSymbolContext ctx{};
 
-  flox_get_symbol_context(s, books.bidAtZero, &ctx);
+  lrvx_get_symbol_context(s, books.bidAtZero, &ctx);
   EXPECT_EQ(ctx.book.has_bid, 1) << "a bid at 0.0 is a quote";
   EXPECT_EQ(ctx.book.bid_price_raw, 0);
   EXPECT_EQ(ctx.book.has_ask, 0) << "no ask side";
@@ -292,24 +292,24 @@ TEST(CapiNegativeBook, SymbolContextSnapshotSeparatesNoQuoteFromAPriceOfZero)
   EXPECT_EQ(ctx.book.mid_raw, 0) << "no mid without both sides";
   EXPECT_EQ(ctx.book.spread_raw, 0);
 
-  flox_get_symbol_context(s, books.askOnly, &ctx);
+  lrvx_get_symbol_context(s, books.askOnly, &ctx);
   EXPECT_EQ(ctx.book.has_bid, 0);
   EXPECT_EQ(ctx.book.has_ask, 1);
 
-  flox_get_symbol_context(s, books.askAtZero, &ctx);
+  lrvx_get_symbol_context(s, books.askAtZero, &ctx);
   EXPECT_EQ(ctx.book.has_bid, 1);
   EXPECT_EQ(ctx.book.has_ask, 1) << "an ask at 0.0 is a quote";
   EXPECT_EQ(ctx.book.ask_price_raw, 0);
 
-  flox_get_symbol_context(s, books.belowZero, &ctx);
+  lrvx_get_symbol_context(s, books.belowZero, &ctx);
   EXPECT_EQ(ctx.book.has_bid, 1);
   EXPECT_EQ(ctx.book.has_ask, 1);
-  EXPECT_EQ(ctx.book.bid_price_raw, flox_price_from_double(-101.0));
-  EXPECT_EQ(ctx.book.ask_price_raw, flox_price_from_double(-99.0));
-  EXPECT_EQ(ctx.book.mid_raw, flox_price_from_double(-100.0));
+  EXPECT_EQ(ctx.book.bid_price_raw, lrvx_price_from_double(-101.0));
+  EXPECT_EQ(ctx.book.ask_price_raw, lrvx_price_from_double(-99.0));
+  EXPECT_EQ(ctx.book.mid_raw, lrvx_price_from_double(-100.0));
 
   // A symbol the strategy never subscribed: nothing on either side.
-  flox_get_symbol_context(s, 0, &ctx);
+  lrvx_get_symbol_context(s, 0, &ctx);
   EXPECT_EQ(ctx.book.has_bid, 0);
   EXPECT_EQ(ctx.book.has_ask, 0);
 }

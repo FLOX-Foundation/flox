@@ -1,21 +1,21 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/book/l3/l3_order_book.h"
-#include "flox/book/l3/l3_snap_shot.h"
-#include "flox/common.h"
+#include "lrvx/book/l3/l3_order_book.h"
+#include "lrvx/book/l3/l3_snap_shot.h"
+#include "lrvx/common.h"
 
 #include <gtest/gtest.h>
 #include <cstddef>
 
-#ifdef FLOX_UNIT_TEST
-namespace flox
+#ifdef LRVX_UNIT_TEST
+namespace lrvx
 {
 class L3OrderBookProbe
 {
@@ -97,10 +97,10 @@ struct CompareL3Snapshots
   }
 };
 
-}  // namespace flox
+}  // namespace lrvx
 #endif
 
-using namespace flox;
+using namespace lrvx;
 
 // Lifecycle Tests
 TEST(L3OrderBookTest, BookStartsEmpty)

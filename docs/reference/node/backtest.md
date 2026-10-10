@@ -1,7 +1,7 @@
 # Backtest components
 
 ```javascript
-const { BacktestRunner, SimulatedExecutor, BacktestResult, Engine, SignalBuilder } = require('@flox-foundation/flox');
+const { BacktestRunner, SimulatedExecutor, BacktestResult, Engine, SignalBuilder } = require('@lrvx/lrvx');
 ```
 
 ---
@@ -11,7 +11,7 @@ const { BacktestRunner, SimulatedExecutor, BacktestResult, Engine, SignalBuilder
 Replays OHLCV data through a strategy. Emitted orders go to a `SimulatedExecutor`; statistics are returned at the end.
 
 ```javascript
-const bt = new flox.BacktestRunner(registry, feeRate, initialCapital);
+const bt = new lrvx.BacktestRunner(registry, feeRate, initialCapital);
 bt.setStrategy(strategy);
 
 const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
@@ -23,14 +23,14 @@ const stats = bt.runOhlcv(timestampsNs, closePrices, 'BTCUSDT');
 | `setStrategy(strategy)` | `void` | Attach a strategy |
 | `runCsv(path, symbol)` | stats object | Replay a CSV file (timestamp, open, high, low, close, volume) |
 | `runOhlcv(timestamps, closes, symbol)` | stats object | Replay raw arrays (timestamps as Float64Array, closes as Float64Array) |
-| `runTape(path)` | stats object | Replay a `.floxlog` tape directory — the canonical recording written by `flox tape record` or `scripts/backfill_to_tape.py` |
-| `runTapes(paths)` | stats object | Merge N `.floxlog` tape directories on read and replay the merged stream. Symbols are rekeyed by `(metadata.exchange, name)` so two venues stay distinct. `runTapes([t])` equals `runTape(t)`; throws on bad paths or overlapping book streams |
+| `runTape(path)` | stats object | Replay a `.lrvx` tape directory — the canonical recording written by `lrvx tape record` or `scripts/backfill_to_tape.py` |
+| `runTapes(paths)` | stats object | Merge N `.lrvx` tape directories on read and replay the merged stream. Symbols are rekeyed by `(metadata.exchange, name)` so two venues stay distinct. `runTapes([t])` equals `runTape(t)`; throws on bad paths or overlapping book streams |
 | `setExecutor(executor)` | `void` | Replace the built-in `SimulatedExecutor`. `null` detaches |
 | `addExecutionListener(listener)` | `void` | Attach an order-lifecycle listener. Multiple listeners may be attached; each fires for every order event |
 | `equityCurve()` | `EquityCurve` | Equity curve from the most recent run |
 | `trades()` | `BacktestTrades` | Closed trades from the most recent run |
 
-`equityCurve()` and `trades()` throw `FloxError(E_RUN_002)` if no run has completed.
+`equityCurve()` and `trades()` throw `LrvxError(E_RUN_002)` if no run has completed.
 
 ### Stats object
 
@@ -64,7 +64,7 @@ const stats = bt.runOhlcv(timestampsNs, closePrices, 'BTCUSDT');
 Lower-level backtest executor. Use directly when you need more control over fill logic than `BacktestRunner` provides.
 
 ```javascript
-const exec = new flox.SimulatedExecutor();
+const exec = new lrvx.SimulatedExecutor();
 exec.setDefaultSlippage('fixed_bps', 0, 0, 2.0, 0);
 exec.setQueueModel('tob', 1);
 ```
@@ -99,7 +99,7 @@ from a `beginBarCallbackWindow`/`endBarCallbackWindow` pair at that price),
 then walks `low -> high -> close`.
 
 ```javascript
-const exec = new flox.SimulatedExecutor();
+const exec = new lrvx.SimulatedExecutor();
 exec.advanceClock(60_000_000_000n);
 exec.onBarOhlc(1, 50000.0, 50500.0, 49800.0, 50200.0);
 
@@ -119,7 +119,7 @@ exec.reset(); // drop fills before a second hand-driven run
 Computes statistics and equity curve from a `SimulatedExecutor`'s fills.
 
 ```javascript
-const result = new flox.BacktestResult(initialCapital, feeRate);
+const result = new lrvx.BacktestResult(initialCapital, feeRate);
 result.ingestExecutor(exec);
 const stats = result.stats();
 ```
@@ -139,9 +139,9 @@ Bulk backtesting engine. Loads OHLCV data once, then runs strategies against it.
 The constructor takes capital and fee rate, not a registry.
 
 ```javascript
-const engine = new flox.Engine(100_000, 0.0001);
+const engine = new lrvx.Engine(100_000, 0.0001);
 engine.loadCsv('/path/to/btcusdt_1m.csv');   // symbol inferred from the filename
-const signals = new flox.SignalBuilder();
+const signals = new lrvx.SignalBuilder();
 signals.buy(tsNs, 1.0);
 const stats = engine.run(signals);
 ```
@@ -175,7 +175,7 @@ Builds a signal array to pass to `engine.run()`.
 Signals are keyed by timestamp and carry a quantity — not a bar index.
 
 ```javascript
-const signals = new flox.SignalBuilder();
+const signals = new lrvx.SignalBuilder();
 signals.buy(tsNs, 1.0)              // methods return `this`, so they chain
        .limitSell(tsNs, 101.0, 1.0);
 const stats = engine.run(signals);

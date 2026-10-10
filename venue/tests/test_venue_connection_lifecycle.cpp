@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -21,11 +21,11 @@
 // an escape is std::terminate for the whole venue -- one malformed admin
 // request taking the matching engines with it.
 
-#include "flox-venue/control_api.h"
-#include "flox-venue/control_plane.h"
-#include "flox-venue/control_server.h"
-#include "flox-venue/metrics_server.h"
-#include "flox-venue/socket_acceptor.h"
+#include "lrvx-venue/control_api.h"
+#include "lrvx-venue/control_plane.h"
+#include "lrvx-venue/control_server.h"
+#include "lrvx-venue/metrics_server.h"
+#include "lrvx-venue/socket_acceptor.h"
 
 #include <arpa/inet.h>
 #include <dlfcn.h>
@@ -43,8 +43,8 @@
 #include <thread>
 #include <unordered_map>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -165,7 +165,7 @@ TEST(VenueConnectionLifecycle, ControlServerClosesEachDescriptorOnce)
 TEST(VenueConnectionLifecycle, MetricsServerClosesEachDescriptorOnce)
 {
   MetricsServer srv([]
-                    { return std::string("flox_up 1\n"); });
+                    { return std::string("lrvx_up 1\n"); });
   const int port = srv.start(0);
   ASSERT_GT(port, 0);
 

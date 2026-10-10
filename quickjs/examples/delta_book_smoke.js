@@ -1,4 +1,4 @@
-// Smoke test for flox.DeltaBookEncoder / DeltaBookReplayer.
+// Smoke test for lrvx.DeltaBookEncoder / DeltaBookReplayer.
 
 let passed = 0;
 let failed = 0;
@@ -9,7 +9,7 @@ function check(cond, msg) {
 
 function lvl(price, qty) { return { priceRaw: price, qtyRaw: qty }; }
 
-var enc = new flox.DeltaBookEncoder({ anchorEvery: 100 });
+var enc = new lrvx.DeltaBookEncoder({ anchorEvery: 100 });
 var first = enc.encode(1, [lvl(10000, 10), lvl(9999, 5)], [lvl(10001, 8)]);
 check(first.isDelta === false, 'first event is a snapshot');
 check(first.bids.length === 2 && first.asks.length === 1, 'snapshot carries levels');
@@ -17,7 +17,7 @@ check(first.bids.length === 2 && first.asks.length === 1, 'snapshot carries leve
 var second = enc.encode(1, [lvl(10000, 12)], [lvl(10001, 8), lvl(10002, 3)]);
 check(second.isDelta === true, 'second event is a delta');
 
-var rep = new flox.DeltaBookReplayer();
+var rep = new lrvx.DeltaBookReplayer();
 rep.apply(0, 1, [lvl(10000, 10), lvl(9999, 5)], [lvl(10001, 8)]);
 var snap = rep.apply(1, 1, second.bids, second.asks);
 var bidPrices = snap.bids.map(function(l) { return l.priceRaw; }).sort();

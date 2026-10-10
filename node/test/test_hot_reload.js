@@ -4,7 +4,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -13,7 +13,7 @@ function check(cond, msg) {
   else { failed++; console.error(`  FAIL  ${msg}`); }
 }
 
-const reg = new flox.SymbolRegistry();
+const reg = new lrvx.SymbolRegistry();
 const sym = Number(reg.addSymbol('test', 'BTCUSDT', 0.01));
 
 function recordingStrategy(label) {
@@ -32,7 +32,7 @@ function recordingStrategy(label) {
 
 console.log('=== replaceStrategy swaps callbacks ===');
 {
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   const a = recordingStrategy('A');
   runner.addStrategy(a);
   runner.start();
@@ -54,7 +54,7 @@ console.log('=== replaceStrategy swaps callbacks ===');
 
 console.log('=== replaceStrategy rejects bad index ===');
 {
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   runner.addStrategy(recordingStrategy('A'));
   let threw = false;
   try { runner.replaceStrategy(99, recordingStrategy('B')); }

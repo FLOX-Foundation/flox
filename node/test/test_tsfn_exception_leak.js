@@ -19,7 +19,7 @@
  */
 
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 // Node warns once per dispatch (DEP0168) that the strategy's exception was
 // swallowed (a separate, documented asymmetry with sync mode -- see
@@ -48,10 +48,10 @@ function check(cond, msg) {
   else { failed++; console.error(`  FAIL  ${msg}`); }
 }
 
-const reg = new flox.SymbolRegistry();
+const reg = new lrvx.SymbolRegistry();
 const sym = Number(reg.addSymbol('bin', 'BTCUSDT', 0.01));
 
-const runner = new flox.Runner(reg, () => {}, true);
+const runner = new lrvx.Runner(reg, () => {}, true);
 runner.addStrategy({
   symbols: [sym],
   onTrade() {

@@ -1,9 +1,9 @@
 # Read multi-timeframe context from a strategy
 
-Multi-timeframe strategies need the question "what was the most recent closed 4h bar at the moment this 5m bar fired" answered cheaply and correctly. flox now keeps a per-(symbol, timeframe) ring of closed bars on every `Strategy` and exposes two accessors so user code does not need to repeat the bookkeeping.
+Multi-timeframe strategies need the question "what was the most recent closed 4h bar at the moment this 5m bar fired" answered cheaply and correctly. lrvx now keeps a per-(symbol, timeframe) ring of closed bars on every `Strategy` and exposes two accessors so user code does not need to repeat the bookkeeping.
 
 ```python
-from flox_py import Strategy
+from lrvx import Strategy
 
 H4 = 4 * 60 * 60 * 1_000_000_000  # nanoseconds
 M5 = 5 * 60 * 1_000_000_000
@@ -51,7 +51,7 @@ no explicit register call.
 ## Cross-binding
 
 The same surface is reachable from every binding the polyglot policy
-covers. The shape of the returned bar mirrors `FloxBar`: `open`, `high`,
+covers. The shape of the returned bar mirrors `LrvxBar`: `open`, `high`,
 `low`, `close`, `volume`, plus `startNs` / `endNs` (or `start_ns` /
 `end_ns` in Python).
 
@@ -92,10 +92,10 @@ class TrendFollower extends Strategy {
 
 The Codon strategy mirrors the Python signature:
 
-```python
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import BarData
+```codon
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import BarData
 
 H4 = 4 * 3600 * 1_000_000_000
 M5 = 5 * 60 * 1_000_000_000

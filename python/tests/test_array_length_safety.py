@@ -36,8 +36,8 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py as flox  # noqa: E402
-from flox_py import _flox_py as _core  # noqa: E402
+import lrvx  # noqa: E402
+from lrvx import _lrvx as _core  # noqa: E402
 
 
 def _strided_int64(values):
@@ -71,40 +71,40 @@ class AggregateBarsLengthChecks(unittest.TestCase):
         px = np.array([100.0], dtype=np.float64)  # too short
         qty = np.array([1.0, 1.0, 1.0], dtype=np.float64)
         ib = np.array([1, 1, 1], dtype=np.uint8)
-        with self.assertRaises(flox.FloxError):
-            flox.aggregate_time_bars(ts, px, qty, ib, 1.0)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.aggregate_time_bars(ts, px, qty, ib, 1.0)
 
     def test_mismatched_quantities_length_rejected(self):
         ts = np.array([0, 1_000_000_000], dtype=np.int64)
         px = np.array([100.0, 101.0], dtype=np.float64)
         qty = np.array([1.0], dtype=np.float64)  # too short
         ib = np.array([1, 1], dtype=np.uint8)
-        with self.assertRaises(flox.FloxError):
-            flox.aggregate_time_bars(ts, px, qty, ib, 1.0)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.aggregate_time_bars(ts, px, qty, ib, 1.0)
 
     def test_mismatched_is_buy_length_rejected(self):
         ts = np.array([0, 1_000_000_000], dtype=np.int64)
         px = np.array([100.0, 101.0], dtype=np.float64)
         qty = np.array([1.0, 1.0], dtype=np.float64)
         ib = np.array([1], dtype=np.uint8)  # too short
-        with self.assertRaises(flox.FloxError):
-            flox.aggregate_time_bars(ts, px, qty, ib, 1.0)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.aggregate_time_bars(ts, px, qty, ib, 1.0)
 
     def test_realistic_misaligned_column_no_longer_silently_wrong(self):
         # A 3-element dropna-style resynchronization on one column
         # used to shift every close by 33x with no error and no
         # warning. With the length check this is now a raised
-        # FloxError instead of silently-wrong output.
+        # LrvxError instead of silently-wrong output.
         n = 90
         ts = np.arange(n, dtype=np.int64) * 1_000_000_000
         px = np.linspace(100.0, 150.0, n)
         qty = np.ones(n)
         ib = np.ones(n, dtype=np.uint8)
-        aligned = flox.aggregate_time_bars(ts, px, qty, ib, 1.0)
+        aligned = lrvx.aggregate_time_bars(ts, px, qty, ib, 1.0)
         self.assertGreater(len(aligned), 0)
         misaligned_px = px[:-3]
-        with self.assertRaises(flox.FloxError):
-            flox.aggregate_time_bars(ts, misaligned_px, qty, ib, 1.0)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.aggregate_time_bars(ts, misaligned_px, qty, ib, 1.0)
 
 
 class AggregateBarsStrideSafety(unittest.TestCase):
@@ -126,8 +126,8 @@ class AggregateBarsStrideSafety(unittest.TestCase):
         ib_src[0::2] = 1
         ib = ib_src[0::2]
 
-        strided_bars = flox.aggregate_time_bars(ts, px, qty, ib, 1.0)
-        contig_bars = flox.aggregate_time_bars(
+        strided_bars = lrvx.aggregate_time_bars(ts, px, qty, ib, 1.0)
+        contig_bars = lrvx.aggregate_time_bars(
             np.ascontiguousarray(ts), np.ascontiguousarray(px),
             np.ascontiguousarray(qty), np.ascontiguousarray(ib), 1.0,
         )
@@ -143,7 +143,7 @@ class AggregateBarsStrideSafety(unittest.TestCase):
 
 
 class BuildDatasetFieldView(unittest.TestCase):
-    """The real, already-shipping consumer: `flox_py.dataset`
+    """The real, already-shipping consumer: `lrvx.dataset`
     passes `trades["exchange_ts_ns"]` -- a field of a structured
     array, stride == the struct size, never 8 bytes -- straight into
     `aggregate_time_bars`. Before the c_style fix this silently
@@ -151,7 +151,7 @@ class BuildDatasetFieldView(unittest.TestCase):
     timestamps."""
 
     def test_bars_from_trades_field_view_are_correct(self):
-        from flox_py.dataset import _bars_from_trades
+        from lrvx.dataset import _bars_from_trades
 
         n = 40
         dtype = np.dtype([
@@ -162,8 +162,8 @@ class BuildDatasetFieldView(unittest.TestCase):
         ])
         trades = np.zeros(n, dtype=dtype)
         trades["exchange_ts_ns"] = np.arange(n, dtype=np.int64) * 1_000_000_000
-        trades["price_raw"] = np.int64(100 * flox.PRICE_SCALE)
-        trades["qty_raw"] = np.int64(1 * flox.QUANTITY_SCALE)
+        trades["price_raw"] = np.int64(100 * lrvx.PRICE_SCALE)
+        trades["qty_raw"] = np.int64(1 * lrvx.QUANTITY_SCALE)
         trades["side"] = 0  # BUY
 
         self.assertFalse(trades["exchange_ts_ns"].flags["C_CONTIGUOUS"])
@@ -187,34 +187,34 @@ class BarReturnsAndTradePnlLengthChecks(unittest.TestCase):
         signal_long = np.ones(10, dtype=np.int8)
         signal_short = np.zeros(2, dtype=np.int8)  # too short
         log_returns = np.zeros(10, dtype=np.float64)
-        with self.assertRaises(flox.FloxError):
-            flox.bar_returns(signal_long, signal_short, log_returns)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.bar_returns(signal_long, signal_short, log_returns)
 
     def test_bar_returns_mismatched_log_returns_rejected(self):
         signal_long = np.ones(10, dtype=np.int8)
         signal_short = np.zeros(10, dtype=np.int8)
         log_returns = np.zeros(2, dtype=np.float64)  # too short
-        with self.assertRaises(flox.FloxError):
-            flox.bar_returns(signal_long, signal_short, log_returns)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.bar_returns(signal_long, signal_short, log_returns)
 
     def test_trade_pnl_mismatched_length_rejected(self):
         signal_long = np.ones(10, dtype=np.int8)
         signal_short = np.zeros(3, dtype=np.int8)  # too short
         log_returns = np.zeros(10, dtype=np.float64)
-        with self.assertRaises(flox.FloxError):
-            flox.trade_pnl(signal_long, signal_short, log_returns)
+        with self.assertRaises(lrvx.LrvxError):
+            lrvx.trade_pnl(signal_long, signal_short, log_returns)
 
     def test_bar_returns_empty_input_returns_empty(self):
         empty_i8 = np.array([], dtype=np.int8)
         empty_f8 = np.array([], dtype=np.float64)
-        out = flox.bar_returns(empty_i8, empty_i8, empty_f8)
+        out = lrvx.bar_returns(empty_i8, empty_i8, empty_f8)
         self.assertEqual(len(out), 0)
 
     def test_bar_returns_matches_same_length_inputs(self):
         signal_long = np.array([0, 1, 1, 0, 0], dtype=np.int8)
         signal_short = np.array([0, 0, 0, 0, 1], dtype=np.int8)
         log_returns = np.array([0.0, 0.01, 0.02, -0.01, 0.03])
-        out = flox.bar_returns(signal_long, signal_short, log_returns)
+        out = lrvx.bar_returns(signal_long, signal_short, log_returns)
         self.assertEqual(len(out), 5)
 
 
@@ -234,8 +234,8 @@ class OptimizerStatsStrideSafety(unittest.TestCase):
         self.assertFalse(y_strided.flags["C_CONTIGUOUS"])
         y_contig = np.ascontiguousarray(y_strided)
 
-        strided_result = flox.correlation(x, y_strided)
-        contig_result = flox.correlation(x, y_contig)
+        strided_result = lrvx.correlation(x, y_strided)
+        contig_result = lrvx.correlation(x, y_contig)
         self.assertAlmostEqual(strided_result, contig_result, places=9)
 
     def test_bootstrap_ci_strided_matches_contiguous(self):
@@ -245,8 +245,8 @@ class OptimizerStatsStrideSafety(unittest.TestCase):
         self.assertFalse(strided.flags["C_CONTIGUOUS"])
         contig = np.ascontiguousarray(strided)
 
-        lo_s, med_s, hi_s = flox.bootstrap_ci(strided, 0.95, 5000)
-        lo_c, med_c, hi_c = flox.bootstrap_ci(contig, 0.95, 5000)
+        lo_s, med_s, hi_s = lrvx.bootstrap_ci(strided, 0.95, 5000)
+        lo_c, med_c, hi_c = lrvx.bootstrap_ci(contig, 0.95, 5000)
         self.assertAlmostEqual(lo_s, lo_c, places=6)
         self.assertAlmostEqual(med_s, med_c, places=6)
         self.assertAlmostEqual(hi_s, hi_c, places=6)
@@ -259,8 +259,8 @@ class OptimizerStatsStrideSafety(unittest.TestCase):
         self.assertFalse(g1_strided.flags["C_CONTIGUOUS"])
         g1_contig = np.ascontiguousarray(g1_strided)
 
-        p_strided = flox.permutation_test(g1_strided, g2[:400], 2000)
-        p_contig = flox.permutation_test(g1_contig, g2[:400], 2000)
+        p_strided = lrvx.permutation_test(g1_strided, g2[:400], 2000)
+        p_contig = lrvx.permutation_test(g1_contig, g2[:400], 2000)
         self.assertAlmostEqual(p_strided, p_contig, places=6)
 
 
@@ -313,9 +313,9 @@ class ProfileAddTradesStrideSafety(unittest.TestCase):
         ib_all[0::2] = 1
         ib = ib_all[0::2]
 
-        vp_strided = flox.VolumeProfile(0.01)
+        vp_strided = lrvx.VolumeProfile(0.01)
         vp_strided.add_trades(px, qty, ib)
-        vp_contig = flox.VolumeProfile(0.01)
+        vp_contig = lrvx.VolumeProfile(0.01)
         vp_contig.add_trades(
             np.ascontiguousarray(px), np.ascontiguousarray(qty), np.ascontiguousarray(ib)
         )
@@ -330,9 +330,9 @@ class ProfileAddTradesStrideSafety(unittest.TestCase):
         ib_all[0::2] = 1
         ib = ib_all[0::2]
 
-        fp_strided = flox.FootprintBar(0.01)
+        fp_strided = lrvx.FootprintBar(0.01)
         fp_strided.add_trades(px, qty, ib)
-        fp_contig = flox.FootprintBar(0.01)
+        fp_contig = lrvx.FootprintBar(0.01)
         fp_contig.add_trades(
             np.ascontiguousarray(px), np.ascontiguousarray(qty), np.ascontiguousarray(ib)
         )
@@ -346,21 +346,21 @@ class BookUpdateLengthAndStrideSafety(unittest.TestCase):
     c_style."""
 
     def test_order_book_mismatched_bid_qty_rejected(self):
-        book = flox.OrderBook(0.01)
+        book = lrvx.OrderBook(0.01)
         bid_px = np.array([100.0, 99.99], dtype=np.float64)
         bid_qty = np.array([1.0], dtype=np.float64)  # too short
         ask_px = np.array([100.01], dtype=np.float64)
         ask_qty = np.array([1.0], dtype=np.float64)
-        with self.assertRaises(flox.FloxError):
+        with self.assertRaises(lrvx.LrvxError):
             book.apply_snapshot(bid_px, bid_qty, ask_px, ask_qty)
 
     def test_order_book_mismatched_ask_qty_rejected(self):
-        book = flox.OrderBook(0.01)
+        book = lrvx.OrderBook(0.01)
         bid_px = np.array([100.0], dtype=np.float64)
         bid_qty = np.array([1.0], dtype=np.float64)
         ask_px = np.array([100.01, 100.02], dtype=np.float64)
         ask_qty = np.array([1.0], dtype=np.float64)  # too short
-        with self.assertRaises(flox.FloxError):
+        with self.assertRaises(lrvx.LrvxError):
             book.apply_snapshot(bid_px, bid_qty, ask_px, ask_qty)
 
     def test_order_book_strided_snapshot_matches_contiguous(self):
@@ -369,9 +369,9 @@ class BookUpdateLengthAndStrideSafety(unittest.TestCase):
         ask_px = _strided_double([100.01, 100.02])
         ask_qty = _strided_double([1.5, 2.5])
 
-        strided_book = flox.OrderBook(0.01)
+        strided_book = lrvx.OrderBook(0.01)
         strided_book.apply_snapshot(bid_px, bid_qty, ask_px, ask_qty)
-        contig_book = flox.OrderBook(0.01)
+        contig_book = lrvx.OrderBook(0.01)
         contig_book.apply_snapshot(
             np.ascontiguousarray(bid_px), np.ascontiguousarray(bid_qty),
             np.ascontiguousarray(ask_px), np.ascontiguousarray(ask_qty),
@@ -380,12 +380,12 @@ class BookUpdateLengthAndStrideSafety(unittest.TestCase):
         self.assertEqual(strided_book.best_ask(), contig_book.best_ask())
 
     def test_composite_book_matrix_mismatched_qty_rejected(self):
-        matrix = flox.CompositeBookMatrix(5000)
+        matrix = lrvx.CompositeBookMatrix(5000)
         bid_px = np.array([100.0, 99.99], dtype=np.float64)
         bid_qty = np.array([1.0], dtype=np.float64)  # too short
         ask_px = np.array([100.01], dtype=np.float64)
         ask_qty = np.array([1.0], dtype=np.float64)
-        with self.assertRaises(flox.FloxError):
+        with self.assertRaises(lrvx.LrvxError):
             matrix.update_book(0, 1, bid_px, bid_qty, ask_px, ask_qty, 0, False)
 
 
@@ -399,7 +399,7 @@ class LiquidationEngineContractMultiplier(unittest.TestCase):
     brings LiquidationEngine.open_position to the same surface."""
 
     def test_open_position_accepts_contract_multiplier(self):
-        engine = flox.LiquidationEngine()
+        engine = lrvx.LiquidationEngine()
         engine.add_tier(0.0, 0.05)
         # Passing a non-default multiplier must not raise -- this was
         # a TypeError (unexpected keyword) before the fix.
@@ -410,7 +410,7 @@ class LiquidationEngineContractMultiplier(unittest.TestCase):
         self.assertEqual(engine.position_count(), 1)
 
     def test_open_position_default_multiplier_is_one(self):
-        engine = flox.LiquidationEngine()
+        engine = lrvx.LiquidationEngine()
         engine.add_tier(0.0, 0.05)
         # No contract_multiplier given -- must still work exactly as
         # before (default 1.0), so existing callers are unaffected.

@@ -6,7 +6,7 @@ Get from raw market data to bars you can backtest against. The pipeline has thre
 flowchart TB
     subgraph Recording
         RD[Raw data<br/>trades / books] --> BLW[Binary log writer]
-        BLW --> FLX[.floxlog files]
+        BLW --> FLX[.lrvx files]
     end
 
     subgraph Aggregation
@@ -23,15 +23,15 @@ flowchart TB
 
 ## 1. Record raw data
 
-Most users record from a live connector. The Python recorder writes the same `.floxlog` format as the C++ writer.
+Most users record from a live connector. The Python recorder writes the same `.lrvx` format as the C++ writer.
 
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
     import numpy as np
 
-    w = flox.DataWriter("/data/bybit/BTCUSDT", max_segment_mb=256,
+    w = lrvx.DataWriter("/data/bybit/BTCUSDT", max_segment_mb=256,
                         exchange_id=0, compression="none")
     w.write_trade(exchange_ts_ns=ts, recv_ts_ns=ts, price=p, qty=q,
                   trade_id=0, symbol_id=1, side=0)
@@ -46,7 +46,7 @@ Most users record from a live connector. The Python recorder writes the same `.f
 === "Node.js"
 
     ```javascript
-    const w = new flox.DataWriter("/data/bybit/BTCUSDT", 256, 0);
+    const w = new lrvx.DataWriter("/data/bybit/BTCUSDT", 256, 0);
     w.writeTrade(tsNs, tsNs, price, qty, 0n, 1, 0);
     const bids = new BigInt64Array([1005000000000n, 50000000n]);
     const asks = new BigInt64Array([1005100000000n, 30000000n]);
@@ -57,7 +57,7 @@ Most users record from a live connector. The Python recorder writes the same `.f
 === "C++"
 
     ```cpp
-    #include "flox/replay/writers/binary_log_writer.h"
+    #include "lrvx/replay/writers/binary_log_writer.h"
 
     replay::WriterConfig config;
     config.output_dir = "/data/bybit/BTCUSDT";
@@ -74,7 +74,7 @@ Most users record from a live connector. The Python recorder writes the same `.f
 Run `preagg_bars` once per dataset; it writes one bar file per timeframe.
 
 ```bash
-cmake -B build -DFLOX_BUILD_TOOLS=ON -DFLOX_ENABLE_BACKTEST=ON
+cmake -B build -DLRVX_BUILD_TOOLS=ON -DLRVX_ENABLE_BACKTEST=ON
 cmake --build build
 
 ./build/tools/preagg_bars /data/bybit/BTCUSDT /data/bybit/BTCUSDT/bars 60 300 900 3600
@@ -97,22 +97,22 @@ in-process with the batch aggregators and feed the result to `run_bars`.
     Bars come back as a structured numpy array with fields `start_time_ns`,
     `end_time_ns`, `open_raw`, `high_raw`, `low_raw`, `close_raw`, `volume_raw`,
     `buy_volume_raw`, `trade_count`. The `*_raw` fields are fixed-point — divide
-    by `flox.PRICE_SCALE` / `flox.VOLUME_SCALE` for floats.
+    by `lrvx.PRICE_SCALE` / `lrvx.VOLUME_SCALE` for floats.
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    bars = flox.aggregate_time_bars(timestamps, prices, quantities, is_buy,
+    bars = lrvx.aggregate_time_bars(timestamps, prices, quantities, is_buy,
                                     interval_seconds=60.0)
 
     bt.run_bars(
         start_time_ns = bars["start_time_ns"],
         end_time_ns   = bars["end_time_ns"],
-        open  = bars["open_raw"]  / flox.PRICE_SCALE,
-        high  = bars["high_raw"]  / flox.PRICE_SCALE,
-        low   = bars["low_raw"]   / flox.PRICE_SCALE,
-        close = bars["close_raw"] / flox.PRICE_SCALE,
-        volume = bars["volume_raw"] / flox.VOLUME_SCALE,
+        open  = bars["open_raw"]  / lrvx.PRICE_SCALE,
+        high  = bars["high_raw"]  / lrvx.PRICE_SCALE,
+        low   = bars["low_raw"]   / lrvx.PRICE_SCALE,
+        close = bars["close_raw"] / lrvx.PRICE_SCALE,
+        volume = bars["volume_raw"] / lrvx.VOLUME_SCALE,
         symbol = "BTCUSDT",
     )
     ```
@@ -135,7 +135,7 @@ in-process with the batch aggregators and feed the result to `run_bars`.
     a double cannot hold exactly.
 
     ```javascript
-    const bars = flox.aggregateTimeBars(timestamps, prices, quantities, isBuy, 60);
+    const bars = lrvx.aggregateTimeBars(timestamps, prices, quantities, isBuy, 60);
 
     const startNs = BigInt64Array.from(bars, (b) => b.startTimeNs);
     const endNs   = BigInt64Array.from(bars, (b) => b.endTimeNs);
@@ -152,7 +152,7 @@ in-process with the batch aggregators and feed the result to `run_bars`.
     `buy_volume()`).
 
     ```python
-    from flox.tools import aggregate_time_bars
+    from lrvx.tools import aggregate_time_bars
 
     bars = aggregate_time_bars(timestamps, prices, quantities, is_buy,
                                interval_seconds=60.0)
@@ -169,8 +169,8 @@ in-process with the batch aggregators and feed the result to `run_bars`.
 === "C++"
 
     ```cpp
-    #include "flox/backtest/mmap_bar_storage.h"
-    #include "flox/backtest/mmap_bar_replay_source.h"
+    #include "lrvx/backtest/mmap_bar_storage.h"
+    #include "lrvx/backtest/mmap_bar_replay_source.h"
 
     MmapBarStorage storage("/data/bybit/BTCUSDT/bars");
     auto tf = TimeframeId::time(std::chrono::seconds(60));
@@ -205,7 +205,7 @@ For real-time bar generation while you trade, configure the aggregator with the 
 
     The live `MultiTimeframeAggregator` / `MmapBarWriter` wiring above is C++-only. From the bindings, use the batch aggregators on a trade array — `aggregate_time_bars`, `aggregate_tick_bars`, `aggregate_volume_bars`, `aggregate_range_bars`, `aggregate_renko_bars`, `aggregate_heikin_ashi_bars` (Node: `aggregateTimeBars`, ...) — and replay the result through `run_bars` / `runBars`. Since `MmapBarStorage` is not bound, those functions are the only bar-aggregation path for Python, Node.js, and Codon.
 
-    `flox_py.BarDispatchRecorder` is a testing helper that records which (bar type, param) closes fired for a trade stream: `add_time_interval_seconds`, `on_trade(symbol, price, qty, ts_ns)`, `finalize`, then `count` / `type_at` / `param_at`.
+    `lrvx.BarDispatchRecorder` is a testing helper that records which (bar type, param) closes fired for a trade stream: `add_time_interval_seconds`, `on_trade(symbol, price, qty, ts_ns)`, `finalize`, then `count` / `type_at` / `param_at`.
 
 ## Bar types
 

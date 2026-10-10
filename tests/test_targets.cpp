@@ -3,11 +3,11 @@
 #include <cmath>
 #include <vector>
 
-#include "flox/target/future_ctc_volatility.h"
-#include "flox/target/future_linear_slope.h"
-#include "flox/target/future_return.h"
+#include "lrvx/target/future_ctc_volatility.h"
+#include "lrvx/target/future_linear_slope.h"
+#include "lrvx/target/future_return.h"
 
-using namespace flox::target;
+using namespace lrvx::target;
 
 static std::vector<double> linearSeries(size_t n, double base, double step)
 {

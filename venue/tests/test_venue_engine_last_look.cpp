@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -24,10 +24,10 @@
  * 100k hold/resolve cycles and prints the per-cycle cost, so the seam's
  * indirection has a number attached to it rather than an opinion.
  */
-#include "flox-venue/engine/last_look.h"
+#include "lrvx-venue/engine/last_look.h"
 
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
 
 #include <gtest/gtest.h>
 
@@ -38,10 +38,10 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::engine::Held;
-using flox::venue::engine::LastLook;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::engine::Held;
+using lrvx::venue::engine::LastLook;
 
 namespace
 {

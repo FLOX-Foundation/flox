@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -21,7 +21,7 @@
 // Each hook host:
 //   - extracts named function references from the JS object on attach;
 //   - calls straight back into JS from the C bridge;
-//   - owns a Flox<Hook>Handle via RAII; non-copyable.
+//   - owns a lrvx<Hook>Handle via RAII; non-copyable.
 //
 // Every host here runs on the JS thread and only there. Each of these hooks is
 // read inline by the engine while a signal is in flight -- a gate decides
@@ -41,8 +41,8 @@
 
 #include <napi.h>
 
-#include "flox/capi/flox_capi.h"
-#include "flox/capi/order_type_names.hpp"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/capi/order_type_names.hpp"
 #include "tsfn_util.h"
 
 #include <cmath>
@@ -52,7 +52,7 @@
 #include <utility>
 #include <vector>
 
-namespace flox_node
+namespace lrvx_node
 {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -67,14 +67,14 @@ inline Napi::FunctionReference takeFn(Napi::Object obj, const char* name)
   return {};
 }
 
-// Build a JS object mirroring FloxSignal for the user callback.
-inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
+// Build a JS object mirroring LrvxSignal for the user callback.
+inline Napi::Object signalToJs(Napi::Env env, const LrvxSignal* s)
 {
   auto obj = Napi::Object::New(env);
   obj.Set("orderId", Napi::Number::New(env, static_cast<double>(s->order_id)));
   obj.Set("symbol", Napi::Number::New(env, s->symbol));
   obj.Set("side", Napi::String::New(env, s->side == 0 ? "buy" : "sell"));
-  obj.Set("orderType", Napi::String::New(env, flox::capi::signalTypeName(s->order_type)));
+  obj.Set("orderType", Napi::String::New(env, lrvx::capi::signalTypeName(s->order_type)));
   obj.Set("price", Napi::Number::New(env, s->price));
   obj.Set("quantity", Napi::Number::New(env, s->quantity));
   obj.Set("triggerPrice", Napi::Number::New(env, s->trigger_price));
@@ -88,7 +88,7 @@ inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
   return obj;
 }
 
-inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
+inline Napi::Object orderToJs(Napi::Env env, const LrvxOrder* o)
 {
   static constexpr const char* kTif[] = {"gtc", "ioc", "fok", "gtd", "post_only"};
   auto obj = Napi::Object::New(env);
@@ -98,7 +98,7 @@ inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
   obj.Set("strategyId", Napi::Number::New(env, o->strategy_id));
   obj.Set("orderTag", Napi::Number::New(env, o->order_tag));
   obj.Set("side", Napi::String::New(env, o->side == 0 ? "buy" : "sell"));
-  obj.Set("orderType", Napi::String::New(env, flox::capi::orderTypeNameLower(o->type)));
+  obj.Set("orderType", Napi::String::New(env, lrvx::capi::orderTypeNameLower(o->type)));
   obj.Set("timeInForce",
           Napi::String::New(env, o->time_in_force < 5 ? kTif[o->time_in_force] : "unknown"));
   obj.Set("reduceOnly", Napi::Boolean::New(env, (o->flags & 0x01) != 0));
@@ -131,7 +131,7 @@ inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
 // release after. They are aliases, not copies of the old behaviour:
 // exchangeTsNs carries the same BigInt as timestampNs, because a double
 // could not hold the reading in the first place.
-inline Napi::Object tradeToJs(Napi::Env env, const FloxTradeData* t)
+inline Napi::Object tradeToJs(Napi::Env env, const LrvxTradeData* t)
 {
   auto obj = Napi::Object::New(env);
   auto qty = Napi::Number::New(env, t->quantity_raw / 1e8);
@@ -147,7 +147,7 @@ inline Napi::Object tradeToJs(Napi::Env env, const FloxTradeData* t)
   return obj;
 }
 
-inline Napi::Array bookLevelsToJs(Napi::Env env, const FloxBookLevel* lvls, uint32_t n)
+inline Napi::Array bookLevelsToJs(Napi::Env env, const LrvxBookLevel* lvls, uint32_t n)
 {
   auto arr = Napi::Array::New(env, n);
   for (uint32_t i = 0; i < n; ++i)
@@ -160,18 +160,18 @@ inline Napi::Array bookLevelsToJs(Napi::Env env, const FloxBookLevel* lvls, uint
   return arr;
 }
 
-// Flat BigInt64Array view of FloxBookLevel[]: [price_raw, qty_raw, ...].
-// FloxBookLevel layout is two int64s, so we copy via a backing ArrayBuffer
+// Flat BigInt64Array view of LrvxBookLevel[]: [price_raw, qty_raw, ...].
+// LrvxBookLevel layout is two int64s, so we copy via a backing ArrayBuffer
 // to keep ownership simple — the JS caller can read raw int64 ticks without
 // the precision loss of /1e8 doubles.
-inline Napi::BigInt64Array bookLevelsToBigInt64(Napi::Env env, const FloxBookLevel* lvls,
+inline Napi::BigInt64Array bookLevelsToBigInt64(Napi::Env env, const LrvxBookLevel* lvls,
                                                 uint32_t n)
 {
   size_t elems = static_cast<size_t>(n) * 2;
   auto buf = Napi::ArrayBuffer::New(env, elems * sizeof(int64_t));
   if (n > 0)
   {
-    std::memcpy(buf.Data(), lvls, n * sizeof(FloxBookLevel));
+    std::memcpy(buf.Data(), lvls, n * sizeof(LrvxBookLevel));
   }
   return Napi::BigInt64Array::New(env, elems, buf, 0);
 }
@@ -182,27 +182,27 @@ struct PnLTrackerHost
 {
   Napi::FunctionReference on_signal_fn;
   Napi::Env env;
-  FloxPnLTrackerHandle handle{nullptr};
+  LrvxPnLTrackerHandle handle{nullptr};
 
   PnLTrackerHost(Napi::Env env_, Napi::Object obj)
       : on_signal_fn(takeFn(obj, "onSignal")), env(env_)
   {
-    FloxPnLTrackerCallbacks cb{};
+    LrvxPnLTrackerCallbacks cb{};
     cb.on_signal = &PnLTrackerHost::onSignalBridge;
     cb.user_data = this;
-    handle = flox_pnl_tracker_create(cb);
+    handle = lrvx_pnl_tracker_create(cb);
   }
   ~PnLTrackerHost()
   {
     if (handle)
     {
-      flox_pnl_tracker_destroy(handle);
+      lrvx_pnl_tracker_destroy(handle);
     }
   }
   PnLTrackerHost(const PnLTrackerHost&) = delete;
   PnLTrackerHost& operator=(const PnLTrackerHost&) = delete;
 
-  static void onSignalBridge(void* ud, const FloxSignal* sig)
+  static void onSignalBridge(void* ud, const LrvxSignal* sig)
   {
     auto* self = static_cast<PnLTrackerHost*>(ud);
     if (self->on_signal_fn.IsEmpty())
@@ -219,26 +219,26 @@ struct StorageSinkHost
 {
   Napi::FunctionReference store_fn;
   Napi::Env env;
-  FloxStorageSinkHandle handle{nullptr};
+  LrvxStorageSinkHandle handle{nullptr};
 
   StorageSinkHost(Napi::Env env_, Napi::Object obj) : store_fn(takeFn(obj, "store")), env(env_)
   {
-    FloxStorageSinkCallbacks cb{};
+    LrvxStorageSinkCallbacks cb{};
     cb.store = &StorageSinkHost::storeBridge;
     cb.user_data = this;
-    handle = flox_storage_sink_create(cb);
+    handle = lrvx_storage_sink_create(cb);
   }
   ~StorageSinkHost()
   {
     if (handle)
     {
-      flox_storage_sink_destroy(handle);
+      lrvx_storage_sink_destroy(handle);
     }
   }
   StorageSinkHost(const StorageSinkHost&) = delete;
   StorageSinkHost& operator=(const StorageSinkHost&) = delete;
 
-  static void storeBridge(void* ud, const FloxSignal* sig)
+  static void storeBridge(void* ud, const LrvxSignal* sig)
   {
     auto* self = static_cast<StorageSinkHost*>(ud);
     if (self->store_fn.IsEmpty())
@@ -302,7 +302,7 @@ inline void reportHookError(HookErrorSink* sink, const char* hook, const char* m
 // that were mid-signal, and surfaces at whatever JS frame was on the stack --
 // the strategy's own emit.marketBuy() call. It is caught here instead.
 
-inline uint8_t callGate(Napi::FunctionReference& fn, Napi::Env env, const FloxSignal* sig,
+inline uint8_t callGate(Napi::FunctionReference& fn, Napi::Env env, const LrvxSignal* sig,
                         HookErrorSink* sink, const char* hook, const char* method)
 {
   if (fn.IsEmpty())
@@ -339,29 +339,29 @@ struct RiskManagerHost
 {
   Napi::FunctionReference allow_fn;
   Napi::Env env;
-  FloxRiskManagerHandle handle{nullptr};
+  LrvxRiskManagerHandle handle{nullptr};
 
   HookErrorSink* errors{nullptr};
 
   RiskManagerHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
       : allow_fn(takeFn(obj, "allow")), env(env_), errors(sink)
   {
-    FloxRiskManagerCallbacks cb{};
+    LrvxRiskManagerCallbacks cb{};
     cb.allow = &RiskManagerHost::allowBridge;
     cb.user_data = this;
-    handle = flox_risk_manager_create(cb);
+    handle = lrvx_risk_manager_create(cb);
   }
   ~RiskManagerHost()
   {
     if (handle)
     {
-      flox_risk_manager_destroy(handle);
+      lrvx_risk_manager_destroy(handle);
     }
   }
   RiskManagerHost(const RiskManagerHost&) = delete;
   RiskManagerHost& operator=(const RiskManagerHost&) = delete;
 
-  static uint8_t allowBridge(void* ud, const FloxSignal* sig)
+  static uint8_t allowBridge(void* ud, const LrvxSignal* sig)
   {
     auto* self = static_cast<RiskManagerHost*>(ud);
     // Synchronous — only safe to call from the JS thread (sync Runner).
@@ -373,29 +373,29 @@ struct KillSwitchHost
 {
   Napi::FunctionReference check_fn;
   Napi::Env env;
-  FloxKillSwitchHandle handle{nullptr};
+  LrvxKillSwitchHandle handle{nullptr};
 
   HookErrorSink* errors{nullptr};
 
   KillSwitchHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
       : check_fn(takeFn(obj, "check")), env(env_), errors(sink)
   {
-    FloxKillSwitchCallbacks cb{};
+    LrvxKillSwitchCallbacks cb{};
     cb.check = &KillSwitchHost::checkBridge;
     cb.user_data = this;
-    handle = flox_kill_switch_create(cb);
+    handle = lrvx_kill_switch_create(cb);
   }
   ~KillSwitchHost()
   {
     if (handle)
     {
-      flox_kill_switch_destroy(handle);
+      lrvx_kill_switch_destroy(handle);
     }
   }
   KillSwitchHost(const KillSwitchHost&) = delete;
   KillSwitchHost& operator=(const KillSwitchHost&) = delete;
 
-  static uint8_t checkBridge(void* ud, const FloxSignal* sig)
+  static uint8_t checkBridge(void* ud, const LrvxSignal* sig)
   {
     auto* self = static_cast<KillSwitchHost*>(ud);
     return callGate(self->check_fn, self->env, sig, self->errors, "killSwitch", "check");
@@ -406,29 +406,29 @@ struct OrderValidatorHost
 {
   Napi::FunctionReference validate_fn;
   Napi::Env env;
-  FloxOrderValidatorHandle handle{nullptr};
+  LrvxOrderValidatorHandle handle{nullptr};
 
   HookErrorSink* errors{nullptr};
 
   OrderValidatorHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
       : validate_fn(takeFn(obj, "validate")), env(env_), errors(sink)
   {
-    FloxOrderValidatorCallbacks cb{};
+    LrvxOrderValidatorCallbacks cb{};
     cb.validate = &OrderValidatorHost::validateBridge;
     cb.user_data = this;
-    handle = flox_order_validator_create(cb);
+    handle = lrvx_order_validator_create(cb);
   }
   ~OrderValidatorHost()
   {
     if (handle)
     {
-      flox_order_validator_destroy(handle);
+      lrvx_order_validator_destroy(handle);
     }
   }
   OrderValidatorHost(const OrderValidatorHost&) = delete;
   OrderValidatorHost& operator=(const OrderValidatorHost&) = delete;
 
-  static uint8_t validateBridge(void* ud, const FloxSignal* sig)
+  static uint8_t validateBridge(void* ud, const LrvxSignal* sig)
   {
     auto* self = static_cast<OrderValidatorHost*>(ud);
     return callGate(self->validate_fn, self->env, sig, self->errors, "orderValidator",
@@ -444,7 +444,7 @@ struct MarketDataRecorderHookHost
   Napi::FunctionReference on_book_fn;
   Napi::FunctionReference on_start_fn;
   Napi::FunctionReference on_stop_fn;
-  FloxMarketDataRecorderHandle handle{nullptr};
+  LrvxMarketDataRecorderHandle handle{nullptr};
   Napi::Env env;
 
   MarketDataRecorderHookHost(Napi::Env env_, Napi::Object obj)
@@ -454,25 +454,25 @@ struct MarketDataRecorderHookHost
         on_stop_fn(takeFn(obj, "onStop")),
         env(env_)
   {
-    FloxMarketDataRecorderCallbacks cb{};
+    LrvxMarketDataRecorderCallbacks cb{};
     cb.on_trade = &MarketDataRecorderHookHost::onTradeBridge;
     cb.on_book_update = &MarketDataRecorderHookHost::onBookBridge;
     cb.on_start = &MarketDataRecorderHookHost::onStartBridge;
     cb.on_stop = &MarketDataRecorderHookHost::onStopBridge;
     cb.user_data = this;
-    handle = flox_market_data_recorder_create(cb);
+    handle = lrvx_market_data_recorder_create(cb);
   }
   ~MarketDataRecorderHookHost()
   {
     if (handle)
     {
-      flox_market_data_recorder_destroy(handle);
+      lrvx_market_data_recorder_destroy(handle);
     }
   }
   MarketDataRecorderHookHost(const MarketDataRecorderHookHost&) = delete;
   MarketDataRecorderHookHost& operator=(const MarketDataRecorderHookHost&) = delete;
 
-  static void onTradeBridge(void* ud, const FloxTradeData* t)
+  static void onTradeBridge(void* ud, const LrvxTradeData* t)
   {
     auto* self = static_cast<MarketDataRecorderHookHost*>(ud);
     if (self->on_trade_fn.IsEmpty())
@@ -482,8 +482,8 @@ struct MarketDataRecorderHookHost
     self->on_trade_fn.Call({tradeToJs(self->env, t)});
   }
   static void onBookBridge(void* ud, uint32_t symbol, uint8_t is_snap,
-                           const FloxBookLevel* bids, uint32_t n_bids,
-                           const FloxBookLevel* asks, uint32_t n_asks,
+                           const LrvxBookLevel* bids, uint32_t n_bids,
+                           const LrvxBookLevel* asks, uint32_t n_asks,
                            int64_t ts)
   {
     auto* self = static_cast<MarketDataRecorderHookHost*>(ud);
@@ -532,7 +532,7 @@ struct ExecutorHost
   Napi::FunctionReference on_start_fn;
   Napi::FunctionReference on_stop_fn;
   Napi::Env env;
-  FloxExecutorHandle handle{nullptr};
+  LrvxExecutorHandle handle{nullptr};
   HookErrorSink* errors{nullptr};
 
   ExecutorHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
@@ -547,7 +547,7 @@ struct ExecutorHost
         env(env_),
         errors(sink)
   {
-    FloxExecutorCallbacks cb{};
+    LrvxExecutorCallbacks cb{};
     cb.submit = &ExecutorHost::submitBridge;
     cb.cancel = &ExecutorHost::cancelBridge;
     cb.cancel_all = &ExecutorHost::cancelAllBridge;
@@ -557,19 +557,19 @@ struct ExecutorHost
     cb.on_start = &ExecutorHost::onStartBridge;
     cb.on_stop = &ExecutorHost::onStopBridge;
     cb.user_data = this;
-    handle = flox_executor_create(cb);
+    handle = lrvx_executor_create(cb);
   }
   ~ExecutorHost()
   {
     if (handle)
     {
-      flox_executor_destroy(handle);
+      lrvx_executor_destroy(handle);
     }
   }
   ExecutorHost(const ExecutorHost&) = delete;
   ExecutorHost& operator=(const ExecutorHost&) = delete;
 
-  static void submitBridge(void* ud, const FloxOrder* o)
+  static void submitBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutorHost*>(ud);
     if (self->submit_fn.IsEmpty())
@@ -596,7 +596,7 @@ struct ExecutorHost
     }
     self->cancel_all_fn.Call({Napi::Number::New(self->env, s)});
   }
-  static void replaceBridge(void* ud, uint64_t old_id, const FloxOrder* o)
+  static void replaceBridge(void* ud, uint64_t old_id, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutorHost*>(ud);
     if (self->replace_fn.IsEmpty())
@@ -608,7 +608,7 @@ struct ExecutorHost
         orderToJs(self->env, o),
     });
   }
-  static void submitOcoBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
+  static void submitOcoBridge(void* ud, const LrvxOrder* a, const LrvxOrder* b)
   {
     auto* self = static_cast<ExecutorHost*>(ud);
     if (self->submit_oco_fn.IsEmpty())
@@ -621,10 +621,10 @@ struct ExecutorHost
   // be reached from the JS thread, and by construction rather than by
   // convention: a threaded Runner refuses setExecutor outright, so the only
   // runners that hold an executor are the ones whose callbacks run inline.
-  static void capabilitiesBridge(void* ud, FloxExchangeCapabilities* out)
+  static void capabilitiesBridge(void* ud, LrvxExchangeCapabilities* out)
   {
     auto* self = static_cast<ExecutorHost*>(ud);
-    *out = FloxExchangeCapabilities{};
+    *out = LrvxExchangeCapabilities{};
     if (self->capabilities_fn.IsEmpty())
     {
       return;
@@ -708,7 +708,7 @@ struct ExecutionListenerHost
   Napi::FunctionReference on_pending_trigger_fn;
   Napi::FunctionReference on_triggered_fn;
   Napi::FunctionReference on_trailing_update_fn;
-  FloxExecutionListenerHandle handle{nullptr};
+  LrvxExecutionListenerHandle handle{nullptr};
   Napi::Env env;
 
   ExecutionListenerHost(Napi::Env env_, Napi::Object obj)
@@ -726,7 +726,7 @@ struct ExecutionListenerHost
         on_trailing_update_fn(takeFn(obj, "onTrailingStopUpdated")),
         env(env_)
   {
-    FloxExecutionListenerCallbacks cb{};
+    LrvxExecutionListenerCallbacks cb{};
     cb.on_submitted = &ExecutionListenerHost::onSubmittedBridge;
     cb.on_accepted = &ExecutionListenerHost::onAcceptedBridge;
     cb.on_partially_filled = &ExecutionListenerHost::onPartialBridge;
@@ -740,20 +740,20 @@ struct ExecutionListenerHost
     cb.on_triggered = &ExecutionListenerHost::onTriggeredBridge;
     cb.on_trailing_stop_updated = &ExecutionListenerHost::onTrailingUpdateBridge;
     cb.user_data = this;
-    handle = flox_execution_listener_create(cb);
+    handle = lrvx_execution_listener_create(cb);
   }
   ~ExecutionListenerHost()
   {
     if (handle)
     {
-      flox_execution_listener_destroy(handle);
+      lrvx_execution_listener_destroy(handle);
     }
   }
   ExecutionListenerHost(const ExecutionListenerHost&) = delete;
   ExecutionListenerHost& operator=(const ExecutionListenerHost&) = delete;
 
   static void singleOrderBridge(ExecutionListenerHost* self, Napi::FunctionReference& fn,
-                                const FloxOrder* o)
+                                const LrvxOrder* o)
   {
     if (fn.IsEmpty())
     {
@@ -762,47 +762,47 @@ struct ExecutionListenerHost
     fn.Call({orderToJs(self->env, o)});
   }
 
-  static void onSubmittedBridge(void* ud, const FloxOrder* o)
+  static void onSubmittedBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_submitted_fn, o);
   }
-  static void onAcceptedBridge(void* ud, const FloxOrder* o)
+  static void onAcceptedBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_accepted_fn, o);
   }
-  static void onFilledBridge(void* ud, const FloxOrder* o)
+  static void onFilledBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_filled_fn, o);
   }
-  static void onPendingCancelBridge(void* ud, const FloxOrder* o)
+  static void onPendingCancelBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_pending_cancel_fn, o);
   }
-  static void onCanceledBridge(void* ud, const FloxOrder* o)
+  static void onCanceledBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_canceled_fn, o);
   }
-  static void onExpiredBridge(void* ud, const FloxOrder* o)
+  static void onExpiredBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_expired_fn, o);
   }
-  static void onPendingTriggerBridge(void* ud, const FloxOrder* o)
+  static void onPendingTriggerBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_pending_trigger_fn, o);
   }
-  static void onTriggeredBridge(void* ud, const FloxOrder* o)
+  static void onTriggeredBridge(void* ud, const LrvxOrder* o)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     singleOrderBridge(self, self->on_triggered_fn, o);
   }
-  static void onPartialBridge(void* ud, const FloxOrder* o, int64_t fill_qty)
+  static void onPartialBridge(void* ud, const LrvxOrder* o, int64_t fill_qty)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     if (self->on_partial_fn.IsEmpty())
@@ -814,7 +814,7 @@ struct ExecutionListenerHost
         Napi::Number::New(self->env, fill_qty / 1e8),
     });
   }
-  static void onRejectedBridge(void* ud, const FloxOrder* o, const char* reason)
+  static void onRejectedBridge(void* ud, const LrvxOrder* o, const char* reason)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     if (self->on_rejected_fn.IsEmpty())
@@ -826,7 +826,7 @@ struct ExecutionListenerHost
         Napi::String::New(self->env, reason ? reason : ""),
     });
   }
-  static void onReplacedBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
+  static void onReplacedBridge(void* ud, const LrvxOrder* a, const LrvxOrder* b)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     if (self->on_replaced_fn.IsEmpty())
@@ -835,7 +835,7 @@ struct ExecutionListenerHost
     }
     self->on_replaced_fn.Call({orderToJs(self->env, a), orderToJs(self->env, b)});
   }
-  static void onTrailingUpdateBridge(void* ud, const FloxOrder* o, int64_t new_trigger_raw)
+  static void onTrailingUpdateBridge(void* ud, const LrvxOrder* o, int64_t new_trigger_raw)
   {
     auto* self = static_cast<ExecutionListenerHost*>(ud);
     if (self->on_trailing_update_fn.IsEmpty())
@@ -870,8 +870,8 @@ struct LoggerCallback
     }
     fn = Napi::Persistent(f);
     auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-    chan = std::make_unique<TsfnChannel>(env, noop, "flox_logger_cb");
-    flox_set_log_callback(&LoggerCallback::bridge, this);
+    chan = std::make_unique<TsfnChannel>(env, noop, "lrvx_logger_cb");
+    lrvx_set_log_callback(&LoggerCallback::bridge, this);
     active = true;
   }
   void uninstall()
@@ -880,7 +880,7 @@ struct LoggerCallback
     {
       return;
     }
-    flox_set_log_callback(nullptr, nullptr);
+    lrvx_set_log_callback(nullptr, nullptr);
     chan->close();
     chan.reset();
     fn.Reset();
@@ -948,4 +948,4 @@ inline void registerHooks(Napi::Env env, Napi::Object exports)
   exports.Set("setLogCallback", Napi::Function::New(env, &setLogCallback));
 }
 
-}  // namespace flox_node
+}  // namespace lrvx_node

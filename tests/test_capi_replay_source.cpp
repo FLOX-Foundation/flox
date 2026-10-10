@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,7 +12,7 @@
 // adapter; this verifies trade events flow into the runner and that
 // lifecycle / seek_to callbacks fire as expected.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -35,8 +35,8 @@ struct BookFixture
   uint32_t symbol;
   int64_t timestamp_ns;
   uint8_t is_snapshot;  // 1 → BookSnapshot (event_type 2), 0 → BookDelta (3)
-  std::vector<FloxBookLevel> bids;
-  std::vector<FloxBookLevel> asks;
+  std::vector<LrvxBookLevel> bids;
+  std::vector<LrvxBookLevel> asks;
 };
 
 struct State
@@ -51,7 +51,7 @@ struct State
   int64_t last_seek_ts{0};
 };
 
-uint8_t source_next(void* ud, FloxReplayEvent* ev)
+uint8_t source_next(void* ud, LrvxReplayEvent* ev)
 {
   auto* s = static_cast<State*>(ud);
   size_t idx = s->cursor++;
@@ -101,9 +101,9 @@ void source_on_stop(void* ud)
   static_cast<State*>(ud)->on_stop_calls.fetch_add(1, std::memory_order_relaxed);
 }
 
-FloxReplaySourceCallbacks make_cb(State& state)
+LrvxReplaySourceCallbacks make_cb(State& state)
 {
-  FloxReplaySourceCallbacks cb{};
+  LrvxReplaySourceCallbacks cb{};
   cb.on_start = source_on_start;
   cb.on_stop = source_on_stop;
   cb.seek_to = source_seek;
@@ -123,40 +123,40 @@ TEST(CapiReplaySource, RunsTradesThroughBacktestRunner)
       {1, 3'000'000'000LL, 10200000000LL /*102.0 raw*/, 100000000LL, 1},
   };
 
-  auto* registry = flox_registry_create();
+  auto* registry = lrvx_registry_create();
   ASSERT_NE(registry, nullptr);
-  uint32_t symbol_id = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
+  uint32_t symbol_id = lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
   // Rewrite trade fixtures to use the actual id assigned by the registry.
   for (auto& t : state.trades)
   {
     t.symbol = symbol_id;
   }
 
-  auto* btr = flox_backtest_runner_create(registry, /*fee_rate=*/0.001,
+  auto* btr = lrvx_backtest_runner_create(registry, /*fee_rate=*/0.001,
                                           /*initial_capital=*/10000.0);
   ASSERT_NE(btr, nullptr);
 
   // Strategy with no callbacks — the runner just needs *some* strategy.
-  FloxStrategyCallbacks scb{};
+  LrvxStrategyCallbacks scb{};
   uint32_t syms[] = {symbol_id};
-  auto* strat = flox_strategy_create(/*id=*/1, syms, 1, registry, scb);
+  auto* strat = lrvx_strategy_create(/*id=*/1, syms, 1, registry, scb);
   ASSERT_NE(strat, nullptr);
-  flox_backtest_runner_set_strategy(btr, strat);
+  lrvx_backtest_runner_set_strategy(btr, strat);
 
-  auto* source = flox_replay_source_create(make_cb(state));
+  auto* source = lrvx_replay_source_create(make_cb(state));
   ASSERT_NE(source, nullptr);
 
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_replay_source(btr, source, &stats);
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_replay_source(btr, source, &stats);
   EXPECT_EQ(rc, 1);
 
   EXPECT_EQ(state.on_start_calls.load(), 1);
   EXPECT_EQ(state.on_stop_calls.load(), 1);
 
-  flox_replay_source_destroy(source);
-  flox_strategy_destroy(strat);
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
+  lrvx_replay_source_destroy(source);
+  lrvx_strategy_destroy(strat);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
 }
 
 TEST(CapiReplaySource, NextReturnsZeroEndsPlayback)
@@ -167,65 +167,65 @@ TEST(CapiReplaySource, NextReturnsZeroEndsPlayback)
   state.trades.clear();
   state.books.clear();
 
-  auto* registry = flox_registry_create();
-  uint32_t symbol_id = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
-  auto* btr = flox_backtest_runner_create(registry, 0.0, 1000.0);
+  auto* registry = lrvx_registry_create();
+  uint32_t symbol_id = lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
+  auto* btr = lrvx_backtest_runner_create(registry, 0.0, 1000.0);
 
-  FloxStrategyCallbacks scb{};
+  LrvxStrategyCallbacks scb{};
   uint32_t syms[] = {symbol_id};
-  auto* strat = flox_strategy_create(1, syms, 1, registry, scb);
-  flox_backtest_runner_set_strategy(btr, strat);
+  auto* strat = lrvx_strategy_create(1, syms, 1, registry, scb);
+  lrvx_backtest_runner_set_strategy(btr, strat);
 
-  auto* source = flox_replay_source_create(make_cb(state));
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_replay_source(btr, source, &stats);
+  auto* source = lrvx_replay_source_create(make_cb(state));
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_replay_source(btr, source, &stats);
   EXPECT_EQ(rc, 1);
   EXPECT_EQ(state.on_start_calls.load(), 1);
   EXPECT_EQ(state.on_stop_calls.load(), 1);
 
-  flox_replay_source_destroy(source);
-  flox_strategy_destroy(strat);
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
+  lrvx_replay_source_destroy(source);
+  lrvx_strategy_destroy(strat);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
 }
 
 TEST(CapiReplaySource, SeekToForwardsToCallback)
 {
   State state;
-  auto* source = flox_replay_source_create(make_cb(state));
+  auto* source = lrvx_replay_source_create(make_cb(state));
   ASSERT_NE(source, nullptr);
 
-  uint8_t rc = flox_replay_source_seek_to(source, 12345LL);
+  uint8_t rc = lrvx_replay_source_seek_to(source, 12345LL);
   EXPECT_EQ(rc, 1);
   EXPECT_EQ(state.seek_calls.load(), 1);
   EXPECT_EQ(state.last_seek_ts, 12345LL);
 
-  flox_replay_source_destroy(source);
+  lrvx_replay_source_destroy(source);
 }
 
 TEST(CapiReplaySource, SeekToWithNullCallbackReturnsZero)
 {
-  FloxReplaySourceCallbacks cb{};
+  LrvxReplaySourceCallbacks cb{};
   // No callbacks at all — handle exists but seek_to is null.
-  auto* source = flox_replay_source_create(cb);
+  auto* source = lrvx_replay_source_create(cb);
   ASSERT_NE(source, nullptr);
 
-  uint8_t rc = flox_replay_source_seek_to(source, 99LL);
+  uint8_t rc = lrvx_replay_source_seek_to(source, 99LL);
   EXPECT_EQ(rc, 0) << "missing seek_to callback should report failure";
 
-  flox_replay_source_destroy(source);
+  lrvx_replay_source_destroy(source);
 }
 
 TEST(CapiReplaySource, NullSourceFailsRunWithoutCrash)
 {
-  auto* registry = flox_registry_create();
-  flox_registry_add_symbol(registry, "test", "BTC", 0.01);
-  auto* btr = flox_backtest_runner_create(registry, 0.0, 1000.0);
+  auto* registry = lrvx_registry_create();
+  lrvx_registry_add_symbol(registry, "test", "BTC", 0.01);
+  auto* btr = lrvx_backtest_runner_create(registry, 0.0, 1000.0);
 
-  FloxBacktestStats stats{};
-  int rc = flox_backtest_runner_run_replay_source(btr, nullptr, &stats);
+  LrvxBacktestStats stats{};
+  int rc = lrvx_backtest_runner_run_replay_source(btr, nullptr, &stats);
   EXPECT_EQ(rc, 0);
 
-  flox_backtest_runner_destroy(btr);
-  flox_registry_destroy(registry);
+  lrvx_backtest_runner_destroy(btr);
+  lrvx_registry_destroy(registry);
 }

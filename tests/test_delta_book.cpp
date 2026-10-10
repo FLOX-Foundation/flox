@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/delta_book.h"
+#include "lrvx/replay/delta_book.h"
 
 #include <gtest/gtest.h>
 
@@ -15,9 +15,9 @@
 #include <cstdint>
 #include <vector>
 
-using flox::replay::BookLevel;
-using flox::replay::DeltaBookEncoder;
-using flox::replay::DeltaBookReplayer;
+using lrvx::replay::BookLevel;
+using lrvx::replay::DeltaBookEncoder;
+using lrvx::replay::DeltaBookReplayer;
 
 namespace
 {

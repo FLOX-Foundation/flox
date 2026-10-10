@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -17,14 +17,14 @@
  * No sockets: raw frames go straight into handleMessage.
  */
 
-#include "flox-connectors/polymarket/polymarket_exchange_connector.h"
+#include "lrvx-connectors/polymarket/polymarket_exchange_connector.h"
 
-#include <flox/book/bus/book_update_bus.h>
-#include <flox/book/bus/trade_bus.h>
-#include <flox/book/events/book_update_event.h>
-#include <flox/common.h>
-#include <flox/engine/engine_config.h>
-#include <flox/log/atomic_logger.h>
+#include <lrvx/book/bus/book_update_bus.h>
+#include <lrvx/book/bus/trade_bus.h>
+#include <lrvx/book/events/book_update_event.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/engine_config.h>
+#include <lrvx/log/atomic_logger.h>
 
 #include <gtest/gtest.h>
 
@@ -34,14 +34,14 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
 
 std::string tempLogDir()
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_poly_snapshot_test_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_poly_snapshot_test_logs";
   std::filesystem::create_directories(dir);
   return dir.string();
 }

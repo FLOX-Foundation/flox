@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -23,12 +23,12 @@
  *
  * Usage: bench_venue_shard_wake_set [shards] [wake-rounds] [idle-ms]
  */
-#include "flox-venue/journal.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/sequenced_shard.h"
-#include "flox/util/concurrency/thread_body.h"
-#include "flox/util/eventing/wake_set.h"
-#include "flox/util/performance/busy_backoff.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/sequenced_shard.h"
+#include "lrvx/util/concurrency/thread_body.h"
+#include "lrvx/util/eventing/wake_set.h"
+#include "lrvx/util/performance/busy_backoff.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -47,8 +47,8 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 using namespace std::chrono;
 
 namespace
@@ -143,7 +143,7 @@ struct Run
 Run measure(int shards, bool useWakeSet, int rounds, int idleMs)
 {
   const std::string dir =
-      (std::filesystem::temp_directory_path() / "flox_bench_shard_wake_set").string();
+      (std::filesystem::temp_directory_path() / "lrvx_bench_shard_wake_set").string();
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
   std::filesystem::create_directories(dir, ec);

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -19,19 +19,19 @@
  *    by the executor to sign every action before it will call
  *    transport->post() at all. It is defined here to shadow the real one:
  *    this translation unit's definition satisfies the linker before
- *    libflox-connectors.a's hl_signer.cpp.o is ever searched, so the real
+ *    liblrvx-connectors.a's hl_signer.cpp.o is ever searched, so the real
  *    signer (which shells out to a live signing helper) never links in.
  *    This is the same link-seam technique the original audit repro used.
  */
 
-#include "flox-connectors/hyperliquid/hl_signer.h"
-#include "flox-connectors/hyperliquid/hyperliquid_order_executor.h"
+#include "lrvx-connectors/hyperliquid/hl_signer.h"
+#include "lrvx-connectors/hyperliquid/hyperliquid_order_executor.h"
 
-#include <flox/common.h>
-#include <flox/engine/symbol_registry.h>
-#include <flox/execution/order.h>
-#include <flox/execution/order_tracker.h>
-#include <flox/log/atomic_logger.h>
+#include <lrvx/common.h>
+#include <lrvx/engine/symbol_registry.h>
+#include <lrvx/execution/order.h>
+#include <lrvx/execution/order_tracker.h>
+#include <lrvx/log/atomic_logger.h>
 
 #include <gtest/gtest.h>
 
@@ -40,22 +40,22 @@
 #include <string>
 #include <vector>
 
-namespace flox::hl
+namespace lrvx::hl
 {
 std::optional<HlSig> hl_sign_with_sdk(const HlSignParams&)
 {
   return HlSig{"0xdeadbeef", "0xcafebabe", 27};
 }
-}  // namespace flox::hl
+}  // namespace lrvx::hl
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
 
 std::string tempLogDir()
 {
-  auto dir = std::filesystem::temp_directory_path() / "flox_hl_order_test_logs";
+  auto dir = std::filesystem::temp_directory_path() / "lrvx_hl_order_test_logs";
   std::filesystem::create_directories(dir);
   return dir.string();
 }

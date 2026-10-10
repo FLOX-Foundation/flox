@@ -1,39 +1,39 @@
-#include "flox/indicator/adx.h"
-#include "flox/indicator/atr.h"
-#include "flox/indicator/bar_fields.h"
-#include "flox/indicator/bollinger.h"
-#include "flox/indicator/cci.h"
-#include "flox/indicator/chop.h"
-#include "flox/indicator/correlation.h"
-#include "flox/indicator/cvd.h"
-#include "flox/indicator/dema.h"
-#include "flox/indicator/ema.h"
-#include "flox/indicator/indicator_pipeline.h"
-#include "flox/indicator/kama.h"
-#include "flox/indicator/kurtosis.h"
-#include "flox/indicator/macd.h"
-#include "flox/indicator/obv.h"
-#include "flox/indicator/parkinson_vol.h"
-#include "flox/indicator/rma.h"
-#include "flox/indicator/rogers_satchell_vol.h"
-#include "flox/indicator/rolling_zscore.h"
-#include "flox/indicator/rsi.h"
-#include "flox/indicator/shannon_entropy.h"
-#include "flox/indicator/skewness.h"
-#include "flox/indicator/slope.h"
-#include "flox/indicator/sma.h"
-#include "flox/indicator/stochastic.h"
-#include "flox/indicator/vwap.h"
+#include "lrvx/indicator/adx.h"
+#include "lrvx/indicator/atr.h"
+#include "lrvx/indicator/bar_fields.h"
+#include "lrvx/indicator/bollinger.h"
+#include "lrvx/indicator/cci.h"
+#include "lrvx/indicator/chop.h"
+#include "lrvx/indicator/correlation.h"
+#include "lrvx/indicator/cvd.h"
+#include "lrvx/indicator/dema.h"
+#include "lrvx/indicator/ema.h"
+#include "lrvx/indicator/indicator_pipeline.h"
+#include "lrvx/indicator/kama.h"
+#include "lrvx/indicator/kurtosis.h"
+#include "lrvx/indicator/macd.h"
+#include "lrvx/indicator/obv.h"
+#include "lrvx/indicator/parkinson_vol.h"
+#include "lrvx/indicator/rma.h"
+#include "lrvx/indicator/rogers_satchell_vol.h"
+#include "lrvx/indicator/rolling_zscore.h"
+#include "lrvx/indicator/rsi.h"
+#include "lrvx/indicator/shannon_entropy.h"
+#include "lrvx/indicator/skewness.h"
+#include "lrvx/indicator/slope.h"
+#include "lrvx/indicator/sma.h"
+#include "lrvx/indicator/stochastic.h"
+#include "lrvx/indicator/vwap.h"
 
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include <gtest/gtest.h>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
 
-using namespace flox;
-using namespace flox::indicator;
+using namespace lrvx;
+using namespace lrvx::indicator;
 
 static std::vector<double> prices()
 {
@@ -1007,7 +1007,7 @@ TEST(IndicatorGraph, CircularDependencyThrows)
             { return std::vector<double>{}; });
   g.addNode("b", {"a"}, [](IndicatorGraph&, SymbolId)
             { return std::vector<double>{}; });
-  EXPECT_THROW(g.require(0, "a"), flox::FloxError);
+  EXPECT_THROW(g.require(0, "a"), lrvx::LrvxError);
 }
 
 // A node whose compute function throws once used to poison _computing

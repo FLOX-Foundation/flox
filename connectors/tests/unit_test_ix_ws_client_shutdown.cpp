@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -32,13 +32,13 @@
  * assertion. Everything stays on 127.0.0.1.
  */
 
-#include "flox-connectors/net/ix_websocket_client.h"
+#include "lrvx-connectors/net/ix_websocket_client.h"
 
 // ix's own header-only Sec-WebSocket-Accept generator; using it keeps this
 // test free of a hand-rolled SHA1.
 #include <ixwebsocket/IXWebSocketHandshakeKeyGen.h>
 
-#include <flox/log/abstract_logger.h>
+#include <lrvx/log/abstract_logger.h>
 
 #include <gtest/gtest.h>
 
@@ -57,7 +57,7 @@
 namespace
 {
 
-struct NullLogger final : public flox::ILogger
+struct NullLogger final : public lrvx::ILogger
 {
   void info(std::string_view) override {}
   void warn(std::string_view) override {}
@@ -177,7 +177,7 @@ TEST(IxWebSocketClientShutdown, StopFromAnotherThreadWhileReconnecting)
 
   for (int i = 0; i < 25; ++i)
   {
-    auto client = std::make_unique<flox::IxWebSocketClient>(url, "", /*reconnectDelayMs*/ 1,
+    auto client = std::make_unique<lrvx::IxWebSocketClient>(url, "", /*reconnectDelayMs*/ 1,
                                                             &logger, /*pingIntervalSec*/ 0);
     client->start();
     // Give the handshake time to complete so the session is established, then

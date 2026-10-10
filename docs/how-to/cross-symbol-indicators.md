@@ -23,7 +23,7 @@ another). Before feeding a pair-input indicator you must:
 3. **Drop warmup** — discard the first samples until both series
    have a value.
 
-The `flox.MultiFeedClock` helper exists exactly for step (1) on the
+The `lrvx.MultiFeedClock` helper exists exactly for step (1) on the
 streaming path; see [`multi-feed-clock.md`](multi-feed-clock.md).
 
 ## Batch recipe (Python)
@@ -32,7 +32,7 @@ For research / backtest preprocessing, numpy's structured arrays
 are the simplest path:
 
 ```python
-import flox_py as flox
+import lrvx
 import numpy as np
 
 # Two pre-aligned bar arrays — same length, same timestamps.
@@ -41,7 +41,7 @@ eth_close = eth_bars["close"]
 assert btc_close.shape == eth_close.shape
 
 # Streaming Correlation with a 30-bar window.
-corr = flox.Correlation(period=30)
+corr = lrvx.Correlation(period=30)
 out = np.empty(len(btc_close))
 for i, (b, e) in enumerate(zip(btc_close, eth_close)):
     # update() returns None until the window fills; `or nan` would also
@@ -75,15 +75,15 @@ seen value per symbol, and tick the indicator only when both have
 a fresh value:
 
 ```python
-import flox_py as flox
+import lrvx
 
-class CorrelatedPair(flox.Strategy):
+class CorrelatedPair(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)  # [btc_id, eth_id]
         self._btc_id, self._eth_id = symbols
         self._last_btc: float | None = None
         self._last_eth: float | None = None
-        self._corr = flox.Correlation(period=30)
+        self._corr = lrvx.Correlation(period=30)
 
     def on_trade(self, ctx, trade):
         if ctx.symbol_id == self._btc_id:
@@ -110,9 +110,9 @@ per strategy. Keeping it caller-side keeps the engine honest.
 ## Node.js
 
 ```javascript
-const flox = require('@flox-foundation/flox');
+const lrvx = require('@lrvx/lrvx');
 
-const corr = new flox.Correlation(30);
+const corr = new lrvx.Correlation(30);
 for (let i = 0; i < btcClose.length; ++i) {
   const v = corr.update(btcClose[i], ethClose[i]);
   // v is null until the window fills.
@@ -125,8 +125,8 @@ tick the indicator when both sides have data.
 
 ## Codon
 
-```python
-from flox.indicators import Correlation
+```codon
+from lrvx.indicators import Correlation
 
 corr = Correlation(period=30)
 for b, e in zip(btc_close, eth_close):

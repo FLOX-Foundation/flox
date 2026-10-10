@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,7 +10,7 @@
 #include "demo/demo_strategy.h"
 #include "demo/latency_collector.h"
 
-#include "flox/util/performance/profile.h"
+#include "lrvx/util/performance/profile.h"
 
 #include <chrono>
 
@@ -24,12 +24,12 @@ DemoStrategy::DemoStrategy(SymbolId symbol, OrderExecutionBus& execBus)
 
 void DemoStrategy::start()
 {
-  FLOX_LOG("[strategy " << _symbol << "] start");
+  LRVX_LOG("[strategy " << _symbol << "] start");
 }
 
 void DemoStrategy::stop()
 {
-  FLOX_LOG("[strategy " << _symbol << "] stop");
+  LRVX_LOG("[strategy " << _symbol << "] stop");
 }
 
 void DemoStrategy::onTrade(const TradeEvent& ev)
@@ -39,12 +39,12 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
     return;
   }
 
-  FLOX_PROFILE_SCOPE("DemoStrategy::onTrade");
+  LRVX_PROFILE_SCOPE("DemoStrategy::onTrade");
 
   Order order{};
 
   {
-    FLOX_PROFILE_SCOPE("DemoStrategy::onTrade_self");
+    LRVX_PROFILE_SCOPE("DemoStrategy::onTrade_self");
     MEASURE_LATENCY(LatencyCollector::StrategyOnTrade);
 
     order.id = ++_nextId;
@@ -60,7 +60,7 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
 
     if (_killSwitch.isTriggered())
     {
-      FLOX_LOG("[kill] strategy " << _symbol
+      LRVX_LOG("[kill] strategy " << _symbol
                                   << " blocked by kill switch"
                                   << ", reason: " << _killSwitch.reason());
       return;
@@ -69,13 +69,13 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
     std::string reason;
     if (!_validator.validate(order, reason))
     {
-      FLOX_LOG("[strategy " << _symbol << "] order rejected: " << reason);
+      LRVX_LOG("[strategy " << _symbol << "] order rejected: " << reason);
       return;
     }
 
     if (!_riskManager.allow(order))
     {
-      FLOX_LOG("[risk] strategy " << _symbol << " rejected order id=" << order.id);
+      LRVX_LOG("[risk] strategy " << _symbol << " rejected order id=" << order.id);
       return;
     }
   }
@@ -87,7 +87,7 @@ void DemoStrategy::onBookUpdate(const BookUpdateEvent& ev)
 {
   if (ev.update.symbol == _symbol)
   {
-    FLOX_PROFILE_SCOPE("DemoStrategy::onBookUpdate");
+    LRVX_PROFILE_SCOPE("DemoStrategy::onBookUpdate");
     _book.applyBookUpdate(ev);
   }
 }

@@ -42,12 +42,12 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-VALIDATE = "venue/include/flox-venue/engine/validate.inl"
-ORDERS = "venue/include/flox-venue/engine/orders.inl"
-QUOTE = "venue/include/flox-venue/engine/quote_mmp.inl"
-DISPATCH = "venue/include/flox-venue/engine/dispatch.inl"
-MATCHER = "venue/include/flox-venue/matcher.h"
-OCOBOOK = "venue/include/flox-venue/engine/oco.h"
+VALIDATE = "venue/include/lrvx-venue/engine/validate.inl"
+ORDERS = "venue/include/lrvx-venue/engine/orders.inl"
+QUOTE = "venue/include/lrvx-venue/engine/quote_mmp.inl"
+DISPATCH = "venue/include/lrvx-venue/engine/dispatch.inl"
+MATCHER = "venue/include/lrvx-venue/matcher.h"
+OCOBOOK = "venue/include/lrvx-venue/engine/oco.h"
 
 OCO_TEST = "test_venue_oco_commit_boundary"
 ATOM_TEST = "test_venue_reject_atomicity"

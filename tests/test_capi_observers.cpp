@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,7 +10,7 @@
 // Tests for the post-emission observer hooks (PnLTracker and
 // StorageSink). Both fire after the user on_signal callback, never block.
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -30,21 +30,21 @@ struct State
   std::vector<char> order;
 };
 
-void on_signal_cb(void* ud, const FloxSignal*)
+void on_signal_cb(void* ud, const LrvxSignal*)
 {
   auto* s = static_cast<State*>(ud);
   s->on_signal_calls.fetch_add(1, std::memory_order_relaxed);
   s->order.push_back('u');
 }
 
-void pnl_cb(void* ud, const FloxSignal*)
+void pnl_cb(void* ud, const LrvxSignal*)
 {
   auto* s = static_cast<State*>(ud);
   s->pnl_calls.fetch_add(1, std::memory_order_relaxed);
   s->order.push_back('p');
 }
 
-void storage_cb(void* ud, const FloxSignal*)
+void storage_cb(void* ud, const LrvxSignal*)
 {
   auto* s = static_cast<State*>(ud);
   s->storage_calls.fetch_add(1, std::memory_order_relaxed);
@@ -53,43 +53,43 @@ void storage_cb(void* ud, const FloxSignal*)
 
 struct RunnerCtx
 {
-  FloxRegistryHandle registry{nullptr};
-  FloxStrategyHandle strategy{nullptr};
-  FloxRunnerHandle runner{nullptr};
+  LrvxRegistryHandle registry{nullptr};
+  LrvxStrategyHandle strategy{nullptr};
+  LrvxRunnerHandle runner{nullptr};
   uint32_t symbol_id{0};
 
   ~RunnerCtx()
   {
     if (runner)
     {
-      flox_runner_destroy(runner);
+      lrvx_runner_destroy(runner);
     }
     if (strategy)
     {
-      flox_strategy_destroy(strategy);
+      lrvx_strategy_destroy(strategy);
     }
     if (registry)
     {
-      flox_registry_destroy(registry);
+      lrvx_registry_destroy(registry);
     }
   }
 };
 
 void make_runner(RunnerCtx& s, State& state)
 {
-  s.registry = flox_registry_create();
+  s.registry = lrvx_registry_create();
   ASSERT_NE(s.registry, nullptr);
-  s.symbol_id = flox_registry_add_symbol(s.registry, "test", "BTC", 0.01);
+  s.symbol_id = lrvx_registry_add_symbol(s.registry, "test", "BTC", 0.01);
 
-  FloxStrategyCallbacks cb{};
+  LrvxStrategyCallbacks cb{};
   uint32_t syms[] = {s.symbol_id};
-  s.strategy = flox_strategy_create(/*id=*/1, syms, 1, s.registry, cb);
+  s.strategy = lrvx_strategy_create(/*id=*/1, syms, 1, s.registry, cb);
   ASSERT_NE(s.strategy, nullptr);
 
-  s.runner = flox_runner_create(s.registry, on_signal_cb, &state);
+  s.runner = lrvx_runner_create(s.registry, on_signal_cb, &state);
   ASSERT_NE(s.runner, nullptr);
-  flox_runner_add_strategy(s.runner, s.strategy);
-  flox_runner_start(s.runner);
+  lrvx_runner_add_strategy(s.runner, s.strategy);
+  lrvx_runner_start(s.runner);
 }
 
 }  // namespace
@@ -100,14 +100,14 @@ TEST(CapiObservers, PnLTrackerFiresAfterOnSignal)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxPnLTrackerCallbacks cb{};
+  LrvxPnLTrackerCallbacks cb{};
   cb.on_signal = pnl_cb;
   cb.user_data = &state;
-  FloxPnLTrackerHandle tracker = flox_pnl_tracker_create(cb);
+  LrvxPnLTrackerHandle tracker = lrvx_pnl_tracker_create(cb);
   ASSERT_NE(tracker, nullptr);
-  flox_runner_set_pnl_tracker(s.runner, tracker);
+  lrvx_runner_set_pnl_tracker(s.runner, tracker);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
 
   EXPECT_EQ(state.on_signal_calls.load(), 1);
   EXPECT_EQ(state.pnl_calls.load(), 1);
@@ -115,8 +115,8 @@ TEST(CapiObservers, PnLTrackerFiresAfterOnSignal)
   EXPECT_EQ(state.order[0], 'u') << "user on_signal must fire before pnl";
   EXPECT_EQ(state.order[1], 'p');
 
-  flox_runner_stop(s.runner);
-  flox_pnl_tracker_destroy(tracker);
+  lrvx_runner_stop(s.runner);
+  lrvx_pnl_tracker_destroy(tracker);
 }
 
 TEST(CapiObservers, StorageSinkFiresAfterOnSignal)
@@ -125,13 +125,13 @@ TEST(CapiObservers, StorageSinkFiresAfterOnSignal)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxStorageSinkCallbacks cb{};
+  LrvxStorageSinkCallbacks cb{};
   cb.store = storage_cb;
   cb.user_data = &state;
-  FloxStorageSinkHandle sink = flox_storage_sink_create(cb);
-  flox_runner_set_storage_sink(s.runner, sink);
+  LrvxStorageSinkHandle sink = lrvx_storage_sink_create(cb);
+  lrvx_runner_set_storage_sink(s.runner, sink);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
 
   EXPECT_EQ(state.on_signal_calls.load(), 1);
   EXPECT_EQ(state.storage_calls.load(), 1);
@@ -139,8 +139,8 @@ TEST(CapiObservers, StorageSinkFiresAfterOnSignal)
   EXPECT_EQ(state.order[0], 'u');
   EXPECT_EQ(state.order[1], 's');
 
-  flox_runner_stop(s.runner);
-  flox_storage_sink_destroy(sink);
+  lrvx_runner_stop(s.runner);
+  lrvx_storage_sink_destroy(sink);
 }
 
 TEST(CapiObservers, PnLBeforeStorage)
@@ -151,28 +151,28 @@ TEST(CapiObservers, PnLBeforeStorage)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxPnLTrackerCallbacks pcb{};
+  LrvxPnLTrackerCallbacks pcb{};
   pcb.on_signal = pnl_cb;
   pcb.user_data = &state;
-  FloxStorageSinkCallbacks scb{};
+  LrvxStorageSinkCallbacks scb{};
   scb.store = storage_cb;
   scb.user_data = &state;
 
-  auto* tracker = flox_pnl_tracker_create(pcb);
-  auto* sink = flox_storage_sink_create(scb);
-  flox_runner_set_pnl_tracker(s.runner, tracker);
-  flox_runner_set_storage_sink(s.runner, sink);
+  auto* tracker = lrvx_pnl_tracker_create(pcb);
+  auto* sink = lrvx_storage_sink_create(scb);
+  lrvx_runner_set_pnl_tracker(s.runner, tracker);
+  lrvx_runner_set_storage_sink(s.runner, sink);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
 
   ASSERT_EQ(state.order.size(), 3u);
   EXPECT_EQ(state.order[0], 'u');
   EXPECT_EQ(state.order[1], 'p');
   EXPECT_EQ(state.order[2], 's');
 
-  flox_runner_stop(s.runner);
-  flox_storage_sink_destroy(sink);
-  flox_pnl_tracker_destroy(tracker);
+  lrvx_runner_stop(s.runner);
+  lrvx_storage_sink_destroy(sink);
+  lrvx_pnl_tracker_destroy(tracker);
 }
 
 TEST(CapiObservers, ObserversNeverBlock)
@@ -184,23 +184,23 @@ TEST(CapiObservers, ObserversNeverBlock)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxPnLTrackerCallbacks pcb{};
+  LrvxPnLTrackerCallbacks pcb{};
   pcb.on_signal = pnl_cb;
   pcb.user_data = &state;
-  auto* tracker = flox_pnl_tracker_create(pcb);
-  flox_runner_set_pnl_tracker(s.runner, tracker);
+  auto* tracker = lrvx_pnl_tracker_create(pcb);
+  lrvx_runner_set_pnl_tracker(s.runner, tracker);
 
   // 3 emissions; each fires user + pnl, regardless of "what happens" in
   // the observer.
   for (int i = 0; i < 3; ++i)
   {
-    flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+    lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   }
   EXPECT_EQ(state.on_signal_calls.load(), 3);
   EXPECT_EQ(state.pnl_calls.load(), 3);
 
-  flox_runner_stop(s.runner);
-  flox_pnl_tracker_destroy(tracker);
+  lrvx_runner_stop(s.runner);
+  lrvx_pnl_tracker_destroy(tracker);
 }
 
 TEST(CapiObservers, NullDetaches)
@@ -209,22 +209,22 @@ TEST(CapiObservers, NullDetaches)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxPnLTrackerCallbacks pcb{};
+  LrvxPnLTrackerCallbacks pcb{};
   pcb.on_signal = pnl_cb;
   pcb.user_data = &state;
-  auto* tracker = flox_pnl_tracker_create(pcb);
-  flox_runner_set_pnl_tracker(s.runner, tracker);
+  auto* tracker = lrvx_pnl_tracker_create(pcb);
+  lrvx_runner_set_pnl_tracker(s.runner, tracker);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_EQ(state.pnl_calls.load(), 1);
 
-  flox_runner_set_pnl_tracker(s.runner, nullptr);
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_runner_set_pnl_tracker(s.runner, nullptr);
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_EQ(state.pnl_calls.load(), 1) << "pnl detached; should not fire";
   EXPECT_EQ(state.on_signal_calls.load(), 2) << "user on_signal still works";
 
-  flox_runner_stop(s.runner);
-  flox_pnl_tracker_destroy(tracker);
+  lrvx_runner_stop(s.runner);
+  lrvx_pnl_tracker_destroy(tracker);
 }
 
 TEST(CapiObservers, NullCallbackFunctionIsNoOp)
@@ -233,19 +233,19 @@ TEST(CapiObservers, NullCallbackFunctionIsNoOp)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxPnLTrackerCallbacks cb{};
+  LrvxPnLTrackerCallbacks cb{};
   cb.on_signal = nullptr;  // missing fn, but bundle present
   cb.user_data = &state;
-  auto* tracker = flox_pnl_tracker_create(cb);
-  flox_runner_set_pnl_tracker(s.runner, tracker);
+  auto* tracker = lrvx_pnl_tracker_create(cb);
+  lrvx_runner_set_pnl_tracker(s.runner, tracker);
 
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
 
   EXPECT_EQ(state.on_signal_calls.load(), 1);
   EXPECT_EQ(state.pnl_calls.load(), 0);
 
-  flox_runner_stop(s.runner);
-  flox_pnl_tracker_destroy(tracker);
+  lrvx_runner_stop(s.runner);
+  lrvx_pnl_tracker_destroy(tracker);
 }
 
 TEST(CapiObservers, RiskDenialSkipsObservers)
@@ -256,7 +256,7 @@ TEST(CapiObservers, RiskDenialSkipsObservers)
   State state;
   std::atomic<uint8_t> deny{0};
 
-  auto allow_cb = [](void* ud, const FloxSignal*) -> uint8_t
+  auto allow_cb = [](void* ud, const LrvxSignal*) -> uint8_t
   {
     return static_cast<std::atomic<uint8_t>*>(ud)->load(std::memory_order_acquire);
   };
@@ -264,31 +264,31 @@ TEST(CapiObservers, RiskDenialSkipsObservers)
   RunnerCtx s;
   make_runner(s, state);
 
-  FloxRiskManagerCallbacks rcb{};
+  LrvxRiskManagerCallbacks rcb{};
   rcb.allow = allow_cb;
   rcb.user_data = &deny;
-  auto* rm = flox_risk_manager_create(rcb);
-  flox_runner_set_risk_manager(s.runner, rm);
+  auto* rm = lrvx_risk_manager_create(rcb);
+  lrvx_runner_set_risk_manager(s.runner, rm);
 
-  FloxPnLTrackerCallbacks pcb{};
+  LrvxPnLTrackerCallbacks pcb{};
   pcb.on_signal = pnl_cb;
   pcb.user_data = &state;
-  auto* tracker = flox_pnl_tracker_create(pcb);
-  flox_runner_set_pnl_tracker(s.runner, tracker);
+  auto* tracker = lrvx_pnl_tracker_create(pcb);
+  lrvx_runner_set_pnl_tracker(s.runner, tracker);
 
   // deny=0 → drop
   deny.store(0);
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_EQ(state.on_signal_calls.load(), 0);
   EXPECT_EQ(state.pnl_calls.load(), 0) << "observers must not fire when risk denies";
 
   // deny=1 → allow
   deny.store(1);
-  flox_emit_market_buy(s.strategy, s.symbol_id, flox_quantity_from_double(1.0));
+  lrvx_emit_market_buy(s.strategy, s.symbol_id, lrvx_quantity_from_double(1.0));
   EXPECT_EQ(state.on_signal_calls.load(), 1);
   EXPECT_EQ(state.pnl_calls.load(), 1);
 
-  flox_runner_stop(s.runner);
-  flox_pnl_tracker_destroy(tracker);
-  flox_risk_manager_destroy(rm);
+  lrvx_runner_stop(s.runner);
+  lrvx_pnl_tracker_destroy(tracker);
+  lrvx_risk_manager_destroy(rm);
 }

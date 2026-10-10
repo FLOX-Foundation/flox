@@ -1,31 +1,32 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/abstract_event_reader.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/ops/index_builder.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/time_utils.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/replay/abstract_event_reader.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/ops/index_builder.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/time_utils.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <filesystem>
 #include <random>
 
-using namespace flox::replay;
+using namespace lrvx::replay;
 
 class BinaryLogTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_test_log";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_test_log";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }
@@ -575,7 +576,7 @@ TEST_F(BinaryLogTest, IndexLoadAndSeek)
   std::filesystem::path segment_path;
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -657,7 +658,7 @@ TEST_F(BinaryLogTest, IndexBuilderAddToExisting)
   std::filesystem::path segment_path;
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -722,7 +723,7 @@ TEST_F(BinaryLogTest, IndexBuilderRemoveIndex)
   std::filesystem::path segment_path;
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -829,7 +830,7 @@ TEST_F(BinaryLogTest, GlobalIndexBuilder)
   EXPECT_EQ(result.total_events, 200u);
 
   // Verify global index file exists
-  auto index_path = _test_dir / "index.floxidx";
+  auto index_path = _test_dir / "index.lrvxidx";
   EXPECT_TRUE(std::filesystem::exists(index_path));
 
   // Load and verify global index
@@ -1080,14 +1081,14 @@ TEST_F(BinaryLogTest, DatasetSummaryHelperMethods)
   EXPECT_NEAR(summary.durationHours(), 0.999, 0.001);
 }
 
-#include "flox/replay/ops/compression.h"
+#include "lrvx/replay/ops/compression.h"
 
 TEST_F(BinaryLogTest, CompressionAvailability)
 {
   // CompressionType::None should always be available
   EXPECT_TRUE(isCompressionAvailable(CompressionType::None));
 
-#if FLOX_LZ4_ENABLED
+#if LRVX_LZ4_ENABLED
   EXPECT_TRUE(isCompressionAvailable(CompressionType::LZ4));
   EXPECT_TRUE(isCompressionAvailable());
 #else
@@ -1121,7 +1122,7 @@ TEST_F(BinaryLogTest, CompressorNonePassthrough)
   EXPECT_EQ(std::memcmp(input.data(), decompressed.data(), input.size()), 0);
 }
 
-#if FLOX_LZ4_ENABLED
+#if LRVX_LZ4_ENABLED
 TEST_F(BinaryLogTest, CompressorLZ4RoundTrip)
 {
   // Test LZ4 compression round-trip
@@ -1290,7 +1291,7 @@ TEST_F(BinaryLogTest, CompressedSegmentHeader)
   auto files = std::filesystem::directory_iterator(_test_dir);
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       std::FILE* f = std::fopen(entry.path().string().c_str(), "rb");
       ASSERT_NE(f, nullptr);
@@ -1380,7 +1381,7 @@ TEST_F(BinaryLogTest, LiveTapeTruncatedTailNoOOM)
   std::filesystem::path tape_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       tape_path = entry.path();
       break;
@@ -1414,9 +1415,9 @@ TEST_F(BinaryLogTest, LiveTapeTruncatedTailNoOOM)
 
   EXPECT_EQ(read_count, num_trades);
 }
-#endif  // FLOX_LZ4_ENABLED
+#endif  // LRVX_LZ4_ENABLED
 
-#include "flox/replay/ops/validator.h"
+#include "lrvx/replay/ops/validator.h"
 
 TEST_F(BinaryLogTest, ValidatorValidSegment)
 {
@@ -1438,7 +1439,7 @@ TEST_F(BinaryLogTest, ValidatorValidSegment)
   auto files = std::filesystem::directory_iterator(_test_dir);
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       SegmentValidator validator;
       auto result = validator.validate(entry.path());
@@ -1476,7 +1477,7 @@ TEST_F(BinaryLogTest, RepairerRebuildsCorruptIndex)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -1535,7 +1536,7 @@ TEST_F(BinaryLogTest, RepairerRebuildsCorruptIndex)
 TEST_F(BinaryLogTest, ValidatorNonExistentFile)
 {
   SegmentValidator validator;
-  auto result = validator.validate(_test_dir / "nonexistent.floxlog");
+  auto result = validator.validate(_test_dir / "nonexistent.lrvx");
 
   EXPECT_FALSE(result.valid);
   EXPECT_TRUE(result.hasCritical());
@@ -1593,7 +1594,7 @@ TEST_F(BinaryLogTest, ValidatorConvenienceFunctions)
   auto files = std::filesystem::directory_iterator(_test_dir);
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       EXPECT_TRUE(isValidSegment(entry.path()));
     }
@@ -1623,7 +1624,7 @@ TEST_F(BinaryLogTest, RepairerFixEventCount)
   std::filesystem::path segment_path;
   for (const auto& entry : files)
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -1663,7 +1664,7 @@ TEST_F(BinaryLogTest, RepairerFixEventCount)
   EXPECT_EQ(val_result2.actual_event_count, 100u);
 }
 
-#include "flox/replay/ops/segment_ops.h"
+#include "lrvx/replay/ops/segment_ops.h"
 
 TEST_F(BinaryLogTest, MergeSegments)
 {
@@ -1708,14 +1709,14 @@ TEST_F(BinaryLogTest, MergeSegments)
   std::vector<std::filesystem::path> paths;
   for (const auto& entry : std::filesystem::directory_iterator(dir1))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       paths.push_back(entry.path());
     }
   }
   for (const auto& entry : std::filesystem::directory_iterator(dir2))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       paths.push_back(entry.path());
     }
@@ -1764,7 +1765,7 @@ TEST_F(BinaryLogTest, SplitByEventCount)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -1804,7 +1805,7 @@ TEST_F(BinaryLogTest, SplitBySymbolInterleaved)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -1843,7 +1844,7 @@ TEST_F(BinaryLogTest, SplitBySymbolInterleaved)
 TEST_F(BinaryLogTest, WriterConfigOutputFilename)
 {
   // Test that output_filename is respected
-  std::string custom_name = "my_custom_segment.floxlog";
+  std::string custom_name = "my_custom_segment.lrvx";
   WriterConfig wconfig{
       .output_dir = _test_dir,
       .output_filename = custom_name,
@@ -1868,7 +1869,7 @@ TEST_F(BinaryLogTest, WriterConfigOutputFilename)
   int file_count = 0;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       ++file_count;
       EXPECT_EQ(entry.path().filename(), custom_name);
@@ -1897,7 +1898,7 @@ TEST_F(BinaryLogTest, RecompressToSpecificPath)
   std::filesystem::path source_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       source_path = entry.path();
       break;
@@ -1907,7 +1908,7 @@ TEST_F(BinaryLogTest, RecompressToSpecificPath)
   // Recompress to specific output path
   auto output_dir = _test_dir / "recompressed";
   std::filesystem::create_directories(output_dir);
-  auto output_path = output_dir / "recompressed_output.floxlog";
+  auto output_path = output_dir / "recompressed_output.lrvx";
 
   bool success = SegmentOps::recompress(source_path, output_path, CompressionType::None);
   EXPECT_TRUE(success);
@@ -1943,7 +1944,7 @@ TEST_F(BinaryLogTest, ExportToCSV)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -1992,7 +1993,7 @@ TEST_F(BinaryLogTest, FilterBySymbol)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -2004,7 +2005,7 @@ TEST_F(BinaryLogTest, FilterBySymbol)
   std::filesystem::create_directories(filtered_dir);
 
   WriterConfig out_config{.output_dir = filtered_dir};
-  uint64_t count = SegmentOps::extractSymbols(segment_path, filtered_dir / "sym1.floxlog", {1},
+  uint64_t count = SegmentOps::extractSymbols(segment_path, filtered_dir / "sym1.lrvx", {1},
                                               out_config);
 
   EXPECT_EQ(count, 20u);  // 100 / 5 = 20 events for symbol 1
@@ -2018,7 +2019,7 @@ TEST_F(BinaryLogTest, FilterBySymbol)
     return true; });
 }
 
-#include "flox/replay/readers/parallel_reader.h"
+#include "lrvx/replay/readers/parallel_reader.h"
 
 TEST_F(BinaryLogTest, ParallelReaderBasic)
 {
@@ -2209,7 +2210,7 @@ TEST_F(BinaryLogTest, ParallelReaderSingleThread)
   EXPECT_EQ(count, 50u);
 }
 
-#include "flox/replay/readers/mmap_reader.h"
+#include "lrvx/replay/readers/mmap_reader.h"
 
 TEST_F(BinaryLogTest, MmapReaderBasic)
 {
@@ -2312,7 +2313,7 @@ TEST_F(BinaryLogTest, MmapSegmentReader)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -2362,7 +2363,7 @@ TEST_F(BinaryLogTest, ISegmentReaderFactoryMmap)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -2386,7 +2387,7 @@ TEST_F(BinaryLogTest, ISegmentReaderFactoryMmap)
 
 TEST_F(BinaryLogTest, ISegmentReaderFactoryIterator)
 {
-#if !FLOX_LZ4_ENABLED
+#if !LRVX_LZ4_ENABLED
   GTEST_SKIP() << "LZ4 compression not enabled";
 #endif
 
@@ -2411,7 +2412,7 @@ TEST_F(BinaryLogTest, ISegmentReaderFactoryIterator)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -2456,7 +2457,7 @@ TEST_F(BinaryLogTest, IteratorAdapterResetRewinds)
   std::filesystem::path segment_path;
   for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment_path = entry.path();
       break;
@@ -2592,7 +2593,7 @@ TEST_F(BinaryLogTest, ReaderFilterPasses)
   EXPECT_TRUE(empty_filter.passes(100, 50));
 }
 
-#include "flox/replay/ops/manifest.h"
+#include "lrvx/replay/ops/manifest.h"
 
 TEST_F(BinaryLogTest, ManifestBuildAndSave)
 {
@@ -2684,7 +2685,7 @@ TEST_F(BinaryLogTest, ManifestSegmentsInRange)
   EXPECT_LE(segs.size(), manifest.segmentCount());
 }
 
-#include "flox/replay/ops/partitioner.h"
+#include "lrvx/replay/ops/partitioner.h"
 
 TEST_F(BinaryLogTest, PartitionerByTime)
 {
@@ -2793,7 +2794,7 @@ TEST_F(BinaryLogTest, PartitionSerialization)
   p.estimated_events = 1000;
 
   SegmentInfo seg;
-  seg.path = "/data/segment.floxlog";
+  seg.path = "/data/segment.lrvx";
   seg.first_event_ns = 1000000;
   seg.last_event_ns = 2000000;
   seg.event_count = 1000;
@@ -2982,7 +2983,7 @@ TEST_F(BinaryLogTest, TimeUtilsFormatDuration)
 
 TEST_F(BinaryLogTest, TimeUtilsLiterals)
 {
-  using namespace flox::replay::literals;
+  using namespace lrvx::replay::literals;
 
   EXPECT_EQ(1_h, TimeUtils::kNsPerHour);
   EXPECT_EQ(30_min, 30 * TimeUtils::kNsPerMin);
@@ -3025,4 +3026,97 @@ TEST_F(BinaryLogTest, TimeRangeEx)
   EXPECT_TRUE(r5.overlaps(r6));
   TimeRangeEx r7(3000, 4000);
   EXPECT_FALSE(r5.overlaps(r7));
+}
+
+// A directory holding `.floxlog` segments next to `.lrvx` ones is one
+// tape: every scanner reads both, in filename (= time) order.
+TEST_F(BinaryLogTest, LegacyAndCurrentSegmentExtensionsReadAsOneTape)
+{
+  constexpr int kTrades = 300;
+  {
+    WriterConfig config{
+        .output_dir = _test_dir,
+        .max_segment_bytes = 2048,
+        .create_index = false,
+    };
+    BinaryLogWriter writer(config);
+    for (int i = 0; i < kTrades; ++i)
+    {
+      TradeRecord trade{};
+      trade.exchange_ts_ns = (i + 1) * 1000000LL;
+      trade.symbol_id = 1;
+      trade.trade_id = static_cast<uint64_t>(i);
+      writer.writeTrade(trade);
+    }
+    writer.close();
+  }
+
+  std::vector<std::filesystem::path> written;
+  for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
+  {
+    if (entry.path().extension() == kSegmentExtension)
+    {
+      written.push_back(entry.path());
+    }
+  }
+  std::sort(written.begin(), written.end());
+  ASSERT_GE(written.size(), 4u);
+
+  // The earlier half carries the legacy name.
+  const size_t legacy = written.size() / 2;
+  for (size_t i = 0; i < legacy; ++i)
+  {
+    auto renamed = written[i];
+    renamed.replace_extension(kLegacySegmentExtension);
+    std::filesystem::rename(written[i], renamed);
+  }
+  const auto segments = static_cast<uint32_t>(written.size());
+
+  {
+    ReaderConfig config{.data_dir = _test_dir};
+    BinaryLogReader reader(config);
+    int count = 0;
+    int64_t last_ts = 0;
+    reader.forEach(
+        [&](const ReplayEvent& event)
+        {
+          EXPECT_GE(event.timestamp_ns, last_ts);
+          last_ts = event.timestamp_ns;
+          ++count;
+          return true;
+        });
+    EXPECT_EQ(count, kTrades);
+    EXPECT_EQ(reader.segments().size(), written.size());
+  }
+
+  auto summary = BinaryLogReader::inspect(_test_dir);
+  EXPECT_EQ(summary.total_events, static_cast<uint64_t>(kTrades));
+  EXPECT_EQ(summary.segment_count, segments);
+
+  auto validation = DatasetValidator{}.validate(_test_dir);
+  EXPECT_TRUE(validation.valid);
+  EXPECT_EQ(validation.total_segments, segments);
+  EXPECT_EQ(validation.total_events, static_cast<uint64_t>(kTrades));
+
+  auto manifest = SegmentManifest::build(_test_dir);
+  EXPECT_EQ(manifest.segmentCount(), written.size());
+  EXPECT_EQ(manifest.totalEvents(), static_cast<uint64_t>(kTrades));
+
+  auto merged = SegmentOps::mergeDirectory(_test_dir, MergeConfig{.output_dir = _test_dir / "merged"});
+  EXPECT_TRUE(merged.success);
+  EXPECT_EQ(merged.segments_merged, segments);
+  EXPECT_EQ(merged.events_written, static_cast<uint64_t>(kTrades));
+  EXPECT_EQ(merged.output_path.extension(), kSegmentExtension);
+
+  auto built = IndexBuilder(IndexBuilderConfig{.index_interval = 10}).buildForDirectory(_test_dir);
+  EXPECT_EQ(built.size(), written.size());
+  for (const auto& result : built)
+  {
+    EXPECT_TRUE(result.success);
+  }
+
+  auto global = GlobalIndexBuilder::build(_test_dir);
+  EXPECT_TRUE(global.success);
+  EXPECT_EQ(global.segments_indexed, segments);
+  EXPECT_EQ(global.total_events, static_cast<uint64_t>(kTrades));
 }

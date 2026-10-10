@@ -10,12 +10,12 @@
 #
 # Usage:
 #   scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
-#   scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
+#   scripts/run-with-sanitizer-scan.sh ./build/demo/lrvx_demo
 #
 # For a ctest command the wrapper also scans ctest's own per-test transcript
 # (build/Testing/Temporary/LastTest.log), which records every test's output
 # whatever its verdict -- that file is where a passing test's report hides.
-# The build directory is taken from --test-dir; set FLOX_CTEST_BUILD_DIR to
+# The build directory is taken from --test-dir; set LRVX_CTEST_BUILD_DIR to
 # override.
 #
 # On any failure (the command itself, or the scan) this wrapper dumps the
@@ -37,10 +37,10 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # Explicit template: `mktemp -t NAME` means different things on GNU and BSD.
-capture="$(mktemp "${TMPDIR:-/tmp}/flox-run-scan.XXXXXX")"
+capture="$(mktemp "${TMPDIR:-/tmp}/lrvx-run-scan.XXXXXX")"
 trap 'rm -f "$capture"' EXIT
 
-build_dir="${FLOX_CTEST_BUILD_DIR:-}"
+build_dir="${LRVX_CTEST_BUILD_DIR:-}"
 is_ctest=0
 case "$1" in
     *ctest*) is_ctest=1 ;;
@@ -68,7 +68,7 @@ logs=("$capture")
 ctest_log=""
 if [ "$is_ctest" -eq 1 ]; then
     if [ -z "$build_dir" ]; then
-        echo "::error::run-with-sanitizer-scan: ctest command without --test-dir; set FLOX_CTEST_BUILD_DIR" >&2
+        echo "::error::run-with-sanitizer-scan: ctest command without --test-dir; set LRVX_CTEST_BUILD_DIR" >&2
         exit 2
     fi
     ctest_log="$build_dir/Testing/Temporary/LastTest.log"

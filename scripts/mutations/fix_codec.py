@@ -52,9 +52,9 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-CODEC = "venue/include/flox-venue/fix_codec.h"
-FIELD_PARSE = "venue/include/flox-venue/fix_field_parse.h"
-SESSION = "venue/include/flox-venue/fix_session.h"
+CODEC = "venue/include/lrvx-venue/fix_codec.h"
+FIELD_PARSE = "venue/include/lrvx-venue/fix_field_parse.h"
+SESSION = "venue/include/lrvx-venue/fix_session.h"
 
 STRICT = "test_venue_fix_codec_strictness"
 FIELDS = "test_venue_fix_field_parse"

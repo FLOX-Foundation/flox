@@ -7,11 +7,11 @@
 #include <pybind11/stl.h>
 
 #include "bindings_common.h"
-#include "flox/book/book_update.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/l3/l3_order_book.h"
-#include "flox/book/nlevel_order_book.h"
-#include "flox/common.h"
+#include "lrvx/book/book_update.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/book/l3/l3_order_book.h"
+#include "lrvx/book/nlevel_order_book.h"
+#include "lrvx/common.h"
 
 #include <chrono>
 #include <cstddef>
@@ -23,7 +23,7 @@ namespace py = pybind11;
 namespace
 {
 
-using namespace flox;
+using namespace lrvx;
 
 // ─── NLevelOrderBook wrapper ────────────────────────────────────────────────
 

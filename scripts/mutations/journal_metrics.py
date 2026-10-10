@@ -47,7 +47,7 @@ The build directories are expected to be configured already:
     cmake -B build-venue-lite-tsan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
       -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \
       -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
-      -DFLOX_VENUE_LITE=ON -DFLOX_BUILD_TESTS=ON -DFLOX_NATIVE=OFF
+      -DLRVX_VENUE_LITE=ON -DLRVX_BUILD_TESTS=ON -DLRVX_NATIVE=OFF
 """
 
 from __future__ import annotations
@@ -70,15 +70,15 @@ BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 300
 TSAN_RUNS = 3
 
-JOURNAL = "venue/include/flox-venue/journal.h"
-FILEIO = "include/flox/util/file_io.h"
-LOCK = "venue/include/flox-venue/engine/snapshot_lock.h"
-LASTLOOK = "venue/include/flox-venue/engine/last_look.h"
-LASTLOOK_INL = "venue/include/flox-venue/engine/last_look.inl"
-CREDIT = "venue/include/flox-venue/engine/credit.h"
-PUBS = "venue/include/flox-venue/engine/publications.h"
-SHARD = "venue/include/flox-venue/sequenced_shard.h"
-ENGINE = "venue/include/flox-venue/matching_engine.h"
+JOURNAL = "venue/include/lrvx-venue/journal.h"
+FILEIO = "include/lrvx/util/file_io.h"
+LOCK = "venue/include/lrvx-venue/engine/snapshot_lock.h"
+LASTLOOK = "venue/include/lrvx-venue/engine/last_look.h"
+LASTLOOK_INL = "venue/include/lrvx-venue/engine/last_look.inl"
+CREDIT = "venue/include/lrvx-venue/engine/credit.h"
+PUBS = "venue/include/lrvx-venue/engine/publications.h"
+SHARD = "venue/include/lrvx-venue/sequenced_shard.h"
+ENGINE = "venue/include/lrvx-venue/matching_engine.h"
 
 TORN = "test_venue_journal_torn_tail"
 RULE = "test_venue_metrics_thread_rule"
@@ -166,13 +166,13 @@ MUTATIONS: list[Mutation] = [
         why="damage is treated as a format statement: a record that does not verify refuses "
             "the file instead of ending the read with the intact prefix",
         file=JOURNAL,
-        old="""      if (flox::util::Crc32::compute(frame.data(), frame.size()) != crc)
+        old="""      if (lrvx::util::Crc32::compute(frame.data(), frame.size()) != crc)
       {
         refuseIfNothingRead();
         report.tail = damaged;
         break;
       }""",
-        new="""      if (flox::util::Crc32::compute(frame.data(), frame.size()) != crc)
+        new="""      if (lrvx::util::Crc32::compute(frame.data(), frame.size()) != crc)
       {
         throw JournalFormatError(unreadableFileMessage(path, stamp));
       }""",
@@ -281,8 +281,8 @@ MUTATIONS: list[Mutation] = [
         why="adversarial: a record whose stored crc reads zero -- a hole, a page that never "
             "made it to disk -- is taken as verified, and its header is believed after all",
         file=JOURNAL,
-        old="      if (flox::util::Crc32::compute(frame.data(), frame.size()) != crc)",
-        new="      if (crc != 0 && flox::util::Crc32::compute(frame.data(), frame.size()) != crc)",
+        old="      if (lrvx::util::Crc32::compute(frame.data(), frame.size()) != crc)",
+        new="      if (crc != 0 && lrvx::util::Crc32::compute(frame.data(), frame.size()) != crc)",
         targets=JOURNAL_TARGETS,
     ),
     Mutation(
@@ -597,9 +597,9 @@ MUTATIONS: list[Mutation] = [
             "instead of inside it: the allocation stall lands on the matching path, outside "
             "every gauge",
         file=JOURNAL,
-        old="""    if (mode == OpenMode::Truncate && !flox::fileio::reserveFirstBlock(fd))
+        old="""    if (mode == OpenMode::Truncate && !lrvx::fileio::reserveFirstBlock(fd))
     {
-      flox::fileio::closeFd(fd);
+      lrvx::fileio::closeFd(fd);
       throw std::runtime_error("Journal: cannot prepare '" + path + "' for writing");
     }
     return fd;""",

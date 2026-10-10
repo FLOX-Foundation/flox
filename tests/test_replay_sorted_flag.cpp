@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -22,10 +22,10 @@
 // recording -- are read back with the later-named segment's head silently
 // discarded, which the Sorted flag would have prevented.
 
-#include "flox/common.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -36,8 +36,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -50,7 +50,7 @@ class ReplaySortedFlagTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _dir = std::filesystem::temp_directory_path() / "flox_replay_sorted_flag";
+    _dir = std::filesystem::temp_directory_path() / "lrvx_replay_sorted_flag";
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
   }
@@ -150,9 +150,9 @@ std::vector<int64_t> ascending(size_t n, int64_t step_ns)
 // does, and must advertise it.
 TEST_F(ReplaySortedFlagTest, UncompressedInOrderSegmentIsFlaggedSorted)
 {
-  writeSegment("a.floxlog", CompressionType::None, ascending(64, kSecond));
+  writeSegment("a.lrvx", CompressionType::None, ascending(64, kSecond));
 
-  EXPECT_TRUE(headerOf("a.floxlog").isSorted())
+  EXPECT_TRUE(headerOf("a.lrvx").isSorted())
       << "an uncompressed segment written in timestamp order is not flagged Sorted";
 }
 
@@ -161,10 +161,10 @@ TEST_F(ReplaySortedFlagTest, UncompressedInOrderSegmentIsFlaggedSorted)
 // unconditionally. Green on the untouched tree.
 TEST_F(ReplaySortedFlagTest, UncompressedOutOfOrderSegmentIsNotFlaggedSorted)
 {
-  writeSegment("a.floxlog", CompressionType::None,
+  writeSegment("a.lrvx", CompressionType::None,
                {0, 10 * kSecond, 20 * kSecond, 5 * kSecond, 30 * kSecond});
 
-  EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+  EXPECT_FALSE(headerOf("a.lrvx").isSorted())
       << "a segment with a backwards timestamp was flagged Sorted";
 }
 
@@ -172,9 +172,9 @@ TEST_F(ReplaySortedFlagTest, UncompressedOutOfOrderSegmentIsNotFlaggedSorted)
 // doing so. Green on the untouched tree.
 TEST_F(ReplaySortedFlagTest, CompressedInOrderSegmentIsFlaggedSorted)
 {
-  writeSegment("a.floxlog", CompressionType::LZ4, ascending(64, kSecond));
+  writeSegment("a.lrvx", CompressionType::LZ4, ascending(64, kSecond));
 
-  EXPECT_TRUE(headerOf("a.floxlog").isSorted());
+  EXPECT_TRUE(headerOf("a.lrvx").isSorted());
 }
 
 // The behaviour the missing flag costs. A dataset whose segments overlap in
@@ -203,8 +203,8 @@ TEST_F(ReplaySortedFlagTest, InOrderSegmentsKeepEveryEventWhenTheirRangesOverlap
     late.push_back((60 + i) * kSecond);
     early.push_back(i * kSecond);
   }
-  writeSegment("a.floxlog", CompressionType::None, late);
-  writeSegment("b.floxlog", CompressionType::None, early);
+  writeSegment("a.lrvx", CompressionType::None, late);
+  writeSegment("b.lrvx", CompressionType::None, early);
 
   ReaderConfig cfg{};
   cfg.data_dir = _dir;
@@ -252,9 +252,9 @@ TEST_F(ReplaySortedFlagTest, AnInversionOnABlockBoundaryIsStillDetected)
     // One step backwards, at `position` counted from one, and nowhere else.
     offsets[position - 1] = kSecond;
 
-    writeSegment("a.floxlog", CompressionType::None, offsets);
+    writeSegment("a.lrvx", CompressionType::None, offsets);
 
-    EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+    EXPECT_FALSE(headerOf("a.lrvx").isSorted())
         << "a segment whose timestamps step backwards at event " << position
         << " was flagged Sorted";
   }
@@ -266,11 +266,11 @@ TEST_F(ReplaySortedFlagTest, AnInversionOnABlockBoundaryIsStillDetected)
 // back through the reorder buffer.
 TEST_F(ReplaySortedFlagTest, RepeatedTimestampsAreStillSorted)
 {
-  writeSegment("a.floxlog", CompressionType::None,
+  writeSegment("a.lrvx", CompressionType::None,
                {0, 0, 0, 10 * kSecond, 10 * kSecond, 20 * kSecond, 20 * kSecond,
                 20 * kSecond, 30 * kSecond, 40 * kSecond, 40 * kSecond, 50 * kSecond});
 
-  EXPECT_TRUE(headerOf("a.floxlog").isSorted())
+  EXPECT_TRUE(headerOf("a.lrvx").isSorted())
       << "a segment whose timestamps repeat but never go backwards was denied the flag";
 }
 
@@ -279,10 +279,10 @@ TEST_F(ReplaySortedFlagTest, RepeatedTimestampsAreStillSorted)
 // record type carried the step.
 TEST_F(ReplaySortedFlagTest, UncompressedOutOfOrderBookSegmentIsNotFlaggedSorted)
 {
-  writeBookSegment("a.floxlog", CompressionType::None,
+  writeBookSegment("a.lrvx", CompressionType::None,
                    {0, 10 * kSecond, 20 * kSecond, 5 * kSecond, 30 * kSecond});
 
-  EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+  EXPECT_FALSE(headerOf("a.lrvx").isSorted())
       << "a segment whose book updates step backwards was flagged Sorted";
 }
 
@@ -303,9 +303,9 @@ TEST_F(ReplaySortedFlagTest, CompressedInversionInTheFinalBlockIsStillDetected)
   {
     offsets.push_back((50 + i) * kSecond);
   }
-  writeSegment("a.floxlog", CompressionType::LZ4, offsets);
+  writeSegment("a.lrvx", CompressionType::LZ4, offsets);
 
-  EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+  EXPECT_FALSE(headerOf("a.lrvx").isSorted())
       << "a compressed segment whose final block starts before the previous block ended "
          "was flagged Sorted";
 }
@@ -323,16 +323,16 @@ TEST_F(ReplaySortedFlagTest, ASortedSegmentDoesNotMoveTheCrossSegmentWatermark)
   {
     ordered.push_back((1000 + i) * kSecond);
   }
-  writeSegment("a.floxlog", CompressionType::None, ordered);
+  writeSegment("a.lrvx", CompressionType::None, ordered);
 
   // b: one small step backwards, well inside the ten-second window, so it is
   // unsorted and goes through the reorder buffer -- but loses nothing to it.
   const std::vector<int64_t> stepped{0, 1 * kSecond, 2 * kSecond, 3 * kSecond,
                                      2 * kSecond + kSecond / 2, 4 * kSecond, 5 * kSecond};
-  writeSegment("b.floxlog", CompressionType::None, stepped);
+  writeSegment("b.lrvx", CompressionType::None, stepped);
 
-  ASSERT_TRUE(headerOf("a.floxlog").isSorted());
-  ASSERT_FALSE(headerOf("b.floxlog").isSorted());
+  ASSERT_TRUE(headerOf("a.lrvx").isSorted());
+  ASSERT_FALSE(headerOf("b.lrvx").isSorted());
 
   ReaderConfig cfg{};
   cfg.data_dir = _dir;
@@ -367,8 +367,8 @@ TEST_F(ReplaySortedFlagTest, InOrderSegmentsKeepEveryEventThroughStreamForEachFr
     late.push_back((60 + i) * kSecond);
     early.push_back(i * kSecond);
   }
-  writeSegment("a.floxlog", CompressionType::None, late);
-  writeSegment("b.floxlog", CompressionType::None, early);
+  writeSegment("a.lrvx", CompressionType::None, late);
+  writeSegment("b.lrvx", CompressionType::None, early);
 
   ReaderConfig cfg{};
   cfg.data_dir = _dir;

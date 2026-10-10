@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for
  * full license information.
  */
@@ -11,12 +11,12 @@
 
 #include <pybind11/pybind11.h>
 
-#include "flox/util/int/i256.h"
-#include "flox/util/int/u256.h"
+#include "lrvx/util/int/i256.h"
+#include "lrvx/util/int/u256.h"
 
 #include <string>
 
-namespace flox_py
+namespace lrvx
 {
 
 namespace py = pybind11;
@@ -41,18 +41,18 @@ inline void bindDexAmount(py::module_& m)
   // Round-trip a Python int through the exact u256, proving the boundary is lossless
   // for any value up to 2^256 - 1.
   m.def("u256_roundtrip", [](const py::int_& value) -> py::int_
-        { return intFromDecimal(flox::u256::fromDec(decimalFromInt(value)).toDec()); }, py::arg("value"));
+        { return intFromDecimal(lrvx::u256::fromDec(decimalFromInt(value)).toDec()); }, py::arg("value"));
 
   // The signed variant (i256), carrying the sign.
   m.def("i256_roundtrip", [](const py::int_& value) -> py::int_
         {
-          const flox::i256 v = flox::i256::fromDec(decimalFromInt(value));
+          const lrvx::i256 v = lrvx::i256::fromDec(decimalFromInt(value));
           const std::string mag = v.magnitude().toDec();
           return intFromDecimal((v.neg && !v.magnitude().isZero()) ? "-" + mag : mag); }, py::arg("value"));
 
   // Hex (with or without a 0x prefix) -> int, for chain data that arrives in hex.
   m.def("u256_from_hex", [](const std::string& hex) -> py::int_
-        { return intFromDecimal(flox::u256::fromHex(hex).toDec()); }, py::arg("hex"));
+        { return intFromDecimal(lrvx::u256::fromHex(hex).toDec()); }, py::arg("hex"));
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

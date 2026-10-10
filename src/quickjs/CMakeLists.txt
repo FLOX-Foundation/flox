@@ -15,7 +15,7 @@ set_target_properties(quickjs_lib PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 target_compile_definitions(quickjs_lib PRIVATE
-  CONFIG_VERSION="flox"
+  CONFIG_VERSION="lrvx"
   CONFIG_BIGNUM=1
 )
 if(UNIX)
@@ -34,7 +34,7 @@ endif()
 #
 # JS_NewFloat64 is `static inline` in the header, so the cast is compiled
 # (and sanitizer-instrumented) into whichever translation unit calls it --
-# in practice every file in flox_quickjs that builds a JSValue from a
+# in practice every file in lrvx_quickjs that builds a JSValue from a
 # timestamp or a computed double, not just quickjs_lib's own .c files.
 # Disabling only quickjs_lib leaves the finding fully in place. Both
 # targets need the flag; the rest of this project's build (the core
@@ -42,9 +42,9 @@ endif()
 # own double-to-integer conversions.
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
-check_c_compiler_flag("-fno-sanitize=float-cast-overflow" FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
-check_cxx_compiler_flag("-fno-sanitize=float-cast-overflow" FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_CXX)
-if(FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
+check_c_compiler_flag("-fno-sanitize=float-cast-overflow" LRVX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
+check_cxx_compiler_flag("-fno-sanitize=float-cast-overflow" LRVX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_CXX)
+if(LRVX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
   target_compile_options(quickjs_lib PRIVATE -fno-sanitize=float-cast-overflow)
 endif()
 
@@ -59,14 +59,14 @@ endif()
 # upstream in an interpreter this repo treats as read-only. Suppressing
 # it on quickjs_lib alone keeps the check active everywhere else and
 # leaves an UBSan run over src/quickjs/ reporting only real findings.
-check_c_compiler_flag("-fno-sanitize=shift-base" FLOX_QUICKJS_HAS_NO_SANITIZE_SHIFT_BASE_C)
-if(FLOX_QUICKJS_HAS_NO_SANITIZE_SHIFT_BASE_C)
+check_c_compiler_flag("-fno-sanitize=shift-base" LRVX_QUICKJS_HAS_NO_SANITIZE_SHIFT_BASE_C)
+if(LRVX_QUICKJS_HAS_NO_SANITIZE_SHIFT_BASE_C)
   target_compile_options(quickjs_lib PRIVATE -fno-sanitize=shift-base)
 endif()
 
 # Generate embedded JS stdlib as C string literals via a script
 # Rebuilds when JS source files change
-set(JS_STDLIB_DIR ${CMAKE_SOURCE_DIR}/quickjs/flox)
+set(JS_STDLIB_DIR ${CMAKE_SOURCE_DIR}/quickjs/lrvx)
 set(GEN_INC_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/gen_js_inc.cmake)
 
 add_custom_command(
@@ -149,33 +149,33 @@ add_custom_target(js_stdlib_gen DEPENDS
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_feed_clock.inc
 )
 
-# flox_quickjs static library
-add_library(flox_quickjs STATIC
+# lrvx_quickjs static library
+add_library(lrvx_quickjs STATIC
   js_engine.cpp
   js_bindings.cpp
   js_strategy.cpp
   js_executor.cpp
 )
-add_dependencies(flox_quickjs js_stdlib_gen)
-target_include_directories(flox_quickjs PUBLIC
+add_dependencies(lrvx_quickjs js_stdlib_gen)
+target_include_directories(lrvx_quickjs PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_SOURCE_DIR}/include
 )
-target_link_libraries(flox_quickjs PUBLIC
+target_link_libraries(lrvx_quickjs PUBLIC
   quickjs_lib
-  flox_capi
-  ${FLOX}
+  lrvx_capi
+  ${LRVX}
 )
-target_compile_features(flox_quickjs PRIVATE cxx_std_20)
-if(FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_CXX)
+target_compile_features(lrvx_quickjs PRIVATE cxx_std_20)
+if(LRVX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_CXX)
   # See the comment above quickjs_lib's own -fno-sanitize flag: the same
   # vendored int32 fast path gets inlined into this target's translation
   # units (js_bindings.cpp, js_strategy.cpp, ...), not just quickjs.c.
-  target_compile_options(flox_quickjs PRIVATE -fno-sanitize=float-cast-overflow)
+  target_compile_options(lrvx_quickjs PRIVATE -fno-sanitize=float-cast-overflow)
 endif()
 
-# flox_js_runner executable
-add_executable(flox_js_runner js_runner.cpp)
-target_link_libraries(flox_js_runner PRIVATE flox_quickjs)
-target_compile_features(flox_js_runner PRIVATE cxx_std_20)
+# lrvx_js_runner executable
+add_executable(lrvx_js_runner js_runner.cpp)
+target_link_libraries(lrvx_js_runner PRIVATE lrvx_quickjs)
+target_compile_features(lrvx_js_runner PRIVATE cxx_std_20)

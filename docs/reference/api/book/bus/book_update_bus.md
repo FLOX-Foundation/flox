@@ -33,4 +33,4 @@ bool configureBookUpdateBusForPerformance(BookUpdateBus& bus, bool enablePerform
 * Uses `ComponentType::MARKET_DATA` for CPU affinity configuration.
 * Pooling ensures `BookUpdateEvent`s are reused without dynamic heap allocations.
 * Designed for high-frequency message flow in HFT environments.
-* Supports optional CPU affinity via `FLOX_CPU_AFFINITY_ENABLED`.
+* Supports optional CPU affinity via `LRVX_CPU_AFFINITY_ENABLED`.

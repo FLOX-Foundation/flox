@@ -9,35 +9,35 @@ extern "C"
 #include <string>
 #include <thread>
 
-namespace flox
+namespace lrvx
 {
 
 // Default wall-clock budget for a single JS callback invocation before the
 // interrupt handler asks QuickJS to unwind. See `beginWork()`.
-inline constexpr std::chrono::milliseconds kFloxJsDefaultInterruptBudget{2000};
+inline constexpr std::chrono::milliseconds kLrvxJsDefaultInterruptBudget{2000};
 
 // Default cap on the native call stack QuickJS is allowed to use. Bounds
 // runaway JS recursion (and OOM-handling recursion inside the interpreter
 // itself) well under a std::thread's default native stack, on every
 // platform this engine ships on.
-inline constexpr size_t kFloxJsDefaultMaxStackSize = 1 * 1024 * 1024;
+inline constexpr size_t kLrvxJsDefaultMaxStackSize = 1 * 1024 * 1024;
 
 // A single QuickJS runtime + context. Not reentrant, not thread-safe: a
 // JSRuntime may only ever be touched from the thread that owns it.
-// `FloxJsEngine` binds an owner thread at construction (or later via
-// `rebindOwnerThread()`, for embedders such as `FloxJsExecutor` that build
+// `LrvxJsEngine` binds an owner thread at construction (or later via
+// `rebindOwnerThread()`, for embedders such as `LrvxJsExecutor` that build
 // the engine on a dedicated background thread) and refuses -- loudly in
 // debug builds, with a logged no-op in release -- any call made from a
 // different thread. See docs/bindings/javascript.md, "Threads".
-class FloxJsEngine
+class LrvxJsEngine
 {
  public:
-  FloxJsEngine(size_t memoryLimitBytes = 32 * 1024 * 1024,
-               size_t maxStackSizeBytes = kFloxJsDefaultMaxStackSize);
-  ~FloxJsEngine();
+  LrvxJsEngine(size_t memoryLimitBytes = 32 * 1024 * 1024,
+               size_t maxStackSizeBytes = kLrvxJsDefaultMaxStackSize);
+  ~LrvxJsEngine();
 
-  FloxJsEngine(const FloxJsEngine&) = delete;
-  FloxJsEngine& operator=(const FloxJsEngine&) = delete;
+  LrvxJsEngine(const LrvxJsEngine&) = delete;
+  LrvxJsEngine& operator=(const LrvxJsEngine&) = delete;
 
   bool eval(const std::string& code, const std::string& filename = "<eval>");
   bool loadFile(const std::string& path);
@@ -78,9 +78,9 @@ class FloxJsEngine
   JSRuntime* _rt = nullptr;
   JSContext* _ctx = nullptr;
   std::thread::id _ownerThreadId;
-  std::chrono::milliseconds _interruptBudget{kFloxJsDefaultInterruptBudget};
+  std::chrono::milliseconds _interruptBudget{kLrvxJsDefaultInterruptBudget};
   std::chrono::steady_clock::time_point _workStarted;
   bool _workInProgress = false;
 };
 
-}  // namespace flox
+}  // namespace lrvx

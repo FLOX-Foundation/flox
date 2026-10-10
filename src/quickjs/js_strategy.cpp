@@ -2,7 +2,7 @@
 #include "js_bindings.h"
 #include "js_cstring.h"
 
-#include "flox/capi/order_type_names.hpp"
+#include "lrvx/capi/order_type_names.hpp"
 
 #include <iostream>
 #include <limits>
@@ -37,18 +37,18 @@ static const char* const FEED_CLOCK_JS =
 #include "js_stdlib_feed_clock.inc"
     ;
 
-namespace flox
+namespace lrvx
 {
 
-FloxJsStrategy::FloxJsStrategy(const std::string& scriptPath, SymbolRegistry& registry)
+LrvxJsStrategy::LrvxJsStrategy(const std::string& scriptPath, SymbolRegistry& registry)
     : _registry(registry)
 {
-  if (!registerFloxBindings(_engine.context()))
+  if (!registerLrvxBindings(_engine.context()))
   {
     // The C ABI handshake failed: the engine would be driving a library
     // that disagrees with the header it was built against, and the
     // strategy would read wrong numbers rather than fail.
-    throw std::runtime_error("Failed to register flox bindings: " +
+    throw std::runtime_error("Failed to register lrvx bindings: " +
                              _engine.getErrorMessage());
   }
   loadStdlib();
@@ -63,12 +63,12 @@ FloxJsStrategy::FloxJsStrategy(const std::string& scriptPath, SymbolRegistry& re
       JS_FreeValue(_engine.context(), _strategyObj);
       _strategyObj = JS_UNDEFINED;
     }
-    _engine.eval("__flox_registered_strategy = null; flox = null;", "<cleanup>");
+    _engine.eval("__lrvx_registered_strategy = null; lrvx = null;", "<cleanup>");
     throw;
   }
 }
 
-FloxJsStrategy::~FloxJsStrategy()
+LrvxJsStrategy::~LrvxJsStrategy()
 {
   if (!JS_IsUndefined(_strategyObj))
   {
@@ -76,124 +76,124 @@ FloxJsStrategy::~FloxJsStrategy()
     _strategyObj = JS_UNDEFINED;
   }
   // Clear globals that hold JS object references before runtime teardown
-  _engine.eval("__flox_registered_strategy = null; flox = null;", "<cleanup>");
+  _engine.eval("__lrvx_registered_strategy = null; lrvx = null;", "<cleanup>");
 }
 
-void FloxJsStrategy::loadStdlib()
+void LrvxJsStrategy::loadStdlib()
 {
-  if (!_engine.eval(INDICATORS_JS, "flox/indicators.js"))
+  if (!_engine.eval(INDICATORS_JS, "lrvx/indicators.js"))
   {
     throw std::runtime_error("Failed to load indicators.js: " + _engine.getErrorMessage());
   }
-  if (!_engine.eval(STRATEGY_JS, "flox/strategy.js"))
+  if (!_engine.eval(STRATEGY_JS, "lrvx/strategy.js"))
   {
     throw std::runtime_error("Failed to load strategy.js: " + _engine.getErrorMessage());
   }
-  if (!_engine.eval(TARGETS_JS, "flox/targets.js"))
+  if (!_engine.eval(TARGETS_JS, "lrvx/targets.js"))
   {
     throw std::runtime_error("Failed to load targets.js: " + _engine.getErrorMessage());
   }
-  if (!_engine.eval(LATENCY_JS, "flox/latency.js"))
+  if (!_engine.eval(LATENCY_JS, "lrvx/latency.js"))
   {
     throw std::runtime_error("Failed to load latency.js: " + _engine.getErrorMessage());
   }
-  if (!_engine.eval(COMPOSITE_JS, "flox/composite.js"))
+  if (!_engine.eval(COMPOSITE_JS, "lrvx/composite.js"))
   {
     throw std::runtime_error("Failed to load composite.js: " + _engine.getErrorMessage());
   }
-  if (!_engine.eval(ORDER_GROUP_JS, "flox/order_group.js"))
+  if (!_engine.eval(ORDER_GROUP_JS, "lrvx/order_group.js"))
   {
     throw std::runtime_error("Failed to load order_group.js: " + _engine.getErrorMessage());
   }
-  if (!_engine.eval(FEED_CLOCK_JS, "flox/feed_clock.js"))
+  if (!_engine.eval(FEED_CLOCK_JS, "lrvx/feed_clock.js"))
   {
     throw std::runtime_error("Failed to load feed_clock.js: " + _engine.getErrorMessage());
   }
 
-  // Create flox global object with register() and batch indicators
+  // Create lrvx global object with register() and batch indicators
   const char* registerCode = R"(
-    var __flox_registered_strategy = null;
+    var __lrvx_registered_strategy = null;
 
     class OrderBook {
       // An omitted tick size defaults; an explicit 0 is an error and has to
       // reach the book, which rejects it. `||` turned it into 0.01 instead.
       constructor(tickSize) {
-        this._h = __flox_book_create(tickSize === undefined ? 0.01 : tickSize);
+        this._h = __lrvx_book_create(tickSize === undefined ? 0.01 : tickSize);
       }
-      destroy() { __flox_book_destroy(this._h); }
+      destroy() { __lrvx_book_destroy(this._h); }
       applySnapshot(bidPrices, bidQtys, askPrices, askQtys) {
-        __flox_book_apply_snapshot(this._h, bidPrices, bidQtys, askPrices, askQtys);
+        __lrvx_book_apply_snapshot(this._h, bidPrices, bidQtys, askPrices, askQtys);
       }
       applyDelta(bidPrices, bidQtys, askPrices, askQtys) {
-        __flox_book_apply_delta(this._h, bidPrices, bidQtys, askPrices, askQtys);
+        __lrvx_book_apply_delta(this._h, bidPrices, bidQtys, askPrices, askQtys);
       }
-      bestBid() { return __flox_book_best_bid(this._h); }
-      bestAsk() { return __flox_book_best_ask(this._h); }
-      mid() { return __flox_book_mid(this._h); }
-      spread() { return __flox_book_spread(this._h); }
-      getBids(maxLevels) { return __flox_book_get_bids(this._h, maxLevels || 20); }
-      getAsks(maxLevels) { return __flox_book_get_asks(this._h, maxLevels || 20); }
-      isCrossed() { return __flox_book_is_crossed(this._h); }
-      clear() { __flox_book_clear(this._h); }
+      bestBid() { return __lrvx_book_best_bid(this._h); }
+      bestAsk() { return __lrvx_book_best_ask(this._h); }
+      mid() { return __lrvx_book_mid(this._h); }
+      spread() { return __lrvx_book_spread(this._h); }
+      getBids(maxLevels) { return __lrvx_book_get_bids(this._h, maxLevels || 20); }
+      getAsks(maxLevels) { return __lrvx_book_get_asks(this._h, maxLevels || 20); }
+      isCrossed() { return __lrvx_book_is_crossed(this._h); }
+      clear() { __lrvx_book_clear(this._h); }
     }
 
     const _slippageMap = { none: 0, fixed_ticks: 1, fixed_bps: 2, volume_impact: 3 };
     const _queueMap = { none: 0, tob: 1, full: 2, pro_rata: 3, pro_rata_with_fifo: 4 };
 
     class SimulatedExecutor {
-      constructor() { this._h = __flox_simulated_executor_create(); }
-      destroy() { __flox_simulated_executor_destroy(this._h); }
+      constructor() { this._h = __lrvx_simulated_executor_create(); }
+      destroy() { __lrvx_simulated_executor_destroy(this._h); }
       submitOrder(id, side, price, qty, type, symbol) {
         // JS convention: type 0 = market (default), 1 = limit.
         // C API convention: LIMIT=0, MARKET=1.
         var cType = (type === 1) ? 0 : 1;
-        __flox_simulated_executor_submit(this._h, id, side === "buy" ? 0 : 1, price, qty, cType, symbol || 1);
+        __lrvx_simulated_executor_submit(this._h, id, side === "buy" ? 0 : 1, price, qty, cType, symbol || 1);
       }
-      onBar(symbol, closePrice) { __flox_simulated_executor_on_bar(this._h, symbol, closePrice); }
+      onBar(symbol, closePrice) { __lrvx_simulated_executor_on_bar(this._h, symbol, closePrice); }
       // Open-aware form: moves the market to the open (releasing any order
       // held from the previous bar's callback there), then walks
       // low -> high -> close so resting stops/targets match the intrabar
       // extremes. Use this, not onBar, to drive the executor by hand to the
       // same fills BacktestRunner produces on the same bars.
       onBarOhlc(symbol, open, high, low, close) {
-        __flox_simulated_executor_on_bar_ohlc(this._h, symbol, open, high, low, close);
+        __lrvx_simulated_executor_on_bar_ohlc(this._h, symbol, open, high, low, close);
       }
       // Open the bar-callback window: every order submitted while it is
       // open is held instead of matched immediately, and released at the
       // next onBarOhlc call's open. Call before invoking a hand-driven bar
       // callback; always pair with endBarCallbackWindow.
-      beginBarCallbackWindow() { __flox_simulated_executor_begin_bar_callback_window(this._h); }
-      endBarCallbackWindow() { __flox_simulated_executor_end_bar_callback_window(this._h); }
+      beginBarCallbackWindow() { __lrvx_simulated_executor_begin_bar_callback_window(this._h); }
+      endBarCallbackWindow() { __lrvx_simulated_executor_end_bar_callback_window(this._h); }
       // Drops fills and run-scoped state while keeping installed
       // configuration (slippage, queue model, latency, ...), so a second
       // hand-driven run reports that run and not the sum of every run.
-      reset() { __flox_simulated_executor_reset(this._h); }
-      onTrade(symbol, price, isBuy) { __flox_simulated_executor_on_trade(this._h, symbol, price, isBuy ? 1 : 0); }
+      reset() { __lrvx_simulated_executor_reset(this._h); }
+      onTrade(symbol, price, isBuy) { __lrvx_simulated_executor_on_trade(this._h, symbol, price, isBuy ? 1 : 0); }
       onTradeQty(symbol, price, quantity, isBuy) {
-        __flox_simulated_executor_on_trade_qty(this._h, symbol, price, quantity, isBuy ? 1 : 0);
+        __lrvx_simulated_executor_on_trade_qty(this._h, symbol, price, quantity, isBuy ? 1 : 0);
       }
       onBestLevels(symbol, bidPrice, bidQty, askPrice, askQty) {
-        __flox_simulated_executor_on_best_levels(this._h, symbol, bidPrice, bidQty, askPrice, askQty);
+        __lrvx_simulated_executor_on_best_levels(this._h, symbol, bidPrice, bidQty, askPrice, askQty);
       }
-      advanceClock(timestampNs) { __flox_simulated_executor_advance_clock(this._h, timestampNs); }
+      advanceClock(timestampNs) { __lrvx_simulated_executor_advance_clock(this._h, timestampNs); }
       setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff) {
-        __flox_simulated_executor_set_default_slippage(this._h, _slippageMap[model] || 0,
+        __lrvx_simulated_executor_set_default_slippage(this._h, _slippageMap[model] || 0,
                                              ticks || 0, tickSize || 0,
                                              bps || 0, impactCoeff || 0);
       }
       setSymbolSlippage(symbol, model, ticks, tickSize, bps, impactCoeff) {
-        __flox_simulated_executor_set_symbol_slippage(this._h, symbol, _slippageMap[model] || 0,
+        __lrvx_simulated_executor_set_symbol_slippage(this._h, symbol, _slippageMap[model] || 0,
                                             ticks || 0, tickSize || 0,
                                             bps || 0, impactCoeff || 0);
       }
       setQueueModel(model, depth) {
-        __flox_simulated_executor_set_queue_model(this._h, _queueMap[model] || 0, depth || 1);
+        __lrvx_simulated_executor_set_queue_model(this._h, _queueMap[model] || 0, depth || 1);
       }
       setQueueFifoTopN(topN) {
-        __flox_simulated_executor_set_queue_fifo_top_n(this._h, topN || 0);
+        __lrvx_simulated_executor_set_queue_fifo_top_n(this._h, topN || 0);
       }
       setVenueAvailability(va) {
-        __flox_simulated_executor_set_venue_availability(
+        __lrvx_simulated_executor_set_venue_availability(
           this._h, va && va.handle ? va.handle : 0);
       }
       submitBracket(opts) {
@@ -204,56 +204,56 @@ void FloxJsStrategy::loadStdlib()
           if (t === "stop_limit") return 3;
           return 0;
         };
-        __flox_simulated_executor_submit_bracket(
+        __lrvx_simulated_executor_submit_bracket(
           this._h, opts.bracketId, opts.symbol || 1,
           sideU(opts.entrySide), typeU(opts.entryType),
           opts.entryPrice, opts.quantity,
           sideU(opts.tpSide), typeU(opts.tpType), opts.tpPrice,
           sideU(opts.stopSide), typeU(opts.stopType), opts.stopTriggerPrice);
       }
-      cancelBracket(bracketId) { __flox_simulated_executor_cancel_bracket(this._h, bracketId); }
+      cancelBracket(bracketId) { __lrvx_simulated_executor_cancel_bracket(this._h, bracketId); }
       bracketState(bracketId) {
-        const s = __flox_simulated_executor_bracket_state(this._h, bracketId);
+        const s = __lrvx_simulated_executor_bracket_state(this._h, bracketId);
         const names = ["pending_entry","entry_filled","tp_filled","stop_filled","canceled"];
         return names[s] || "pending_entry";
       }
       submitIceberg(id, side, price, total, visible, symbol) {
-        __flox_simulated_executor_submit_iceberg(this._h, id, side === "buy" ? 0 : 1,
+        __lrvx_simulated_executor_submit_iceberg(this._h, id, side === "buy" ? 0 : 1,
           price, total, visible, symbol || 1);
       }
       setIcebergRefreshLatency(latencyNs) {
-        __flox_simulated_executor_set_iceberg_refresh_latency(this._h, latencyNs || 0);
+        __lrvx_simulated_executor_set_iceberg_refresh_latency(this._h, latencyNs || 0);
       }
       icebergHiddenRemainingRaw(id) {
-        return __flox_simulated_executor_iceberg_hidden_remaining_raw(this._h, id);
+        return __lrvx_simulated_executor_iceberg_hidden_remaining_raw(this._h, id);
       }
-      get fillCount() { return __flox_simulated_executor_fill_count(this._h); }
+      get fillCount() { return __lrvx_simulated_executor_fill_count(this._h); }
       get handle() { return this._h; }
     }
 
     const _outageMap = { cancel_all: 0, hold: 1, expire_gtc_after: 2 };
 
     class VenueAvailability {
-      constructor() { this._h = __flox_venue_availability_create(); }
-      destroy() { __flox_venue_availability_destroy(this._h); }
+      constructor() { this._h = __lrvx_venue_availability_create(); }
+      destroy() { __lrvx_venue_availability_destroy(this._h); }
       scheduleOutage(startNs, durationNs, onOpenOrders, gtcTtlNs) {
-        __flox_venue_availability_schedule_outage(
+        __lrvx_venue_availability_schedule_outage(
           this._h, startNs, durationNs,
           _outageMap[onOpenOrders || "cancel_all"] || 0, gtcTtlNs || 0);
       }
       autoRandomOutages(perDay, meanDurationNs, onOpenOrders, seed) {
-        __flox_venue_availability_auto_random_outages(
+        __lrvx_venue_availability_auto_random_outages(
           this._h, perDay, meanDurationNs,
           _outageMap[onOpenOrders || "cancel_all"] || 0, seed || 0xC0FFEE);
       }
-      isUp(nowNs) { return __flox_venue_availability_is_up(this._h, nowNs); }
+      isUp(nowNs) { return __lrvx_venue_availability_is_up(this._h, nowNs); }
       get handle() { return this._h; }
     }
 
     class BacktestResult {
       constructor(initialCapital, feeRate, usePercentageFee, fixedFeePerTrade,
                   riskFreeRate, annualizationFactor) {
-        this._h = __flox_backtest_result_create(
+        this._h = __lrvx_backtest_result_create(
           initialCapital === undefined ? 100000.0 : initialCapital,
           feeRate === undefined ? 0.0001 : feeRate,
           usePercentageFee === undefined || usePercentageFee ? 1 : 0,
@@ -261,155 +261,155 @@ void FloxJsStrategy::loadStdlib()
           riskFreeRate || 0,
           annualizationFactor || 252.0);
       }
-      destroy() { __flox_backtest_result_destroy(this._h); }
+      destroy() { __lrvx_backtest_result_destroy(this._h); }
       recordFill(orderId, symbol, side, price, qty, timestampNs) {
-        __flox_backtest_result_record_fill(this._h, orderId, symbol,
+        __lrvx_backtest_result_record_fill(this._h, orderId, symbol,
                                            side === "buy" ? 0 : 1, price, qty, timestampNs);
       }
       ingestExecutor(executor) {
-        __flox_backtest_result_ingest(this._h, executor.handle);
+        __lrvx_backtest_result_ingest(this._h, executor.handle);
       }
-      stats() { return __flox_backtest_result_stats(this._h); }
-      equityCurve() { return __flox_backtest_result_equity_curve(this._h); }
-      writeEquityCurveCsv(path) { return __flox_backtest_result_write_csv(this._h, path); }
+      stats() { return __lrvx_backtest_result_stats(this._h); }
+      equityCurve() { return __lrvx_backtest_result_equity_curve(this._h); }
+      writeEquityCurveCsv(path) { return __lrvx_backtest_result_write_csv(this._h, path); }
     }
 
     class PositionTracker {
-      constructor(costBasis) { this._h = __flox_pos_create(costBasis || 0); }
-      destroy() { __flox_pos_destroy(this._h); }
+      constructor(costBasis) { this._h = __lrvx_pos_create(costBasis || 0); }
+      destroy() { __lrvx_pos_destroy(this._h); }
       onFill(symbol, side, price, qty) {
-        __flox_pos_on_fill(this._h, symbol, side === "buy" ? 0 : 1, price, qty);
+        __lrvx_pos_on_fill(this._h, symbol, side === "buy" ? 0 : 1, price, qty);
       }
-      position(symbol) { return __flox_pos_position(this._h, symbol); }
-      avgEntryPrice(symbol) { return __flox_pos_avg_entry(this._h, symbol); }
-      realizedPnl(symbol) { return __flox_pos_pnl(this._h, symbol); }
-      totalRealizedPnl() { return __flox_pos_total_pnl(this._h); }
+      position(symbol) { return __lrvx_pos_position(this._h, symbol); }
+      avgEntryPrice(symbol) { return __lrvx_pos_avg_entry(this._h, symbol); }
+      realizedPnl(symbol) { return __lrvx_pos_pnl(this._h, symbol); }
+      totalRealizedPnl() { return __lrvx_pos_total_pnl(this._h); }
     }
 
     class VolumeProfile {
-      constructor(tickSize) { this._h = __flox_vprofile_create(tickSize || 0.01); }
-      destroy() { __flox_vprofile_destroy(this._h); }
-      addTrade(price, qty, isBuy) { __flox_vprofile_add_trade(this._h, price, qty, isBuy ? 1 : 0); }
-      poc() { return __flox_vprofile_poc(this._h); }
-      valueAreaHigh() { return __flox_vprofile_vah(this._h); }
-      valueAreaLow() { return __flox_vprofile_val(this._h); }
-      totalVolume() { return __flox_vprofile_total_volume(this._h); }
-      clear() { __flox_vprofile_clear(this._h); }
+      constructor(tickSize) { this._h = __lrvx_vprofile_create(tickSize || 0.01); }
+      destroy() { __lrvx_vprofile_destroy(this._h); }
+      addTrade(price, qty, isBuy) { __lrvx_vprofile_add_trade(this._h, price, qty, isBuy ? 1 : 0); }
+      poc() { return __lrvx_vprofile_poc(this._h); }
+      valueAreaHigh() { return __lrvx_vprofile_vah(this._h); }
+      valueAreaLow() { return __lrvx_vprofile_val(this._h); }
+      totalVolume() { return __lrvx_vprofile_total_volume(this._h); }
+      clear() { __lrvx_vprofile_clear(this._h); }
     }
 
     class L3Book {
-      constructor() { this._h = __flox_l3_create(); }
-      destroy() { __flox_l3_destroy(this._h); }
+      constructor() { this._h = __lrvx_l3_create(); }
+      destroy() { __lrvx_l3_destroy(this._h); }
       addOrder(orderId, price, qty, side) {
-        return __flox_l3_add_order(this._h, orderId, price, qty, side === "buy" ? 0 : 1);
+        return __lrvx_l3_add_order(this._h, orderId, price, qty, side === "buy" ? 0 : 1);
       }
-      removeOrder(orderId) { return __flox_l3_remove_order(this._h, orderId); }
-      modifyOrder(orderId, newQty) { return __flox_l3_modify_order(this._h, orderId, newQty); }
-      bestBid() { return __flox_l3_best_bid(this._h); }
-      bestAsk() { return __flox_l3_best_ask(this._h); }
+      removeOrder(orderId) { return __lrvx_l3_remove_order(this._h, orderId); }
+      modifyOrder(orderId, newQty) { return __lrvx_l3_modify_order(this._h, orderId, newQty); }
+      bestBid() { return __lrvx_l3_best_bid(this._h); }
+      bestAsk() { return __lrvx_l3_best_ask(this._h); }
     }
 
     class FootprintBar {
-      constructor(tickSize) { this._h = __flox_fp_create(tickSize || 0.01); }
-      destroy() { __flox_fp_destroy(this._h); }
-      addTrade(price, qty, isBuy) { __flox_fp_add_trade(this._h, price, qty, isBuy ? 1 : 0); }
-      totalDelta() { return __flox_fp_total_delta(this._h); }
-      totalVolume() { return __flox_fp_total_volume(this._h); }
-      clear() { __flox_fp_clear(this._h); }
+      constructor(tickSize) { this._h = __lrvx_fp_create(tickSize || 0.01); }
+      destroy() { __lrvx_fp_destroy(this._h); }
+      addTrade(price, qty, isBuy) { __lrvx_fp_add_trade(this._h, price, qty, isBuy ? 1 : 0); }
+      totalDelta() { return __lrvx_fp_total_delta(this._h); }
+      totalVolume() { return __lrvx_fp_total_volume(this._h); }
+      clear() { __lrvx_fp_clear(this._h); }
     }
 
     class MarketProfile {
       constructor(tickSize, periodMinutes, sessionStartNs) {
-        this._h = __flox_mp_create(tickSize || 0.01, periodMinutes || 30, sessionStartNs || 0);
+        this._h = __lrvx_mp_create(tickSize || 0.01, periodMinutes || 30, sessionStartNs || 0);
       }
-      destroy() { __flox_mp_destroy(this._h); }
-      addTrade(timestampNs, price, qty, isBuy) { __flox_mp_add_trade(this._h, timestampNs, price, qty, isBuy ? 1 : 0); }
-      poc() { return __flox_mp_poc(this._h); }
-      valueAreaHigh() { return __flox_mp_vah(this._h); }
-      valueAreaLow() { return __flox_mp_val(this._h); }
-      initialBalanceHigh() { return __flox_mp_ib_high(this._h); }
-      initialBalanceLow() { return __flox_mp_ib_low(this._h); }
-      isPoorHigh() { return __flox_mp_is_poor_high(this._h); }
-      isPoorLow() { return __flox_mp_is_poor_low(this._h); }
-      clear() { __flox_mp_clear(this._h); }
+      destroy() { __lrvx_mp_destroy(this._h); }
+      addTrade(timestampNs, price, qty, isBuy) { __lrvx_mp_add_trade(this._h, timestampNs, price, qty, isBuy ? 1 : 0); }
+      poc() { return __lrvx_mp_poc(this._h); }
+      valueAreaHigh() { return __lrvx_mp_vah(this._h); }
+      valueAreaLow() { return __lrvx_mp_val(this._h); }
+      initialBalanceHigh() { return __lrvx_mp_ib_high(this._h); }
+      initialBalanceLow() { return __lrvx_mp_ib_low(this._h); }
+      isPoorHigh() { return __lrvx_mp_is_poor_high(this._h); }
+      isPoorLow() { return __lrvx_mp_is_poor_low(this._h); }
+      clear() { __lrvx_mp_clear(this._h); }
     }
 
     class CompositeBook {
-      constructor() { this._h = __flox_cb_create(); }
-      destroy() { __flox_cb_destroy(this._h); }
+      constructor() { this._h = __lrvx_cb_create(); }
+      destroy() { __lrvx_cb_destroy(this._h); }
       // is_delta=false (applySnapshot) replaces both sides of that
       // exchange's top-of-book wholesale; applyDelta updates only the
       // side(s) present here and leaves the other side untouched.
       applySnapshot(exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs) {
-        __flox_cb_apply_snapshot(this._h, exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+        __lrvx_cb_apply_snapshot(this._h, exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
       }
       applyDelta(exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs) {
-        __flox_cb_apply_delta(this._h, exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+        __lrvx_cb_apply_delta(this._h, exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
       }
-      bestBid(symbol) { return __flox_cb_best_bid(this._h, symbol); }
-      bestAsk(symbol) { return __flox_cb_best_ask(this._h, symbol); }
-      hasArbitrage(symbol) { return __flox_cb_has_arb(this._h, symbol); }
-      markStale(exchange, symbol) { __flox_cb_mark_stale(this._h, exchange, symbol); }
-      checkStaleness(nowNs, thresholdNs) { __flox_cb_check_staleness(this._h, nowNs, thresholdNs); }
+      bestBid(symbol) { return __lrvx_cb_best_bid(this._h, symbol); }
+      bestAsk(symbol) { return __lrvx_cb_best_ask(this._h, symbol); }
+      hasArbitrage(symbol) { return __lrvx_cb_has_arb(this._h, symbol); }
+      markStale(exchange, symbol) { __lrvx_cb_mark_stale(this._h, exchange, symbol); }
+      checkStaleness(nowNs, thresholdNs) { __lrvx_cb_check_staleness(this._h, nowNs, thresholdNs); }
     }
 
     class OrderTracker {
-      constructor() { this._h = __flox_ot_create(); }
-      destroy() { __flox_ot_destroy(this._h); }
+      constructor() { this._h = __lrvx_ot_create(); }
+      destroy() { __lrvx_ot_destroy(this._h); }
       onSubmitted(orderId, symbol, side, price, qty) {
-        return __flox_ot_submit(this._h, orderId, symbol, side === "buy" ? 0 : 1, price, qty);
+        return __lrvx_ot_submit(this._h, orderId, symbol, side === "buy" ? 0 : 1, price, qty);
       }
-      onFilled(orderId, fillQty) { return __flox_ot_filled(this._h, orderId, fillQty); }
-      onCanceled(orderId) { return __flox_ot_canceled(this._h, orderId); }
-      isActive(orderId) { return __flox_ot_is_active(this._h, orderId); }
-      get activeCount() { return __flox_ot_active_count(this._h); }
-      prune() { __flox_ot_prune(this._h); }
+      onFilled(orderId, fillQty) { return __lrvx_ot_filled(this._h, orderId, fillQty); }
+      onCanceled(orderId) { return __lrvx_ot_canceled(this._h, orderId); }
+      isActive(orderId) { return __lrvx_ot_is_active(this._h, orderId); }
+      get activeCount() { return __lrvx_ot_active_count(this._h); }
+      prune() { __lrvx_ot_prune(this._h); }
     }
 
     class OrderJourneyTracer {
       constructor(opts) {
         opts = opts || {};
-        this._h = __flox_ojt_create(
+        this._h = __lrvx_ojt_create(
           opts.maxOrders || 1000000,
           opts.maxRecordsPerOrder || 64,
           opts.sampleRate === undefined ? 1.0 : opts.sampleRate,
           opts.sampleSalt || 0);
       }
-      destroy() { __flox_ojt_destroy(this._h); }
-      orderCount() { return __flox_ojt_order_count(this._h); }
-      recordCount() { return __flox_ojt_record_count(this._h); }
-      medianAckLatencyNs() { return __flox_ojt_median_ack(this._h); }
-      medianTimeToFirstFillNs() { return __flox_ojt_median_ttf(this._h); }
-      makerFillRatio() { return __flox_ojt_maker_ratio(this._h); }
-      cancelRaceLossRate() { return __flox_ojt_cancel_race(this._h); }
-      result() { return __flox_ojt_result(this._h); }
-      journey(orderId) { return __flox_ojt_journey(this._h, orderId); }
-      clear() { __flox_ojt_clear(this._h); }
+      destroy() { __lrvx_ojt_destroy(this._h); }
+      orderCount() { return __lrvx_ojt_order_count(this._h); }
+      recordCount() { return __lrvx_ojt_record_count(this._h); }
+      medianAckLatencyNs() { return __lrvx_ojt_median_ack(this._h); }
+      medianTimeToFirstFillNs() { return __lrvx_ojt_median_ttf(this._h); }
+      makerFillRatio() { return __lrvx_ojt_maker_ratio(this._h); }
+      cancelRaceLossRate() { return __lrvx_ojt_cancel_race(this._h); }
+      result() { return __lrvx_ojt_result(this._h); }
+      journey(orderId) { return __lrvx_ojt_journey(this._h, orderId); }
+      clear() { __lrvx_ojt_clear(this._h); }
     }
 
     class PositionGroupTracker {
-      constructor() { this._h = __flox_pg_create(); }
-      destroy() { __flox_pg_destroy(this._h); }
+      constructor() { this._h = __lrvx_pg_create(); }
+      destroy() { __lrvx_pg_destroy(this._h); }
       openPosition(orderId, symbol, side, price, qty) {
-        return __flox_pg_open(this._h, orderId, symbol, side === "buy" ? 0 : 1, price, qty);
+        return __lrvx_pg_open(this._h, orderId, symbol, side === "buy" ? 0 : 1, price, qty);
       }
-      closePosition(positionId, exitPrice) { __flox_pg_close(this._h, positionId, exitPrice); }
-      netPosition(symbol) { return __flox_pg_net(this._h, symbol); }
-      realizedPnl(symbol) { return __flox_pg_pnl(this._h, symbol); }
-      totalRealizedPnl() { return __flox_pg_total_pnl(this._h); }
-      openPositionCount(symbol) { return __flox_pg_open_count(this._h, symbol); }
-      prune() { __flox_pg_prune(this._h); }
+      closePosition(positionId, exitPrice) { __lrvx_pg_close(this._h, positionId, exitPrice); }
+      netPosition(symbol) { return __lrvx_pg_net(this._h, symbol); }
+      realizedPnl(symbol) { return __lrvx_pg_pnl(this._h, symbol); }
+      totalRealizedPnl() { return __lrvx_pg_total_pnl(this._h); }
+      openPositionCount(symbol) { return __lrvx_pg_open_count(this._h, symbol); }
+      prune() { __lrvx_pg_prune(this._h); }
     }
 
     class DataWriter {
       constructor(dir, maxSegmentSize, compression) {
-        this._h = __flox_dw_create(dir, maxSegmentSize || 0, compression || 0);
+        this._h = __lrvx_dw_create(dir, maxSegmentSize || 0, compression || 0);
       }
-      destroy() { __flox_dw_destroy(this._h); }
+      destroy() { __lrvx_dw_destroy(this._h); }
       // C ABI order: (exchange_ts_ns, recv_ts_ns, price, qty, trade_id,
       // symbol_id, side). The JS surface keeps the same shape.
       writeTrade(timestampNs, exchangeNs, price, qty, tradeId, symbolId, isBuy) {
-        __flox_dw_write_trade(this._h, timestampNs, exchangeNs,
+        __lrvx_dw_write_trade(this._h, timestampNs, exchangeNs,
                               price, qty, tradeId || 0,
                               symbolId, isBuy ? 0 : 1);
       }
@@ -417,23 +417,23 @@ void FloxJsStrategy::loadStdlib()
       writeBook(timestampNs, exchangeNs, seqNs, symbolId, isSnapshot, bidsBuf, asksBuf) {
         var nBids = bidsBuf ? (bidsBuf.length >> 1) : 0;
         var nAsks = asksBuf ? (asksBuf.length >> 1) : 0;
-        return __flox_dw_write_book(this._h, timestampNs, exchangeNs, seqNs || 0,
+        return __lrvx_dw_write_book(this._h, timestampNs, exchangeNs, seqNs || 0,
                                     symbolId, isSnapshot ? 1 : 0,
                                     bidsBuf || null, nBids,
                                     asksBuf || null, nAsks);
       }
-      flush() { __flox_dw_flush(this._h); }
-      close() { __flox_dw_close(this._h); }
-      stats() { return __flox_dw_stats(this._h); }
+      flush() { __lrvx_dw_flush(this._h); }
+      close() { __lrvx_dw_close(this._h); }
+      stats() { return __lrvx_dw_stats(this._h); }
     }
 
     class DataReader {
       constructor(dirOrOpts) {
         if (typeof dirOrOpts === "string") {
-          this._h = __flox_dr_create(dirOrOpts);
+          this._h = __lrvx_dr_create(dirOrOpts);
         } else {
           var o = dirOrOpts || {};
-          this._h = __flox_dr_create_filtered(
+          this._h = __lrvx_dr_create_filtered(
             o.dir || "",
             o.fromNs || 0,
             o.toNs || 0,
@@ -441,16 +441,16 @@ void FloxJsStrategy::loadStdlib()
           );
         }
       }
-      destroy() { __flox_dr_destroy(this._h); }
-      get count() { return __flox_dr_count(this._h); }
-      summary() { return __flox_dr_summary(this._h); }
-      stats() { return __flox_dr_stats(this._h); }
-      readTrades(maxTrades) { return __flox_dr_read_trades(this._h, maxTrades || 0); }
-      readTradesFrom(startTsNs, maxTrades) { return __flox_dr_read_trades_from(this._h, startTsNs, maxTrades || 0); }
-      readBBO(maxEvents) { return __flox_dr_read_bbo(this._h, maxEvents || 0); }
-      readBBOFrom(startTsNs, maxEvents) { return __flox_dr_read_bbo_from(this._h, startTsNs, maxEvents || 0); }
-      readBookUpdates() { return __flox_dr_read_book_updates(this._h); }
-      readBookUpdatesFrom(startTsNs) { return __flox_dr_read_book_updates_from(this._h, startTsNs); }
+      destroy() { __lrvx_dr_destroy(this._h); }
+      get count() { return __lrvx_dr_count(this._h); }
+      summary() { return __lrvx_dr_summary(this._h); }
+      stats() { return __lrvx_dr_stats(this._h); }
+      readTrades(maxTrades) { return __lrvx_dr_read_trades(this._h, maxTrades || 0); }
+      readTradesFrom(startTsNs, maxTrades) { return __lrvx_dr_read_trades_from(this._h, startTsNs, maxTrades || 0); }
+      readBBO(maxEvents) { return __lrvx_dr_read_bbo(this._h, maxEvents || 0); }
+      readBBOFrom(startTsNs, maxEvents) { return __lrvx_dr_read_bbo_from(this._h, startTsNs, maxEvents || 0); }
+      readBookUpdates() { return __lrvx_dr_read_book_updates(this._h); }
+      readBookUpdatesFrom(startTsNs) { return __lrvx_dr_read_book_updates_from(this._h, startTsNs); }
     }
 
     class MergedTapeReader {
@@ -466,27 +466,27 @@ void FloxJsStrategy::loadStdlib()
         }
         var from = (o.fromNs === undefined || o.fromNs === null) ? -1 : o.fromNs;
         var to   = (o.toNs   === undefined || o.toNs   === null) ? -1 : o.toNs;
-        this._h = __flox_mtr_create(paths, from, to, o.symbols || []);
+        this._h = __lrvx_mtr_create(paths, from, to, o.symbols || []);
         if (!this._h) {
           throw new Error("MergedTapeReader: failed to open tapes - bad input or overlapping book streams");
         }
       }
       destroy() {
-        if (this._h) { __flox_mtr_destroy(this._h); this._h = null; }
+        if (this._h) { __lrvx_mtr_destroy(this._h); this._h = null; }
       }
       // Unified view of symbols across all tapes, keyed by (exchange, name).
-      symbolTable() { return __flox_mtr_get_symbols(this._h); }
-      get symbolCount() { return __flox_mtr_symbol_count(this._h); }
+      symbolTable() { return __lrvx_mtr_get_symbols(this._h); }
+      get symbolCount() { return __lrvx_mtr_symbol_count(this._h); }
       // Per-tape stats: { firstEventNs, lastEventNs, trades, books, path }
-      perTapeStats() { return __flox_mtr_get_tape_stats(this._h); }
-      get tapeCount() { return __flox_mtr_tape_count(this._h); }
+      perTapeStats() { return __lrvx_mtr_get_tape_stats(this._h); }
+      get tapeCount() { return __lrvx_mtr_tape_count(this._h); }
       // { minFirstNs, maxLastNs } — outer time range across all tapes.
-      timeRange() { return __flox_mtr_time_range(this._h); }
-      countTrades() { return __flox_mtr_count_trades(this._h); }
-      readTrades(maxTrades) { return __flox_mtr_read_trades(this._h, maxTrades || 0); }
+      timeRange() { return __lrvx_mtr_time_range(this._h); }
+      countTrades() { return __lrvx_mtr_count_trades(this._h); }
+      readTrades(maxTrades) { return __lrvx_mtr_read_trades(this._h, maxTrades || 0); }
       // { events, levels } two-phase count for book updates.
-      countBooks() { return __flox_mtr_count_books(this._h); }
-      readBooks() { return __flox_mtr_read_books(this._h); }
+      countBooks() { return __lrvx_mtr_count_books(this._h); }
+      readBooks() { return __lrvx_mtr_read_books(this._h); }
     }
 
     class BinaryLogRecorderHook {
@@ -505,40 +505,40 @@ void FloxJsStrategy::loadStdlib()
           }
           comp = compMap[compression];
         }
-        this._h = __flox_blrh_create(outputDir, maxSegmentMb === undefined ? 256 : maxSegmentMb,
+        this._h = __lrvx_blrh_create(outputDir, maxSegmentMb === undefined ? 256 : maxSegmentMb,
                                      exchangeId || 0, comp,
                                      exchangeName || "", instrumentType || "");
-        this.__floxIsBinaryLogRecorderHook = true;
+        this.__lrvxIsBinaryLogRecorderHook = true;
       }
       destroy() {
-        if (this._h) { __flox_blrh_destroy(this._h); this._h = null; }
+        if (this._h) { __lrvx_blrh_destroy(this._h); this._h = null; }
       }
       addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision) {
-        __flox_blrh_add_symbol(this._h, symbolId, name || "", base || "", quote || "",
+        __lrvx_blrh_add_symbol(this._h, symbolId, name || "", base || "", quote || "",
                                pricePrecision === undefined ? 8 : pricePrecision,
                                qtyPrecision === undefined ? 8 : qtyPrecision);
       }
-      flush() { __flox_blrh_flush(this._h); }
-      stats() { return __flox_blrh_stats(this._h); }
-      _asRecorderHandle() { return __flox_blrh_as_recorder(this._h); }
+      flush() { __lrvx_blrh_flush(this._h); }
+      stats() { return __lrvx_blrh_stats(this._h); }
+      _asRecorderHandle() { return __lrvx_blrh_as_recorder(this._h); }
     }
 
     class Partitioner {
-      constructor(dataDir) { this._h = __flox_part_create(dataDir); }
-      destroy() { __flox_part_destroy(this._h); }
+      constructor(dataDir) { this._h = __lrvx_part_create(dataDir); }
+      destroy() { __lrvx_part_destroy(this._h); }
       byTime(numPartitions, warmupNs) {
-        return __flox_part_by_time(this._h, numPartitions || 2, warmupNs || 0);
+        return __lrvx_part_by_time(this._h, numPartitions || 2, warmupNs || 0);
       }
       byDuration(durationNs, warmupNs) {
-        return __flox_part_by_duration(this._h, durationNs, warmupNs || 0);
+        return __lrvx_part_by_duration(this._h, durationNs, warmupNs || 0);
       }
       byCalendar(unit, warmupNs) {
-        return __flox_part_by_calendar(this._h, unit || 0, warmupNs || 0);
+        return __lrvx_part_by_calendar(this._h, unit || 0, warmupNs || 0);
       }
-      bySymbol(symbols) { return __flox_part_by_symbol(this._h, symbols || []); }
-      perSymbol() { return __flox_part_per_symbol(this._h); }
+      bySymbol(symbols) { return __lrvx_part_by_symbol(this._h, symbols || []); }
+      perSymbol() { return __lrvx_part_per_symbol(this._h); }
       byEventCount(eventsPerPartition) {
-        return __flox_part_by_event_count(this._h, eventsPerPartition);
+        return __lrvx_part_by_event_count(this._h, eventsPerPartition);
       }
     }
 
@@ -547,15 +547,15 @@ void FloxJsStrategy::loadStdlib()
     // still hand over a plain Number, and Array.prototype.sort insists on a
     // Number back from its comparator (a BigInt difference makes it treat
     // every pair as equal) -- both conversions live here.
-    function __floxToNs(ts) {
+    function __lrvxToNs(ts) {
       return typeof ts === "bigint" ? ts : BigInt(Math.trunc(Number(ts)));
     }
-    function __floxCmpNs(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }
+    function __lrvxCmpNs(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }
 
     class SignalBuilder {
       constructor() { this._entries = []; }
       _add(ts, side, qty, price, orderType, symbol) {
-        this._entries.push({ tsNs: __floxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
+        this._entries.push({ tsNs: __lrvxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
       }
       buy(ts, qty, symbol) { this._add(ts, 0, qty, 0, 0, symbol); }
       sell(ts, qty, symbol) { this._add(ts, 1, qty, 0, 0, symbol); }
@@ -563,7 +563,7 @@ void FloxJsStrategy::loadStdlib()
       limitSell(ts, price, qty, symbol) { this._add(ts, 1, qty, price, 1, symbol); }
       get length() { return this._entries.length; }
       clear() { this._entries = []; }
-      sorted() { return this._entries.slice().sort(function(a, b) { return __floxCmpNs(a.tsNs, b.tsNs); }); }
+      sorted() { return this._entries.slice().sort(function(a, b) { return __lrvxCmpNs(a.tsNs, b.tsNs); }); }
     }
 
     class Engine {
@@ -576,9 +576,9 @@ void FloxJsStrategy::loadStdlib()
       _canon(symbol) { return (!symbol || symbol === "") ? "__default__" : symbol; }
       loadCsv(path, symbol) {
         var key = this._canon(symbol);
-        var bars = __flox_load_csv(path);
+        var bars = __lrvx_load_csv(path);
         if (!this._symbols[key]) { this._symbols[key] = bars; this._symbolOrder.push(key); }
-        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return __floxCmpNs(__floxToNs(a.ts), __floxToNs(b.ts));}); }
+        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return __lrvxCmpNs(__lrvxToNs(a.ts), __lrvxToNs(b.ts));}); }
       }
       get barCount() {
         var total = 0;
@@ -602,10 +602,10 @@ void FloxJsStrategy::loadStdlib()
           var key = this._symbolOrder[i];
           var bars = this._symbols[key];
           for (var j = 0; j < bars.length; j++) {
-            merged.push({ tsNs: __floxToNs(bars[j].ts), key: key, bar: bars[j] });
+            merged.push({ tsNs: __lrvxToNs(bars[j].ts), key: key, bar: bars[j] });
           }
         }
-        merged.sort(function(a, b) { return __floxCmpNs(a.tsNs, b.tsNs); });
+        merged.sort(function(a, b) { return __lrvxCmpNs(a.tsNs, b.tsNs); });
 
         var sorted = signals.sorted();
         var sigIdx = 0;
@@ -646,70 +646,70 @@ void FloxJsStrategy::loadStdlib()
       }
     }
 
-    var flox = {
+    var lrvx = {
       register: function(strategy) {
-        __flox_registered_strategy = strategy;
+        __lrvx_registered_strategy = strategy;
       },
-      correlation: function(x, y) { return __flox_stat_correlation(x, y); },
-      profitFactor: function(pnl) { return __flox_stat_profit_factor(pnl); },
-      winRate: function(pnl) { return __flox_stat_win_rate(pnl); },
-      bootstrapCI: function(data, confidence, samples) { return __flox_stat_bootstrap_ci(data, confidence, samples); },
-      permutationTest: function(g1, g2, n) { return __flox_stat_permutation_test(g1, g2, n); },
-      validateSegment: function(path) { return __flox_segment_validate(path); },
-      mergeSegments: function(inputDir, outputPath) { return __flox_segment_merge(inputDir, outputPath); },
+      correlation: function(x, y) { return __lrvx_stat_correlation(x, y); },
+      profitFactor: function(pnl) { return __lrvx_stat_profit_factor(pnl); },
+      winRate: function(pnl) { return __lrvx_stat_win_rate(pnl); },
+      bootstrapCI: function(data, confidence, samples) { return __lrvx_stat_bootstrap_ci(data, confidence, samples); },
+      permutationTest: function(g1, g2, n) { return __lrvx_stat_permutation_test(g1, g2, n); },
+      validateSegment: function(path) { return __lrvx_segment_validate(path); },
+      mergeSegments: function(inputDir, outputPath) { return __lrvx_segment_merge(inputDir, outputPath); },
 
       // Aggregators — each takes (timestamps, prices, quantities, sides, param)
       timeBars: function(ts, px, qty, sides, intervalNs) {
-        return __flox_agg_time(ts, px, qty, sides, intervalNs);
+        return __lrvx_agg_time(ts, px, qty, sides, intervalNs);
       },
       tickBars: function(ts, px, qty, sides, ticksPerBar) {
-        return __flox_agg_tick(ts, px, qty, sides, ticksPerBar);
+        return __lrvx_agg_tick(ts, px, qty, sides, ticksPerBar);
       },
       volumeBars: function(ts, px, qty, sides, volumePerBar) {
-        return __flox_agg_volume(ts, px, qty, sides, volumePerBar);
+        return __lrvx_agg_volume(ts, px, qty, sides, volumePerBar);
       },
       rangeBars: function(ts, px, qty, sides, rangeSize) {
-        return __flox_agg_range(ts, px, qty, sides, rangeSize);
+        return __lrvx_agg_range(ts, px, qty, sides, rangeSize);
       },
       renkoBars: function(ts, px, qty, sides, brickSize) {
-        return __flox_agg_renko(ts, px, qty, sides, brickSize);
+        return __lrvx_agg_renko(ts, px, qty, sides, brickSize);
       },
       heikinBars: function(ts, px, qty, sides, intervalNs) {
-        return __flox_agg_heikin(ts, px, qty, sides, intervalNs);
+        return __lrvx_agg_heikin(ts, px, qty, sides, intervalNs);
       },
 
       // Extended segment ops
       mergeDir: function(inputDir, outputDir) {
-        return __flox_seg_merge_dir(inputDir, outputDir);
+        return __lrvx_seg_merge_dir(inputDir, outputDir);
       },
       splitSegment: function(inputPath, outputDir, mode, timeIntervalNs, eventsPerFile) {
-        return __flox_seg_split(inputPath, outputDir, mode || 0,
+        return __lrvx_seg_split(inputPath, outputDir, mode || 0,
                                 timeIntervalNs || 0, eventsPerFile || 0);
       },
       exportSegment: function(inputPath, outputPath, format, fromNs, toNs, symbols) {
-        return __flox_seg_export(inputPath, outputPath, format || 0,
+        return __lrvx_seg_export(inputPath, outputPath, format || 0,
                                  fromNs || 0, toNs || 0, symbols || []);
       },
       validateSegmentFull: function(path, verifyCrc, verifyTimestamps) {
-        return __flox_seg_validate_full(path, verifyCrc ? 1 : 0, verifyTimestamps ? 1 : 0);
+        return __lrvx_seg_validate_full(path, verifyCrc ? 1 : 0, verifyTimestamps ? 1 : 0);
       },
-      validateDataset: function(dataDir) { return __flox_dataset_validate(dataDir); },
+      validateDataset: function(dataDir) { return __lrvx_dataset_validate(dataDir); },
       recompressSegment: function(inputPath, outputPath, level) {
-        return __flox_seg_recompress(inputPath, outputPath, level || 0);
+        return __lrvx_seg_recompress(inputPath, outputPath, level || 0);
       },
       extractSymbols: function(inputPath, outputDir, symbols) {
-        return __flox_seg_extract_symbols(inputPath, outputDir, symbols || []);
+        return __lrvx_seg_extract_symbols(inputPath, outputDir, symbols || []);
       },
       extractTimeRange: function(inputPath, outputPath, fromNs, toNs) {
-        return __flox_seg_extract_time(inputPath, outputPath, fromNs || 0, toNs || 0);
+        return __lrvx_seg_extract_time(inputPath, outputPath, fromNs || 0, toNs || 0);
       },
 
-      loadCsv: function(path) { return __flox_load_csv(path); },
+      loadCsv: function(path) { return __lrvx_load_csv(path); },
 
-      // Forward-looking labels (research-only). See flox/targets.js.
-      targets: __floxTargets,
+      // Forward-looking labels (research-only). See lrvx/targets.js.
+      targets: __lrvxTargets,
 
-      // Latency models (Phase 1 sampling primitive). See flox/latency.js.
+      // Latency models (Phase 1 sampling primitive). See lrvx/latency.js.
       ConstantLatency: ConstantLatency,
       GaussianLatency: GaussianLatency,
       ExponentialLatency: ExponentialLatency,
@@ -718,7 +718,7 @@ void FloxJsStrategy::loadStdlib()
       // Tape diff: replay-equivalence localization. Returns an object
       // matching the Python TapeDiff dataclass shape.
       tapeDiff: function(left, right, opts) {
-        return __flox_tape_diff(left, right, opts || {});
+        return __lrvx_tape_diff(left, right, opts || {});
       },
 
       // Delta book compression: encode L2 snapshots as anchor +
@@ -726,71 +726,71 @@ void FloxJsStrategy::loadStdlib()
       DeltaBookEncoder: class {
         constructor(opts) {
           var o = opts || {};
-          this._h = __flox_delta_book_encoder_create(o.anchorEvery || 100);
+          this._h = __lrvx_delta_book_encoder_create(o.anchorEvery || 100);
         }
         destroy() {
-          if (this._h) { __flox_delta_book_encoder_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_delta_book_encoder_destroy(this._h); this._h = null; }
         }
         encode(symbolId, bids, asks) {
-          return __flox_delta_book_encoder_encode(this._h, symbolId, bids || [], asks || []);
+          return __lrvx_delta_book_encoder_encode(this._h, symbolId, bids || [], asks || []);
         }
       },
       DeltaBookReplayer: class {
-        constructor() { this._h = __flox_delta_book_replayer_create(); }
+        constructor() { this._h = __lrvx_delta_book_replayer_create(); }
         destroy() {
-          if (this._h) { __flox_delta_book_replayer_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_delta_book_replayer_destroy(this._h); this._h = null; }
         }
         apply(type, symbolId, bids, asks) {
-          return __flox_delta_book_replayer_apply(this._h, type, symbolId, bids || [], asks || []);
+          return __lrvx_delta_book_replayer_apply(this._h, type, symbolId, bids || [], asks || []);
         }
       },
 
-      // .floxrun strategy-trace recorder + reader.
+      // .lrvxrun strategy-trace recorder + reader.
       TraceRecorder: class {
         constructor(opts) {
-          this._h = __flox_run_recorder_create(opts || {});
+          this._h = __lrvx_run_recorder_create(opts || {});
         }
         destroy() {
-          if (this._h) { __flox_run_recorder_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_run_recorder_destroy(this._h); this._h = null; }
         }
-        addTapeRef(opts) { __flox_run_recorder_add_tape_ref(this._h, opts || {}); }
-        setRunEndedNs(ns) { __flox_run_recorder_set_run_ended_ns(this._h, ns); }
-        writeSignal(opts) { __flox_run_recorder_write_signal(this._h, opts); }
-        writeOrderEvent(opts) { __flox_run_recorder_write_order_event(this._h, opts); }
-        writeFill(opts) { __flox_run_recorder_write_fill(this._h, opts); }
-        close() { __flox_run_recorder_close(this._h); }
+        addTapeRef(opts) { __lrvx_run_recorder_add_tape_ref(this._h, opts || {}); }
+        setRunEndedNs(ns) { __lrvx_run_recorder_set_run_ended_ns(this._h, ns); }
+        writeSignal(opts) { __lrvx_run_recorder_write_signal(this._h, opts); }
+        writeOrderEvent(opts) { __lrvx_run_recorder_write_order_event(this._h, opts); }
+        writeFill(opts) { __lrvx_run_recorder_write_fill(this._h, opts); }
+        close() { __lrvx_run_recorder_close(this._h); }
       },
       TraceReader: class {
-        constructor(path) { this._h = __flox_run_reader_open(path); }
+        constructor(path) { this._h = __lrvx_run_reader_open(path); }
         destroy() {
-          if (this._h) { __flox_run_reader_close(this._h); this._h = null; }
+          if (this._h) { __lrvx_run_reader_close(this._h); this._h = null; }
         }
-        strategyId() { return __flox_run_reader_strategy_id(this._h); }
-        runStartedNs() { return __flox_run_reader_run_started_ns(this._h); }
-        runEndedNs() { return __flox_run_reader_run_ended_ns(this._h); }
-        readAllSignals() { return __flox_run_reader_signals(this._h); }
-        readAllOrderEvents() { return __flox_run_reader_orders(this._h); }
-        readAllFills() { return __flox_run_reader_fills(this._h); }
+        strategyId() { return __lrvx_run_reader_strategy_id(this._h); }
+        runStartedNs() { return __lrvx_run_reader_run_started_ns(this._h); }
+        runEndedNs() { return __lrvx_run_reader_run_ended_ns(this._h); }
+        readAllSignals() { return __lrvx_run_reader_signals(this._h); }
+        readAllOrderEvents() { return __lrvx_run_reader_orders(this._h); }
+        readAllFills() { return __lrvx_run_reader_fills(this._h); }
       },
 
       // Cross-binding parity test fixture for bar-close dispatch
       // ordering. Drives a MultiTimeframeAggregator + BarBus through
       // the C ABI; matches the pybind11 / NAPI / Codon surfaces.
       BarDispatchRecorder: class {
-        constructor() { this._h = __flox_bar_dispatch_recorder_create(); }
+        constructor() { this._h = __lrvx_bar_dispatch_recorder_create(); }
         destroy() {
-          if (this._h) { __flox_bar_dispatch_recorder_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_bar_dispatch_recorder_destroy(this._h); this._h = null; }
         }
         addTimeIntervalSeconds(seconds) {
-          return __flox_bar_dispatch_recorder_add_time_seconds(this._h, seconds);
+          return __lrvx_bar_dispatch_recorder_add_time_seconds(this._h, seconds);
         }
         onTrade(symbol, price, qty, tsNs) {
-          __flox_bar_dispatch_recorder_on_trade(this._h, symbol, price, qty, tsNs);
+          __lrvx_bar_dispatch_recorder_on_trade(this._h, symbol, price, qty, tsNs);
         }
-        finalize() { __flox_bar_dispatch_recorder_finalize(this._h); }
-        count() { return __flox_bar_dispatch_recorder_count(this._h); }
-        typeAt(i) { return __flox_bar_dispatch_recorder_type_at(this._h, i); }
-        paramAt(i) { return __flox_bar_dispatch_recorder_param_at(this._h, i); }
+        finalize() { __lrvx_bar_dispatch_recorder_finalize(this._h); }
+        count() { return __lrvx_bar_dispatch_recorder_count(this._h); }
+        typeAt(i) { return __lrvx_bar_dispatch_recorder_type_at(this._h, i); }
+        paramAt(i) { return __lrvx_bar_dispatch_recorder_param_at(this._h, i); }
       },
 
       // Execution algos: TWAP / VWAP / Iceberg / POV. The user
@@ -799,66 +799,66 @@ void FloxJsStrategy::loadStdlib()
       TWAPExecutor: class {
         constructor(opts) {
           var o = opts || {};
-          this._h = __flox_exec_twap_create(
+          this._h = __lrvx_exec_twap_create(
             o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
             (o.type === 'limit') ? 1 : 0, o.limitPrice || 0,
             o.durationNs, o.sliceCount, o.startTimeNs);
         }
-        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
-        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
-        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
-        submittedQty() { return __flox_exec_submitted_qty(this._h); }
-        filledQty() { return __flox_exec_filled_qty(this._h); }
-        remainingQty() { return __flox_exec_remaining_qty(this._h); }
-        isDone() { return __flox_exec_is_done(this._h); }
+        destroy() { if (this._h) { __lrvx_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __lrvx_exec_step(this._h, nowNs); }
+        reportFill(qty) { __lrvx_exec_report_fill(this._h, qty); }
+        submittedQty() { return __lrvx_exec_submitted_qty(this._h); }
+        filledQty() { return __lrvx_exec_filled_qty(this._h); }
+        remainingQty() { return __lrvx_exec_remaining_qty(this._h); }
+        isDone() { return __lrvx_exec_is_done(this._h); }
       },
       VWAPExecutor: class {
         constructor(opts) {
           var o = opts || {};
-          this._h = __flox_exec_vwap_create(
+          this._h = __lrvx_exec_vwap_create(
             o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
             (o.type === 'limit') ? 1 : 0, o.limitPrice || 0,
             o.volumeCurve || []);
         }
-        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
-        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
-        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
-        submittedQty() { return __flox_exec_submitted_qty(this._h); }
-        filledQty() { return __flox_exec_filled_qty(this._h); }
-        remainingQty() { return __flox_exec_remaining_qty(this._h); }
-        isDone() { return __flox_exec_is_done(this._h); }
+        destroy() { if (this._h) { __lrvx_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __lrvx_exec_step(this._h, nowNs); }
+        reportFill(qty) { __lrvx_exec_report_fill(this._h, qty); }
+        submittedQty() { return __lrvx_exec_submitted_qty(this._h); }
+        filledQty() { return __lrvx_exec_filled_qty(this._h); }
+        remainingQty() { return __lrvx_exec_remaining_qty(this._h); }
+        isDone() { return __lrvx_exec_is_done(this._h); }
       },
       IcebergExecutor: class {
         constructor(opts) {
           var o = opts || {};
-          this._h = __flox_exec_iceberg_create(
+          this._h = __lrvx_exec_iceberg_create(
             o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
             (o.type === 'limit') ? 1 : 0, o.limitPrice || 0, o.visibleQty);
         }
-        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
-        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
-        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
-        submittedQty() { return __flox_exec_submitted_qty(this._h); }
-        filledQty() { return __flox_exec_filled_qty(this._h); }
-        remainingQty() { return __flox_exec_remaining_qty(this._h); }
-        isDone() { return __flox_exec_is_done(this._h); }
+        destroy() { if (this._h) { __lrvx_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __lrvx_exec_step(this._h, nowNs); }
+        reportFill(qty) { __lrvx_exec_report_fill(this._h, qty); }
+        submittedQty() { return __lrvx_exec_submitted_qty(this._h); }
+        filledQty() { return __lrvx_exec_filled_qty(this._h); }
+        remainingQty() { return __lrvx_exec_remaining_qty(this._h); }
+        isDone() { return __lrvx_exec_is_done(this._h); }
       },
       POVExecutor: class {
         constructor(opts) {
           var o = opts || {};
-          this._h = __flox_exec_pov_create(
+          this._h = __lrvx_exec_pov_create(
             o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
             (o.type === 'limit') ? 1 : 0, o.limitPrice || 0,
             o.participationRate, o.minSliceQty || 0);
         }
-        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
-        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
-        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
-        observeVolume(qty) { __flox_exec_observe_volume(this._h, qty); }
-        submittedQty() { return __flox_exec_submitted_qty(this._h); }
-        filledQty() { return __flox_exec_filled_qty(this._h); }
-        remainingQty() { return __flox_exec_remaining_qty(this._h); }
-        isDone() { return __flox_exec_is_done(this._h); }
+        destroy() { if (this._h) { __lrvx_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __lrvx_exec_step(this._h, nowNs); }
+        reportFill(qty) { __lrvx_exec_report_fill(this._h, qty); }
+        observeVolume(qty) { __lrvx_exec_observe_volume(this._h, qty); }
+        submittedQty() { return __lrvx_exec_submitted_qty(this._h); }
+        filledQty() { return __lrvx_exec_filled_qty(this._h); }
+        remainingQty() { return __lrvx_exec_remaining_qty(this._h); }
+        isDone() { return __lrvx_exec_is_done(this._h); }
       },
 
       // Portfolio risk aggregator. C ABI handle-based; JS class
@@ -866,80 +866,80 @@ void FloxJsStrategy::loadStdlib()
       PortfolioRiskAggregator: class {
         constructor(opts) {
           var o = opts || {};
-          this._h = __flox_portfolio_risk_create(o.rules || {}, o.initialEquity || 0);
+          this._h = __lrvx_portfolio_risk_create(o.rules || {}, o.initialEquity || 0);
         }
         destroy() {
-          if (this._h) { __flox_portfolio_risk_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_portfolio_risk_destroy(this._h); this._h = null; }
         }
         update(name, fields) {
-          __flox_portfolio_risk_update(this._h, name, fields || {});
+          __lrvx_portfolio_risk_update(this._h, name, fields || {});
         }
-        remove(name) { __flox_portfolio_risk_remove(this._h, name); }
-        resetKillSwitch() { __flox_portfolio_risk_reset(this._h); }
+        remove(name) { __lrvx_portfolio_risk_remove(this._h, name); }
+        resetKillSwitch() { __lrvx_portfolio_risk_reset(this._h); }
         checkOrder(strategy, notional, side) {
-          return __flox_portfolio_risk_check_order(this._h, strategy, notional, side);
+          return __lrvx_portfolio_risk_check_order(this._h, strategy, notional, side);
         }
-        snapshot() { return __flox_portfolio_risk_snapshot(this._h); }
+        snapshot() { return __lrvx_portfolio_risk_snapshot(this._h); }
       },
 
       IndicatorGraph: class {
         constructor() {
-          this._h = __flox_graph_create();
+          this._h = __lrvx_graph_create();
         }
         destroy() {
-          if (this._h) { __flox_graph_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_graph_destroy(this._h); this._h = null; }
         }
         setBars(symbol, close, high, low, volume) {
-          __flox_graph_set_bars(this._h, symbol, close, high || null,
+          __lrvx_graph_set_bars(this._h, symbol, close, high || null,
                                 low || null, volume || null);
         }
         addNode(name, deps, fn) {
-          __flox_graph_add_node(this._h, name, deps || [], fn, this);
+          __lrvx_graph_add_node(this._h, name, deps || [], fn, this);
         }
-        require(symbol, name) { return __flox_graph_require(this._h, symbol, name); }
-        get(symbol, name) { return __flox_graph_get(this._h, symbol, name); }
-        close(symbol) { return __flox_graph_close(this._h, symbol); }
-        high(symbol) { return __flox_graph_high(this._h, symbol); }
-        low(symbol) { return __flox_graph_low(this._h, symbol); }
-        volume(symbol) { return __flox_graph_volume(this._h, symbol); }
-        invalidate(symbol) { __flox_graph_invalidate(this._h, symbol); }
-        invalidateAll() { __flox_graph_invalidate_all(this._h); }
+        require(symbol, name) { return __lrvx_graph_require(this._h, symbol, name); }
+        get(symbol, name) { return __lrvx_graph_get(this._h, symbol, name); }
+        close(symbol) { return __lrvx_graph_close(this._h, symbol); }
+        high(symbol) { return __lrvx_graph_high(this._h, symbol); }
+        low(symbol) { return __lrvx_graph_low(this._h, symbol); }
+        volume(symbol) { return __lrvx_graph_volume(this._h, symbol); }
+        invalidate(symbol) { __lrvx_graph_invalidate(this._h, symbol); }
+        invalidateAll() { __lrvx_graph_invalidate_all(this._h); }
       },
 
       StreamingIndicatorGraph: class {
         constructor() {
-          this._h = __flox_streaming_create();
+          this._h = __lrvx_streaming_create();
         }
         destroy() {
-          if (this._h) { __flox_streaming_destroy(this._h); this._h = null; }
+          if (this._h) { __lrvx_streaming_destroy(this._h); this._h = null; }
         }
         addNode(name, deps, fn) {
-          __flox_streaming_add_node(this._h, name, deps || [], fn, this);
+          __lrvx_streaming_add_node(this._h, name, deps || [], fn, this);
         }
         step(symbol, close, high, low, volume) {
-          __flox_streaming_step(this._h, symbol, close,
+          __lrvx_streaming_step(this._h, symbol, close,
                                 high !== undefined ? high : null,
                                 low !== undefined ? low : null,
                                 volume !== undefined ? volume : null);
         }
-        current(symbol, name) { return __flox_streaming_current(this._h, symbol, name); }
-        barCount(symbol) { return __flox_streaming_bar_count(this._h, symbol); }
-        reset(symbol) { __flox_streaming_reset(this._h, symbol); }
-        resetAll() { __flox_streaming_reset_all(this._h); }
-        close(symbol) { return __flox_streaming_close(this._h, symbol); }
-        high(symbol) { return __flox_streaming_high(this._h, symbol); }
-        low(symbol) { return __flox_streaming_low(this._h, symbol); }
-        volume(symbol) { return __flox_streaming_volume(this._h, symbol); }
+        current(symbol, name) { return __lrvx_streaming_current(this._h, symbol, name); }
+        barCount(symbol) { return __lrvx_streaming_bar_count(this._h, symbol); }
+        reset(symbol) { __lrvx_streaming_reset(this._h, symbol); }
+        resetAll() { __lrvx_streaming_reset_all(this._h); }
+        close(symbol) { return __lrvx_streaming_close(this._h, symbol); }
+        high(symbol) { return __lrvx_streaming_high(this._h, symbol); }
+        low(symbol) { return __lrvx_streaming_low(this._h, symbol); }
+        volume(symbol) { return __lrvx_streaming_volume(this._h, symbol); }
       }
     };
   )";
-  if (!_engine.eval(registerCode, "<flox_register>"))
+  if (!_engine.eval(registerCode, "<lrvx_register>"))
   {
-    throw std::runtime_error("Failed to set up flox.register: " + _engine.getErrorMessage());
+    throw std::runtime_error("Failed to set up lrvx.register: " + _engine.getErrorMessage());
   }
 }
 
-void FloxJsStrategy::loadScript(const std::string& path)
+void LrvxJsStrategy::loadScript(const std::string& path)
 {
   if (!_engine.loadFile(path))
   {
@@ -947,14 +947,14 @@ void FloxJsStrategy::loadScript(const std::string& path)
   }
 
   // Get the registered strategy (optional -- scripts can run without one)
-  _strategyObj = _engine.getGlobalProperty("__flox_registered_strategy");
+  _strategyObj = _engine.getGlobalProperty("__lrvx_registered_strategy");
   if (!JS_IsNull(_strategyObj) && !JS_IsUndefined(_strategyObj))
   {
     resolveSymbols();
   }
 }
 
-void FloxJsStrategy::resolveSymbols()
+void LrvxJsStrategy::resolveSymbols()
 {
   auto* ctx = _engine.context();
 
@@ -963,7 +963,7 @@ void FloxJsStrategy::resolveSymbols()
   std::string defaultExchange;
   if (JS_IsString(exchangeVal))
   {
-    flox::JsCString s(ctx, exchangeVal);
+    lrvx::JsCString s(ctx, exchangeVal);
     if (s)
     {
       defaultExchange = s;
@@ -984,7 +984,7 @@ void FloxJsStrategy::resolveSymbols()
   for (uint32_t i = 0; i < len; i++)
   {
     JSValue elem = JS_GetPropertyUint32(ctx, namesVal, i);
-    flox::JsCString nameStr(ctx, elem);
+    lrvx::JsCString nameStr(ctx, elem);
     std::string symName = nameStr ? nameStr : "";
     JS_FreeValue(ctx, elem);
 
@@ -1006,10 +1006,10 @@ void FloxJsStrategy::resolveSymbols()
 
     // Resolve or register the symbol
     uint32_t symId = 0;
-    FloxRegistryHandle regHandle = static_cast<FloxRegistryHandle>(&_registry);
-    if (!flox_registry_get_symbol_id(regHandle, exchange.c_str(), symbol.c_str(), &symId))
+    LrvxRegistryHandle regHandle = static_cast<LrvxRegistryHandle>(&_registry);
+    if (!lrvx_registry_get_symbol_id(regHandle, exchange.c_str(), symbol.c_str(), &symId))
     {
-      symId = flox_registry_add_symbol(regHandle, exchange.c_str(), symbol.c_str(), 0.01);
+      symId = lrvx_registry_add_symbol(regHandle, exchange.c_str(), symbol.c_str(), 0.01);
     }
 
     _symbolIds.push_back(symId);
@@ -1033,29 +1033,29 @@ void FloxJsStrategy::resolveSymbols()
   JS_SetPropertyStr(ctx, _strategyObj, "_reverseMap", reverseMap);
 }
 
-void FloxJsStrategy::injectHandle(FloxStrategyHandle handle)
+void LrvxJsStrategy::injectHandle(LrvxStrategyHandle handle)
 {
   auto* ctx = _engine.context();
   // Borrowed: the C++ side creates, keeps, and destroys this strategy
   // handle. JS only ever holds a reference to it, so the wrapper must
   // not free it on finalize -- hence nullptr here, not
-  // flox_strategy_destroy.
+  // lrvx_strategy_destroy.
   JSValue handleVal = createHandleObject(ctx, handle, nullptr);
   JS_SetPropertyStr(ctx, _strategyObj, "_handle", handleVal);
 }
 
-FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
+LrvxStrategyCallbacks LrvxJsStrategy::getCallbacks()
 {
-  FloxStrategyCallbacks cb{};
-  cb.on_trade = FloxJsStrategy::onTrade;
-  cb.on_book = FloxJsStrategy::onBook;
-  cb.on_bar = FloxJsStrategy::onBar;
-  cb.on_start = FloxJsStrategy::onStart;
-  cb.on_stop = FloxJsStrategy::onStop;
-  cb.on_fill = FloxJsStrategy::onFill;
-  cb.on_order_update = FloxJsStrategy::onOrderUpdate;
-  cb.on_queue_position_change = FloxJsStrategy::onQueuePositionChange;
-  cb.on_market_position_change = FloxJsStrategy::onMarketPositionChange;
+  LrvxStrategyCallbacks cb{};
+  cb.on_trade = LrvxJsStrategy::onTrade;
+  cb.on_book = LrvxJsStrategy::onBook;
+  cb.on_bar = LrvxJsStrategy::onBar;
+  cb.on_start = LrvxJsStrategy::onStart;
+  cb.on_stop = LrvxJsStrategy::onStop;
+  cb.on_fill = LrvxJsStrategy::onFill;
+  cb.on_order_update = LrvxJsStrategy::onOrderUpdate;
+  cb.on_queue_position_change = LrvxJsStrategy::onQueuePositionChange;
+  cb.on_market_position_change = LrvxJsStrategy::onMarketPositionChange;
   cb.user_data = this;
   return cb;
 }
@@ -1064,12 +1064,12 @@ FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
 // C callback implementations
 // ============================================================
 
-void FloxJsStrategy::invokeMethod(const char* jsPropName, int argc, JSValue* argv,
+void LrvxJsStrategy::invokeMethod(const char* jsPropName, int argc, JSValue* argv,
                                   const char* errLabel)
 {
   auto* jsCtx = _engine.context();
 
-  // A script that never called flox.register() leaves _strategyObj
+  // A script that never called lrvx.register() leaves _strategyObj
   // as JS_NULL. Every dispatcher used to look up a property on it anyway,
   // producing a TypeError that sat pending and got silently overwritten by
   // the next event. Bail out before doing anything observable.
@@ -1091,7 +1091,7 @@ void FloxJsStrategy::invokeMethod(const char* jsPropName, int argc, JSValue* arg
     JSValue ret = JS_Call(jsCtx, method, _strategyObj, argc, argv);
     if (JS_IsException(ret))
     {
-      std::cerr << "[flox-js] Error in " << errLabel << ": " << _engine.getErrorMessage()
+      std::cerr << "[lrvx-js] Error in " << errLabel << ": " << _engine.getErrorMessage()
                 << std::endl;
     }
     JS_FreeValue(jsCtx, ret);
@@ -1107,39 +1107,39 @@ void FloxJsStrategy::invokeMethod(const char* jsPropName, int argc, JSValue* arg
   }
 }
 
-void FloxJsStrategy::onTrade(void* userData, const FloxSymbolContext* ctx,
-                             const FloxTradeData* trade)
+void LrvxJsStrategy::onTrade(void* userData, const LrvxSymbolContext* ctx,
+                             const LrvxTradeData* trade)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeTradeObject(trade)};
   self->invokeMethod("_dispatchTrade", 2, args, "onTrade");
 }
 
-void FloxJsStrategy::onBook(void* userData, const FloxSymbolContext* ctx,
-                            const FloxBookData* book)
+void LrvxJsStrategy::onBook(void* userData, const LrvxSymbolContext* ctx,
+                            const LrvxBookData* book)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeBookObject(book)};
   self->invokeMethod("_dispatchBook", 2, args, "onBookUpdate");
 }
 
-void FloxJsStrategy::onBar(void* userData, const FloxSymbolContext* ctx,
-                           const FloxBarData* bar)
+void LrvxJsStrategy::onBar(void* userData, const LrvxSymbolContext* ctx,
+                           const LrvxBarData* bar)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeBarObject(bar)};
   self->invokeMethod("_dispatchBar", 2, args, "onBar");
 }
 
-void FloxJsStrategy::onStart(void* userData)
+void LrvxJsStrategy::onStart(void* userData)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   self->invokeMethod("onStart", 0, nullptr, "onStart");
 }
 
-void FloxJsStrategy::onStop(void* userData)
+void LrvxJsStrategy::onStop(void* userData)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   self->invokeMethod("onStop", 0, nullptr, "onStop");
 }
 
@@ -1147,20 +1147,20 @@ void FloxJsStrategy::onStop(void* userData)
 // JS object constructors
 // ============================================================
 
-JSValue FloxJsStrategy::makeCtxObject(const FloxSymbolContext* ctx)
+JSValue LrvxJsStrategy::makeCtxObject(const LrvxSymbolContext* ctx)
 {
   auto* c = _engine.context();
   JSValue obj = JS_NewObject(c);
   JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, ctx->symbol_id));
-  JS_SetPropertyStr(c, obj, "position", JS_NewFloat64(c, flox_quantity_to_double(ctx->position_raw)));
+  JS_SetPropertyStr(c, obj, "position", JS_NewFloat64(c, lrvx_quantity_to_double(ctx->position_raw)));
   // NaN when the position manager reports no cost basis. A zero here read as
   // a real entry price, which turned unrealized PnL into the full notional.
   JS_SetPropertyStr(c, obj, "avgEntryPrice",
                     JS_NewFloat64(c, ctx->has_avg_entry_price
-                                         ? flox_price_to_double(ctx->avg_entry_price_raw)
+                                         ? lrvx_price_to_double(ctx->avg_entry_price_raw)
                                          : std::numeric_limits<double>::quiet_NaN()));
   JS_SetPropertyStr(c, obj, "lastTradePrice",
-                    JS_NewFloat64(c, flox_price_to_double(ctx->last_trade_price_raw)));
+                    JS_NewFloat64(c, lrvx_price_to_double(ctx->last_trade_price_raw)));
   JS_SetPropertyStr(c, obj, "lastUpdateNs",
                     JS_NewBigInt64(c, static_cast<int64_t>(ctx->last_update_ns)));
 
@@ -1171,39 +1171,39 @@ JSValue FloxJsStrategy::makeCtxObject(const FloxSymbolContext* ctx)
 // null when a side has no best level. A book may be quoted at exactly zero,
 // so 0 is a price here, never a stand-in for "no quote"; the snapshot's
 // presence flags are what say.
-JSValue FloxJsStrategy::makeBookSnapshotObject(const FloxBookSnapshot* snap)
+JSValue LrvxJsStrategy::makeBookSnapshotObject(const LrvxBookSnapshot* snap)
 {
   auto* c = _engine.context();
   const bool both = snap->has_bid && snap->has_ask;
   JSValue obj = JS_NewObject(c);
   JS_SetPropertyStr(c, obj, "bidPrice",
-                    snap->has_bid ? JS_NewFloat64(c, flox_price_to_double(snap->bid_price_raw))
+                    snap->has_bid ? JS_NewFloat64(c, lrvx_price_to_double(snap->bid_price_raw))
                                   : JS_NULL);
   JS_SetPropertyStr(c, obj, "askPrice",
-                    snap->has_ask ? JS_NewFloat64(c, flox_price_to_double(snap->ask_price_raw))
+                    snap->has_ask ? JS_NewFloat64(c, lrvx_price_to_double(snap->ask_price_raw))
                                   : JS_NULL);
   JS_SetPropertyStr(c, obj, "midPrice",
-                    both ? JS_NewFloat64(c, flox_price_to_double(snap->mid_raw)) : JS_NULL);
+                    both ? JS_NewFloat64(c, lrvx_price_to_double(snap->mid_raw)) : JS_NULL);
   JS_SetPropertyStr(c, obj, "spread",
-                    both ? JS_NewFloat64(c, flox_price_to_double(snap->spread_raw)) : JS_NULL);
+                    both ? JS_NewFloat64(c, lrvx_price_to_double(snap->spread_raw)) : JS_NULL);
   return obj;
 }
 
-JSValue FloxJsStrategy::makeTradeObject(const FloxTradeData* trade)
+JSValue LrvxJsStrategy::makeTradeObject(const LrvxTradeData* trade)
 {
   auto* c = _engine.context();
   JSValue obj = JS_NewObject(c);
   JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, trade->symbol));
-  JS_SetPropertyStr(c, obj, "price", JS_NewFloat64(c, flox_price_to_double(trade->price_raw)));
+  JS_SetPropertyStr(c, obj, "price", JS_NewFloat64(c, lrvx_price_to_double(trade->price_raw)));
   JS_SetPropertyStr(c, obj, "qty",
-                    JS_NewFloat64(c, flox_quantity_to_double(trade->quantity_raw)));
+                    JS_NewFloat64(c, lrvx_quantity_to_double(trade->quantity_raw)));
   JS_SetPropertyStr(c, obj, "isBuy", JS_NewBool(c, trade->is_buy != 0));
   JS_SetPropertyStr(c, obj, "timestampNs",
                     JS_NewBigInt64(c, static_cast<int64_t>(trade->exchange_ts_ns)));
   return obj;
 }
 
-JSValue FloxJsStrategy::makeBookObject(const FloxBookData* book)
+JSValue LrvxJsStrategy::makeBookObject(const LrvxBookData* book)
 {
   auto* c = _engine.context();
   JSValue obj = JS_NewObject(c);
@@ -1215,7 +1215,7 @@ JSValue FloxJsStrategy::makeBookObject(const FloxBookData* book)
   return obj;
 }
 
-JSValue FloxJsStrategy::makeBarObject(const FloxBarData* bar)
+JSValue LrvxJsStrategy::makeBarObject(const LrvxBarData* bar)
 {
   auto* c = _engine.context();
   JSValue obj = JS_NewObject(c);
@@ -1223,14 +1223,14 @@ JSValue FloxJsStrategy::makeBarObject(const FloxBarData* bar)
   JS_SetPropertyStr(c, obj, "barType", JS_NewUint32(c, bar->bar_type));
   JS_SetPropertyStr(c, obj, "barTypeParam",
                     JS_NewFloat64(c, static_cast<double>(bar->bar_type_param)));
-  JS_SetPropertyStr(c, obj, "open", JS_NewFloat64(c, flox_price_to_double(bar->open_raw)));
-  JS_SetPropertyStr(c, obj, "high", JS_NewFloat64(c, flox_price_to_double(bar->high_raw)));
-  JS_SetPropertyStr(c, obj, "low", JS_NewFloat64(c, flox_price_to_double(bar->low_raw)));
-  JS_SetPropertyStr(c, obj, "close", JS_NewFloat64(c, flox_price_to_double(bar->close_raw)));
+  JS_SetPropertyStr(c, obj, "open", JS_NewFloat64(c, lrvx_price_to_double(bar->open_raw)));
+  JS_SetPropertyStr(c, obj, "high", JS_NewFloat64(c, lrvx_price_to_double(bar->high_raw)));
+  JS_SetPropertyStr(c, obj, "low", JS_NewFloat64(c, lrvx_price_to_double(bar->low_raw)));
+  JS_SetPropertyStr(c, obj, "close", JS_NewFloat64(c, lrvx_price_to_double(bar->close_raw)));
   JS_SetPropertyStr(c, obj, "volume",
-                    JS_NewFloat64(c, flox_quantity_to_double(bar->volume_raw)));
+                    JS_NewFloat64(c, lrvx_quantity_to_double(bar->volume_raw)));
   JS_SetPropertyStr(c, obj, "buyVolume",
-                    JS_NewFloat64(c, flox_quantity_to_double(bar->buy_volume_raw)));
+                    JS_NewFloat64(c, lrvx_quantity_to_double(bar->buy_volume_raw)));
   JS_SetPropertyStr(c, obj, "startTimeNs",
                     JS_NewBigInt64(c, static_cast<int64_t>(bar->start_time_ns)));
   JS_SetPropertyStr(c, obj, "endTimeNs",
@@ -1311,11 +1311,11 @@ const char* jsMarketPositionName(uint8_t p)
 }
 const char* jsOrderTypeName(uint8_t t)
 {
-  return flox::capi::orderTypeNameUpper(t);
+  return lrvx::capi::orderTypeNameUpper(t);
 }
 }  // namespace
 
-JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
+JSValue LrvxJsStrategy::makeOrderEventObject(const LrvxOrderEventData* ev)
 {
   auto* c = _engine.context();
   JSValue obj = JS_NewObject(c);
@@ -1333,9 +1333,9 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
   JS_SetPropertyStr(c, obj, "status",
                     JS_NewString(c, jsOrderEventStatusName(ev->status)));
   JS_SetPropertyStr(c, obj, "fillQty",
-                    JS_NewFloat64(c, flox_quantity_to_double(ev->fill_qty_raw)));
+                    JS_NewFloat64(c, lrvx_quantity_to_double(ev->fill_qty_raw)));
   JS_SetPropertyStr(c, obj, "fillPrice",
-                    JS_NewFloat64(c, flox_price_to_double(ev->fill_price_raw)));
+                    JS_NewFloat64(c, lrvx_price_to_double(ev->fill_price_raw)));
   JS_SetPropertyStr(c, obj, "exchangeTsNs",
                     JS_NewBigInt64(c, static_cast<int64_t>(ev->exchange_ts_ns)));
   if (ev->reject_reason)
@@ -1347,9 +1347,9 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
     JS_SetPropertyStr(c, obj, "rejectReason", JS_NULL);
   }
   JS_SetPropertyStr(c, obj, "queueAhead",
-                    JS_NewFloat64(c, flox_quantity_to_double(ev->queue_ahead_raw)));
+                    JS_NewFloat64(c, lrvx_quantity_to_double(ev->queue_ahead_raw)));
   JS_SetPropertyStr(c, obj, "queueTotal",
-                    JS_NewFloat64(c, flox_quantity_to_double(ev->queue_total_raw)));
+                    JS_NewFloat64(c, lrvx_quantity_to_double(ev->queue_total_raw)));
   const char* mpName = jsMarketPositionName(ev->market_position);
   if (mpName[0] != '\0')
   {
@@ -1393,37 +1393,37 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
   return obj;
 }
 
-void FloxJsStrategy::onFill(void* userData, const FloxSymbolContext* ctx,
-                            const FloxOrderEventData* ev)
+void LrvxJsStrategy::onFill(void* userData, const LrvxSymbolContext* ctx,
+                            const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
   self->invokeMethod("_dispatchFill", 2, args, "onFill");
 }
 
-void FloxJsStrategy::onOrderUpdate(void* userData, const FloxSymbolContext* ctx,
-                                   const FloxOrderEventData* ev)
+void LrvxJsStrategy::onOrderUpdate(void* userData, const LrvxSymbolContext* ctx,
+                                   const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
   self->invokeMethod("_dispatchOrderUpdate", 2, args, "onOrderUpdate");
 }
 
-void FloxJsStrategy::onQueuePositionChange(void* userData, const FloxSymbolContext* ctx,
-                                           const FloxOrderEventData* ev)
+void LrvxJsStrategy::onQueuePositionChange(void* userData, const LrvxSymbolContext* ctx,
+                                           const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
   self->invokeMethod("_dispatchQueuePositionChange", 2, args, "onQueuePositionChange");
 }
 
-void FloxJsStrategy::onMarketPositionChange(void* userData,
-                                            const FloxSymbolContext* ctx,
-                                            const FloxOrderEventData* ev)
+void LrvxJsStrategy::onMarketPositionChange(void* userData,
+                                            const LrvxSymbolContext* ctx,
+                                            const LrvxOrderEventData* ev)
 {
-  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* self = static_cast<LrvxJsStrategy*>(userData);
   JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
   self->invokeMethod("_dispatchMarketPositionChange", 2, args, "onMarketPositionChange");
 }
 
-}  // namespace flox
+}  // namespace lrvx

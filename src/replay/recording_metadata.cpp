@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/recording_metadata.h"
+#include "lrvx/replay/recording_metadata.h"
 
 #include <chrono>
 #include <ctime>
@@ -15,7 +15,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -261,7 +261,7 @@ bool RecordingMetadata::save(const std::filesystem::path& path) const
 
   file << "  \"hostname\": \"" << escapeJson(hostname) << "\",\n";
   file << "  \"timezone\": \"" << escapeJson(timezone) << "\",\n";
-  file << "  \"flox_version\": \"" << escapeJson(flox_version) << "\",\n";
+  file << "  \"lrvx_version\": \"" << escapeJson(lrvx_version) << "\",\n";
   file << "\n";
 
   // Custom fields
@@ -331,7 +331,7 @@ std::optional<RecordingMetadata> RecordingMetadata::load(const std::filesystem::
 
   meta.hostname = extractStringValue(content, "hostname");
   meta.timezone = extractStringValue(content, "timezone");
-  meta.flox_version = extractStringValue(content, "flox_version");
+  meta.lrvx_version = extractStringValue(content, "lrvx_version");
 
   // Symbols array. The on-disk shape is well-defined since we write it
   // ourselves in save(): one inner object per entry with the same six
@@ -376,4 +376,4 @@ std::optional<RecordingMetadata> RecordingMetadata::load(const std::filesystem::
   return meta;
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

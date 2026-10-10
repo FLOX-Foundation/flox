@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -17,17 +17,17 @@
 #include <string>
 #include <vector>
 
-#include "flox/run/trace_reader.h"
-#include "flox/run/trace_recorder.h"
+#include "lrvx/run/trace_reader.h"
+#include "lrvx/run/trace_recorder.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 inline void bindRunTrace(py::module_& m)
 {
-  using namespace flox::run;
+  using namespace lrvx::run;
 
   py::enum_<OrderEventKind>(m, "OrderEventKind")
       .value("SUBMIT", OrderEventKind::Submit)
@@ -254,4 +254,4 @@ inline void bindRunTrace(py::module_& m)
   m.attr("ORDER_FLAG_IOC") = py::int_(OrderEventFlags::Ioc);
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

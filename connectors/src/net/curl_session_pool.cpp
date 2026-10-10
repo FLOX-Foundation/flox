@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-connectors/net/curl_session_pool.h"
+#include "lrvx-connectors/net/curl_session_pool.h"
 
 #include <stdexcept>
 
-namespace flox
+namespace lrvx
 {
 
 CurlSessionPool::CurlSessionPool(std::size_t size, std::size_t maxSize)
@@ -133,4 +133,4 @@ std::size_t CurlSessionPool::totalCreated() const
   return _totalCreated;
 }
 
-}  // namespace flox
+}  // namespace lrvx

@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 // the execution tracker fix, core finding 6 (second half).
 //
-// config::ORDER_TRACKER_CAPACITY exists, carries a FLOX_DEFAULT_ORDER_TRACKER_CAPACITY
+// config::ORDER_TRACKER_CAPACITY exists, carries a LRVX_DEFAULT_ORDER_TRACKER_CAPACITY
 // override hook, and is read by nothing. OrderTracker is default-constructed
 // everywhere and its unordered_map has no bound at all. The tracker has to
 // take the capacity, expose it, and honour it.
@@ -18,14 +18,14 @@
 // needs: OrderTracker() with the default capacity config::ORDER_TRACKER_CAPACITY;
 // needs: size_t OrderTracker::capacity() const noexcept;
 
-#include "flox/engine/engine_config.h"
-#include "flox/execution/order_tracker.h"
+#include "lrvx/engine/engine_config.h"
+#include "lrvx/execution/order_tracker.h"
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

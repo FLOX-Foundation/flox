@@ -7,7 +7,7 @@ extern "C"
 
 #include <string>
 
-namespace flox
+namespace lrvx
 {
 
 // Owning wrapper around JS_ToCString.
@@ -22,7 +22,7 @@ namespace flox
 //
 // The type removes the second obligation outright (the destructor frees)
 // and makes the first one hard to skip, because the natural spelling of a
-// call site now starts with FLOX_JS_CSTRING_OR_THROW below. The implicit
+// call site now starts with LRVX_JS_CSTRING_OR_THROW below. The implicit
 // conversion to const char* is deliberate: it keeps `f(ctx, s)` and
 // `s ? s : ""` reading the way they always did, so adopting the type at an
 // existing call site is a one-line change that cannot leave a stray free
@@ -85,14 +85,14 @@ inline JsCString jsOptionalCString(JSContext* ctx, int argc, JSValueConst* argv,
   return JsCString{ctx, argv[index]};
 }
 
-}  // namespace flox
+}  // namespace lrvx
 
 // Declares `name` and propagates the pending QuickJS exception when the
 // value is not convertible to a string. The exception QuickJS already set
 // says what went wrong ("cannot convert symbol to string", or whatever the
 // throwing toString threw), so it is passed through rather than replaced.
-#define FLOX_JS_CSTRING_OR_THROW(name, ctx, value) \
-  ::flox::JsCString name((ctx), (value));          \
+#define LRVX_JS_CSTRING_OR_THROW(name, ctx, value) \
+  ::lrvx::JsCString name((ctx), (value));          \
   if (!(name).ok())                                \
   {                                                \
     return JS_EXCEPTION;                           \
@@ -102,8 +102,8 @@ inline JsCString jsOptionalCString(JSContext* ctx, int argc, JSValueConst* argv,
   } while (0)
 
 // Same, for a loop body or any scope that must clean up before leaving.
-#define FLOX_JS_CSTRING_OR(name, ctx, value, action) \
-  ::flox::JsCString name((ctx), (value));            \
+#define LRVX_JS_CSTRING_OR(name, ctx, value, action) \
+  ::lrvx::JsCString name((ctx), (value));            \
   if (!(name).ok())                                  \
   {                                                  \
     action;                                          \

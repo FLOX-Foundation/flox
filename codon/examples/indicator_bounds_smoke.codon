@@ -5,19 +5,19 @@
 # inputs that reads garbage from whatever memory follows the short
 # array's allocation, on large inputs it segfaults.
 #
-# Also covers the flox.indicators / flox.tools `correlation` name
-# collision: flox.indicators has a rolling (List[float]) correlation
-# and flox.tools has a single-number Pearson correlation, and
+# Also covers the lrvx.indicators / lrvx.tools `correlation` name
+# collision: lrvx.indicators has a rolling (List[float]) correlation
+# and lrvx.tools has a single-number Pearson correlation, and
 # __init__.codon imports both `import *`. They are exposed under
 # different names (rolling_correlation vs correlation) so both are
 # reachable and neither silently shadows the other with the wrong
 # contract.
 
-from flox.indicators import (
+from lrvx.indicators import (
     atr, cci, chop, obv, vwap, cvd, parkinson_vol, rogers_satchell_vol,
     rolling_correlation, stochastic, adx,
 )
-from flox.tools import correlation as scalar_correlation
+from lrvx.tools import correlation as scalar_correlation
 
 failed = 0
 
@@ -72,11 +72,11 @@ check(len(rolling_correlation(long5, long5, 3)) == 5,
 
 # The two `correlation`s are reachable under different names and keep
 # their own contract: the rolling one returns a list, the scalar
-# Pearson one (imported explicitly from flox.tools) returns a float.
+# Pearson one (imported explicitly from lrvx.tools) returns a float.
 rc = rolling_correlation(long5, long5, 3)
 check(len(rc) == 5, "rolling_correlation returns one value per input element")
 sc = scalar_correlation(long5, long5)
-check(sc > 0.99, f"flox.tools.correlation is the scalar Pearson correlation (got {sc})")
+check(sc > 0.99, f"lrvx.tools.correlation is the scalar Pearson correlation (got {sc})")
 
 if failed:
     print(f"FAILED: {failed}")

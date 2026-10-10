@@ -29,7 +29,7 @@ for cand in ("build/python", "build-py/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py as flox  # noqa: E402
+import lrvx  # noqa: E402
 
 # Nanoseconds since epoch, with non-zero digits below the microsecond and
 # far above 2^53 (9007199254740992). At this magnitude the float64 spacing
@@ -37,8 +37,8 @@ import flox_py as flox  # noqa: E402
 TS_NS = [1_776_606_960_123_456_789, 1_776_607_020_123_456_789]
 
 
-def _engine_with_bars() -> "flox.Engine":
-    engine = flox.Engine(10_000.0, 0.0004)
+def _engine_with_bars() -> "lrvx.Engine":
+    engine = lrvx.Engine(10_000.0, 0.0004)
     engine.load_ohlcv(
         {
             "ts": np.array(TS_NS, dtype=np.int64),
@@ -79,7 +79,7 @@ class EngineTimestampDtype(unittest.TestCase):
         # not, if ts() rounds them onto a different bar.
         engine = _engine_with_bars()
         ts = engine.ts()
-        signals = flox.SignalBuilder()
+        signals = lrvx.SignalBuilder()
         signals.buy(int(ts[0]), 0.01)
         signals.sell(int(ts[1]), 0.01)
         stats = engine.run(signals)

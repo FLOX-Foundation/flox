@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/aggregators/peak.h"
+#include "lrvx/replay/aggregators/peak.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace flox::replay
+namespace lrvx::replay
 {
 
 namespace
@@ -267,4 +267,4 @@ void PeakAggregator::merge(const IAggregator& other)
   }
 }
 
-}  // namespace flox::replay
+}  // namespace lrvx::replay

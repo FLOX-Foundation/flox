@@ -47,7 +47,7 @@ batch function.
 Aggregate trades into fixed time intervals.
 
 ```python
-bars = flox.aggregate_time_bars(timestamps, prices, quantities, is_buy,
+bars = lrvx.aggregate_time_bars(timestamps, prices, quantities, is_buy,
                                  interval_seconds=60.0)
 ```
 
@@ -60,7 +60,7 @@ bars = flox.aggregate_time_bars(timestamps, prices, quantities, is_buy,
 Aggregate trades into bars with a fixed number of trades.
 
 ```python
-bars = flox.aggregate_tick_bars(timestamps, prices, quantities, is_buy,
+bars = lrvx.aggregate_tick_bars(timestamps, prices, quantities, is_buy,
                                  tick_count=100)
 ```
 
@@ -73,7 +73,7 @@ bars = flox.aggregate_tick_bars(timestamps, prices, quantities, is_buy,
 Aggregate trades into bars when cumulative volume exceeds a threshold.
 
 ```python
-bars = flox.aggregate_volume_bars(timestamps, prices, quantities, is_buy,
+bars = lrvx.aggregate_volume_bars(timestamps, prices, quantities, is_buy,
                                    volume_threshold=1000.0)
 ```
 
@@ -86,7 +86,7 @@ bars = flox.aggregate_volume_bars(timestamps, prices, quantities, is_buy,
 Aggregate trades into bars when price range exceeds a threshold.
 
 ```python
-bars = flox.aggregate_range_bars(timestamps, prices, quantities, is_buy,
+bars = lrvx.aggregate_range_bars(timestamps, prices, quantities, is_buy,
                                   range_size=10.0)
 ```
 
@@ -102,7 +102,7 @@ brick width closes the brick that was forming and synthesizes the bricks in betw
 the price from there to the trade in clean brick-size steps (see [bar types](../../explanation/bar-types.md#renko-bars)).
 
 ```python
-bars = flox.aggregate_renko_bars(timestamps, prices, quantities, is_buy,
+bars = lrvx.aggregate_renko_bars(timestamps, prices, quantities, is_buy,
                                   brick_size=50.0)
 ```
 
@@ -115,7 +115,7 @@ bars = flox.aggregate_renko_bars(timestamps, prices, quantities, is_buy,
 Aggregate trades into Heikin-Ashi bars (smoothed candlesticks).
 
 ```python
-bars = flox.aggregate_heikin_ashi_bars(timestamps, prices, quantities, is_buy,
+bars = lrvx.aggregate_heikin_ashi_bars(timestamps, prices, quantities, is_buy,
                                         interval_seconds=60.0)
 ```
 
@@ -129,10 +129,10 @@ bars = flox.aggregate_heikin_ashi_bars(timestamps, prices, quantities, is_buy,
 
 ```python
 import numpy as np
-import flox_py as flox
+import lrvx
 
 # Load trade data
-reader = flox.DataReader("./data")
+reader = lrvx.DataReader("./data")
 trades = reader.read_trades()
 
 ts = trades['exchange_ts_ns']
@@ -141,11 +141,11 @@ qty = trades['qty_raw'] / 1e8
 is_buy = (trades['side'] == 0).astype(np.uint8)   # PyTrade.side: 0 = buy
 
 # Create 1-minute time bars
-bars = flox.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=60.0)
+bars = lrvx.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=60.0)
 print(f"Generated {len(bars)} time bars")
 
 # Create 500-tick bars
-tick_bars = flox.aggregate_tick_bars(ts, px, qty, is_buy, tick_count=500)
+tick_bars = lrvx.aggregate_tick_bars(ts, px, qty, is_buy, tick_count=500)
 print(f"Generated {len(tick_bars)} tick bars")
 
 # Access bar data

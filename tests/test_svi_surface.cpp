@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 
-#include "flox/pricing/svi.h"
+#include "lrvx/pricing/svi.h"
 
 #include <cmath>
 #include <vector>
 
-using namespace flox::pricing;
+using namespace lrvx::pricing;
 
 namespace
 {

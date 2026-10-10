@@ -4,10 +4,10 @@
 #include <random>
 #include <vector>
 
-#include "flox/error/flox_error.h"
-#include "flox/indicator/adf.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/indicator/adf.h"
 
-using namespace flox::indicator;
+using namespace lrvx::indicator;
 
 namespace
 {
@@ -73,19 +73,19 @@ TEST(ADF, RegressionStringParse)
 TEST(ADF, InvalidRegressionThrows)
 {
   std::vector<double> y(20, 1.0);
-  EXPECT_THROW(adf(y, 1, std::string("xx")), flox::FloxError);
+  EXPECT_THROW(adf(y, 1, std::string("xx")), lrvx::LrvxError);
 }
 
 TEST(ADF, NaNInputThrows)
 {
   std::vector<double> y = {1.0, 2.0, std::nan(""), 4.0, 5.0};
-  EXPECT_THROW(adf(y, 1), flox::FloxError);
+  EXPECT_THROW(adf(y, 1), lrvx::LrvxError);
 }
 
 TEST(ADF, TooShortInputThrows)
 {
   std::vector<double> y = {1.0, 2.0, 3.0};
-  EXPECT_THROW(adf(y, 0), flox::FloxError);
+  EXPECT_THROW(adf(y, 0), lrvx::LrvxError);
 }
 
 TEST(ADF, ZeroLagWorks)

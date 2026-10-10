@@ -13,7 +13,7 @@ Run the same indicator pipeline across multiple symbols. The C++ engine ships a 
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
     # Either group manually...
     by_sym = {}
@@ -38,8 +38,8 @@ Run the same indicator pipeline across multiple symbols. The C++ engine ships a 
 === "C++"
 
     ```cpp
-    #include "flox/indicator/multi_symbol.h"
-    using namespace flox::indicator;
+    #include "lrvx/indicator/multi_symbol.h"
+    using namespace lrvx::indicator;
 
     // from BarEvents (each carries a symbol ID)
     auto data = partitionBySymbol(barEvents);
@@ -54,7 +54,7 @@ Run the same indicator pipeline across multiple symbols. The C++ engine ships a 
 
     ```python
     for sym_id, bars in by_sym.items():
-        ema = flox.EMA(50).compute(np.array([b.close for b in bars]))
+        ema = lrvx.EMA(50).compute(np.array([b.close for b in bars]))
         # ...
     ```
 
@@ -63,7 +63,7 @@ Run the same indicator pipeline across multiple symbols. The C++ engine ships a 
     ```javascript
     for (const [sym, bars] of bySym) {
       const closes = Float64Array.from(bars.map(b => b.close));
-      const ema = new flox.EMA(50).compute(closes);
+      const ema = new lrvx.EMA(50).compute(closes);
       // ...
     }
     ```
@@ -88,7 +88,7 @@ Indicator compute releases the GIL in Python, so threads/processes give real spe
 
     def compute_one(sym_id_and_bars):
         sym_id, bars = sym_id_and_bars
-        return sym_id, flox.EMA(50).compute(np.array([b.close for b in bars]))
+        return sym_id, lrvx.EMA(50).compute(np.array([b.close for b in bars]))
 
     with ProcessPoolExecutor() as pool:
         results = dict(pool.map(compute_one, by_sym.items()))

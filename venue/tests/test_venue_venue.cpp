@@ -1,22 +1,22 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/event_hash.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/market_data.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/sbe_order_entry_codec.h"
-#include "flox-venue/session_registry.h"
+#include "lrvx-venue/event_hash.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/market_data.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/sbe_order_entry_codec.h"
+#include "lrvx-venue/session_registry.h"
 
-#include "flox/clearing/fee_schedule.h"
+#include "lrvx/clearing/fee_schedule.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -31,9 +31,9 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {
@@ -117,7 +117,7 @@ uint64_t runReplay(const std::vector<std::pair<int64_t, InboundCommand>>& cmds, 
   uint64_t h = 1469598103934665603ULL;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { h = hashEvent(h, e); });
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, -1.0, 2.0);
   eng.setFeeSchedule(fs);
   eng.setLedger(&led, VENUE);
@@ -247,7 +247,7 @@ TEST(Venue, EngineSuite)
                                      md.onEvent(e, eng.engineTimeNs());
                                      registry.route(e);
                                      liveHash = hashEvent(liveHash, e); });
-  flox::FeeSchedule fs;
+  lrvx::FeeSchedule fs;
   fs.addTier(0.0, -1.0, 2.0);
   eng.setFeeSchedule(fs);
   eng.setLedger(&led, VENUE);

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,13 +10,13 @@
 #include <gtest/gtest.h>
 #include <atomic>
 
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/engine/abstract_subscriber.h"
-#include "flox/util/concurrency/spsc_queue.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/book/events/book_update_event.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/engine/abstract_subscriber.h"
+#include "lrvx/util/concurrency/spsc_queue.h"
 
-using namespace flox;
+using namespace lrvx;
 
 struct CountingMdSub : IMarketDataSubscriber
 {

@@ -19,7 +19,7 @@ Usage:
 
 The build directory is expected to be configured already:
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-SYMBOL_STATE_MAP = "include/flox/strategy/symbol_state_map.h"
-POSITION_TRACKER = "include/flox/position/position_tracker.h"
+SYMBOL_STATE_MAP = "include/lrvx/strategy/symbol_state_map.h"
+POSITION_TRACKER = "include/lrvx/position/position_tracker.h"
 
 TARGET = "test_multi_symbol_strategy"
 
@@ -286,7 +286,7 @@ def main() -> int:
     if not (BUILD / "CMakeCache.txt").is_file():
         raise SystemExit(
             f"{BUILD} is not configured; run\n"
-            "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLOX_BUILD_TESTS=ON"
+            "  cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLRVX_BUILD_TESTS=ON"
         )
 
     selected = [m for m in MUTATIONS if not args.only or m.name in args.only]

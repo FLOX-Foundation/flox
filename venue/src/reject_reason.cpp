@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox-venue/reject_reason.h"
+#include "lrvx-venue/reject_reason.h"
 
-namespace flox::venue
+namespace lrvx::venue
 {
 
 const char* toString(RejectReason r) noexcept
@@ -132,4 +132,4 @@ const char* toString(CancelReason r) noexcept
   return "?";
 }
 
-}  // namespace flox::venue
+}  // namespace lrvx::venue

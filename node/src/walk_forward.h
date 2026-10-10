@@ -5,17 +5,17 @@
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/bridge_strategy.h"
-#include "flox/capi/flox_capi.h"
-#include "flox/engine/symbol_registry.h"
 #include "hooks.h"
+#include "lrvx/capi/bridge_strategy.h"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/engine/symbol_registry.h"
 #include "strategy.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 // One walk-forward run keeps a vector of strategy hosts alive — each
@@ -26,12 +26,12 @@ struct WalkForwardCallContext
 {
   Napi::Env env;
   Napi::FunctionReference factory_fn;
-  flox::SymbolRegistry* reg;
+  lrvx::SymbolRegistry* reg;
   std::vector<std::unique_ptr<NodeStrategyHost>> hosts;
   uint32_t next_id{1};
 };
 
-inline FloxStrategyHandle walkForwardFactoryThunk(void* user_data,
+inline LrvxStrategyHandle walkForwardFactoryThunk(void* user_data,
                                                   uint64_t fold_index)
 {
   auto* ctx = static_cast<WalkForwardCallContext*>(user_data);
@@ -55,13 +55,13 @@ inline FloxStrategyHandle walkForwardFactoryThunk(void* user_data,
   }
   auto host = std::make_unique<NodeStrategyHost>(
       ctx->env, obj, ctx->reg, ctx->next_id++, syms);
-  FloxStrategyHandle handle =
-      static_cast<FloxStrategyHandle>(host->bridge.get());
+  LrvxStrategyHandle handle =
+      static_cast<LrvxStrategyHandle>(host->bridge.get());
   ctx->hosts.push_back(std::move(host));
   return handle;
 }
 
-inline Napi::Object statsToJsObj(Napi::Env env, const FloxBacktestStats& s)
+inline Napi::Object statsToJsObj(Napi::Env env, const LrvxBacktestStats& s)
 {
   auto obj = Napi::Object::New(env);
   obj.Set("totalTrades", Napi::Number::New(env, static_cast<double>(s.totalTrades)));
@@ -125,10 +125,10 @@ class WalkForwardRunnerNode
   }
 
  private:
-  flox::SymbolRegistry* _reg{nullptr};
+  lrvx::SymbolRegistry* _reg{nullptr};
   double _fee{0.0004};
   double _cap{10000.0};
-  FloxWalkForwardConfig _cfg{};
+  LrvxWalkForwardConfig _cfg{};
   Napi::FunctionReference _factory;
 
   Napi::Value setStrategyFactory(const Napi::CallbackInfo& info)
@@ -139,12 +139,12 @@ class WalkForwardRunnerNode
 
   Napi::Value runCsv(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value
+    return tryLrvx(info.Env(), [&]() -> Napi::Value
                    {
       auto env = info.Env();
       if (_factory.IsEmpty())
       {
-        throw flox::FloxError(
+        throw lrvx::LrvxError(
             "E_RUN_001",
             "WalkForwardRunner.runCsv called before setStrategyFactory.");
       }
@@ -159,15 +159,15 @@ class WalkForwardRunnerNode
       ctx.factory_fn = Napi::Persistent(_factory.Value());
 
       // First call with NULL out_buf to get the count.
-      uint32_t total = flox_walk_forward_run_csv(
-          static_cast<FloxRegistryHandle>(_reg), path.c_str(),
+      uint32_t total = lrvx_walk_forward_run_csv(
+          static_cast<LrvxRegistryHandle>(_reg), path.c_str(),
           symbol.c_str(), _fee, _cap, &_cfg,
           &walkForwardFactoryThunk, &ctx, nullptr, 0);
-      std::vector<FloxWalkForwardFold> folds(total);
+      std::vector<LrvxWalkForwardFold> folds(total);
       if (total > 0)
       {
-        flox_walk_forward_run_csv(
-            static_cast<FloxRegistryHandle>(_reg), path.c_str(),
+        lrvx_walk_forward_run_csv(
+            static_cast<LrvxRegistryHandle>(_reg), path.c_str(),
             symbol.c_str(), _fee, _cap, &_cfg,
             &walkForwardFactoryThunk, &ctx, folds.data(), total);
       }
@@ -193,4 +193,4 @@ class WalkForwardRunnerNode
   }
 };
 
-}  // namespace node_flox
+}  // namespace node_lrvx

@@ -7,7 +7,7 @@ Order flow and volume analysis tools: footprint bars, volume profile, and market
 Tracks bid/ask volume at each price level within a bar for order flow analysis.
 
 ```python
-fp = flox.FootprintBar(tick_size=0.01)
+fp = lrvx.FootprintBar(tick_size=0.01)
 ```
 
 | Parameter | Type | Description |
@@ -86,7 +86,7 @@ Reset all data.
 Volume distribution across price levels. Computes POC, value area, and per-level delta.
 
 ```python
-vp = flox.VolumeProfile(tick_size=0.01)
+vp = lrvx.VolumeProfile(tick_size=0.01)
 ```
 
 ### Methods
@@ -150,7 +150,7 @@ Reset all data.
 Market Profile (TPO) aggregator. Tracks price activity across time periods for auction theory analysis.
 
 ```python
-mp = flox.MarketProfile(tick_size=0.01, period_minutes=30, session_start_ns=start_ns)
+mp = lrvx.MarketProfile(tick_size=0.01, period_minutes=30, session_start_ns=start_ns)
 ```
 
 | Parameter | Type | Description |

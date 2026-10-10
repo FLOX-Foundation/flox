@@ -5,8 +5,8 @@
 Matching needs individual orders -- to keep time priority, cancel by id, and
 refill icebergs -- so the matcher's resting books are distinct from
 `NLevelOrderBook`, which aggregates per-level totals for market data. The
-performance book `LadderBook` lives in core (`flox/book/ladder_book.h`); the
-reference `MatchingBook` lives in the module (`flox-venue/matching_book.h`).
+performance book `LadderBook` lives in core (`lrvx/book/ladder_book.h`); the
+reference `MatchingBook` lives in the module (`lrvx-venue/matching_book.h`).
 
 | Book | Shape | Use |
 |---|---|---|
@@ -99,7 +99,7 @@ the test tree are unchanged.
 SymbolConfig cfg;
 cfg.id = 1;
 cfg.matchPolicy = MatchPolicy::ProRata;   // the shard, the router and replay all read this
-SequencedShard<> shard(cfg, "/var/lib/flox/sym1.journal");
+SequencedShard<> shard(cfg, "/var/lib/lrvx/sym1.journal");
 ```
 
 `configHash()` folds the policy, so the two rules do not share snapshots: a
@@ -318,7 +318,7 @@ operator action is one mistake away from needing a restart to undo.
 ### The session automaton
 
 Every trading-state change the venue has is one row of one table,
-`kSessionTransitions` in `flox-venue/engine/session.h`. Nine of the rows have
+`kSessionTransitions` in `lrvx-venue/engine/session.h`. Nine of the rows have
 an operator behind them (`AdminAction`); the other two the engine raises
 itself, when the price leaves the limit-up/limit-down band and when the timed
 pause that followed runs out.
@@ -335,7 +335,7 @@ exactly the state the close interrupted.
 
 The table below is GENERATED from the code. `test_venue_engine_session`
 regenerates it and fails if what is committed here differs, so the written
-automaton cannot drift from the running one; `FLOX_UPDATE_SESSION_TABLE=1`
+automaton cannot drift from the running one; `LRVX_UPDATE_SESSION_TABLE=1`
 rewrites it in place.
 
 <!-- generated: session transitions -->
@@ -557,7 +557,7 @@ in the template is the code that touches the book or the matcher -- `onNew`,
 `runAuction`, `repeg`, the expiry and mass-cancel loops -- plus the instrument
 config it owns and a thin delegate for every published method.
 
-Two kinds of file sit in `flox-venue/engine/`:
+Two kinds of file sit in `lrvx-venue/engine/`:
 
 - **`*.inl` -- fragments of the template.** `matching_engine.h` is the class:
   the nested types, the data members, and a declaration for every method, in
@@ -621,7 +621,7 @@ exception is described next). Where a component has to call back into engine
 state that is not its own, the callback arrives as `Hooks` -- a context
 pointer plus plain function pointers, built from captureless lambdas, so the
 seam costs an indirect call and no vtable. `SymbolConfig` lives in
-`flox-venue/symbol_config.h` rather than at the top of `matching_engine.h` so
+`lrvx-venue/symbol_config.h` rather than at the top of `matching_engine.h` so
 that a component can hold it by reference without including the engine that
 includes the component.
 

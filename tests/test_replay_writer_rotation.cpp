@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -10,17 +10,17 @@
 // Segment rotation on the compressed writer.
 //
 // WriterConfig::max_segment_bytes is the only bound on how large a single
-// .floxlog segment may grow. Every uncompressed write path consults it through
+// .lrvx segment may grow. Every uncompressed write path consults it through
 // maybeRotate(); the compressed path -- writeFrameToBlock, the single entry
 // point for all compressed writes -- never does. A compressed recording
 // therefore produces one unbounded segment no matter what the caller asked
 // for, which defeats partial reads, rsync-as-you-record and per-segment
 // recovery.
 
-#include "flox/common.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -30,8 +30,8 @@
 #include <fstream>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -47,7 +47,7 @@ class ReplayWriterRotationTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _dir = std::filesystem::temp_directory_path() / "flox_replay_writer_rotation";
+    _dir = std::filesystem::temp_directory_path() / "lrvx_replay_writer_rotation";
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
   }
@@ -62,7 +62,7 @@ class ReplayWriterRotationTest : public ::testing::Test
     // A fixed first name puts rotation on the deterministic "<stem>_NNNN"
     // branch; the default wall-clock names could collide when two rotations
     // land inside one clock tick.
-    cfg.output_filename = "tape.floxlog";
+    cfg.output_filename = "tape.lrvx";
     cfg.max_segment_bytes = kMaxSegmentBytes;
     cfg.compression = compression;
     // Blocks of 64 events, so the compressed path reaches flushBlock (and any
@@ -96,7 +96,7 @@ class ReplayWriterRotationTest : public ::testing::Test
   {
     WriterConfig cfg{};
     cfg.output_dir = _dir;
-    cfg.output_filename = "tape.floxlog";
+    cfg.output_filename = "tape.lrvx";
     cfg.max_segment_bytes = max_segment_bytes;
     cfg.index_interval = index_interval;
     cfg.compression = CompressionType::LZ4;
@@ -124,7 +124,7 @@ class ReplayWriterRotationTest : public ::testing::Test
   {
     WriterConfig cfg{};
     cfg.output_dir = _dir;
-    cfg.output_filename = "tape.floxlog";
+    cfg.output_filename = "tape.lrvx";
     cfg.max_segment_bytes = max_segment_bytes;
     cfg.compression = CompressionType::None;
 
@@ -170,7 +170,7 @@ class ReplayWriterRotationTest : public ::testing::Test
     {
       WriterConfig cfg{};
       cfg.output_dir = probe;
-      cfg.output_filename = "probe.floxlog";
+      cfg.output_filename = "probe.lrvx";
       cfg.index_interval = index_interval;
       cfg.compression = CompressionType::LZ4;
       BinaryLogWriter writer(cfg);
@@ -188,7 +188,7 @@ class ReplayWriterRotationTest : public ::testing::Test
       writer.close();
     }
 
-    const uint64_t bytes = firstBlockBytesOnDisk(probe / "probe.floxlog");
+    const uint64_t bytes = firstBlockBytesOnDisk(probe / "probe.lrvx");
     std::filesystem::remove_all(probe);
     return bytes;
   }
@@ -229,7 +229,7 @@ class ReplayWriterRotationTest : public ::testing::Test
     std::vector<std::filesystem::path> out;
     for (const auto& entry : std::filesystem::directory_iterator(_dir))
     {
-      if (entry.is_regular_file() && entry.path().extension() == ".floxlog")
+      if (entry.is_regular_file() && entry.path().extension() == ".lrvx")
       {
         out.push_back(entry.path());
       }

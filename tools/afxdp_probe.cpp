@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -29,16 +29,16 @@
 #include <cstring>
 #include <string>
 
-#include "flox/net/receive_path.h"
-#include "flox/util/performance/latency_histogram.h"
+#include "lrvx/net/receive_path.h"
+#include "lrvx/util/performance/latency_histogram.h"
 
-#if defined(__linux__) && FLOX_AF_XDP_ENABLED
-#include "flox/net/af_xdp_receive_path.h"
+#if defined(__linux__) && LRVX_AF_XDP_ENABLED
+#include "lrvx/net/af_xdp_receive_path.h"
 #endif
 
-using flox::net::Datagram;
-using flox::performance::LatencyHistogram;
-using flox::performance::monotonicNs;
+using lrvx::net::Datagram;
+using lrvx::performance::LatencyHistogram;
+using lrvx::performance::monotonicNs;
 
 namespace
 {
@@ -148,10 +148,10 @@ int main(int argc, char** argv)
 
   if (mode == "recv-socket")
   {
-    flox::net::UdpSocketReceivePath::Config cfg;
+    lrvx::net::UdpSocketReceivePath::Config cfg;
     cfg.bindAddress = argv[2];
     cfg.port = uint16_t(std::atoi(argv[3]));
-    flox::net::UdpSocketReceivePath path(cfg);
+    lrvx::net::UdpSocketReceivePath path(cfg);
     if (!path.valid())
     {
       std::fprintf(stderr, "socket path init failed\n");
@@ -160,14 +160,14 @@ int main(int argc, char** argv)
     return runReceiver(path, std::atol(argv[4]));
   }
 
-#if defined(__linux__) && FLOX_AF_XDP_ENABLED
+#if defined(__linux__) && LRVX_AF_XDP_ENABLED
   if (mode == "recv-xdp")
   {
-    flox::net::AfXdpReceivePath::Config cfg;
+    lrvx::net::AfXdpReceivePath::Config cfg;
     cfg.ifname = argv[2];
     cfg.udpPortFilter = uint16_t(std::atoi(argv[3]));
     cfg.skbMode = !(argc > 5 && std::strcmp(argv[5], "native") == 0);
-    flox::net::AfXdpReceivePath path(cfg);
+    lrvx::net::AfXdpReceivePath path(cfg);
     if (!path.valid())
     {
       std::fprintf(stderr, "af_xdp init failed (need CAP_NET_RAW/CAP_BPF?)\n");

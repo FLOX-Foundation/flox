@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-// The trade-side convention of the .floxlog tape, pinned end to end.
+// The trade-side convention of the .lrvx tape, pinned end to end.
 //
 // BinaryLogRecorderHook encodes the aggressor as a byte; ReplayConnector,
 // BacktestRunner and StrategyPump each decode it again, and OhlcvReplaySource
@@ -22,17 +22,17 @@
 // published spec says the same thing as the code -- so the convention may sit
 // on either byte as long as it sits there everywhere.
 
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/strategy_pump.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/replay/abstract_event_reader.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/binary_log_recorder_hook.h"
-#include "flox/replay/ohlcv_replay_source.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/replay/replay_connector.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/strategy_pump.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/replay/abstract_event_reader.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_log_recorder_hook.h"
+#include "lrvx/replay/ohlcv_replay_source.h"
+#include "lrvx/replay/readers/binary_log_reader.h"
+#include "lrvx/replay/replay_connector.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -46,8 +46,8 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -60,7 +60,7 @@ class ReplayTradeSideTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _dir = std::filesystem::temp_directory_path() / "flox_replay_trade_side";
+    _dir = std::filesystem::temp_directory_path() / "lrvx_replay_trade_side";
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
   }
@@ -142,7 +142,7 @@ class SideRecordingStrategy : public Strategy
 
 SymbolId registerSymbol(SymbolRegistry& reg, const std::string& name)
 {
-  ::flox::SymbolInfo info;
+  ::lrvx::SymbolInfo info;
   info.exchange = "test";
   info.symbol = name;
   info.type = InstrumentType::Spot;
@@ -256,7 +256,7 @@ TEST_F(ReplayTradeSideTest, OhlcvSourceEncodesABuyTheWayTheRecorderDoes)
 //   (a) a format marker on the tape itself -- a bumped SegmentHeader.version,
 //       a new SegmentFlags bit, a non-zero byte in SegmentHeader.reserved, or
 //       a bumped FrameHeader.rec_version on the trade frame; or
-//   (b) a written decision in docs/spec/floxlog.md -- the tape-format spec is
+//   (b) a written decision in docs/spec/lrvx.md -- the tape-format spec is
 //       where the side byte is defined (currently "0 buy, 1 sell") -- stating
 //       that tapes written before the fix carry an inverted side and are not
 //       migrated. The check is for the word "invert" (any case) in that file;
@@ -270,7 +270,7 @@ TEST_F(ReplayTradeSideTest, FixedTapesAreTellableFromPreFixTapes)
   std::filesystem::path segment;
   for (const auto& entry : std::filesystem::directory_iterator(_dir))
   {
-    if (entry.path().extension() == ".floxlog")
+    if (entry.path().extension() == ".lrvx")
     {
       segment = entry.path();
     }
@@ -306,7 +306,7 @@ TEST_F(ReplayTradeSideTest, FixedTapesAreTellableFromPreFixTapes)
   bool documented = false;
   {
     const std::filesystem::path spec =
-        std::filesystem::path(FLOX_REPO_ROOT) / "docs" / "spec" / "floxlog.md";
+        std::filesystem::path(LRVX_REPO_ROOT) / "docs" / "spec" / "lrvx.md";
     std::ifstream in(spec);
     ASSERT_TRUE(in.good()) << "cannot open the tape-format spec at " << spec;
     std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -319,10 +319,10 @@ TEST_F(ReplayTradeSideTest, FixedTapesAreTellableFromPreFixTapes)
 
   EXPECT_TRUE(marker || documented)
       << "a tape written by the fixed recorder carries no format marker and "
-         "docs/spec/floxlog.md records no decision about the tapes written before the fix";
+         "docs/spec/lrvx.md records no decision about the tapes written before the fix";
 }
 
-// Control, and the other half of the side decision: docs/spec/floxlog.md is
+// Control, and the other half of the side decision: docs/spec/lrvx.md is
 // the published tape format, and its TradeRecord row states which byte means
 // buy. Whatever the recorder settles on, the spec has to
 // say the same thing -- a third-party writer follows the spec, not the
@@ -337,7 +337,7 @@ TEST_F(ReplayTradeSideTest, SpecAndRecorderAgreeOnWhichByteIsTheBuy)
   ASSERT_NE(sides[0], sides[1]);
 
   const std::filesystem::path spec =
-      std::filesystem::path(FLOX_REPO_ROOT) / "docs" / "spec" / "floxlog.md";
+      std::filesystem::path(LRVX_REPO_ROOT) / "docs" / "spec" / "lrvx.md";
   std::ifstream in(spec);
   ASSERT_TRUE(in.good()) << "cannot open the tape-format spec at " << spec;
 
@@ -368,10 +368,10 @@ TEST_F(ReplayTradeSideTest, SpecAndRecorderAgreeOnWhichByteIsTheBuy)
   }
 
   ASSERT_TRUE(documented_buy.has_value())
-      << "docs/spec/floxlog.md no longer states which side byte is the buy";
+      << "docs/spec/lrvx.md no longer states which side byte is the buy";
   EXPECT_EQ(static_cast<int>(sides[0]), *documented_buy)
       << "the recorder encodes a buy as " << static_cast<int>(sides[0])
-      << " but docs/spec/floxlog.md says " << *documented_buy;
+      << " but docs/spec/lrvx.md says " << *documented_buy;
 }
 
 // Control. Everything on the trade record other than the side already survives

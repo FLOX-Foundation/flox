@@ -1,16 +1,16 @@
 """VenueStack.clock() and the SimulatedClock it returns.
 
 The method was bound without its return type ever being registered with
-pybind, so every call raised "Unregistered type : flox::SimulatedClock" --
+pybind, so every call raised "Unregistered type : lrvx::SimulatedClock" --
 a method that could not succeed under any argument. Driving the clock is the
 point of holding a stack from Python (RL envs, paper harnesses), where
 nothing else advances simulated time.
 """
-import flox_py
+import lrvx
 
 
-def _stack() -> "flox_py.VenueStack":
-    return flox_py.VenueStack.binance_um_futures(account_id=1, equity=1_000.0)
+def _stack() -> "lrvx.VenueStack":
+    return lrvx.VenueStack.binance_um_futures(account_id=1, equity=1_000.0)
 
 
 def test_clock_is_reachable() -> None:

@@ -1,0 +1,108 @@
+# Client-side rate-limit policy for the simulated executor.
+# Mirrors include/lrvx/backtest/rate_limit_policy.h and the
+# pybind11 / NAPI / QuickJS surfaces.
+
+# The C ABI handshake runs when this module is imported: see
+# lrvx/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from lrvx.abi import check_abi_version
+
+from C import lrvx_rate_limit_policy_create() -> cobj
+from C import lrvx_rate_limit_policy_destroy(cobj)
+from C import lrvx_rate_limit_policy_add_bucket(cobj, cobj, i64, u32, u32, u32, u32)
+from C import lrvx_rate_limit_policy_add_bucket_family(cobj, cobj, i64, u32, u32, u32, u32, u8, u32)
+from C import lrvx_rate_limit_policy_set_ban(cobj, u32, i64)
+from C import lrvx_rate_limit_policy_load_profile(cobj, cobj) -> i32
+from C import lrvx_rate_limit_policy_ban_until_ns(cobj) -> i64
+from C import lrvx_rate_limit_policy_consecutive_rejects(cobj) -> u32
+from C import lrvx_rate_limit_policy_bucket_state(cobj, i64, cobj, u32) -> u32
+from C import lrvx_simulated_executor_set_rate_limit_policy(cobj, cobj)
+from C import lrvx_simulated_executor_clear_rate_limit_policy(cobj)
+
+
+def _cstr(s: str) -> cobj:
+    # `internal.gc.sys_alloc` does not exist in Codon 0.19.6, so this whole
+    # function failed to compile and took every method that calls it with it.
+    # run_trace.codon has always used the plain Ptr[byte] allocation.
+    n = len(s)
+    buf = Ptr[byte](n + 1)
+    for i in range(n):
+        buf[i] = byte(int(s.ptr[i]))
+    buf[n] = byte(0)
+    return cobj(buf)
+
+
+@dataclass
+class BucketState:
+    window_ns: int
+    used: int
+    capacity: int
+
+
+class RateLimitPolicy:
+    """Sliding-window rate-limit policy for SimulatedExecutor."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = lrvx_rate_limit_policy_create()
+
+    def close(self):
+        if self._h != cobj():
+            lrvx_rate_limit_policy_destroy(self._h)
+            self._h = cobj()
+
+    def add_bucket(self, name: str, window_ns: int, capacity: int,
+                   submit_weight: int = 1, cancel_weight: int = 1,
+                   replace_weight: int = 2):
+        lrvx_rate_limit_policy_add_bucket(
+            self._h, _cstr(name), i64(window_ns), u32(capacity),
+            u32(submit_weight), u32(cancel_weight), u32(replace_weight))
+
+    def add_family_bucket(self, family, name: str, window_ns: int, capacity: int,
+                          query_weight: int = 1):
+        # family: 'trading' | 'market_data' | 'account' or int 0..2
+        code = u8(0)
+        if isinstance(family, str):
+            f = family.lower()
+            if f == "market_data":
+                code = u8(1)
+            elif f == "account":
+                code = u8(2)
+        else:
+            code = u8(int(family))
+        lrvx_rate_limit_policy_add_bucket_family(
+            self._h, _cstr(name), i64(window_ns), u32(capacity),
+            u32(1), u32(1), u32(2), code, u32(query_weight))
+
+    def set_ban(self, after_consecutive_rejects: int, ban_duration_ns: int):
+        lrvx_rate_limit_policy_set_ban(
+            self._h, u32(after_consecutive_rejects), i64(ban_duration_ns))
+
+    def load_profile(self, name: str):
+        """Canned: binance_um_futures, bybit_linear, okx_swap, deribit."""
+        if int(lrvx_rate_limit_policy_load_profile(self._h, _cstr(name))) == 0:
+            raise ValueError("unknown rate limit policy profile: " + name)
+    def ban_until_ns(self) -> int:
+        return int(lrvx_rate_limit_policy_ban_until_ns(self._h))
+
+    def consecutive_rejects(self) -> int:
+        return int(lrvx_rate_limit_policy_consecutive_rejects(self._h))
+
+    def bucket_states(self, now_ns: int) -> List[BucketState]:
+        n = int(lrvx_rate_limit_policy_bucket_state(self._h, i64(now_ns), cobj(), u32(0)))
+        if n == 0:
+            return []
+        buf = [i64(0)] * (n * 4)
+        lrvx_rate_limit_policy_bucket_state(
+            self._h, i64(now_ns), cobj(buf.arr.ptr), u32(n))
+        out = list[BucketState]()
+        for i in range(n):
+            out.append(BucketState(
+                window_ns=int(buf[i * 4 + 0]),
+                used=int(buf[i * 4 + 1]),
+                capacity=int(buf[i * 4 + 2])))
+        return out
+
+    def handle(self) -> cobj:
+        return self._h

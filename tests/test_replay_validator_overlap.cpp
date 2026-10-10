@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -21,10 +21,10 @@
 // typed issue on DatasetValidationResult, so an overlap can be told apart from
 // a CRC failure without reading the message.
 
-#include "flox/common.h"
-#include "flox/replay/binary_format_v1.h"
-#include "flox/replay/ops/validator.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/common.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/replay/ops/validator.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 
@@ -34,8 +34,8 @@
 #include <string>
 #include <vector>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 namespace
 {
@@ -48,7 +48,7 @@ class ReplayValidatorOverlapTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    _dir = std::filesystem::temp_directory_path() / "flox_replay_validator_overlap";
+    _dir = std::filesystem::temp_directory_path() / "lrvx_replay_validator_overlap";
     std::filesystem::remove_all(_dir);
     std::filesystem::create_directories(_dir);
   }
@@ -125,8 +125,8 @@ class ReplayValidatorOverlapTest : public ::testing::Test
 // handed.
 TEST_F(ReplayValidatorOverlapTest, OverlappingSegmentsFailValidation)
 {
-  writeSegment("a.floxlog", 0, 60);
-  writeSegment("b.floxlog", 30, 90);
+  writeSegment("a.lrvx", 0, 60);
+  writeSegment("b.lrvx", 30, 90);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -141,8 +141,8 @@ TEST_F(ReplayValidatorOverlapTest, OverlappingSegmentsFailValidation)
 // Full containment is an overlap too: b sits entirely inside a.
 TEST_F(ReplayValidatorOverlapTest, ContainedSegmentFailsValidation)
 {
-  writeSegment("a.floxlog", 0, 90);
-  writeSegment("b.floxlog", 30, 60);
+  writeSegment("a.lrvx", 0, 90);
+  writeSegment("b.lrvx", 30, 60);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -157,8 +157,8 @@ TEST_F(ReplayValidatorOverlapTest, ContainedSegmentFailsValidation)
 // flags every multi-segment dataset. Green on the untouched tree.
 TEST_F(ReplayValidatorOverlapTest, AdjacentSegmentsValidateClean)
 {
-  writeSegment("a.floxlog", 0, 60);
-  writeSegment("b.floxlog", 61, 120);
+  writeSegment("a.lrvx", 0, 60);
+  writeSegment("b.lrvx", 61, 120);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -171,7 +171,7 @@ TEST_F(ReplayValidatorOverlapTest, AdjacentSegmentsValidateClean)
 // Control. A single segment is never an overlap. Green on the untouched tree.
 TEST_F(ReplayValidatorOverlapTest, SingleSegmentValidatesClean)
 {
-  writeSegment("a.floxlog", 0, 60);
+  writeSegment("a.lrvx", 0, 60);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -188,8 +188,8 @@ TEST_F(ReplayValidatorOverlapTest, SingleSegmentValidatesClean)
 // second of daylight between the segments and so never reaches this decision.
 TEST_F(ReplayValidatorOverlapTest, SegmentsTouchingAtTheSeamValidateClean)
 {
-  writeSegment("a.floxlog", 0, 60);
-  writeSegment("b.floxlog", 60, 120);
+  writeSegment("a.lrvx", 0, 60);
+  writeSegment("b.lrvx", 60, 120);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -207,9 +207,9 @@ TEST_F(ReplayValidatorOverlapTest, SegmentsTouchingAtTheSeamValidateClean)
 // through. Both containments have to be reported.
 TEST_F(ReplayValidatorOverlapTest, ContainmentIsFoundPastAShorterSegment)
 {
-  writeSegment("a.floxlog", 0, 90);
-  writeSegment("b.floxlog", 10, 20);
-  writeSegment("c.floxlog", 30, 40);
+  writeSegment("a.lrvx", 0, 90);
+  writeSegment("b.lrvx", 10, 20);
+  writeSegment("c.lrvx", 30, 40);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -231,7 +231,7 @@ TEST_F(ReplayValidatorOverlapTest, ContainmentIsFoundPastAShorterSegment)
 
   const bool names_c = std::any_of(overlaps.begin(), overlaps.end(),
                                    [](const std::string& m)
-                                   { return m.find("c.floxlog") != std::string::npos; });
+                                   { return m.find("c.lrvx") != std::string::npos; });
   EXPECT_TRUE(names_c) << "neither reported overlap mentions the contained segment";
   EXPECT_EQ(result.total_errors, 2u);
 }
@@ -243,8 +243,8 @@ TEST_F(ReplayValidatorOverlapTest, ContainmentIsFoundPastAShorterSegment)
 // with its own range, because that is the order a human reads them in.
 TEST_F(ReplayValidatorOverlapTest, OverlapArrivesAsATypedDatasetIssue)
 {
-  writeSegment("a.floxlog", 0, 60);
-  writeSegment("b.floxlog", 30, 90);
+  writeSegment("a.lrvx", 0, 60);
+  writeSegment("b.lrvx", 30, 90);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -258,7 +258,7 @@ TEST_F(ReplayValidatorOverlapTest, OverlapArrivesAsATypedDatasetIssue)
       << "an unreplayable dataset was reported at a severity that leaves it valid";
 
   const std::string expected =
-      "a.floxlog " + rangeText(0, 60) + " overlaps b.floxlog " + rangeText(30, 90);
+      "a.lrvx " + rangeText(0, 60) + " overlaps b.lrvx " + rangeText(30, 90);
   EXPECT_NE(issue->message.find(expected), std::string::npos)
       << "the issue names the two segments or their ranges wrongly.\n  wanted: ..."
       << expected << "...\n  got:    " << issue->message;
@@ -282,9 +282,9 @@ TEST_F(ReplayValidatorOverlapTest, OverlapArrivesAsATypedDatasetIssue)
 // happens to be the widest.
 TEST_F(ReplayValidatorOverlapTest, TheReferenceRangeWidensAsTheWalkGoesOn)
 {
-  writeSegment("a.floxlog", 0, 50);
-  writeSegment("b.floxlog", 10, 90);
-  writeSegment("c.floxlog", 60, 70);
+  writeSegment("a.lrvx", 0, 50);
+  writeSegment("b.lrvx", 10, 90);
+  writeSegment("c.lrvx", 60, 70);
 
   DatasetValidator validator;
   auto result = validator.validate(_dir);
@@ -294,13 +294,13 @@ TEST_F(ReplayValidatorOverlapTest, TheReferenceRangeWidensAsTheWalkGoesOn)
 
   const auto overlaps = overlapMessages(result);
   ASSERT_EQ(overlaps.size(), 2u)
-      << "c.floxlog runs into b.floxlog and not into a.floxlog, so it is only "
-         "found once the reference range has moved on from a.floxlog";
+      << "c.lrvx runs into b.lrvx and not into a.lrvx, so it is only "
+         "found once the reference range has moved on from a.lrvx";
 
   const std::string first =
-      "a.floxlog " + rangeText(0, 50) + " overlaps b.floxlog " + rangeText(10, 90);
+      "a.lrvx " + rangeText(0, 50) + " overlaps b.lrvx " + rangeText(10, 90);
   const std::string second =
-      "b.floxlog " + rangeText(10, 90) + " overlaps c.floxlog " + rangeText(60, 70);
+      "b.lrvx " + rangeText(10, 90) + " overlaps c.lrvx " + rangeText(60, 70);
 
   EXPECT_NE(overlaps[0].find(first), std::string::npos)
       << "the first overlap names the wrong pair or the wrong ranges.\n  wanted: ..."

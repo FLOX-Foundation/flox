@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "flox/position/delta_hedger.h"
+#include "lrvx/position/delta_hedger.h"
 
-using namespace flox;
+using namespace lrvx;
 
 TEST(DeltaHedgerTest, WithinBandNoTrade)
 {

@@ -4,7 +4,7 @@
 
 import type { ViewerState } from '../state.ts';
 import { tapeSlice, signalsSlice, ordersSlice, fillsSlice } from '../state.ts';
-import type { Trade } from '../parsers/floxlog.ts';
+import type { Trade } from '../parsers/lrvx.ts';
 
 const fmtTs = (ns: bigint) => {
   const ms = Number(ns / 1_000_000n);
@@ -107,7 +107,7 @@ export function renderTrades(state: ViewerState) {
   lastTradesSig = sig;
   if (allTrades.length === 0 && state.tape.length === 0) {
     empty.hidden = false;
-    empty.textContent = 'No `.floxlog` loaded. Drop one to see trades.';
+    empty.textContent = 'No `.lrvx` loaded. Drop one to see trades.';
     el.innerHTML = '';
     return;
   }
@@ -293,7 +293,7 @@ export function renderOrderbook(state: ViewerState) {
   if (allBookEvents.length === 0 || eventsBySym.size === 0) {
     empty.hidden = false;
     empty.textContent = state.tape.length === 0
-      ? 'No `.floxlog` loaded.'
+      ? 'No `.lrvx` loaded.'
       : 'Tape has no book events at this cursor.';
     return;
   }
@@ -339,7 +339,7 @@ export function renderSignals(state: ViewerState) {
   const empty = document.querySelector<HTMLElement>('.emptystate[data-for="signals"]')!;
   if (!state.run) {
     empty.hidden = false;
-    empty.textContent = 'No `.floxrun` loaded. Drop one to see strategy decisions.';
+    empty.textContent = 'No `.lrvxrun` loaded. Drop one to see strategy decisions.';
     el.innerHTML = '';
     return;
   }
@@ -580,7 +580,7 @@ export function renderPriceChart(state: ViewerState) {
   if (trades.length === 0) {
     empty.hidden = false;
     empty.textContent = state.tape.length === 0
-      ? 'No `.floxlog` loaded. Drop one to see the price chart.'
+      ? 'No `.lrvx` loaded. Drop one to see the price chart.'
       : 'Tape has no trades.';
     priceChartCtx = null;
     return;

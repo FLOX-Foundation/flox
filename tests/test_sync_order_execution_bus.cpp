@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -13,12 +13,12 @@
 #include <memory>
 #include <thread>
 
-#include "flox/engine/abstract_subscriber.h"
-#include "flox/execution/bus/order_execution_bus.h"
-#include "flox/execution/events/order_event.h"
-#include "flox/execution/order.h"
+#include "lrvx/engine/abstract_subscriber.h"
+#include "lrvx/execution/bus/order_execution_bus.h"
+#include "lrvx/execution/events/order_event.h"
+#include "lrvx/execution/order.h"
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

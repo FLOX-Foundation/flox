@@ -3,20 +3,20 @@
 // The DEX curves compute in exact 256-bit integers. At the Node boundary they are
 // native BigInt -- arbitrary precision, so a 256-bit wei amount is lossless. A BigInt
 // is limb-addressable (little-endian uint64 words), which is exactly the u256 layout,
-// so the C ABI's flox_u256_*_words / flox_*_roundtrip cross the value through the exact
+// so the C ABI's lrvx_u256_*_words / lrvx_*_roundtrip cross the value through the exact
 // C++ type and back. Everything runs through the C ABI; this is purely marshalling.
 
 #pragma once
 
 #include <napi.h>
 
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <cstdint>
 #include <cstring>
 #include <string>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 namespace detail_dex
@@ -67,8 +67,8 @@ inline Napi::Value u256Roundtrip(const Napi::CallbackInfo& info)
   char dec[96] = {0};
   char dec2[96] = {0};
   uint64_t out[4];
-  if (!flox_u256_from_words(words, dec, sizeof(dec)) ||
-      !flox_u256_roundtrip(dec, dec2, sizeof(dec2)) || !flox_u256_to_words(dec2, out))
+  if (!lrvx_u256_from_words(words, dec, sizeof(dec)) ||
+      !lrvx_u256_roundtrip(dec, dec2, sizeof(dec2)) || !lrvx_u256_to_words(dec2, out))
   {
     throw Napi::Error::New(env, "u256Roundtrip: conversion failed");
   }
@@ -90,20 +90,20 @@ inline Napi::Value i256Roundtrip(const Napi::CallbackInfo& info)
     throw Napi::RangeError::New(env, "i256Roundtrip: magnitude must be < 2^256");
   }
   char mag[96] = {0};
-  if (!flox_u256_from_words(words, mag, sizeof(mag)))
+  if (!lrvx_u256_from_words(words, mag, sizeof(mag)))
   {
     throw Napi::Error::New(env, "i256Roundtrip: conversion failed");
   }
   std::string dec = (sign != 0 && std::strcmp(mag, "0") != 0) ? std::string("-") + mag : mag;
   char dec2[96] = {0};
-  if (!flox_i256_roundtrip(dec.c_str(), dec2, sizeof(dec2)))
+  if (!lrvx_i256_roundtrip(dec.c_str(), dec2, sizeof(dec2)))
   {
     throw Napi::Error::New(env, "i256Roundtrip: conversion failed");
   }
   const bool neg = dec2[0] == '-';
   const char* magStr = neg ? dec2 + 1 : dec2;
   uint64_t out[4];
-  if (!flox_u256_to_words(magStr, out))
+  if (!lrvx_u256_to_words(magStr, out))
   {
     throw Napi::Error::New(env, "i256Roundtrip: conversion failed");
   }
@@ -121,7 +121,7 @@ inline Napi::Value u256FromHex(const Napi::CallbackInfo& info)
   std::string hex = info[0].As<Napi::String>();
   char dec[96] = {0};
   uint64_t out[4];
-  if (!flox_u256_from_hex(hex.c_str(), dec, sizeof(dec)) || !flox_u256_to_words(dec, out))
+  if (!lrvx_u256_from_hex(hex.c_str(), dec, sizeof(dec)) || !lrvx_u256_to_words(dec, out))
   {
     throw Napi::RangeError::New(env, "u256FromHex: not a valid 256-bit hex value");
   }
@@ -135,4 +135,4 @@ inline void registerDexAmount(Napi::Env env, Napi::Object exports)
   exports.Set("u256FromHex", Napi::Function::New(env, &u256FromHex, "u256FromHex"));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

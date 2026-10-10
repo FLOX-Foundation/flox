@@ -8,7 +8,7 @@ since: 0.5.7
 # E_TIME_001 — Unknown interval unit
 
 An interval string like `"5x"` was passed where the unit suffix is not
-recognised. FLOX accepts:
+recognised. lrvx accepts:
 
 | Unit | Meaning |
 |------|---------|
@@ -30,7 +30,7 @@ recognised. FLOX accepts:
 
 ## Common causes
 
-- Pandas-style suffixes (`"5min"`, `"1H"`) — FLOX uses single-character
+- Pandas-style suffixes (`"5min"`, `"1H"`) — lrvx uses single-character
   units to avoid the `M` (month) / `m` (minute) ambiguity.
 - Whitespace in the string.
 - Empty unit (`"5"`) — always provide a unit.

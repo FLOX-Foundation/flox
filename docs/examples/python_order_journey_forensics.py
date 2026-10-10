@@ -7,9 +7,9 @@ Python class exposes the collector and its analytics, but it is not an
 does not accept it -- attach the tracer on the C++ side and read the
 results here.
 """
-import flox_py as flox
+import lrvx
 
-tracer = flox.OrderJourneyTracer(
+tracer = lrvx.OrderJourneyTracer(
     max_orders=10_000,
     max_records_per_order=64,
     sample_rate=1.0,

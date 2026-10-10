@@ -8,9 +8,9 @@
 
 #include "account.h"
 #include "backtest.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
@@ -71,36 +71,36 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
 
   LiquidationEngineWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<LiquidationEngineWrap>(info),
-        _h(flox_liquidation_engine_create())
+        _h(lrvx_liquidation_engine_create())
   {
   }
   ~LiquidationEngineWrap()
   {
     if (_h)
     {
-      flox_liquidation_engine_destroy(_h);
+      lrvx_liquidation_engine_destroy(_h);
     }
   }
-  FloxLiquidationEngineHandle handle() const { return _h; }
+  LrvxLiquidationEngineHandle handle() const { return _h; }
 
  private:
   void AddTier(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_add_tier(_h, info[0].As<Napi::Number>().DoubleValue(),
+    lrvx_liquidation_engine_add_tier(_h, info[0].As<Napi::Number>().DoubleValue(),
                                      info[1].As<Napi::Number>().DoubleValue());
   }
   void SetInsuranceFundCapital(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_set_insurance_fund_capital(
+    lrvx_liquidation_engine_set_insurance_fund_capital(
         _h, info[0].As<Napi::Number>().DoubleValue());
   }
   Napi::Value InsuranceFundBalance(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), flox_liquidation_engine_insurance_fund_balance(_h));
+    return Napi::Number::New(info.Env(), lrvx_liquidation_engine_insurance_fund_balance(_h));
   }
   void SetAdlEnabled(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_set_adl_enabled(
+    lrvx_liquidation_engine_set_adl_enabled(
         _h, info[0].As<Napi::Boolean>().Value() ? 1 : 0);
   }
   void SetAdlRanking(const Napi::CallbackInfo& info)
@@ -126,11 +126,11 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
     {
       code = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
     }
-    flox_liquidation_engine_set_adl_ranking(_h, code);
+    lrvx_liquidation_engine_set_adl_ranking(_h, code);
   }
   Napi::Value AdlRanking(const Napi::CallbackInfo& info)
   {
-    const uint8_t code = flox_liquidation_engine_adl_ranking(_h);
+    const uint8_t code = lrvx_liquidation_engine_adl_ranking(_h);
     const char* name = "pnl_ratio";
     switch (code)
     {
@@ -151,12 +151,12 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   }
   void SetLiquidationSlippageBps(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_set_liquidation_slippage_bps(
+    lrvx_liquidation_engine_set_liquidation_slippage_bps(
         _h, info[0].As<Napi::Number>().DoubleValue());
   }
   void OpenPosition(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_open_position(
+    lrvx_liquidation_engine_open_position(
         _h, info[0].As<Napi::Number>().Int64Value(),
         info[1].As<Napi::Number>().Uint32Value(),
         info[2].As<Napi::Number>().DoubleValue(),
@@ -165,13 +165,13 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   }
   void ClosePosition(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_close_position(
+    lrvx_liquidation_engine_close_position(
         _h, info[0].As<Napi::Number>().Int64Value(),
         info[1].As<Napi::Number>().Uint32Value());
   }
   Napi::Value OnMark(const Napi::CallbackInfo& info)
   {
-    const uint32_t n = flox_liquidation_engine_on_mark(
+    const uint32_t n = lrvx_liquidation_engine_on_mark(
         _h, info[0].As<Napi::Number>().Uint32Value(),
         info[1].As<Napi::Number>().DoubleValue());
     return Napi::Number::New(info.Env(), n);
@@ -192,24 +192,24 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
     const int64_t tsNs = info.Length() >= 2 && info[1].IsNumber()
                              ? info[1].As<Napi::Number>().Int64Value()
                              : 0;
-    const uint32_t total = flox_liquidation_engine_on_marks(
+    const uint32_t total = lrvx_liquidation_engine_on_marks(
         _h, n, symbols.data(), prices.data(), tsNs);
     return Napi::Number::New(info.Env(), total);
   }
   Napi::Value LiquidationsCount(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(flox_liquidation_engine_liquidations_count(_h)));
+                             static_cast<double>(lrvx_liquidation_engine_liquidations_count(_h)));
   }
   Napi::Value InsurancePaymentsCount(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(flox_liquidation_engine_insurance_payments_count(_h)));
+                             static_cast<double>(lrvx_liquidation_engine_insurance_payments_count(_h)));
   }
   Napi::Value AdlCloseoutsCount(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(flox_liquidation_engine_adl_closeouts_count(_h)));
+                             static_cast<double>(lrvx_liquidation_engine_adl_closeouts_count(_h)));
   }
   void LoadProfile(const Napi::CallbackInfo& info)
   {
@@ -223,24 +223,24 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
     {
       p = 2;
     }
-    flox_liquidation_engine_load_profile(_h, p);
+    lrvx_liquidation_engine_load_profile(_h, p);
   }
   void SetExecutor(const Napi::CallbackInfo& info)
   {
     if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
     {
-      flox_liquidation_engine_set_executor(_h, nullptr);
+      lrvx_liquidation_engine_set_executor(_h, nullptr);
       return;
     }
     auto* w = Napi::ObjectWrap<SimulatedExecutorWrap>::Unwrap(
         info[0].As<Napi::Object>());
-    flox_liquidation_engine_set_executor(_h, w->handle());
+    lrvx_liquidation_engine_set_executor(_h, w->handle());
   }
   Napi::Value DeficitsPaidByFund(const Napi::CallbackInfo& info)
   {
-    const uint32_t n = flox_liquidation_engine_deficits_paid_by_fund_size(_h);
+    const uint32_t n = lrvx_liquidation_engine_deficits_paid_by_fund_size(_h);
     std::vector<double> buf(n);
-    flox_liquidation_engine_deficits_paid_by_fund_copy(_h, buf.data(), n);
+    lrvx_liquidation_engine_deficits_paid_by_fund_copy(_h, buf.data(), n);
     Napi::Array arr = Napi::Array::New(info.Env(), n);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -250,9 +250,9 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   }
   Napi::Value DeficitsPaidByAdl(const Napi::CallbackInfo& info)
   {
-    const uint32_t n = flox_liquidation_engine_deficits_paid_by_adl_size(_h);
+    const uint32_t n = lrvx_liquidation_engine_deficits_paid_by_adl_size(_h);
     std::vector<double> buf(n);
-    flox_liquidation_engine_deficits_paid_by_adl_copy(_h, buf.data(), n);
+    lrvx_liquidation_engine_deficits_paid_by_adl_copy(_h, buf.data(), n);
     Napi::Array arr = Napi::Array::New(info.Env(), n);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -262,9 +262,9 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   }
   Napi::Value CascadeSizesPerTick(const Napi::CallbackInfo& info)
   {
-    const uint32_t n = flox_liquidation_engine_cascade_sizes_size(_h);
+    const uint32_t n = lrvx_liquidation_engine_cascade_sizes_size(_h);
     std::vector<uint32_t> buf(n);
-    flox_liquidation_engine_cascade_sizes_copy(_h, buf.data(), n);
+    lrvx_liquidation_engine_cascade_sizes_copy(_h, buf.data(), n);
     Napi::Array arr = Napi::Array::New(info.Env(), n);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -274,9 +274,9 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   }
   Napi::Value FundBalanceHistory(const Napi::CallbackInfo& info)
   {
-    const uint32_t n = flox_liquidation_engine_fund_balance_history_size(_h);
+    const uint32_t n = lrvx_liquidation_engine_fund_balance_history_size(_h);
     std::vector<double> buf(n);
-    flox_liquidation_engine_fund_balance_history_copy(_h, buf.data(), n);
+    lrvx_liquidation_engine_fund_balance_history_copy(_h, buf.data(), n);
     Napi::Array arr = Napi::Array::New(info.Env(), n);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -288,11 +288,11 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   {
     return Napi::Number::New(
         info.Env(),
-        static_cast<double>(flox_liquidation_engine_ticks_to_first_adl(_h)));
+        static_cast<double>(lrvx_liquidation_engine_ticks_to_first_adl(_h)));
   }
   void ResetStats(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_reset_stats(_h);
+    lrvx_liquidation_engine_reset_stats(_h);
   }
   void SetMarkImpactModel(const Napi::CallbackInfo& info)
   {
@@ -318,11 +318,11 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
     {
       weight = info[1].As<Napi::Number>().DoubleValue();
     }
-    flox_liquidation_engine_set_mark_impact_model(_h, code, weight);
+    lrvx_liquidation_engine_set_mark_impact_model(_h, code, weight);
   }
   Napi::Value MarkImpactModel(const Napi::CallbackInfo& info)
   {
-    const uint8_t code = flox_liquidation_engine_mark_impact_model(_h);
+    const uint8_t code = lrvx_liquidation_engine_mark_impact_model(_h);
     const char* name = "none";
     switch (code)
     {
@@ -341,17 +341,17 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   Napi::Value MarkImpactWeight(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_liquidation_engine_mark_impact_weight(_h));
+                             lrvx_liquidation_engine_mark_impact_weight(_h));
   }
   void SetMaxCascadeDepth(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_set_max_cascade_depth(
+    lrvx_liquidation_engine_set_max_cascade_depth(
         _h, info[0].As<Napi::Number>().Uint32Value());
   }
   Napi::Value MaxCascadeDepth(const Napi::CallbackInfo& info)
   {
     return Napi::Number::New(info.Env(),
-                             flox_liquidation_engine_max_cascade_depth(_h));
+                             lrvx_liquidation_engine_max_cascade_depth(_h));
   }
   void AttachAccount(const Napi::CallbackInfo& info)
   {
@@ -360,15 +360,15 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
       return;
     }
     auto* w = Napi::ObjectWrap<AccountWrap>::Unwrap(info[0].As<Napi::Object>());
-    flox_liquidation_engine_attach_account(_h, w->handle());
+    lrvx_liquidation_engine_attach_account(_h, w->handle());
   }
   void DetachAccount(const Napi::CallbackInfo& info)
   {
-    flox_liquidation_engine_detach_account(
+    lrvx_liquidation_engine_detach_account(
         _h, info[0].As<Napi::Number>().Int64Value());
   }
 
-  FloxLiquidationEngineHandle _h;
+  LrvxLiquidationEngineHandle _h;
 };
 
 inline void registerLiquidationEngine(Napi::Env env, Napi::Object exports)
@@ -376,4 +376,4 @@ inline void registerLiquidationEngine(Napi::Env env, Napi::Object exports)
   exports.Set("LiquidationEngine", LiquidationEngineWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

@@ -52,11 +52,11 @@ jobs:
           PYTHONPATH: tools/codegen
         run: |
           set -euo pipefail
-          for pair in "emit-capi:flox_capi.h" "emit-codon:flox_capi.codon" "emit-llms:flox_capi.md"; do
+          for pair in "emit-capi:lrvx_capi.h" "emit-codon:lrvx_capi.codon" "emit-llms:lrvx_capi.md"; do
             sub="${pair%%:*}"
             file="${pair#*:}"
-            python -m flox_codegen.cli "$sub" \
-              --spec include/flox/capi/flox_capi_spec.hpp \
+            python -m lrvx_codegen.cli "$sub" \
+              --spec include/lrvx/capi/lrvx_capi_spec.hpp \
               --out "/tmp/$file"
             if ! diff -u "tools/codegen/golden/$file" "/tmp/$file"; then
               echo "::error::tools/codegen/golden/$file is out of date"
@@ -66,14 +66,14 @@ jobs:
           done
           # The two layout artifacts are generated in place -- the C header is
           # included by tests/test_capi_event_layout.cpp and the Codon module
-          # is imported by codon/flox/dispatch.codon -- so they are diffed
+          # is imported by codon/lrvx/dispatch.codon -- so they are diffed
           # where they live rather than against a copy under golden/.
-          for pair in "emit-layout-h:include/flox/capi/flox_capi_layout.h" \
-                      "emit-layout-codon:codon/flox/layout.codon"; do
+          for pair in "emit-layout-h:include/lrvx/capi/lrvx_capi_layout.h" \
+                      "emit-layout-codon:codon/lrvx/layout.codon"; do
             sub="${pair%%:*}"
             file="${pair#*:}"
-            python -m flox_codegen.cli "$sub" \
-              --spec include/flox/capi/flox_capi_spec.hpp \
+            python -m lrvx_codegen.cli "$sub" \
+              --spec include/lrvx/capi/lrvx_capi_spec.hpp \
               --out "/tmp/$(basename "$file")"
             if ! diff -u "$file" "/tmp/$(basename "$file")"; then
               echo "::error::$file is out of date"
@@ -82,13 +82,13 @@ jobs:
             fi
           done
 
-      - name: Verify function, macro, and struct-field equivalence with live flox_capi.h
+      - name: Verify function, macro, and struct-field equivalence with live lrvx_capi.h
         env:
           PYTHONPATH: tools/codegen
         run: |
-          python -m flox_codegen.cli check \
-            --expected include/flox/capi/flox_capi.h \
-            --actual tools/codegen/golden/flox_capi.h \
+          python -m lrvx_codegen.cli check \
+            --expected include/lrvx/capi/lrvx_capi.h \
+            --actual tools/codegen/golden/lrvx_capi.h \
             --require-full-coverage
 
       - name: ABI snapshot diff
@@ -119,14 +119,14 @@ jobs:
           fi
           if git log --pretty=%B "$range" 2>/dev/null | grep -qE '^[[:space:]]*BREAKING:'; then
             echo "Found BREAKING: in commit messages — allowing ABI break."
-            python -m flox_codegen.cli abi-diff \
+            python -m lrvx_codegen.cli abi-diff \
               --snapshot .api/c-api.snapshot \
-              --header include/flox/capi/flox_capi.h \
+              --header include/lrvx/capi/lrvx_capi.h \
               --allow-breaking
           else
-            python -m flox_codegen.cli abi-diff \
+            python -m lrvx_codegen.cli abi-diff \
               --snapshot .api/c-api.snapshot \
-              --header include/flox/capi/flox_capi.h
+              --header include/lrvx/capi/lrvx_capi.h
           fi
 
       - name: Run codegen unit tests

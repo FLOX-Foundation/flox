@@ -35,7 +35,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const flox = require(path.join(__dirname, '..'));
+const lrvx = require(path.join(__dirname, '..'));
 
 let passed = 0;
 let failed = 0;
@@ -128,7 +128,7 @@ for (const [fn, param] of OPENS_ON_FIRST_TRADE.concat(TIME_BUCKETED)) {
   const { ts, px, qty, ib } = bigIntTimestamps();
   let bars;
   try {
-    bars = flox[fn](ts, px, qty, ib, param);
+    bars = lrvx[fn](ts, px, qty, ib, param);
   } catch (e) {
     check(false, `${fn} accepts a BigInt64Array timestamp column (threw ${e.constructor.name}: ${e.message})`);
     continue;
@@ -146,7 +146,7 @@ for (const [fn, param] of OPENS_ON_FIRST_TRADE) {
   const { ts, px, qty, ib } = bigIntTimestamps();
   let bars;
   try {
-    bars = flox[fn](ts, px, qty, ib, param);
+    bars = lrvx[fn](ts, px, qty, ib, param);
   } catch (e) {
     check(false, `${fn} accepts a BigInt64Array timestamp column (threw ${e.constructor.name}: ${e.message})`);
     continue;
@@ -160,7 +160,7 @@ for (const [fn, param] of OPENS_ON_FIRST_TRADE.concat(TIME_BUCKETED)) {
   const { ts, px, qty, ib } = doubleTimestamps();
   let bars;
   try {
-    bars = flox[fn](ts, px, qty, ib, param);
+    bars = lrvx[fn](ts, px, qty, ib, param);
   } catch (e) {
     check(false, `${fn} still accepts a Float64Array timestamp column (threw ${e.message})`);
     continue;
@@ -173,9 +173,9 @@ for (const [fn, param] of OPENS_ON_FIRST_TRADE.concat(TIME_BUCKETED)) {
 
 console.log('\n=== The bar fed to onBar carries BigInt timestamps ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const runner = new lrvx.BacktestRunner(reg, 0.0, 10000.0);
 
   const seen = [];
   runner.setStrategy({ symbols: [sym], onBar(_ctx, bar) { seen.push(bar); } });
@@ -209,9 +209,9 @@ console.log('\n=== A bar goes back in the way it came out ===');
   // falls back to the default, so a BigInt startTimeNs did not throw and
   // did not arrive -- it silently became 0. Once bars come out carrying
   // BigInts, handing one straight back has to work.
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   const seen = [];
   runner.addStrategy({ symbols: [sym], onBar(_ctx, bar) { seen.push(bar); } });
   runner.start();
@@ -232,9 +232,9 @@ console.log('\n=== A bar goes back in the way it came out ===');
 
 console.log('\n=== Runner.onBar still takes Number bar timestamps ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   const seen = [];
   runner.addStrategy({ symbols: [sym], onBar(_ctx, bar) { seen.push(bar); } });
   runner.start();
@@ -259,9 +259,9 @@ console.log('\n=== The multi-timeframe bar ring hands back BigInt readings ===')
   // They build their own bar object -- a different builder from the one
   // feeding onBar -- and nothing drove either accessor at runtime, so
   // only the ClosedBar text in index.d.ts stood behind them.
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
 
   const TF_NS = 1000000000;  // a one-second time bar
   const BAR_TYPE = 0;        // BarData.barType 0 = Time
@@ -317,9 +317,9 @@ console.log('\n=== The multi-timeframe bar ring hands back BigInt readings ===')
 
 console.log('\n=== An empty ring reads back as null, not as a zeroed bar ===');
 {
-  const reg = new flox.SymbolRegistry();
+  const reg = new lrvx.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
-  const runner = new flox.Runner(reg, () => {}, false);
+  const runner = new lrvx.Runner(reg, () => {}, false);
   const seen = [];
   runner.addStrategy({
     symbols: [sym],

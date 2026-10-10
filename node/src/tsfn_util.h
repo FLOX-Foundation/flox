@@ -57,7 +57,7 @@
 
 // Deliberately NOT wrapped in a namespace: the node addon aggregates
 // headers under two different namespaces for historical reasons
-// (`node_flox` in strategy.h/data_ops.h/..., `flox_node` in hooks.h), and
+// (`node_lrvx` in strategy.h/data_ops.h/..., `lrvx_node` in hooks.h), and
 // both need these unqualified.
 
 // Bounded so a producer burst pushes back instead of growing without limit;

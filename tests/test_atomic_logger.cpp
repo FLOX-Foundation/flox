@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include <flox/log/atomic_logger.h>
+#include <lrvx/log/atomic_logger.h>
 
 #include <gtest/gtest.h>
 #include <filesystem>
@@ -16,12 +16,12 @@
 #include <string>
 #include <thread>
 
-using namespace flox;
+using namespace lrvx;
 namespace fs = std::filesystem;
 
 static fs::path getLogDir()
 {
-  return fs::temp_directory_path() / "flox_testlogs";
+  return fs::temp_directory_path() / "lrvx_testlogs";
 }
 
 void cleanLogs()

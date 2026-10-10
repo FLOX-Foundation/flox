@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -17,9 +17,9 @@
  * snapshot carries.
  */
 
-#include "flox-venue/engine/clearing.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/ledger.h"
+#include "lrvx-venue/engine/clearing.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/ledger.h"
 
 #include <gtest/gtest.h>
 
@@ -29,8 +29,8 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -171,7 +171,7 @@ std::vector<std::pair<int64_t, InboundCommand>> roundTrip(
 {
   const std::string path =
       (std::filesystem::temp_directory_path() /
-       ("flox_clearing_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
+       ("lrvx_clearing_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
         std::to_string(reinterpret_cast<uintptr_t>(&write)) + ".jrn"))
           .string();
   {

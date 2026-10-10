@@ -10,7 +10,7 @@ A real perpetual venue has a three-step liquidation pipeline:
    profitable opposite-side traders are force-closed at the
    bankruptcy price, ranked by their PnL ratio.
 
-flox's default backtest treats liquidation as a hard stop — the
+lrvx's default backtest treats liquidation as a hard stop — the
 position disappears at the maintenance-margin-breach price. For
 research that needs to know whether a portfolio survives a 5%
 adverse move vs cascades INTO a -8% liquidation, that's a
@@ -27,9 +27,9 @@ A worked example (Python):
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    eng = flox.LiquidationEngine()
+    eng = lrvx.LiquidationEngine()
     eng.add_tier(min_notional=0,         mm_fraction=0.005)
     eng.add_tier(min_notional=250_000,   mm_fraction=0.01)
     eng.add_tier(min_notional=1_000_000, mm_fraction=0.025)
@@ -49,7 +49,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { LiquidationEngine } from "@flox-foundation/flox";
+    import { LiquidationEngine } from "@lrvx/lrvx";
 
     const eng = new LiquidationEngine();
     eng.addTier(0, 0.005);
@@ -64,17 +64,17 @@ A worked example (Python):
 === "TypeScript (QuickJS)"
 
     ```typescript
-    const eng = __flox_liquidation_engine_create();
-    __flox_liquidation_engine_add_tier(eng, 0, 0.005);
-    __flox_liquidation_engine_set_insurance_fund_capital(eng, 10_000_000);
-    __flox_liquidation_engine_open_position(eng, 42, 1, 5.0, 50000.0, 1000.0);
-    const n = __flox_liquidation_engine_on_mark(eng, 1, 49500.0);
+    const eng = __lrvx_liquidation_engine_create();
+    __lrvx_liquidation_engine_add_tier(eng, 0, 0.005);
+    __lrvx_liquidation_engine_set_insurance_fund_capital(eng, 10_000_000);
+    __lrvx_liquidation_engine_open_position(eng, 42, 1, 5.0, 50000.0, 1000.0);
+    const n = __lrvx_liquidation_engine_on_mark(eng, 1, 49500.0);
     ```
 
 === "Codon"
 
     ```python
-    from flox.backtest import LiquidationEngine
+    from lrvx.backtest import LiquidationEngine
 
     eng = LiquidationEngine()
     eng.add_tier(0.0, 0.005)
@@ -86,11 +86,11 @@ A worked example (Python):
 === "C"
 
     ```c
-    FloxLiquidationEngineHandle eng = flox_liquidation_engine_create();
-    flox_liquidation_engine_add_tier(eng, 0.0, 0.005);
-    flox_liquidation_engine_set_insurance_fund_capital(eng, 10000000.0);
-    flox_liquidation_engine_open_position(eng, 42, 1, 5.0, 50000.0, 1000.0);
-    uint32_t n = flox_liquidation_engine_on_mark(eng, 1, 49500.0);
+    LrvxLiquidationEngineHandle eng = lrvx_liquidation_engine_create();
+    lrvx_liquidation_engine_add_tier(eng, 0.0, 0.005);
+    lrvx_liquidation_engine_set_insurance_fund_capital(eng, 10000000.0);
+    lrvx_liquidation_engine_open_position(eng, 42, 1, 5.0, 50000.0, 1000.0);
+    uint32_t n = lrvx_liquidation_engine_on_mark(eng, 1, 49500.0);
     ```
 
 ## Multi-symbol marks in one step
@@ -166,7 +166,7 @@ Higher score = closer to the front of the ADL queue. Set via
     ```python
     liq.set_adl_ranking("binance")
     # or
-    liq.set_adl_ranking(flox_py.AdlRanking.PositionSize)
+    liq.set_adl_ranking(lrvx.AdlRanking.PositionSize)
     ```
 
 === "TypeScript (Node)"
@@ -205,9 +205,9 @@ configured latency:
 === "Python"
 
     ```python
-    exec = flox.SimulatedExecutor()
+    exec = lrvx.SimulatedExecutor()
     # ... set up book updates, fees, latency on exec ...
-    liq = flox.LiquidationEngine.binance_um_futures()
+    liq = lrvx.LiquidationEngine.binance_um_futures()
     liq.set_executor(exec)  # detach: pass None
     ```
 
@@ -274,25 +274,25 @@ second-order liquidations.
 ## Cross-margin accounts
 
 For account-level cross-margin (the real-world default on most
-prop accounts), attach a [`flox.Account`](cross-margin.md) so the
+prop accounts), attach a [`lrvx.Account`](cross-margin.md) so the
 engine walks aggregate equity + uPnL across all symbols and closes
 the worst-PnL leg first when underwater.
 
 === "Python"
 
     ```python
-    acct = flox.Account(account_id=42, equity=10_000.0)
+    acct = lrvx.Account(account_id=42, equity=10_000.0)
     acct.open_position(1, 5.0, 50_000.0)
     acct.open_position(2, -30.0, 3_000.0)
 
-    liq = flox.LiquidationEngine.binance_um_futures()
+    liq = lrvx.LiquidationEngine.binance_um_futures()
     liq.attach_account(acct)
     ```
 
 === "TypeScript"
 
     ```typescript
-    const acct = new flox.Account(42, 10_000);
+    const acct = new lrvx.Account(42, 10_000);
     acct.openPosition(1, 5.0, 50_000);
     acct.openPosition(2, -30.0, 3_000);
     liq.attachAccount(acct);

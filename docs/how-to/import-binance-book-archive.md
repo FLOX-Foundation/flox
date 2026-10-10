@@ -1,23 +1,23 @@
-# Import Binance public book archives into a floxlog tape
+# Import Binance public book archives into a lrvx tape
 
 The aggTrades importer covered in [Import Binance public archives](import-binance-archive.md) handles the trade stream. The book side of the archive ships in two separate products on `data.binance.vision`:
 
 - **bookTicker** (alias `t1`): best bid / ask snapshot per book update. Light, available for spot / um-futures / cm-futures.
 - **bookDepth** (alias `depth20`): top-20 levels per side per book update. Heavier (around 10x aggTrades), today only published for um-futures.
 
-Both products live alongside `aggtrades_to_floxlog` in `flox_py.archives.binance` and emit book events into the same `.floxlog` tape directory, so a single tape can carry trades + book updates the engine and `MergedTapeReader` read interleaved.
+Both products live alongside `aggtrades_to_lrvx` in `lrvx.archives.binance` and emit book events into the same `.lrvx` tape directory, so a single tape can carry trades + book updates the engine and `MergedTapeReader` read interleaved.
 
 ## Functions
 
 ```text
-binance.t1_to_floxlog(csv_path, out_tape, *, symbol_id=1, symbol_name="",
+binance.t1_to_lrvx(csv_path, out_tape, *, symbol_id=1, symbol_name="",
                       market="um-futures", append=True, ...)
                       -> BookConvertStats
 
-binance.depth20_to_floxlog(csv_path, out_tape, *, levels=20, ...)
+binance.depth20_to_lrvx(csv_path, out_tape, *, levels=20, ...)
                       -> BookConvertStats
 
-binance.range_book_to_floxlog(
+binance.range_book_to_lrvx(
     symbol, market, book_type, date_from, date_to, out_tape, *,
     mirror=None, parallel=2, levels=20, ...,
 ) -> BookConvertStats
@@ -27,7 +27,7 @@ binance.range_book_to_floxlog(
 
 ## Example
 
-The script below is the same one CI runs on every push. It builds synthetic bookTicker and bookDepth zips, converts each to a separate `.floxlog`, and reads the book events back through `DataReader.read_book_updates`:
+The script below is the same one CI runs on every push. It builds synthetic bookTicker and bookDepth zips, converts each to a separate `.lrvx`, and reads the book events back through `DataReader.read_book_updates`:
 
 ```python
 --8<-- "examples/python_binance_book_archive.py"
@@ -43,17 +43,17 @@ Both converters keep the running ladder state in memory while writing, so the en
 
 ## CLI
 
-`flox archive binance` accepts the same `--book` flag on either form:
+`lrvx archive binance` accepts the same `--book` flag on either form:
 
 ```bash
 # Single day from a local CSV
-flox archive binance --book t1 \
+lrvx archive binance --book t1 \
   --csv ./BTCUSDT-bookTicker-2024-01-15.zip \
   --out ./tapes/binance-um-BTCUSDT \
   --symbol BTCUSDT --market um-futures
 
 # Multi-day range with download
-flox archive binance --book depth20 \
+lrvx archive binance --book depth20 \
   --symbol BTCUSDT --market um-futures \
   --from 2024-01-01 --to 2024-01-07 \
   --out ./tapes/binance-um-BTCUSDT \
@@ -69,7 +69,7 @@ The converter dedups on the `update_id` (bookTicker) or `last_update_id` (bookDe
 
 ## Co-existence with aggTrades
 
-Trades and book events sit in one `.floxlog` directory side by side. The engine and `MergedTapeReader` interleave them on `exchange_ts_ns` at read time, so the same tape feeds both trade aggregators and book-level analyses (depth-aware execution, vacuum / queue analysis, top-of-book microstructure) in a single pass.
+Trades and book events sit in one `.lrvx` directory side by side. The engine and `MergedTapeReader` interleave them on `exchange_ts_ns` at read time, so the same tape feeds both trade aggregators and book-level analyses (depth-aware execution, vacuum / queue analysis, top-of-book microstructure) in a single pass.
 
 `metadata.json` carries the union counters: `total_trades`, `total_book_updates`, `has_trades`, `has_book_snapshots`, `has_book_deltas`, and the maximum observed `book_depth`. The MergedTapeReader keys by `(metadata.exchange, name)` exactly as for the trade-only case.
 

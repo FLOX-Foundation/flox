@@ -1,13 +1,13 @@
 # Strategy classes
 
-FLOX exposes the same event-driven Strategy model in every language. Override callbacks (`on_trade`, `on_book_update`, `on_bar`), emit orders through the strategy's helper methods, and the C++ engine handles bus dispatch, fills, and bookkeeping.
+lrvx exposes the same event-driven Strategy model in every language. Override callbacks (`on_trade`, `on_book_update`, `on_bar`), emit orders through the strategy's helper methods, and the C++ engine handles bus dispatch, fills, and bookkeeping.
 
 ## Architecture
 
 ```
                    C++ Strategy (canonical)
                             |
-                    C API (libflox_capi.so)
+                    C API (liblrvx_capi.so)
               ____________ | ____________
              |             |              |
    Python Strategy   Node Strategy   Codon Strategy
@@ -23,9 +23,9 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
 
-    class SmaCrossover(flox.Strategy):
+    class SmaCrossover(lrvx.Strategy):
         def __init__(self, symbols, fast=10, slow=30):
             super().__init__(symbols)
             self.prices = []
@@ -66,10 +66,10 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
-    from flox.context import SymbolContext
-    from flox.types import TradeData
-    from flox.indicators import SMA
+    from lrvx.strategy import Strategy
+    from lrvx.context import SymbolContext
+    from lrvx.types import TradeData
+    from lrvx.indicators import SMA
 
     class SmaCrossover(Strategy):
         fast_sma: SMA
@@ -95,7 +95,7 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
 === "C++"
 
     ```cpp
-    class SmaCrossover : public flox::Strategy {
+    class SmaCrossover : public lrvx::Strategy {
       // ... see docs/how-to/backtest.md for the full C++ class
     };
     ```
@@ -106,7 +106,7 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
 |---|---|---|
 | `on_trade(ctx, trade)` | Tick-level trade event | All bindings |
 | `on_book_update(ctx)` | L2 book changed (bid/ask, mid) | All bindings |
-| `on_bar(ctx, bar)` | Closed OHLC bar | All bindings (since [#123](https://github.com/FLOX-Foundation/flox/pull/123)) |
+| `on_bar(ctx, bar)` | Closed OHLC bar | All bindings (since [#123](https://github.com/lrvx/lrvx/pull/123)) |
 | `on_start()` / `on_stop()` | Lifecycle hooks | All bindings |
 | `on_fill(ctx, event)` | Every fill on the strategy's own orders (`PARTIALLY_FILLED` / `FILLED`) | Python, Node.js, Codon |
 | `on_order_update(ctx, event)` | Every order-lifecycle status change — `NEW` / `ACCEPTED` / `CANCELED` / `REJECTED` / `REPLACED` / `TRIGGERED` / `TRAILING_UPDATED`, fills included | Python, Node.js, Codon |

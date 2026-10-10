@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -30,18 +30,18 @@
  * The perimeter half (the FIX session sidecar) is in
  * test_venue_iteration_order_sidecar.cpp -- it needs headers the engine-only
  * build does not have. The split is not cosmetic: venue-engine-only configures
- * with FLOX_VENUE_PERIMETER=OFF, so a file that reaches for a perimeter header
+ * with LRVX_VENUE_PERIMETER=OFF, so a file that reaches for a perimeter header
  * is dropped from that job entirely, and these assertions have to keep running
  * in a configuration that does not build the gateways.
  */
-#include "flox-venue/collateral.h"
-#include "flox-venue/control_plane.h"
-#include "flox-venue/cross_margin.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/market_data.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/symbol_router.h"
+#include "lrvx-venue/collateral.h"
+#include "lrvx-venue/control_plane.h"
+#include "lrvx-venue/cross_margin.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/market_data.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/symbol_router.h"
 
 #include <gtest/gtest.h>
 
@@ -50,8 +50,8 @@
 #include <memory>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

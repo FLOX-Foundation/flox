@@ -1,6 +1,6 @@
 # Explanation
 
-Understand concepts and design decisions behind FLOX. These pages are language-agnostic; code samples use tabs where they help.
+Understand concepts and design decisions behind lrvx. These pages are language-agnostic; code samples use tabs where they help.
 
 ## Overview
 

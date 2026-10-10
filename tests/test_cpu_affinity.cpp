@@ -1,8 +1,8 @@
 /*
- * Flox Engine - CPU Affinity Tests
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine - CPU Affinity Tests
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -10,10 +10,10 @@
  * On busy systems, CPU affinity tests may be flaky or show inconsistent results.
  */
 
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/util/performance/cpu_affinity.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/util/performance/cpu_affinity.h"
 
 #include <gtest/gtest.h>
 #include <chrono>
@@ -21,8 +21,8 @@
 #include <thread>
 #include <vector>
 
-using namespace flox;
-using namespace flox::performance;
+using namespace lrvx;
+using namespace lrvx::performance;
 
 // A controllable ISystemInterface for TD-02: `setRealTimePriority`,
 // `disableCpuFrequencyScaling` and `enableCpuFrequencyScaling` were only

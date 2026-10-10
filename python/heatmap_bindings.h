@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,8 +12,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "flox/error/flox_error.h"
-#include "flox/report/heatmap_html.h"
+#include "lrvx/error/lrvx_error.h"
+#include "lrvx/report/heatmap_html.h"
 
 #include <fstream>
 #include <string>
@@ -21,7 +21,7 @@
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
 inline std::string heatmap_html(
@@ -35,7 +35,7 @@ inline std::string heatmap_html(
 {
   if (z.empty())
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_LEN_002",
         "heatmap_html: z must be a non-empty 2D list of doubles.");
   }
@@ -43,11 +43,11 @@ inline std::string heatmap_html(
   const std::size_t cols = z[0].size();
   if (cols == 0)
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_LEN_002",
         "heatmap_html: z rows must be non-empty.");
   }
-  flox::report::HeatmapData d;
+  lrvx::report::HeatmapData d;
   d.rows = rows;
   d.cols = cols;
   d.z.reserve(rows * cols);
@@ -55,7 +55,7 @@ inline std::string heatmap_html(
   {
     if (row.size() != cols)
     {
-      throw flox::FloxError(
+      throw lrvx::LrvxError(
           "E_LEN_001",
           "heatmap_html: all rows in z must have the same length.");
     }
@@ -70,7 +70,7 @@ inline std::string heatmap_html(
   d.xAxisName = x_axis_name;
   d.yAxisName = y_axis_name;
   d.metricName = metric_name;
-  return flox::report::renderHeatmapHtml(d);
+  return lrvx::report::renderHeatmapHtml(d);
 }
 
 inline void write_heatmap(const std::string& path,
@@ -87,7 +87,7 @@ inline void write_heatmap(const std::string& path,
   std::ofstream f(path);
   if (!f.is_open())
   {
-    throw flox::FloxError(
+    throw lrvx::LrvxError(
         "E_IO_001",
         "write_heatmap: cannot open output file '" + path + "'.");
   }
@@ -98,7 +98,7 @@ inline void bindHeatmap(py::module_& m)
 {
   auto report_mod = m.def_submodule("_heatmap",
                                     "Inline-SVG heatmap rendering "
-                                    "(used by flox_py.report).");
+                                    "(used by lrvx.report).");
   report_mod.def("heatmap_html", &heatmap_html,
                  py::arg("z"),
                  py::arg("row_labels") = std::vector<std::string>{},
@@ -120,4 +120,4 @@ inline void bindHeatmap(py::module_& m)
                  "Render and write a heatmap HTML to disk.");
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

@@ -6,11 +6,11 @@ reverse crossover.
 
 ## Prerequisites
 
-1. Flox built with C API enabled
+1. lrvx built with C API enabled
 2. Codon compiler installed
 
 ```bash
-cmake -B build -DFLOX_BUILD_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DLRVX_BUILD_CAPI=ON -DLRVX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
@@ -18,11 +18,11 @@ cmake --build build
 
 Create `my_sma_strategy.codon`:
 
-```python
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import SMA
+```codon
+from lrvx.strategy import Strategy
+from lrvx.context import SymbolContext
+from lrvx.types import TradeData
+from lrvx.indicators import SMA
 
 
 class SmaCrossover(Strategy):
@@ -73,7 +73,7 @@ class SmaCrossover(Strategy):
 codon build -exe \
   -o my_sma_strategy \
   -L build/src/capi \
-  -lflox_capi \
+  -llrvx_capi \
   my_sma_strategy.codon
 ```
 
@@ -100,7 +100,7 @@ Because Codon compiles to native code:
 - No GIL, no interpreter, no garbage collector pauses
 
 `SMA.update()` is **not** an O(1) online recurrence. The indicator classes
-in `flox.indicators` accumulate the full history and re-run the batch C-API
+in `lrvx.indicators` accumulate the full history and re-run the batch C-API
 function over all of it on every call, which guarantees parity with
 `compute()` but costs one FFI call over the whole history per tick. For
 tick-rate hot paths, buffer the prices and call `compute()` on the batch.
@@ -120,7 +120,7 @@ void onSymbolTrade(SymbolContext& c, const TradeEvent& ev) override {
 
 And in Python:
 
-```python
+```codon
 def on_trade(self, ctx, trade):
     self.prices.append(trade.price)
     # ... SMA logic ...

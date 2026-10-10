@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/util/memory/ref_countable.h"
+#include "lrvx/util/memory/ref_countable.h"
 
 #include <gtest/gtest.h>
 
-using namespace flox;
+using namespace lrvx;
 
 class TestRefCountable : public RefCountable
 {

@@ -159,7 +159,7 @@ def report(findings: list[Finding]) -> None:
 
 SELF_TEST_POSITIVE = [
     ("AddressSanitizer", "==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x1"),
-    ("AddressSanitizer", "SUMMARY: AddressSanitizer: heap-use-after-free pool.h:52 in flox::Pool"),
+    ("AddressSanitizer", "SUMMARY: AddressSanitizer: heap-use-after-free pool.h:52 in lrvx::Pool"),
     ("LeakSanitizer", "==12345==ERROR: LeakSanitizer: detected memory leaks"),
     ("LeakSanitizer", "SUMMARY: LeakSanitizer: 64 byte(s) leaked in 1 allocation(s)."),
     ("ThreadSanitizer", "WARNING: ThreadSanitizer: data race (pid=4242)"),

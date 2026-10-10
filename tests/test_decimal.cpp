@@ -1,13 +1,13 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/util/base/decimal.h"
+#include "lrvx/util/base/decimal.h"
 
 #include <gtest/gtest.h>
 #include <math.h>
@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <limits>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -160,12 +160,12 @@ TEST(DecimalTest, FromDoubleOutOfRangeSaturates)
 // operator+= must saturate instead of silently overflowing.
 //
 // Overflow is guarded two ways, and this file tests both:
-//   - FLOX_SCALE_CHECKS on (any build without NDEBUG, or an explicit
-//     -DFLOX_SCALE_CHECKS=1 build such as CI's sanitizer job): overflow
-//     trips FLOX_SCALE_CHECK's assert immediately -- a programmer error
-//     caught as early as possible, same as every other FLOX_SCALE_CHECK
+//   - LRVX_SCALE_CHECKS on (any build without NDEBUG, or an explicit
+//     -DLRVX_SCALE_CHECKS=1 build such as CI's sanitizer job): overflow
+//     trips LRVX_SCALE_CHECK's assert immediately -- a programmer error
+//     caught as early as possible, same as every other LRVX_SCALE_CHECK
 //     in this file's arithmetic operators.
-//   - FLOX_SCALE_CHECKS off (a normal NDEBUG release build): the assert
+//   - LRVX_SCALE_CHECKS off (a normal NDEBUG release build): the assert
 //     compiles to nothing, so checkedAddI64's saturation is what
 //     actually runs and must produce a defined, non-wrapped result.
 // A single un-guarded test can only exercise one of these per build, and
@@ -173,7 +173,7 @@ TEST(DecimalTest, FromDoubleOutOfRangeSaturates)
 // split accordingly instead of assuming a particular build type.
 // ---------------------------------------------------------------------------
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 
 TEST(DecimalTest, AccumulateOverflowTripsAssertWithScaleChecksOn)
 {
@@ -215,7 +215,7 @@ TEST(DecimalTest, AccumulateNegativeOverflowTripsAssertWithScaleChecksOn)
       "fixed-point accumulation overflow");
 }
 
-#else  // !FLOX_SCALE_CHECKS
+#else  // !LRVX_SCALE_CHECKS
 
 TEST(DecimalTest, AccumulateSaturatesInsteadOfOverflowing)
 {
@@ -260,7 +260,7 @@ TEST(DecimalTest, AccumulateNegativeSaturatesAtMin)
   EXPECT_EQ(total.raw(), std::numeric_limits<int64_t>::min());
 }
 
-#endif  // FLOX_SCALE_CHECKS
+#endif  // LRVX_SCALE_CHECKS
 
 // ---------------------------------------------------------------------------
 // Which scale the result of a mixed-scale add or subtract carries.
@@ -270,12 +270,12 @@ TEST(DecimalTest, AccumulateNegativeSaturatesAtMin)
 // has to carry the NON-zero operand's scale, not the zero's -- read at the
 // wrong scale a DEX raw is off by whole orders of magnitude.
 //
-// The runtime scale only exists with FLOX_SCALE_CHECKS on; without it scale()
+// The runtime scale only exists with LRVX_SCALE_CHECKS on; without it scale()
 // is the compile-time Scale for every value and there is nothing here to get
 // wrong, which is why this section has no saturation half.
 // ---------------------------------------------------------------------------
 
-#if FLOX_SCALE_CHECKS
+#if LRVX_SCALE_CHECKS
 
 TEST(DecimalTest, AddingAZeroKeepsTheNonZeroOperandsScaleWithScaleChecksOn)
 {
@@ -322,7 +322,7 @@ TEST(DecimalTest, InPlaceAddAndSubtractAdoptTheOtherScaleOnlyFromZeroWithScaleCh
   EXPECT_EQ(heldSub.raw(), 200);
 }
 
-#endif  // FLOX_SCALE_CHECKS
+#endif  // LRVX_SCALE_CHECKS
 
 TEST(DecimalTest, AccumulateStaysExactBelowTheOverflowCeiling)
 {

@@ -69,13 +69,13 @@ BUILD_JOBS = os.environ.get("MUTATION_JOBS", "4")
 BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
-CONTROL_API = "venue/include/flox-venue/control_api.h"
-CONTROL_PLANE = "venue/include/flox-venue/control_plane.h"
-SEQUENCED_SHARD = "venue/include/flox-venue/sequenced_shard.h"
-SYMBOL_ROUTER = "venue/include/flox-venue/symbol_router.h"
-JOURNAL_WINDOW = "venue/include/flox-venue/journal_window.h"
-PEGS = "venue/include/flox-venue/engine/pegs.h"
-VALIDATE = "venue/include/flox-venue/engine/validate.inl"
+CONTROL_API = "venue/include/lrvx-venue/control_api.h"
+CONTROL_PLANE = "venue/include/lrvx-venue/control_plane.h"
+SEQUENCED_SHARD = "venue/include/lrvx-venue/sequenced_shard.h"
+SYMBOL_ROUTER = "venue/include/lrvx-venue/symbol_router.h"
+JOURNAL_WINDOW = "venue/include/lrvx-venue/journal_window.h"
+PEGS = "venue/include/lrvx-venue/engine/pegs.h"
+VALIDATE = "venue/include/lrvx-venue/engine/validate.inl"
 
 MATCH = "test_venue_match_policy_reach"
 JWIN = "test_venue_journal_window"

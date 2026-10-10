@@ -1,6 +1,6 @@
 # Price and backtest DEX pools on Node
 
-`flox/dex` is the Node mirror of the Python `flox_py.dex` comfort layer: the same object
+`lrvx/dex` is the Node mirror of the Python `lrvx.dex` comfort layer: the same object
 model — `Token`, `Amount`, `Pool` venue classes, `Quote`, `Router`, `arb`, `Tape` — over
 the same exact AMM curves. Human amounts go in as `"NUMBER SYMBOL"` strings, swap math
 runs in the native addon as `bigint` wei, and a mis-routed swap raises instead of
@@ -10,7 +10,7 @@ It ships as the `dex` property of the package (the raw `ammCurve*` / `poolTape*`
 functions stay on the top level for power users).
 
 ```js
-const { dex } = require('@flox-foundation/flox');
+const { dex } = require('@lrvx/lrvx');
 
 const weth = new dex.Token('WETH', 18);
 const usdc = new dex.Token('USDC', 6);

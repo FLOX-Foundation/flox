@@ -13,12 +13,12 @@ for i in range(WARMUP, n):
         ...
 ```
 
-At 17,000 bars it runs in ~7 seconds. At 15-minute resolution (70k bars) it crosses a minute. At 1-second resolution (60M bars) it crosses an hour. `flox_py.rolling.top_k_threshold` collapses the same computation to a single vectorized `np.partition` call along the window axis.
+At 17,000 bars it runs in ~7 seconds. At 15-minute resolution (70k bars) it crosses a minute. At 1-second resolution (60M bars) it crosses an hour. `lrvx.rolling.top_k_threshold` collapses the same computation to a single vectorized `np.partition` call along the window axis.
 
 ## Function
 
 ```text
-flox_py.rolling.top_k_threshold(
+lrvx.rolling.top_k_threshold(
     values: ArrayLike,
     *,
     window: int,
@@ -44,7 +44,7 @@ Benchmark on 17,520 bars (BTC 1h × 2 years), `window=720`, `k=3`:
 | Implementation | Time |
 |---|---|
 | Naive Python loop with `np.partition` per bar | ~7 s |
-| `flox_py.rolling.top_k_threshold` | ~25 ms |
+| `lrvx.rolling.top_k_threshold` | ~25 ms |
 
 At 1-minute (or finer) resolution the difference goes from "the script runs" to "the script does not run." The helper makes the lower timeframes accessible without writing per-call boilerplate around `np.lib.stride_tricks.sliding_window_view`.
 

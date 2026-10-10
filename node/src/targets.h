@@ -1,6 +1,6 @@
 // node/src/targets.h -- forward-looking labels (research-only).
 //
-// Targets are intentionally batch-only and live under the `flox.targets.*`
+// Targets are intentionally batch-only and live under the `lrvx.targets.*`
 // namespace so look-ahead is visible at the call site.
 
 #pragma once
@@ -10,11 +10,11 @@
 #include <span>
 #include <vector>
 
-#include "flox/target/future_ctc_volatility.h"
-#include "flox/target/future_linear_slope.h"
-#include "flox/target/future_return.h"
+#include "lrvx/target/future_ctc_volatility.h"
+#include "lrvx/target/future_linear_slope.h"
+#include "lrvx/target/future_return.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 namespace
@@ -40,19 +40,19 @@ Napi::Value computeTarget(const Napi::CallbackInfo& info, Target t)
 inline Napi::Value batch_future_return(const Napi::CallbackInfo& info)
 {
   size_t h = info[1].As<Napi::Number>().Uint32Value();
-  return computeTarget(info, flox::target::FutureReturn(h));
+  return computeTarget(info, lrvx::target::FutureReturn(h));
 }
 
 inline Napi::Value batch_future_ctc_volatility(const Napi::CallbackInfo& info)
 {
   size_t h = info[1].As<Napi::Number>().Uint32Value();
-  return computeTarget(info, flox::target::FutureCTCVolatility(h));
+  return computeTarget(info, lrvx::target::FutureCTCVolatility(h));
 }
 
 inline Napi::Value batch_future_linear_slope(const Napi::CallbackInfo& info)
 {
   size_t h = info[1].As<Napi::Number>().Uint32Value();
-  return computeTarget(info, flox::target::FutureLinearSlope(h));
+  return computeTarget(info, lrvx::target::FutureLinearSlope(h));
 }
 
 }  // namespace
@@ -66,4 +66,4 @@ inline void registerTargets(Napi::Env env, Napi::Object exports)
   exports.Set("targets", targets);
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

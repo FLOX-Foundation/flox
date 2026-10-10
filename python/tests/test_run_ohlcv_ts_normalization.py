@@ -2,7 +2,7 @@
 its `ts` array.
 
 `ts` is nanoseconds by contract -- the same contract
-flox_backtest_runner_run_ohlcv's timestamps_ns C ABI parameter documents,
+lrvx_backtest_runner_run_ohlcv's timestamps_ns C ABI parameter documents,
 that Node's runOhlcv uses (a BigInt64Array passed straight through to that
 same C ABI call, no rescaling), and that Codon's run_ohlcv documents
 ("timestamps in nanoseconds"). The Python binding used to be the one
@@ -19,10 +19,10 @@ hazard on run_bars, fixed earlier in the same audit.
 """
 from __future__ import annotations
 
-import flox_py as flox
+import lrvx
 
 
-class _RecordTradeTimes(flox.Strategy):
+class _RecordTradeTimes(lrvx.Strategy):
     """Records every on_trade timestamp_ns it observes, unmodified, so the
     test can compare the values run_ohlcv actually dispatched against the
     exact ts[] it was given."""
@@ -36,9 +36,9 @@ class _RecordTradeTimes(flox.Strategy):
 
 
 def test_run_ohlcv_preserves_exact_nanosecond_timestamps() -> None:
-    registry = flox.SymbolRegistry()
+    registry = lrvx.SymbolRegistry()
     sym = registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
-    runner = flox.BacktestRunner(registry, initial_capital=100_000.0)
+    runner = lrvx.BacktestRunner(registry, initial_capital=100_000.0)
     strat = _RecordTradeTimes([sym])
     runner.set_strategy(strat)
 

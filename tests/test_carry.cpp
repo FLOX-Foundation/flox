@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
-#include "flox/pricing/black_scholes.h"
-#include "flox/pricing/carry.h"
+#include "lrvx/pricing/black_scholes.h"
+#include "lrvx/pricing/carry.h"
 
 #include <vector>
 
-using namespace flox;
-using namespace flox::pricing;
+using namespace lrvx;
+using namespace lrvx::pricing;
 
 // Cost-of-carry assembles from rate, dividend yield and borrow. Crypto (all
 // zero) gives b = 0; equity nets the financing pieces.

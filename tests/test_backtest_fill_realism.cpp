@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -24,18 +24,18 @@
 // The reference bar throughout is open 100, high 110, low 90, close 105.
 // Each test names both the price the fill must get and the price it must not.
 
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/backtest_runner.h"
-#include "flox/backtest/liquidation_engine.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
-#include "flox/backtest/venue_stack.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/execution/rate_limit_policy.h"
-#include "flox/replay/abstract_event_reader.h"
-#include "flox/strategy/strategy.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/backtest/backtest_result.h"
+#include "lrvx/backtest/backtest_runner.h"
+#include "lrvx/backtest/liquidation_engine.h"
+#include "lrvx/backtest/simulated_clock.h"
+#include "lrvx/backtest/simulated_executor.h"
+#include "lrvx/backtest/venue_stack.h"
+#include "lrvx/engine/abstract_market_data_subscriber.h"
+#include "lrvx/engine/symbol_registry.h"
+#include "lrvx/execution/rate_limit_policy.h"
+#include "lrvx/replay/abstract_event_reader.h"
+#include "lrvx/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -48,7 +48,7 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

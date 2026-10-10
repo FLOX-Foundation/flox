@@ -9,7 +9,7 @@ and Codon assert the same outputs against the same C ABI.
 """
 from __future__ import annotations
 
-import flox_py
+import lrvx
 
 
 H4_NS = 4 * 60 * 60 * 1_000_000_000
@@ -21,7 +21,7 @@ def _drive(seconds_in_order: list[int]) -> list[int]:
     """Register timeframes in `seconds_in_order`, drive a tape across
     one H4 boundary, and return the dispatched bar params (in
     nanoseconds) at the tied close in dispatch order."""
-    r = flox_py.BarDispatchRecorder()
+    r = lrvx.BarDispatchRecorder()
     for s in seconds_in_order:
         r.add_time_interval_seconds(s)
     r.on_trade(symbol=1, price=100.0, qty=0.1, ts_ns=0)

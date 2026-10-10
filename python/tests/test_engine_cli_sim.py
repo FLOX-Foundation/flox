@@ -1,6 +1,6 @@
-"""`flox engine sim` type joins.
+"""`lrvx engine sim` type joins.
 
-Every one of these asserts a boundary where two flox objects that look
+Every one of these asserts a boundary where two lrvx objects that look
 interchangeable are not. The command shipped in #234 raised TypeError on the
 first of them, so it had never started once; each fix below just moved the
 failure to the next line. These tests pin the joins so the command cannot
@@ -8,32 +8,32 @@ regress back into never-running without a test failing.
 """
 import pytest
 
-import flox_py
-from flox_py import engine_cli
+import lrvx
+from lrvx import engine_cli
 
 
-def _runner() -> flox_py.Runner:
-    reg = flox_py.SymbolRegistry()
+def _runner() -> lrvx.Runner:
+    reg = lrvx.SymbolRegistry()
     reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-    return flox_py.Runner(reg, on_signal=lambda s: None, threaded=False)
+    return lrvx.Runner(reg, on_signal=lambda s: None, threaded=False)
 
 
 def test_simulated_executor_is_not_a_runner_executor() -> None:
     # The premise of _make_sim_bridge. If this ever starts passing, the
     # bridge is redundant and should go.
     with pytest.raises(TypeError):
-        _runner().set_executor(flox_py.SimulatedExecutor())
+        _runner().set_executor(lrvx.SimulatedExecutor())
 
 
 def test_sim_bridge_is_accepted_by_the_runner() -> None:
-    _runner().set_executor(engine_cli._make_sim_bridge(flox_py.SimulatedExecutor()))
+    _runner().set_executor(engine_cli._make_sim_bridge(lrvx.SimulatedExecutor()))
 
 
 def test_sim_bridge_forwards_orders_into_the_simulator() -> None:
-    sim = flox_py.SimulatedExecutor()
+    sim = lrvx.SimulatedExecutor()
     bridge = engine_cli._make_sim_bridge(sim)
 
-    order = flox_py.Order()
+    order = lrvx.Order()
     order.id = 7
     order.side = "buy"
     order.price = 100.0
@@ -57,7 +57,7 @@ def test_kill_switch_bridge_reflects_the_stub_state() -> None:
     bridge = engine_cli._make_kill_switch_bridge(state)
     _runner().set_kill_switch(bridge)
 
-    sig = flox_py.Signal()
+    sig = lrvx.Signal()
     # True lets the signal through; the switch starts open.
     assert bridge.check(sig) is True
 
@@ -76,7 +76,7 @@ def test_add_symbol_returns_a_symbol_not_an_int() -> None:
     # put the symbol id straight into JSON, and Symbol is not serialisable.
     import json
 
-    reg = flox_py.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     symbol = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
     with pytest.raises(TypeError):

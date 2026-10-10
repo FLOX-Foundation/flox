@@ -15,7 +15,7 @@ import sys
 build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python")
 sys.path.insert(0, os.path.abspath(build_dir))
 
-from flox_py import dex  # noqa: E402
+from lrvx import dex  # noqa: E402
 
 WETH, USDC = dex.Token("WETH", 18), dex.Token("USDC", 6)
 

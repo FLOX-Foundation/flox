@@ -1,6 +1,6 @@
 """The 38 tool schemas and the dispatch chain must agree.
 
-No test imported `flox_mcp.server` at all: CI ran `pytest mcp/tests/` without
+No test imported `lrvx_mcp.server` at all: CI ran `pytest mcp/tests/` without
 installing the `mcp` package, so `server.py` was unimportable and both halves
 of the tool surface went unchecked -- the 38 `Tool(...)` schemas returned by
 `list_tools`, and the ~220-line if/elif chain in `_call_tool` that has to
@@ -26,7 +26,7 @@ mcp_types = pytest.importorskip(
     "mcp.types", reason="needs the `mcp` package (declared in mcp/pyproject.toml)"
 )
 
-from flox_mcp.server import build_server  # noqa: E402
+from lrvx_mcp.server import build_server  # noqa: E402
 
 
 def _handlers() -> tuple[Any, Any]:
@@ -76,7 +76,7 @@ def test_every_advertised_tool_is_reachable_in_the_dispatch(name: str) -> None:
     """No advertised tool may fall through to the unknown-tool branch.
 
     Called with no arguments on purpose: a tool needing arguments raises
-    inside its branch and `_call_tool` turns that into a "flox-mcp error: ..."
+    inside its branch and `_call_tool` turns that into a "lrvx-mcp error: ..."
     string, which still proves the branch was reached. Only "unknown tool"
     means the name never made it into the chain.
     """
@@ -88,7 +88,7 @@ def test_every_advertised_tool_is_reachable_in_the_dispatch(name: str) -> None:
 def test_an_unregistered_name_reports_unknown_tool() -> None:
     # The negative control: if this stopped saying "unknown tool", the check
     # above would pass for every name and prove nothing.
-    assert _call("definitely_not_a_flox_tool").startswith("unknown tool:")
+    assert _call("definitely_not_a_lrvx_tool").startswith("unknown tool:")
 
 
 def test_dispatch_never_raises_on_missing_arguments() -> None:
@@ -115,7 +115,7 @@ def test_call_tool_offloads_blocking_work_off_the_event_loop(monkeypatch) -> Non
     """
     import time
 
-    from flox_mcp import server as server_module
+    from lrvx_mcp import server as server_module
 
     def blocking_record_data(*args: Any, **kwargs: Any) -> str:
         time.sleep(0.3)
@@ -158,17 +158,17 @@ def test_call_tool_offloads_blocking_work_off_the_event_loop(monkeypatch) -> Non
 
 
 def test_unregistered_tool_name_reports_iserror() -> None:
-    _, is_error = _call_full("definitely_not_a_flox_tool")
+    _, is_error = _call_full("definitely_not_a_lrvx_tool")
     assert is_error is True
 
 
 def test_exception_in_a_branch_sets_iserror() -> None:
     # lookup_error_code requires `code`; called bare it raises inside its
     # branch. The text-only checks above already prove this comes back as
-    # "flox-mcp error: ...", not a crash -- this proves the *isError* flag
+    # "lrvx-mcp error: ...", not a crash -- this proves the *isError* flag
     # (which a client would actually branch on) agrees with that text.
     text, is_error = _call_full("lookup_error_code")
-    assert text.startswith("flox-mcp error:")
+    assert text.startswith("lrvx-mcp error:")
     assert is_error is True
 
 
@@ -178,7 +178,7 @@ def test_control_tool_failure_sets_iserror(monkeypatch) -> None:
     rejected the order outright -- a client branching on isError alone
     would believe the order went through. `control.place_order` now
     reports (text, is_error) and the dispatcher must propagate it."""
-    from flox_mcp import server as server_module
+    from lrvx_mcp import server as server_module
 
     monkeypatch.setattr(
         server_module.control, "place_order",
@@ -192,7 +192,7 @@ def test_control_tool_failure_sets_iserror(monkeypatch) -> None:
 
 
 def test_control_tool_success_leaves_iserror_false(monkeypatch) -> None:
-    from flox_mcp import server as server_module
+    from lrvx_mcp import server as server_module
 
     monkeypatch.setattr(
         server_module.control, "place_order",

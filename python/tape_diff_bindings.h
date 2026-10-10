@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -15,14 +15,14 @@
 #include <optional>
 #include <string>
 
-#include "flox/replay/tape_diff.h"
+#include "lrvx/replay/tape_diff.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
-inline py::dict tradeToDict(const flox::replay::TapeDiffTrade& t)
+inline py::dict tradeToDict(const lrvx::replay::TapeDiffTrade& t)
 {
   py::dict d;
   d["exchange_ts_ns"] = t.exchange_ts_ns;
@@ -38,10 +38,10 @@ inline py::object diff_tapes_native(const std::string& left,
                                     uint32_t max_mismatches,
                                     int64_t field_tolerance_ns)
 {
-  flox::replay::TapeDiffOptions opts;
+  lrvx::replay::TapeDiffOptions opts;
   opts.max_mismatches = max_mismatches;
   opts.field_tolerance_ns = field_tolerance_ns;
-  flox::replay::TapeDiffResult r = flox::replay::diffTapes(left, right, opts);
+  lrvx::replay::TapeDiffResult r = lrvx::replay::diffTapes(left, right, opts);
 
   py::dict out;
   out["left_path"] = r.left_path;
@@ -79,7 +79,7 @@ inline void bindTapeDiff(py::module_& m)
         py::arg("max_mismatches") = 16,
         py::arg("field_tolerance_ns") = 0,
         "Internal C++-backed tape diff. Returns a dict the public "
-        "wrapper in flox_py.tape converts to a TapeDiff dataclass.");
+        "wrapper in lrvx.tape converts to a TapeDiff dataclass.");
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

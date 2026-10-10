@@ -1,6 +1,6 @@
 """python/tests/test_rl_env_findings.py
 
-Regression tests for four findings in ``flox_py.rl_env``:
+Regression tests for four findings in ``lrvx.rl_env``:
 
 * Observation leak -- the observation's unrealized-PnL slot (and the open-order
   distance slot) was built from ``trades[self._idx]``, the price of
@@ -41,8 +41,8 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
-from flox_py import rl_env  # noqa: E402
+import lrvx  # noqa: E402
+from lrvx import rl_env  # noqa: E402
 
 
 def _zigzag_tape(n: int, amplitude: float = 1.0, base: float = 100.0) -> List[Tuple[int, float, float, int]]:
@@ -74,7 +74,7 @@ class ObservationLeakTests(unittest.TestCase):
 
     def test_pnl_slot_uses_last_known_price_not_next_trade(self) -> None:
         tape = _zigzag_tape(6)
-        env = rl_env.FloxTradingEnv(trades=tape, qty=1.0, window_size=1)
+        env = rl_env.LrvxTradingEnv(trades=tape, qty=1.0, window_size=1)
         env.reset()
         # Step 0: hold. Step 1: go long at trade[1]'s price.
         env.step(0)
@@ -100,9 +100,9 @@ class ObservationLeakTests(unittest.TestCase):
 
     def test_open_order_distance_slot_uses_last_known_price(self) -> None:
         # Venue-stack path, since only it carries open-order slots.
-        stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+        stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
         tape = _zigzag_tape(6, base=100.0, amplitude=20.0)
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=tape, qty=1.0, window_size=1, symbol_id=1,
             action_mode="continuous", n_open_slots=1, tick_size=1.0,
         )
@@ -128,13 +128,13 @@ class VenueEntryPriceObservationTests(unittest.TestCase):
     `_entry_price` (which stays 0 in this mode)."""
 
     def test_pnl_slot_matches_venue_entry_price_not_zero(self) -> None:
-        stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+        stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
         tape = [
             (1_000, 100.0, 1.0, 0),
             (2_000, 110.0, 1.0, 0),
             (3_000, 110.0, 1.0, 0),
         ]
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=tape, qty=1.0, window_size=1, symbol_id=1,
             action_mode="discrete", n_open_slots=0,
         )
@@ -167,9 +167,9 @@ class ResetClearsVenueStackTests(unittest.TestCase):
         return trades
 
     def test_repeated_episodes_do_not_drift_equity(self) -> None:
-        stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=100_000.0)
+        stack = lrvx.VenueStack.binance_um_futures(account_id=1, equity=100_000.0)
         tape = self._tape()
-        env = rl_env.FloxTradingEnv.from_venue_stack(
+        env = rl_env.LrvxTradingEnv.from_venue_stack(
             stack, tape=tape, qty=1.0, window_size=2, symbol_id=1,
             action_mode="discrete",
         )
@@ -265,7 +265,7 @@ class SharpeScaleInvarianceTests(unittest.TestCase):
                 return [signed, 0.0, 0.0], None
 
         wf = rl_env.WalkForwardRL(
-            venue_stack_factory=lambda: flox_py.VenueStack.binance_um_futures(
+            venue_stack_factory=lambda: lrvx.VenueStack.binance_um_futures(
                 1, initial_equity
             ),
             tape=self._tape(),

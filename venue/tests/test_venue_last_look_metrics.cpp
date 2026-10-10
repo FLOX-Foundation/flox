@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -20,10 +20,10 @@
  * never a hand-built struct. An exporter wired to a sampler nobody calls
  * renders zeros, and zeros look exactly like a healthy venue.
  */
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/metrics.h"
-#include "flox-venue/prometheus.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/metrics.h"
+#include "lrvx-venue/prometheus.h"
 
 #include <gtest/gtest.h>
 
@@ -31,8 +31,8 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {

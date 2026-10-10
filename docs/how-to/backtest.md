@@ -7,25 +7,25 @@ Replay an SMA crossover strategy against historical data and read the stats out.
 === "Python"
 
     ```bash
-    pip install flox-py
+    pip install lrvx
     ```
 
-    Or build from source: `cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON && cmake --build build` and put `build/python` on `PYTHONPATH`.
+    Or build from source: `cmake -B build -DLRVX_BUILD_PYTHON=ON -DLRVX_ENABLE_BACKTEST=ON && cmake --build build` and put `build/python` on `PYTHONPATH`.
 
 === "Node.js"
 
     ```bash
-    npm install @flox-foundation/flox
+    npm install @lrvx/lrvx
     ```
 
 === "Codon"
 
-    Build flox with `-DFLOX_BUILD_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON`, then point Codon at `codon/flox`.
+    Build lrvx with `-DLRVX_BUILD_CAPI=ON -DLRVX_ENABLE_BACKTEST=ON`, then point Codon at `codon/lrvx`.
 
 === "C++"
 
     ```bash
-    cmake -B build -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+    cmake -B build -DLRVX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
     ```
 
@@ -36,10 +36,10 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "Python"
 
     ```python
-    import flox_py as flox
+    import lrvx
     from collections import deque
 
-    class SmaCrossover(flox.Strategy):
+    class SmaCrossover(lrvx.Strategy):
         def __init__(self, symbols, fast=10, slow=20, size=1.0):
             super().__init__(symbols)
             self.fast, self.slow, self.size = fast, slow, size
@@ -63,7 +63,7 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "Node.js"
 
     ```javascript
-    const flox = require('@flox-foundation/flox');
+    const lrvx = require('@lrvx/lrvx');
 
     class SmaCrossover {
       constructor(symbols, fast = 10, slow = 20, size = 1.0) {
@@ -88,10 +88,10 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
-    from flox.context import SymbolContext
-    from flox.types import TradeData
-    from flox.indicators import SMA
+    from lrvx.strategy import Strategy
+    from lrvx.context import SymbolContext
+    from lrvx.types import TradeData
+    from lrvx.indicators import SMA
 
     class SmaCrossover(Strategy):
         fast: SMA
@@ -122,10 +122,10 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "C++"
 
     ```cpp
-    #include "flox/strategy/strategy.h"
+    #include "lrvx/strategy/strategy.h"
     #include <deque>
 
-    using namespace flox;
+    using namespace lrvx;
 
     class SmaCrossover : public Strategy {
     public:
@@ -169,11 +169,11 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "Python"
 
     ```python
-    reg = flox.SymbolRegistry()
+    reg = lrvx.SymbolRegistry()
     btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
     strat = SmaCrossover([btc])
-    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+    bt = lrvx.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
     bt.set_strategy(strat)
 
     stats = bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
@@ -185,11 +185,11 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "Node.js"
 
     ```javascript
-    const reg = new flox.SymbolRegistry();
+    const reg = new lrvx.SymbolRegistry();
     const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
 
     const strat = new SmaCrossover([btc]);
-    const bt = new flox.BacktestRunner(reg, 0.0004, 10000);
+    const bt = new lrvx.BacktestRunner(reg, 0.0004, 10000);
     bt.setStrategy(strat);
 
     const stats = bt.runCsv("data/btcusdt_1m.csv", "BTCUSDT");
@@ -201,9 +201,9 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "Codon"
 
     ```python
-    from flox.runner import BacktestRunner
+    from lrvx.runner import BacktestRunner
 
-    reg = ...                                # see flox.engine in your runner code
+    reg = ...                                # see lrvx.engine in your runner code
     btc = reg.add_symbol("binance", "BTCUSDT", 0.01)
 
     strat = SmaCrossover([btc])
@@ -216,8 +216,8 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 === "C++"
 
     ```cpp
-    #include "flox/backtest/backtest_runner.h"
-    #include "flox/replay/abstract_event_reader.h"
+    #include "lrvx/backtest/backtest_runner.h"
+    #include "lrvx/replay/abstract_event_reader.h"
 
     int main() {
       replay::ReaderFilter filter;
@@ -283,7 +283,7 @@ Fills carry `is_maker`, so both sides can be priced separately:
 === "Python"
 
     ```python
-    r = flox.BacktestResult(
+    r = lrvx.BacktestResult(
         initial_capital=10_000.0,
         fee_rate=0.0004,          # still the fallback for either side
         maker_fee_rate=0.0001,    # charged when the fill provided liquidity
@@ -309,7 +309,7 @@ negative one is a rebate the venue pays you for posting. Fixed-fee mode
 === "Python"
 
     ```python
-    r = flox.BacktestResult(
+    r = lrvx.BacktestResult(
         initial_capital=10_000.0,
         fee_rate=0.0004,
         maker_fee_rate=-0.00005,  # the venue pays 0.5 bp for posting

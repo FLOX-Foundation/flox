@@ -4,10 +4,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Make `flox_mcp` importable when running pytest from the repo root.
+# Make `lrvx_mcp` importable when running pytest from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from flox_mcp.tools import capi, errors, events, indicators, strategy
+from lrvx_mcp.tools import capi, errors, events, indicators, strategy
 
 
 # ── lookup_error_code ─────────────────────────────────────────────────
@@ -37,19 +37,19 @@ def test_list_capi_functions_default():
     out = capi.list_capi_functions(limit=5)
     assert "C-API functions" in out
     # First 5 listed entries should appear as table rows.
-    rows = [l for l in out.splitlines() if l.startswith("| `flox_")]
+    rows = [l for l in out.splitlines() if l.startswith("| `lrvx_")]
     assert 1 <= len(rows) <= 5
 
 
 def test_list_capi_functions_with_filter():
     out = capi.list_capi_functions(filter="indicator_ema")
-    assert "flox_indicator_ema" in out
+    assert "lrvx_indicator_ema" in out
 
 
 def test_list_capi_functions_no_match():
     out = capi.list_capi_functions(filter="absolutely_nothing_matches_this")
     # Header still present; no rows.
-    rows = [l for l in out.splitlines() if l.startswith("| `flox_")]
+    rows = [l for l in out.splitlines() if l.startswith("| `lrvx_")]
     assert rows == []
 
 
@@ -58,7 +58,7 @@ def test_list_capi_functions_no_match():
 
 def test_validate_strategy_ok():
     code = (
-        "import flox_py\n"
+        "import lrvx\n"
         "class S:\n"
         "    def on_trade(self, ctx, trade):\n"
         "        pass\n"
@@ -69,13 +69,13 @@ def test_validate_strategy_ok():
 
 
 def test_validate_strategy_missing_hook():
-    code = "import flox_py\nx = 1\n"
+    code = "import lrvx\nx = 1\n"
     out = strategy.validate_strategy(code)
     assert "REVIEW" in out or "WARN" in out
 
 
 def test_validate_strategy_forbidden_eval():
-    code = "import flox_py\ndef on_trade(ctx, t):\n    eval('1+1')\n"
+    code = "import lrvx\ndef on_trade(ctx, t):\n    eval('1+1')\n"
     out = strategy.validate_strategy(code)
     assert "REJECT" in out
     assert "eval" in out
@@ -90,8 +90,8 @@ def test_validate_strategy_syntax_error():
 
 
 def test_explain_event_by_type_name():
-    out = events.explain_event(type_name="FloxTradeData")
-    assert "FloxTradeData" in out
+    out = events.explain_event(type_name="LrvxTradeData")
+    assert "LrvxTradeData" in out
     assert "price_raw" in out
     assert "is_buy" in out
 
@@ -102,11 +102,11 @@ def test_explain_event_unknown_type():
 
 
 def test_explain_event_dict_shape_match():
-    # Keys uniquely identify FloxBarData
+    # Keys uniquely identify LrvxBarData
     e = {"open_raw": 0, "high_raw": 0, "low_raw": 0, "close_raw": 0,
          "bar_type": 0, "bar_type_param": 60_000_000_000}
     out = events.explain_event(event=e)
-    assert "FloxBarData" in out
+    assert "LrvxBarData" in out
 
 
 def test_explain_event_no_args():

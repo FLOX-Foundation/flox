@@ -2,7 +2,7 @@
 """
 scripts/gen_indicator_docs.py
 
-Reads include/flox/indicator/registry.def and rewrites the auto-generated
+Reads include/lrvx/indicator/registry.def and rewrites the auto-generated
 sections in the per-binding indicator docs. Adding an indicator to the
 registry → it appears in the docs without manual edits to N markdown
 files.
@@ -13,8 +13,8 @@ classes carry a batch `compute()`, whether it is static or on the
 instance, how the runtime exposes the classes) is parsed out of that
 binding's own source:
 
-    codon/flox/indicators.codon    → Codon classes / methods / free functions
-    quickjs/flox/indicators.js     → QuickJS classes / static vs instance
+    codon/lrvx/indicators.codon    → Codon classes / methods / free functions
+    quickjs/lrvx/indicators.js     → QuickJS classes / static vs instance
 
 so the generated prose cannot drift from the binding it describes.
 
@@ -42,9 +42,9 @@ import textwrap
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-REGISTRY = REPO / "include" / "flox" / "indicator" / "registry.def"
-CODON_SRC = REPO / "codon" / "flox" / "indicators.codon"
-QUICKJS_SRC = REPO / "quickjs" / "flox" / "indicators.js"
+REGISTRY = REPO / "include" / "lrvx" / "indicator" / "registry.def"
+CODON_SRC = REPO / "codon" / "lrvx" / "indicators.codon"
+QUICKJS_SRC = REPO / "quickjs" / "lrvx" / "indicators.js"
 
 NODE_PACKAGE_JSON = REPO / "node" / "package.json"
 
@@ -54,7 +54,7 @@ END = "<!-- INDICATOR-LIST-END -->"
 
 def parse_registry() -> list[dict]:
     pattern = re.compile(
-        r"^FLOX_INDICATOR\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*\((.*?)\)\s*\)\s*$"
+        r"^LRVX_INDICATOR\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*\((.*?)\)\s*\)\s*$"
     )
     indicators = []
     for raw in REGISTRY.read_text().splitlines():
@@ -145,7 +145,7 @@ def _codon_logical_lines(text: str):
 
 
 def parse_codon_module() -> tuple[dict[str, dict], dict[str, str]]:
-    """Parse codon/flox/indicators.codon.
+    """Parse codon/lrvx/indicators.codon.
 
     Returns (classes, free_functions) where classes maps class name to
     {"ctor": rendered ctor params, "methods": {name: params},
@@ -189,7 +189,7 @@ def parse_codon_module() -> tuple[dict[str, dict], dict[str, str]]:
 
 
 def parse_quickjs_module() -> dict[str, dict]:
-    """Parse quickjs/flox/indicators.js.
+    """Parse quickjs/lrvx/indicators.js.
 
     Returns {class name: {"ctor", "extends", "methods": set, "statics": {name: params}}}
     in source order. Inherited members are resolved through `extends`.
@@ -239,7 +239,7 @@ def parse_quickjs_module() -> dict[str, dict]:
 def py_signature(ind: dict) -> str:
     args = ind["args"]
     args = args.replace("size_t ", "").replace("double ", "")
-    return f"flox.{ind['class']}({args})"
+    return f"lrvx.{ind['class']}({args})"
 
 
 def py_block(indicators: list[dict]) -> str:
@@ -249,8 +249,8 @@ def py_block(indicators: list[dict]) -> str:
         "Same instance, two ways to use it:",
         "",
         "```python",
-        "import flox_py as flox",
-        "ema = flox.EMA(10)",
+        "import lrvx",
+        "ema = lrvx.EMA(10)",
         "out = ema.compute(prices)             # batch",
         "for v in stream:",
         "    ema.update(v)",
@@ -263,14 +263,14 @@ def py_block(indicators: list[dict]) -> str:
     for ind in indicators:
         lines.append(f"| `{ind['class']}` | `{py_signature(ind)}` | {ind['kind']} |")
     lines.append("")
-    lines.append("Discovery: `flox.list_indicators()` returns the full list at runtime.")
+    lines.append("Discovery: `lrvx.list_indicators()` returns the full list at runtime.")
     return "\n".join(lines)
 
 
 def js_signature(ind: dict, ctor_kw: str = "new ") -> str:
     args = ind["args"]
     args = args.replace("size_t ", "").replace("double ", "")
-    return f"{ctor_kw}flox.{ind['class']}({args})"
+    return f"{ctor_kw}lrvx.{ind['class']}({args})"
 
 
 def node_block(indicators: list[dict]) -> str:
@@ -281,8 +281,8 @@ def node_block(indicators: list[dict]) -> str:
         "Same instance, two ways to use it:",
         "",
         "```js",
-        f"const flox = require('{node_package_name()}');",
-        "const ema = new flox.EMA(10);",
+        f"const lrvx = require('{node_package_name()}');",
+        "const ema = new lrvx.EMA(10);",
         "const out = ema.compute(prices);            // batch",
         "for (const v of stream) {",
         "  ema.update(v);",
@@ -303,7 +303,7 @@ def node_block(indicators: list[dict]) -> str:
 
 def _quickjs_batch_cell(ind: dict, info: dict | None) -> str:
     if info is None:
-        return "not exposed in `flox/indicators.js`"
+        return "not exposed in `lrvx/indicators.js`"
     cells = []
     if "compute" in info["statics"]:
         cells.append(f"static `{ind['class']}.compute({info['statics']['compute']})`")
@@ -328,7 +328,7 @@ def quickjs_block(indicators: list[dict]) -> str:
 
     lines = [
         "Every indicator below is a **global class**: the embedded runtime evaluates",
-        "`quickjs/flox/indicators.js` at global scope, so there is no `require()` and no",
+        "`quickjs/lrvx/indicators.js` at global scope, so there is no `require()` and no",
         "namespace prefix. Streaming is `update()` / `value` / `ready` / `reset()` on the",
         "instance; batch is a **static** `compute()`. Only some classes also carry an",
         "instance `compute()` — see the `Batch` column.",
@@ -388,7 +388,7 @@ def quickjs_block(indicators: list[dict]) -> str:
             )
         lines.append(
             _wrap(
-                "Also defined in `flox/indicators.js` but not in the shared registry: "
+                "Also defined in `lrvx/indicators.js` but not in the shared registry: "
                 + "; ".join(parts)
                 + "."
             )
@@ -404,8 +404,8 @@ def cpp_block(indicators: list[dict]) -> str:
         "`reset()`. Same instance, two ways to use it:",
         "",
         "```cpp",
-        '#include "flox/indicator/ema.h"',
-        "flox::indicator::EMA ema(10);",
+        '#include "lrvx/indicator/ema.h"',
+        "lrvx::indicator::EMA ema(10);",
         "auto out = ema.compute(prices);            // batch",
         "for (auto v : stream) {",
         "    ema.update(v);",
@@ -419,9 +419,9 @@ def cpp_block(indicators: list[dict]) -> str:
         "|---|---|---|---|",
     ]
     for ind in indicators:
-        header = f"flox/indicator/{ind['snake']}.h"
+        header = f"lrvx/indicator/{ind['snake']}.h"
         if ind["snake"] == "tema":
-            header = "flox/indicator/dema.h"
+            header = "lrvx/indicator/dema.h"
         lines.append(
             f"| `{ind['class']}` | `<{header}>` | `{ind['class']}({ind['args']})` | {ind['kind']} |"
         )
@@ -431,7 +431,7 @@ def cpp_block(indicators: list[dict]) -> str:
 
 def _codon_batch_cell(ind: dict, info: dict | None, functions: dict[str, str]) -> str:
     if info is None:
-        return "not exposed in `flox/indicators.codon`"
+        return "not exposed in `lrvx/indicators.codon`"
     cells = []
     if "compute" in info["methods"]:
         cells.append(f"instance `compute({info['methods']['compute']})`")
@@ -466,10 +466,10 @@ def codon_block(indicators: list[dict]) -> str:
         "Every indicator below is **one Codon class** with streaming `update()` / `value` /",
         "`ready` / `reset()`. A batch `compute()` is **not** on every class — the `Batch`",
         "column says what each class actually exposes. Classes and the batch free functions",
-        "both come from `flox.indicators`.",
+        "both come from `lrvx.indicators`.",
         "",
         "```codon",
-        "from flox.indicators import EMA, CCI, cci",
+        "from lrvx.indicators import EMA, CCI, cci",
         "",
         "ema = EMA(20)",
         "out = ema.compute(prices)                  # EMA has an instance compute()",
@@ -537,8 +537,8 @@ def warn_missing(indicators: list[dict]) -> None:
     codon_classes, _ = parse_codon_module()
     quickjs_classes = parse_quickjs_module()
     for label, names in (
-        ("codon/flox/indicators.codon", set(codon_classes)),
-        ("quickjs/flox/indicators.js", set(quickjs_classes)),
+        ("codon/lrvx/indicators.codon", set(codon_classes)),
+        ("quickjs/lrvx/indicators.js", set(quickjs_classes)),
     ):
         missing = [ind["class"] for ind in indicators if ind["class"] not in names]
         if missing:

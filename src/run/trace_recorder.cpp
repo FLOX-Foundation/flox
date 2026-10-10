@@ -1,15 +1,15 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/run/trace_recorder.h"
+#include "lrvx/run/trace_recorder.h"
 
-#include "flox/replay/binary_format_v1.h"
+#include "lrvx/replay/binary_format_v1.h"
 
 #include <chrono>
 #include <cstring>
@@ -18,7 +18,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace flox::run
+namespace lrvx::run
 {
 
 namespace
@@ -166,9 +166,9 @@ TraceRecorder::SegmentWriter& TraceRecorder::openSegment(RecordKind kind)
 void TraceRecorder::writeFrameBlob(SegmentWriter& seg, FrameType type,
                                    const void* payload, uint32_t size, int64_t ts)
 {
-  flox::replay::FrameHeader fh;
+  lrvx::replay::FrameHeader fh;
   fh.size = size;
-  fh.crc32 = flox::replay::Crc32::compute(payload, size);
+  fh.crc32 = lrvx::replay::Crc32::compute(payload, size);
   fh.type = static_cast<uint8_t>(type);
   fh.rec_version = 1;
   fh.flags = 0;
@@ -384,4 +384,4 @@ void TraceRecorder::close()
   writeManifest();
 }
 
-}  // namespace flox::run
+}  // namespace lrvx::run

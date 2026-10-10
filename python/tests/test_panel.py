@@ -1,6 +1,6 @@
-"""Tests for ``flox_py.panel`` — cross-sectional (T × S) panel builders.
+"""Tests for ``lrvx.panel`` — cross-sectional (T × S) panel builders.
 
-Per-symbol floxlog tapes are constructed in a tempdir with synthetic
+Per-symbol lrvx tapes are constructed in a tempdir with synthetic
 trades that bucket cleanly under a 1-minute aggregation. Three
 alignment modes are exercised end-to-end (intersection / union_nan /
 union_ffill) by deliberately giving one symbol a different bucket
@@ -36,9 +36,9 @@ for cand in ("build/python", "build-py312/python"):
 
 import numpy as np  # noqa: E402
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py import panel as panel_mod  # noqa: E402
+from lrvx import panel as panel_mod  # noqa: E402
 
 
 _BUCKET_NS = 60_000_000_000   # 1 minute
@@ -51,7 +51,7 @@ def _write_tape(root: Path, symbol: str, *,
     OHLC has exactly one row per `bucket_starts_ms` entry."""
     tape_dir = root / symbol
     tape_dir.mkdir(parents=True, exist_ok=True)
-    w = flox_py.DataWriter(str(tape_dir), max_segment_mb=64,
+    w = lrvx.DataWriter(str(tape_dir), max_segment_mb=64,
                            exchange_id=0, compression="none")
     try:
         for i, ts_ms in enumerate(bucket_starts_ms):

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -41,24 +41,24 @@
  *
  * When a change to the engine is INTENDED, the table is updated by hand:
  *
- *     FLOX_UPDATE_GOLDEN=1 ./test_venue_golden_replay
+ *     LRVX_UPDATE_GOLDEN=1 ./test_venue_golden_replay
  *
  * and the rewritten venue/tests/golden/replay_hashes.txt goes in the same
  * commit as the change, where a reviewer has to look at it. It is never
  * updated by CI and never updated as a way of making the test pass.
  */
-#include "flox-venue/event_hash.h"
-#include "flox-venue/journal.h"
-#include "flox-venue/ledger.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/workload.h"
-#include "flox/book/ladder_book.h"
+#include "lrvx-venue/event_hash.h"
+#include "lrvx-venue/journal.h"
+#include "lrvx-venue/ledger.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/workload.h"
+#include "lrvx/book/ladder_book.h"
 #include "support/engine_surface.h"
 #include "support/recovery_scenario.h"
 #include "support/tmp_path.h"
 
-#include "flox/clearing/fee_schedule.h"
+#include "lrvx/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 
@@ -77,12 +77,12 @@
 #include <type_traits>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
-#ifndef FLOX_VENUE_GOLDEN_TABLE
-#error "FLOX_VENUE_GOLDEN_TABLE must name the golden hash table (set in venue/CMakeLists.txt)"
+#ifndef LRVX_VENUE_GOLDEN_TABLE
+#error "LRVX_VENUE_GOLDEN_TABLE must name the golden hash table (set in venue/CMakeLists.txt)"
 #endif
 
 namespace
@@ -462,7 +462,7 @@ Hashes plain(const SymbolConfig& c, const std::vector<InboundCommand>& cmds, con
 // `viaClone` runs the checkpoint half through cloneForSnapshot rather than
 // through the live engine's own writeSnapshot -- the path production actually
 // takes (SequencedShard::doCheckpoint clones off the hot path and serializes
-// the clone in the background; see venue/include/flox-venue/sequenced_shard.h).
+// the clone in the background; see venue/include/lrvx-venue/sequenced_shard.h).
 // The two are not the same thing: a field the clone forgets to copy is
 // invisible to a snapshot written straight off the live engine, whose own
 // copy of that field was never wrong. Default false leaves every existing
@@ -611,7 +611,7 @@ struct Scenario
 // std::map reference book.
 //
 // Contract, worked out from matching_engine.h rather than assumed: stateHash
-// and configHash (venue/include/flox-venue/engine/checkpoint.inl) fold in
+// and configHash (venue/include/lrvx-venue/engine/checkpoint.inl) fold in
 // cfg_ (the SymbolConfig every scenario already supplies) and the book's
 // content through Book::forEachOrder's canonical traversal (price levels
 // best-first, FIFO within each level) -- never a book's own internal
@@ -703,7 +703,7 @@ std::vector<Scenario> corpus()
                             workload::mixedFlow(params(0xC0FFEE123456789ULL, 20000))),
                      [](Run& r)
                      {
-                       flox::FeeSchedule fs;
+                       lrvx::FeeSchedule fs;
                        fs.addTier(0.0, /*makerBps*/ -1.0, /*takerBps*/ 2.0);
                        r.eng.setFeeSchedule(fs);
                        r.eng.setLedger(&r.led, VENUE_ACCT);
@@ -1287,7 +1287,7 @@ std::vector<Scenario> corpus()
                             workload::mixedFlow(params(0x51A95407ULL, 8000))),
                      [](Run& r)
                      {
-                       flox::FeeSchedule fs;
+                       lrvx::FeeSchedule fs;
                        fs.addTier(0.0, -1.0, 2.0);
                        r.eng.setFeeSchedule(fs);
                        r.eng.setLedger(&r.led, VENUE_ACCT);
@@ -1504,7 +1504,7 @@ std::vector<Scenario> corpus()
 
 // ---- the table ------------------------------------------------------------
 
-const char* tablePath() { return FLOX_VENUE_GOLDEN_TABLE; }
+const char* tablePath() { return LRVX_VENUE_GOLDEN_TABLE; }
 
 std::map<std::string, Hashes> readTable(bool& found)
 {
@@ -1548,7 +1548,7 @@ void writeTable(const std::vector<std::pair<std::string, Hashes>>& rows)
       << "# checkpoint scenarios). All three are 16 hex digits.\n"
       << "#\n"
       << "# This file is written ONLY by hand, by running the test with\n"
-      << "# FLOX_UPDATE_GOLDEN=1, and only when the behaviour change that moved a\n"
+      << "# LRVX_UPDATE_GOLDEN=1, and only when the behaviour change that moved a\n"
       << "# number is intended and explained in the same commit. A diff here is a\n"
       << "# claim that the venue now behaves differently; it is never housekeeping.\n"
       << "#\n"
@@ -1564,7 +1564,7 @@ void writeTable(const std::vector<std::pair<std::string, Hashes>>& rows)
 
 bool updateRequested()
 {
-  const char* e = std::getenv("FLOX_UPDATE_GOLDEN");
+  const char* e = std::getenv("LRVX_UPDATE_GOLDEN");
   return e != nullptr && e[0] != '\0' && e[0] != '0';
 }
 
@@ -1616,7 +1616,7 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
   if (updateRequested())
   {
     writeTable(produced);
-    std::printf("FLOX_UPDATE_GOLDEN: rewrote %s with %zu scenarios.\n", tablePath(),
+    std::printf("LRVX_UPDATE_GOLDEN: rewrote %s with %zu scenarios.\n", tablePath(),
                 produced.size());
     std::printf("Review the diff: every moved number is a behaviour change.\n");
     return;
@@ -1625,7 +1625,7 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
   bool found = false;
   const auto table = readTable(found);
   ASSERT_TRUE(found) << "golden table missing: " << tablePath()
-                     << "\nRun with FLOX_UPDATE_GOLDEN=1 to create it.";
+                     << "\nRun with LRVX_UPDATE_GOLDEN=1 to create it.";
 
   for (const auto& [name, got] : produced)
   {
@@ -1635,7 +1635,7 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
       ADD_FAILURE() << "scenario '" << name << "' has no row in " << tablePath()
                     << "\n  produced state=" << hex(got.state) << " config=" << hex(got.config)
                     << " stream=" << hex(got.stream)
-                    << "\n  A new scenario needs its row added with FLOX_UPDATE_GOLDEN=1.";
+                    << "\n  A new scenario needs its row added with LRVX_UPDATE_GOLDEN=1.";
       continue;
     }
     const Hashes& want = it->second;
@@ -1656,7 +1656,7 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
       }
       ADD_FAILURE() << "GOLDEN REPLAY DIVERGED in scenario '" << name << "'" << what
                     << "\n  The engine behaves differently than the recorded run."
-                    << "\n  If that is intended, rerun with FLOX_UPDATE_GOLDEN=1 and put the"
+                    << "\n  If that is intended, rerun with LRVX_UPDATE_GOLDEN=1 and put the"
                     << "\n  rewritten " << tablePath() << " in the same commit as the change.";
     }
   }
@@ -1714,7 +1714,7 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
                     << "\n  MatchingEngine<LadderBook> disagrees with the SAME table row"
                     << " MatchingEngine<MatchingBook> matches."
                     << "\n  By contract (see the comment above corpus<Book>() in this file) the"
-                    << " two must agree exactly; this is never fixed by FLOX_UPDATE_GOLDEN,"
+                    << " two must agree exactly; this is never fixed by LRVX_UPDATE_GOLDEN,"
                     << "\n  which only ever records the MatchingBook pass.";
     }
   }

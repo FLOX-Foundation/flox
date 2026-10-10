@@ -1,12 +1,12 @@
 # Extension Hook Pattern
 
-How to add a binding-supplied callback hook to FLOX (PnLTracker, RiskManager, Executor, etc.) and wire it through every language binding.
+How to add a binding-supplied callback hook to lrvx (PnLTracker, RiskManager, Executor, etc.) and wire it through every language binding.
 
 If you're consuming a hook (writing user code in Python or Node), see the binding API docs instead. This guide is for adding the *hook itself*.
 
 ## What a hook is
 
-A hook is a struct of C function pointers that the engine invokes at a specific point. The binding-side code wraps a user-supplied class / object behind those pointers. As of today FLOX has nine hooks:
+A hook is a struct of C function pointers that the engine invokes at a specific point. The binding-side code wraps a user-supplied class / object behind those pointers. As of today lrvx has nine hooks:
 
 | Hook                      | What it does                                                  | Group       |
 |---------------------------|----------------------------------------------------------------|-------------|
@@ -27,8 +27,8 @@ Plus `set_log_callback` (single function, not a class).
 For each hook, four things exist in lock-step:
 
 ```
-1. C ABI declaration (IDL → flox_capi.h)
-2. C++ implementation (src/capi/flox_capi.cpp)
+1. C ABI declaration (IDL → lrvx_capi.h)
+2. C++ implementation (src/capi/lrvx_capi.cpp)
 3. pybind11 wrapper (python/hook_bindings.h)
 4. NAPI wrapper (node/src/hooks.h)
 ```
@@ -37,29 +37,29 @@ If any one of those four is missing or out of sync, the [parity gate](parity-gat
 
 ## Layer 1: IDL declaration
 
-In [`include/flox/capi/flox_capi_spec.hpp`](../../include/flox/capi/flox_capi_spec.hpp):
+In [`include/lrvx/capi/lrvx_capi_spec.hpp`](../../include/lrvx/capi/lrvx_capi_spec.hpp):
 
 ```cpp
-typedef void (*FloxXxxOnEventFn)(void* user_data, const FloxSignal* sig);
+typedef void (*LrvxXxxOnEventFn)(void* user_data, const LrvxSignal* sig);
 
 typedef struct {
-  FloxXxxOnEventFn on_event;
+  LrvxXxxOnEventFn on_event;
   void* user_data;
-} FloxXxxCallbacks;
+} LrvxXxxCallbacks;
 
-typedef void* FloxXxxHandle;
+typedef void* LrvxXxxHandle;
 
-FLOX_EXPORT(group = "your_group_name")
-FloxXxxHandle flox_xxx_create(FloxXxxCallbacks cb);
-FLOX_EXPORT(group = "your_group_name")
-void flox_xxx_destroy(FloxXxxHandle xxx);
+LRVX_EXPORT(group = "your_group_name")
+LrvxXxxHandle lrvx_xxx_create(LrvxXxxCallbacks cb);
+LRVX_EXPORT(group = "your_group_name")
+void lrvx_xxx_destroy(LrvxXxxHandle xxx);
 ```
 
 Plus a setter on `Runner` / `LiveEngine` / `BacktestRunner`:
 
 ```cpp
-FLOX_EXPORT(group = "your_group_name")
-void flox_runner_set_xxx(FloxRunnerHandle runner, FloxXxxHandle xxx);
+LRVX_EXPORT(group = "your_group_name")
+void lrvx_runner_set_xxx(LrvxRunnerHandle runner, LrvxXxxHandle xxx);
 ```
 
 After editing the spec, run:
@@ -68,23 +68,23 @@ After editing the spec, run:
 bash tools/codegen/scripts/regenerate.sh
 ```
 
-This regenerates `flox_capi.h`, the Codon golden file, the Markdown reference, and the ABI snapshot.
+This regenerates `lrvx_capi.h`, the Codon golden file, the Markdown reference, and the ABI snapshot.
 
 ## Layer 2: C++ implementation
 
-In [`src/capi/flox_capi.cpp`](../../src/capi/flox_capi.cpp), create and destroy go through
+In [`src/capi/lrvx_capi.cpp`](../../src/capi/lrvx_capi.cpp), create and destroy go through
 [`TrackerRegistry`](../../src/capi/tracker_ownership.h), not `new`/`delete` directly:
 
 ```cpp
-struct FloxXxxImpl {
-  FloxXxxCallbacks cb;
+struct LrvxXxxImpl {
+  LrvxXxxCallbacks cb;
 };
 
-FloxXxxHandle flox_xxx_create(FloxXxxCallbacks cb) {
-  return static_cast<FloxXxxHandle>(TrackerRegistry<FloxXxxImpl>::create(FloxXxxImpl{cb}));
+LrvxXxxHandle lrvx_xxx_create(LrvxXxxCallbacks cb) {
+  return static_cast<LrvxXxxHandle>(TrackerRegistry<LrvxXxxImpl>::create(LrvxXxxImpl{cb}));
 }
-void flox_xxx_destroy(FloxXxxHandle h) {
-  TrackerRegistry<FloxXxxImpl>::destroy(static_cast<FloxXxxImpl*>(h));
+void lrvx_xxx_destroy(LrvxXxxHandle h) {
+  TrackerRegistry<LrvxXxxImpl>::destroy(static_cast<LrvxXxxImpl*>(h));
 }
 ```
 
@@ -93,11 +93,11 @@ Then **wire the hook into the place that fires it.** For a post-emission observe
 ### Ownership: why a bare atomic pointer is not enough
 
 A hook fired from `RunnerSignalHandler::onSignal` is reachable from the live engine's bus consumer
-threads. `flox_xxx_destroy()` can run on a completely different thread, at any moment, including
+threads. `lrvx_xxx_destroy()` can run on a completely different thread, at any moment, including
 the moment a consumer thread has already loaded the hook's pointer and is in the middle of calling
-into it. Detaching first (`flox_runner_set_xxx(runner, NULL)`) only stops *future* dispatches from
+into it. Detaching first (`lrvx_runner_set_xxx(runner, NULL)`) only stops *future* dispatches from
 picking the pointer up; it does nothing for one already in flight. `new`/`delete` on a bare
-`std::atomic<FloxXxxImpl*>` frees the object out from under that in-flight call — see
+`std::atomic<LrvxXxxImpl*>` frees the object out from under that in-flight call — see
 `tracker_ownership.h` for the full writeup, and the live-engine + Node channel lifetime fixes that
 motivated it.
 
@@ -106,10 +106,10 @@ keyed by the handle address) and `TrackerSlot<T>` (what the consumer actually ho
 
 ```cpp
 // On the consumer (RunnerSignalHandler / LiveEngineImpl):
-TrackerSlot<FloxXxxImpl> _xxx;
+TrackerSlot<LrvxXxxImpl> _xxx;
 
-void setXxx(FloxXxxImpl* x) {
-  _xxx.set(TrackerRegistry<FloxXxxImpl>::lookup(x));
+void setXxx(LrvxXxxImpl* x) {
+  _xxx.set(TrackerRegistry<LrvxXxxImpl>::lookup(x));
 }
 
 void onSomething(...) {
@@ -147,7 +147,7 @@ class PyXxxTrampoline : public PyXxx {
 };
 
 // C-ABI bridge: acquires GIL, swallows Python exceptions.
-inline void xxxOnEventBridge(void* ud, const FloxSignal* sig) {
+inline void xxxOnEventBridge(void* ud, const LrvxSignal* sig) {
   auto* py = static_cast<PyXxx*>(ud);
   invokeUnderGil([&] { py->on_event(pySignalFromC(sig)); });
 }
@@ -155,22 +155,22 @@ inline void xxxOnEventBridge(void* ud, const FloxSignal* sig) {
 // RAII over the C ABI handle.
 class PyXxxOwner {
   std::shared_ptr<PyXxx> _delegate;
-  FloxXxxHandle _handle{nullptr};
+  LrvxXxxHandle _handle{nullptr};
  public:
   PyXxxOwner(std::shared_ptr<PyXxx> d) : _delegate(std::move(d)) {
-    FloxXxxCallbacks cb{};
+    LrvxXxxCallbacks cb{};
     cb.on_event = xxxOnEventBridge;
     cb.user_data = _delegate.get();
-    _handle = flox_xxx_create(cb);
+    _handle = lrvx_xxx_create(cb);
   }
-  ~PyXxxOwner() { if (_handle) flox_xxx_destroy(_handle); }
-  FloxXxxHandle handle() const noexcept { return _handle; }
+  ~PyXxxOwner() { if (_handle) lrvx_xxx_destroy(_handle); }
+  LrvxXxxHandle handle() const noexcept { return _handle; }
 };
 ```
 
 Then add a `set_xxx` method to `PyStrategyRunner`, `PyLiveEngine`, `PyBacktestRunner` that owns the `PyXxxOwner` and calls the C-ABI setter.
 
-Register the class in `flox_py.cpp` (or in the registration block at the bottom of `strategy_bindings.h`):
+Register the class in `lrvx.cpp` (or in the registration block at the bottom of `strategy_bindings.h`):
 
 ```cpp
 py::class_<PyXxx, PyXxxTrampoline, std::shared_ptr<PyXxx>>(m, "Xxx")
@@ -181,7 +181,7 @@ py::class_<PyXxx, PyXxxTrampoline, std::shared_ptr<PyXxx>>(m, "Xxx")
 User code:
 
 ```python
-class MyXxx(flox.Xxx):
+class MyXxx(lrvx.Xxx):
     def on_event(self, sig):
         ...
 
@@ -204,25 +204,25 @@ struct XxxHost {
   Napi::ThreadSafeFunction tsfn;
   HookMode mode;
   Napi::Env env;
-  FloxXxxHandle handle{nullptr};
+  LrvxXxxHandle handle{nullptr};
 
   XxxHost(Napi::Env env_, Napi::Object obj, HookMode m = HookMode::Sync)
       : on_event_fn(takeFn(obj, "onEvent")), mode(m), env(env_) {
     if (mode == HookMode::Threaded) {
       auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_xxx_cb", 0, 1);
+      tsfn = Napi::ThreadSafeFunction::New(env, noop, "lrvx_xxx_cb", 0, 1);
     }
-    FloxXxxCallbacks cb{};
+    LrvxXxxCallbacks cb{};
     cb.on_event = &XxxHost::onEventBridge;
     cb.user_data = this;
-    handle = flox_xxx_create(cb);
+    handle = lrvx_xxx_create(cb);
   }
   ~XxxHost() {
-    if (handle) flox_xxx_destroy(handle);
+    if (handle) lrvx_xxx_destroy(handle);
     if (mode == HookMode::Threaded) tsfn.Release();
   }
 
-  static void onEventBridge(void* ud, const FloxSignal* sig) {
+  static void onEventBridge(void* ud, const LrvxSignal* sig) {
     auto* self = static_cast<XxxHost*>(ud);
     if (self->on_event_fn.IsEmpty()) return;
     if (self->mode == HookMode::Sync) {
@@ -233,8 +233,8 @@ struct XxxHost {
     }
     // We're on a C++ consumer thread (LiveEngine). Queue via TSFN so
     // the JS handler runs at the next Node event loop tick.
-    auto* copy = new FloxSignal(*sig);
-    self->tsfn.NonBlockingCall(copy, [self](Napi::Env env, Napi::Function, FloxSignal* s) {
+    auto* copy = new LrvxSignal(*sig);
+    self->tsfn.NonBlockingCall(copy, [self](Napi::Env env, Napi::Function, LrvxSignal* s) {
       self->on_event_fn.Call({signalToJs(env, s)});
       delete s;
     });
@@ -249,11 +249,11 @@ Napi::Value setXxx(const Napi::CallbackInfo& info) {
   auto env = info.Env();
   if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined()) {
     _xxx_host.reset();
-    flox_runner_set_xxx(_runner, nullptr);
+    lrvx_runner_set_xxx(_runner, nullptr);
     return env.Undefined();
   }
-  _xxx_host = std::make_unique<flox_node::XxxHost>(env, info[0].As<Napi::Object>());
-  flox_runner_set_xxx(_runner, _xxx_host->handle);
+  _xxx_host = std::make_unique<lrvx_node::XxxHost>(env, info[0].As<Napi::Object>());
+  lrvx_runner_set_xxx(_runner, _xxx_host->handle);
   return env.Undefined();
 }
 ```

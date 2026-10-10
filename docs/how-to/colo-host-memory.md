@@ -1,7 +1,7 @@
 # Prepare a colo host: memory profile
 
 On a dedicated trading host, set `memoryProfile: "colo"` and give the
-process memlock privilege. Without this, the memory flox carefully
+process memlock privilege. Without this, the memory lrvx carefully
 pre-allocates and touches at startup can still be paged out under pressure,
 and the page comes back as a major fault in the middle of a trading
 session.
@@ -21,7 +21,7 @@ hosts, where a hard mlockall would fail on most accounts.
 Either grant the capability to the binary:
 
 ```bash
-sudo setcap cap_ipc_lock=+ep ./your-flox-binary
+sudo setcap cap_ipc_lock=+ep ./your-lrvx-binary
 ```
 
 or raise the memlock limit for the trading user in
@@ -85,6 +85,6 @@ hundred megabytes the miss count usually drops by an order of magnitude.
 
 ## Scope
 
-flox adapts to a prepared host and reports what it found. Host tuning
+lrvx adapts to a prepared host and reports what it found. Host tuning
 itself, such as isolating cores, moving IRQs, NIC coalescing, and the huge
 page reservation above, stays outside the engine.

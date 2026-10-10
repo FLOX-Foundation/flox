@@ -1,16 +1,16 @@
-#include "flox/indicator/correlation.h"
-#include "flox/indicator/kurtosis.h"
-#include "flox/indicator/parkinson_vol.h"
-#include "flox/indicator/rogers_satchell_vol.h"
-#include "flox/indicator/rolling_zscore.h"
-#include "flox/indicator/shannon_entropy.h"
-#include "flox/indicator/skewness.h"
+#include "lrvx/indicator/correlation.h"
+#include "lrvx/indicator/kurtosis.h"
+#include "lrvx/indicator/parkinson_vol.h"
+#include "lrvx/indicator/rogers_satchell_vol.h"
+#include "lrvx/indicator/rolling_zscore.h"
+#include "lrvx/indicator/shannon_entropy.h"
+#include "lrvx/indicator/skewness.h"
 
 #include <benchmark/benchmark.h>
 #include <random>
 #include <vector>
 
-using namespace flox::indicator;
+using namespace lrvx::indicator;
 
 static std::vector<double> randomData(size_t n, double base = 100.0)
 {

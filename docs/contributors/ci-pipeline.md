@@ -36,7 +36,7 @@ Two mechanisms keep the pipeline cheap on bad pushes:
 
 1. **`needs:` dependency.** Every OS build job in [`ci.yml`](../../.github/workflows/ci.yml) declares `needs: [format-check, verify-docs-current]`. If either quick gate fails, the multi-OS matrix is skipped — saving ~50 compute minutes (10 min × 5 jobs).
 2. **`concurrency.cancel-in-progress`.** A new push to the same branch / PR cancels the in-flight workflow run for that ref. No more "two builds racing on stale code".
-3. **`push:` is filtered to `main`.** With an unfiltered `push:` alongside `pull_request:`, every push to a branch with an open PR ran the whole matrix twice — 32 checks where 22 is the real coverage, and three `clang-format` jobs because `build-matrix.yml` duplicated `ci.yml`'s. A branch now gets exactly one run, from `pull_request`.
+3. **`push:` is filtered to `main`.** With an unfiltered `push:` alongside `pull_request:`, every push to a branch with an open PR ran the whole matrix twice, and three `clang-format` jobs because `build-matrix.yml` duplicated `ci.yml`'s. A branch now gets exactly one run, from `pull_request`.
 
 Both are at the workflow top:
 
@@ -70,12 +70,12 @@ Runs eight checks in sequence (each takes <5s):
 | `check_error_codes.py` | Every error code has a doc page; pages aren't stale | Add the doc page or remove the unused code |
 | `check_test_gating.py` | Every `tests/*.cpp` is registered in CMake | Register the target — see [test-gating.md](test-gating.md) |
 | `check_suite_discovery.py` | Every Python/Node test file is reachable by the suite runners, and nobody re-listed files by hand | Rename the file to `test_*`, add cases, or drop the hand-written step |
-| `check_quickjs_registration.py` | Every `__flox_*` global the JS layer calls has an `addGlobalFunc` registration | Register the global in `js_bindings.cpp` |
+| `check_quickjs_registration.py` | Every `__lrvx_*` global the JS layer calls has an `addGlobalFunc` registration | Register the global in `js_bindings.cpp` |
 | `gen_api_index.py --check` | `docs/reference/python/_api_index.md` matches `.pyi` | Run `python3 scripts/gen_api_index.py` |
 | `check_doc_snippets.py` | Doc snippets follow `--8<--` include pattern | Refactor inline snippets into includes |
-| `sync_mcp_data.py --check` | `mcp/flox_mcp/data/` matches source | Run `python3 scripts/sync_mcp_data.py` |
+| `sync_mcp_data.py --check` | `mcp/lrvx_mcp/data/` matches source | Run `python3 scripts/sync_mcp_data.py` |
 | `check_sanitizer_scan.py` | Every job that builds with `-fsanitize=` runs its tests through the transcript scan | Wrap the step in `scripts/run-with-sanitizer-scan.sh` |
-| flox-mcp pytest | MCP server unit tests, with the compiled binding required | Fix the broken test, or build `_flox_py` if the step reports a missing dependency |
+| lrvx-mcp pytest | MCP server unit tests, with the compiled binding required | Fix the broken test, or build `_lrvx` if the step reports a missing dependency |
 
 ### `linux-gcc` — the binding suites
 
@@ -96,7 +96,7 @@ would not be picked up, or if anyone re-lists files by hand.
 
 ### `codegen-check` (separate workflow)
 
-Re-runs the IDL→header/codon/markdown emitters and verifies the output matches what's committed. If you edited `flox_capi_spec.hpp` and forgot to re-run `regenerate.sh`, this fails.
+Re-runs the IDL→header/codon/markdown emitters and verifies the output matches what's committed. If you edited `lrvx_capi_spec.hpp` and forgot to re-run `regenerate.sh`, this fails.
 
 ### OS build matrix
 
@@ -155,7 +155,7 @@ QuickJS is read now, against the `addGlobalFunc` registration table in
 `src/quickjs/js_bindings.cpp` — the only list of what a strategy can actually
 call. A `quickjs: required` entry names the globals rather than deriving them,
 because the `__` plus C-API-name convention has real exceptions
-(`__flox_vprofile_create` wraps `flox_volume_profile_create`).
+(`__lrvx_vprofile_create` wraps `lrvx_volume_profile_create`).
 
 Most groups still carry no `quickjs` entry, so the gate cannot demand one yet.
 It counts them and prints the number instead of implying they were checked, and
@@ -166,7 +166,7 @@ filled in.
 ### A test suite that quietly shrank
 
 `pytest mcp/tests/` reports `229 passed, 20 skipped` without the compiled
-`flox_py` binding and `248 passed, 1 skipped` with it. Both exit 0, and the 19
+`lrvx` binding and `248 passed, 1 skipped` with it. Both exit 0, and the 19
 cases that drop out are the ones that touch real code rather than fixtures.
 Nothing separated the two runs but the numbers.
 
@@ -174,7 +174,7 @@ Nothing separated the two runs but the numbers.
 that shrink the suite — the binding and the `mcp` SDK — and closes the run with
 a banner naming each missing one and how many cases it cost. Where the run is
 meant to be complete, a missing dependency fails it instead of reducing it:
-that is the default under `CI`, and `FLOX_MCP_REQUIRE_DEPS=1` / `=0` forces it
+that is the default under `CI`, and `LRVX_MCP_REQUIRE_DEPS=1` / `=0` forces it
 either way. A contributor who has not built the C++ side still gets the
 pure-Python half, and the count of what did not run.
 
@@ -183,12 +183,12 @@ pure-Python half, and the count of what did not run.
 The "verify-docs" gates each check that a generated artifact matches what's committed. Several of those artifacts depend on each other — regenerating one re-derives the next:
 
 ```
-1. tools/codegen/scripts/regenerate.sh  → flox_capi.h, golden/, .api/, mcp data
-2. cmake --build build                  → libflox_capi + Python module
+1. tools/codegen/scripts/regenerate.sh  → lrvx_capi.h, golden/, .api/, mcp data
+2. cmake --build build                  → liblrvx_capi + Python module
 3. scripts/gen_pyi_stubs.py             → .pyi from running pybind11
 4. scripts/gen_api_index.py             → docs/reference/python/_api_index.md from .pyi
 5. scripts/gen_llms_txt.py              → docs/llms.txt + llms-full.txt (embeds api_index)
-6. scripts/sync_mcp_data.py             → mcp/flox_mcp/data/ (handled by regenerate.sh, but run manually if you skipped step 1)
+6. scripts/sync_mcp_data.py             → mcp/lrvx_mcp/data/ (handled by regenerate.sh, but run manually if you skipped step 1)
 7. scripts/gen_indicator_docs.py        → docs/reference/codon/indicators.md (only if you touched registry.def)
 8. python3 scripts/check_binding_parity.py  → manifests vs bindings
 ```

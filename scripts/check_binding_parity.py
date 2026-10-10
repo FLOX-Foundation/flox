@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Cross-binding parity gate.
 
-Reads the IDL spec (`include/flox/capi/flox_capi_spec.hpp`) and verifies, for
+Reads the IDL spec (`include/lrvx/capi/lrvx_capi_spec.hpp`) and verifies, for
 every user-facing C ABI group, that each language binding -- pybind11 Python,
 NAPI Node, Codon, QuickJS -- can actually reach the functions in it.
 
 The gate used to promise that and not deliver it. It matched *class names* in
 `.pyi` / `.d.ts`, so one name satisfied a whole group no matter how many
 functions the group gained; it checked Codon against
-`tools/codegen/golden/flox_capi.codon`, a file generated from the same IDL it
+`tools/codegen/golden/lrvx_capi.codon`, a file generated from the same IDL it
 had just read, which cannot disagree with it; and it skipped QuickJS entirely
 for any group that carried no `quickjs` entry.
 
@@ -17,7 +17,7 @@ What is checked now, per group and per binding:
     pybind11  every C function of the group has a call site under `python/`
     napi      every C function of the group has a call site under `node/src/`
     codon     every C function of the group is `from C import`-ed by a module
-              under `codon/flox/` -- the code a strategy actually links, not
+              under `codon/lrvx/` -- the code a strategy actually links, not
               the generated golden
     quickjs   every C function of the group is mapped, in this file, to the
               global name a strategy calls, and that global is registered
@@ -27,7 +27,7 @@ Class declarations are still checked on top of that: the `classes:` list of a
 `required` entry must appear in `.pyi` / `.d.ts` / the QuickJS prelude, and a
 `functions:` list under pybind11 / napi still names top-level binding
 functions in those stubs. The QuickJS layer is read through
-`flox_codegen.manifest.scan_quickjs`, the extractor `scripts/sync_mcp_data.py`
+`lrvx_codegen.manifest.scan_quickjs`, the extractor `scripts/sync_mcp_data.py`
 uses for the MCP `list_bindings` / `lookup_symbol` tools, so the two never
 drift apart on what counts as a registered QuickJS class.
 
@@ -80,7 +80,7 @@ SCRIPT_ROOT = Path(__file__).resolve().parent.parent
 # The codegen package always comes from the checkout this script lives in:
 # a tree passed with --root carries binding sources, not the toolchain.
 sys.path.insert(0, str(SCRIPT_ROOT / "tools" / "codegen"))
-from flox_codegen import manifest as codegen_manifest  # noqa: E402
+from lrvx_codegen import manifest as codegen_manifest  # noqa: E402
 
 BINDINGS = ("pybind11", "napi", "codon", "quickjs")
 
@@ -96,7 +96,7 @@ class Paths:
 
     @property
     def idl(self) -> Path:
-        return self.root / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
+        return self.root / "include" / "lrvx" / "capi" / "lrvx_capi_spec.hpp"
 
     @property
     def config(self) -> Path:
@@ -104,7 +104,7 @@ class Paths:
 
     @property
     def pyi(self) -> Path:
-        return self.root / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
+        return self.root / "python" / "lrvx" / "_lrvx" / "__init__.pyi"
 
     @property
     def dts(self) -> Path:
@@ -120,7 +120,7 @@ class Paths:
 
     @property
     def codon_sources(self) -> Path:
-        return self.root / "codon" / "flox"
+        return self.root / "codon" / "lrvx"
 
     @property
     def quickjs_bindings(self) -> Path:
@@ -143,17 +143,17 @@ class IdlGroup:
 def parse_idl_groups(text: str) -> list[IdlGroup]:
     """Walk the IDL spec, gathering function declarations per group.
 
-    Each FLOX_EXPORT(group = "X") attaches to the next function. Functions
+    Each LRVX_EXPORT(group = "X") attaches to the next function. Functions
     span multiple lines (parameters often broken). We track the current
-    group via the most recently seen FLOX_EXPORT, then capture the
+    group via the most recently seen LRVX_EXPORT, then capture the
     function name from the line that follows."""
     groups: dict[str, list[str]] = {}
     current_group: str | None = None
-    fn_pattern = re.compile(r"\b(flox_[a-z_0-9]+)\s*\(")
+    fn_pattern = re.compile(r"\b(lrvx_[a-z_0-9]+)\s*\(")
     group_pattern = re.compile(r'group\s*=\s*"([^"]+)"')
     for line in text.splitlines():
         s = line.strip()
-        if "FLOX_EXPORT" in s:
+        if "LRVX_EXPORT" in s:
             m = group_pattern.search(s)
             if m:
                 current_group = m.group(1)
@@ -207,7 +207,7 @@ def scan_dts(path: Path) -> tuple[set[str], set[str]]:
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _LINE_COMMENT = re.compile(r"//[^\n]*")
-_C_FUNCTION = re.compile(r"\bflox_[a-z_0-9]+")
+_C_FUNCTION = re.compile(r"\blrvx_[a-z_0-9]+")
 
 
 def scan_c_call_sites(tree: Path) -> set[str]:
@@ -233,9 +233,9 @@ def scan_c_call_sites(tree: Path) -> set[str]:
 def scan_codon_imports(tree: Path) -> set[str]:
     """C API functions imported by the shipped Codon modules.
 
-    `from C import flox_x(...)` is the only way Codon can call into the C
+    `from C import lrvx_x(...)` is the only way Codon can call into the C
     ABI, so it is what "Codon reaches this function" means. Read from
-    `codon/flox/`, deliberately not from the IDL-generated golden: the
+    `codon/lrvx/`, deliberately not from the IDL-generated golden: the
     golden is generated from the same spec this gate parses, so a check
     against it can never fail.
     """
@@ -257,8 +257,8 @@ def scan_quickjs_globals(path: Path) -> set[str]:
     The name is what a strategy calls, so the name is what parity means here.
 
     Names are not derivable from the C API function names -- the `__` + name
-    convention has real exceptions (`__flox_vprofile_create` wraps
-    `flox_volume_profile_create`) -- which is why the manifest maps each C
+    convention has real exceptions (`__lrvx_vprofile_create` wraps
+    `lrvx_volume_profile_create`) -- which is why the manifest maps each C
     function to its global explicitly rather than the gate guessing them.
     """
     if not path.exists():
@@ -270,7 +270,7 @@ def scan_quickjs_globals(path: Path) -> set[str]:
 def scan_quickjs_classes(bindings_path: Path, prelude_path: Path) -> set[str]:
     """Classes declared in the QuickJS embedded JS standard library.
 
-    Delegates to `flox_codegen.manifest.scan_quickjs`, the extractor
+    Delegates to `lrvx_codegen.manifest.scan_quickjs`, the extractor
     `scripts/sync_mcp_data.py` already uses to build the `binding_manifest`
     MCP tools query -- reusing it instead of a second regex kept in sync by
     hand. It reads the raw-string JS literal in `js_strategy.cpp`

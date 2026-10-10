@@ -13,7 +13,7 @@
 # A CMake configure warning about a missing subdirectory (python/, node/,
 # connectors/, tests/, demo/, tools/, benchmarks/ outside venue/) means an
 # `add_subdirectory` or `file(GLOB)` ran somewhere it should have been
-# behind FLOX_VENUE_LITE's forced-off options -- this script treats that as
+# behind LRVX_VENUE_LITE's forced-off options -- this script treats that as
 # a failure, not a warning to ignore, because the mirror tree does not have
 # those directories at all.
 #
@@ -34,7 +34,7 @@ cd "$repo_root"
 
 list_file="$(mktemp)"
 configure_log="$(mktemp)"
-scratch="${1:-$(mktemp -d "${TMPDIR:-/tmp}/flox-venue-lite-standalone.XXXXXX")}"
+scratch="${1:-$(mktemp -d "${TMPDIR:-/tmp}/lrvx-venue-lite-standalone.XXXXXX")}"
 keep_scratch="${KEEP:-0}"
 
 cleanup() {

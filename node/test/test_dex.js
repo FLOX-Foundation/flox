@@ -1,12 +1,12 @@
-// test_dex.js -- the flox/dex comfort layer, the Node mirror of
+// test_dex.js -- the lrvx/dex comfort layer, the Node mirror of
 // python/tests/test_dex*.py. Verifies every quote matches the raw ammCurve* binding to
 // the wei, that the silent-wrong-answer footgun raises, that CLMM state reads back, and
 // that the router / arb / tape produce the same figures as the Python suite.
 
 'use strict';
 
-const flox = require('..');
-const dex = flox.dex;
+const lrvx = require('..');
+const dex = lrvx.dex;
 
 let failed = false;
 function check(label, ok) {
@@ -36,16 +36,16 @@ const USDC = new dex.Token('USDC', 6);
   const p = new dex.UniswapV2(WETH, USDC, { reserves: ['1000 WETH', '2000000 USDC'], fee: '0.30%' });
   check('spot price', p.spotPrice === 2000);
   const q = p.quote('10 WETH');
-  const raw = flox.ammCurveConstantProduct(1000n * 10n ** 18n, 2000000n * 10n ** 6n, 997, 1000);
+  const raw = lrvx.ammCurveConstantProduct(1000n * 10n ** 18n, 2000000n * 10n ** 6n, 997, 1000);
   check('quote matches raw to the wei',
-    q.exactWei === flox.ammCurveAmountOut(raw, 0, 1, 10n * 10n ** 18n));
+    q.exactWei === lrvx.ammCurveAmountOut(raw, 0, 1, 10n * 10n ** 18n));
   check('quote out token + impact', q.out.token === USDC && q.priceImpact > 0);
   // PancakeSwap 0.25%.
   const pc = new dex.UniswapV2(WETH, USDC,
     { reserves: ['1000 WETH', '2000000 USDC'], fee: '0.25%', feeDen: 10000 });
-  const rawPc = flox.ammCurveConstantProduct(1000n * 10n ** 18n, 2000000n * 10n ** 6n, 9975, 10000);
+  const rawPc = lrvx.ammCurveConstantProduct(1000n * 10n ** 18n, 2000000n * 10n ** 6n, 9975, 10000);
   check('pancake fee maps',
-    pc.quote('10 WETH').exactWei === flox.ammCurveAmountOut(rawPc, 0, 1, 10n * 10n ** 18n));
+    pc.quote('10 WETH').exactWei === lrvx.ammCurveAmountOut(rawPc, 0, 1, 10n * 10n ** 18n));
 })();
 
 // -- uniswap v3 read-back + from_price --
@@ -115,12 +115,12 @@ const USDC = new dex.Token('USDC', 6);
   const pool = new dex.UniswapV2(WETH, USDC, { reserves: ['1000 WETH', '2000000 USDC'], fee: '0.30%' });
   const tape = new dex.Tape(pool).fromSwaps([[1, '50 WETH'], [2, '50 WETH'], [3, '100000 USDC']]);
   const rows = tape.replay();
-  const c = flox.ammCurveConstantProduct(1000n * 10n ** 18n, 2000000n * 10n ** 6n, 997, 1000);
-  flox.ammCurveApplySwap(c, 0, 1, 50n * 10n ** 18n);
-  flox.ammCurveApplySwap(c, 0, 1, 50n * 10n ** 18n);
-  flox.ammCurveApplySwap(c, 1, 0, 100000n * 10n ** 6n);
-  check('tape final reserve0', rows[rows.length - 1].reserve0 === flox.ammCurveBalance(c, 0));
-  check('tape final reserve1', rows[rows.length - 1].reserve1 === flox.ammCurveBalance(c, 1));
+  const c = lrvx.ammCurveConstantProduct(1000n * 10n ** 18n, 2000000n * 10n ** 6n, 997, 1000);
+  lrvx.ammCurveApplySwap(c, 0, 1, 50n * 10n ** 18n);
+  lrvx.ammCurveApplySwap(c, 0, 1, 50n * 10n ** 18n);
+  lrvx.ammCurveApplySwap(c, 1, 0, 100000n * 10n ** 6n);
+  check('tape final reserve0', rows[rows.length - 1].reserve0 === lrvx.ammCurveBalance(c, 0));
+  check('tape final reserve1', rows[rows.length - 1].reserve1 === lrvx.ammCurveBalance(c, 1));
   check('source pool untouched', pool.reserves[0].wei === 1000n * 10n ** 18n);
 })();
 

@@ -1,17 +1,17 @@
-// node/src/run_trace.h -- TraceRecorder / TraceReader wrappers for .floxrun.
+// node/src/run_trace.h -- TraceRecorder / TraceReader wrappers for .lrvxrun.
 
 #pragma once
 
 #include <napi.h>
 
 #include "error_translator.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace node_flox
+namespace node_lrvx
 {
 
 namespace detail_runtrace
@@ -73,12 +73,12 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
     std::string sid = opts.Has("strategyId") ? opts.Get("strategyId").As<Napi::String>().Utf8Value() : "";
     std::string shash = opts.Has("strategyHash") ? opts.Get("strategyHash").As<Napi::String>().Utf8Value() : "";
     int64_t started = opts.Has("runStartedNs") ? opts.Get("runStartedNs").As<Napi::Number>().Int64Value() : 0;
-    _h = flox_run_recorder_create(path.c_str(), sid.c_str(), shash.c_str(), started);
+    _h = lrvx_run_recorder_create(path.c_str(), sid.c_str(), shash.c_str(), started);
     if (!_h)
     {
       auto err = Napi::Error::New(env, "TraceRecorder: construction failed");
       err.Value().Set("code", Napi::String::New(env, "E_VAL_002"));
-      err.Value().Set("name", Napi::String::New(env, "FloxError"));
+      err.Value().Set("name", Napi::String::New(env, "LrvxError"));
       throw err;
     }
   }
@@ -87,7 +87,7 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
   {
     if (_h)
     {
-      flox_run_recorder_destroy(_h);
+      lrvx_run_recorder_destroy(_h);
     }
   }
 
@@ -99,12 +99,12 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
     std::string ch = opts.Has("contentHash") ? opts.Get("contentHash").As<Napi::String>().Utf8Value() : "";
     int64_t first = opts.Has("firstEventNs") ? opts.Get("firstEventNs").As<Napi::Number>().Int64Value() : 0;
     int64_t last = opts.Has("lastEventNs") ? opts.Get("lastEventNs").As<Napi::Number>().Int64Value() : 0;
-    flox_run_recorder_add_tape_ref(_h, path.c_str(), ch.c_str(), first, last);
+    lrvx_run_recorder_add_tape_ref(_h, path.c_str(), ch.c_str(), first, last);
   }
 
   void SetRunEndedNs(const Napi::CallbackInfo& info)
   {
-    flox_run_recorder_set_run_ended_ns(_h, info[0].As<Napi::Number>().Int64Value());
+    lrvx_run_recorder_set_run_ended_ns(_h, info[0].As<Napi::Number>().Int64Value());
   }
 
   void WriteSignal(const Napi::CallbackInfo& info)
@@ -126,7 +126,7 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
     {
       payload = detail_runtrace::readBytes(opts.Get("payload"));
     }
-    flox_run_recorder_write_signal(_h, run_ts, feed_ts, sid, flags, strength,
+    lrvx_run_recorder_write_signal(_h, run_ts, feed_ts, sid, flags, strength,
                                    name.empty() ? nullptr : name.data(), name.size(),
                                    sids.empty() ? nullptr : sids.data(), sids.size(),
                                    payload.empty() ? nullptr : payload.data(), payload.size());
@@ -147,7 +147,7 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
     uint8_t otype = opts.Has("orderType") ? opts.Get("orderType").As<Napi::Number>().Uint32Value() : 0;
     uint32_t flags = opts.Has("flags") ? opts.Get("flags").As<Napi::Number>().Uint32Value() : 0;
     std::string reason = opts.Has("reason") ? opts.Get("reason").As<Napi::String>().Utf8Value() : "";
-    flox_run_recorder_write_order_event(_h, run_ts, feed_ts, oid, pid, price, qty, symid, kind,
+    lrvx_run_recorder_write_order_event(_h, run_ts, feed_ts, oid, pid, price, qty, symid, kind,
                                         side, otype, flags,
                                         reason.empty() ? nullptr : reason.data(), reason.size());
   }
@@ -165,16 +165,16 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
     uint32_t symid = opts.Has("symbolId") ? opts.Get("symbolId").As<Napi::Number>().Uint32Value() : 0;
     uint8_t side = opts.Has("side") ? opts.Get("side").As<Napi::Number>().Uint32Value() : 0;
     uint8_t liq = opts.Has("liquidity") ? opts.Get("liquidity").As<Napi::Number>().Uint32Value() : 0;
-    flox_run_recorder_write_fill(_h, run_ts, feed_ts, oid, fid, price, qty, fee, symid, side, liq);
+    lrvx_run_recorder_write_fill(_h, run_ts, feed_ts, oid, fid, price, qty, fee, symid, side, liq);
   }
 
-  void Close(const Napi::CallbackInfo&) { flox_run_recorder_close(_h); }
+  void Close(const Napi::CallbackInfo&) { lrvx_run_recorder_close(_h); }
 
  public:
-  FloxRunRecorderHandle handle() const noexcept { return _h; }
+  LrvxRunRecorderHandle handle() const noexcept { return _h; }
 
  private:
-  FloxRunRecorderHandle _h{nullptr};
+  LrvxRunRecorderHandle _h{nullptr};
 };
 
 class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
@@ -204,12 +204,12 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
       return;
     }
     std::string path = info[0].As<Napi::String>().Utf8Value();
-    _h = flox_run_reader_open(path.c_str());
+    _h = lrvx_run_reader_open(path.c_str());
     if (!_h)
     {
       auto err = Napi::Error::New(env, "TraceReader: cannot open " + path);
       err.Value().Set("code", Napi::String::New(env, "E_VAL_001"));
-      err.Value().Set("name", Napi::String::New(env, "FloxError"));
+      err.Value().Set("name", Napi::String::New(env, "LrvxError"));
       throw err;
     }
   }
@@ -218,55 +218,55 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
   {
     if (_h)
     {
-      flox_run_reader_close(_h);
+      lrvx_run_reader_close(_h);
     }
   }
 
  private:
   Napi::Value StrategyId(const Napi::CallbackInfo& info)
   {
-    uint64_t n = flox_run_reader_strategy_id(_h, nullptr, 0);
+    uint64_t n = lrvx_run_reader_strategy_id(_h, nullptr, 0);
     std::string out(n, '\0');
     if (n > 0)
     {
-      flox_run_reader_strategy_id(_h, out.data(), n);
+      lrvx_run_reader_strategy_id(_h, out.data(), n);
     }
     return Napi::String::New(info.Env(), out);
   }
 
   Napi::Value StrategyHash(const Napi::CallbackInfo& info)
   {
-    uint64_t n = flox_run_reader_strategy_hash(_h, nullptr, 0);
+    uint64_t n = lrvx_run_reader_strategy_hash(_h, nullptr, 0);
     std::string out(n, '\0');
     if (n > 0)
     {
-      flox_run_reader_strategy_hash(_h, out.data(), n);
+      lrvx_run_reader_strategy_hash(_h, out.data(), n);
     }
     return Napi::String::New(info.Env(), out);
   }
 
   Napi::Value RunStartedNs(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), static_cast<double>(flox_run_reader_run_started_ns(_h)));
+    return Napi::Number::New(info.Env(), static_cast<double>(lrvx_run_reader_run_started_ns(_h)));
   }
 
   Napi::Value RunEndedNs(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), static_cast<double>(flox_run_reader_run_ended_ns(_h)));
+    return Napi::Number::New(info.Env(), static_cast<double>(lrvx_run_reader_run_ended_ns(_h)));
   }
 
   Napi::Value TapeRefs(const Napi::CallbackInfo& info)
   {
     auto env = info.Env();
-    uint64_t n = flox_run_reader_tape_ref_count(_h);
+    uint64_t n = lrvx_run_reader_tape_ref_count(_h);
     Napi::Array out = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; ++i)
     {
-      uint64_t plen = flox_run_reader_tape_ref_path(_h, i, nullptr, 0);
+      uint64_t plen = lrvx_run_reader_tape_ref_path(_h, i, nullptr, 0);
       std::string p(plen, '\0');
       if (plen > 0)
       {
-        flox_run_reader_tape_ref_path(_h, i, p.data(), plen);
+        lrvx_run_reader_tape_ref_path(_h, i, p.data(), plen);
       }
       Napi::Object o = Napi::Object::New(env);
       o.Set("path", Napi::String::New(env, p));
@@ -278,29 +278,29 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
   Napi::Value ReadAllSignals(const Napi::CallbackInfo& info)
   {
     auto env = info.Env();
-    uint64_t n = flox_run_reader_signal_count(_h);
+    uint64_t n = lrvx_run_reader_signal_count(_h);
     Napi::Array out = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; ++i)
     {
       int64_t run_ts = 0, feed_ts = 0, strength = 0;
       uint32_t sid = 0, flags = 0;
       uint64_t name_len = 0, sym_count = 0, payload_len = 0;
-      flox_run_reader_signal_header(_h, i, &run_ts, &feed_ts, &sid, &flags, &strength, &name_len,
+      lrvx_run_reader_signal_header(_h, i, &run_ts, &feed_ts, &sid, &flags, &strength, &name_len,
                                     &sym_count, &payload_len);
       std::string name(name_len, '\0');
       if (name_len > 0)
       {
-        flox_run_reader_signal_name(_h, i, name.data(), name_len);
+        lrvx_run_reader_signal_name(_h, i, name.data(), name_len);
       }
       std::vector<uint32_t> sids(sym_count);
       if (sym_count > 0)
       {
-        flox_run_reader_signal_symbol_ids(_h, i, sids.data(), sym_count);
+        lrvx_run_reader_signal_symbol_ids(_h, i, sids.data(), sym_count);
       }
       std::vector<uint8_t> payload(payload_len);
       if (payload_len > 0)
       {
-        flox_run_reader_signal_payload(_h, i, payload.data(), payload_len);
+        lrvx_run_reader_signal_payload(_h, i, payload.data(), payload_len);
       }
       Napi::Object o = Napi::Object::New(env);
       o.Set("runTsNs", Napi::Number::New(env, static_cast<double>(run_ts)));
@@ -325,7 +325,7 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
   Napi::Value ReadAllOrderEvents(const Napi::CallbackInfo& info)
   {
     auto env = info.Env();
-    uint64_t n = flox_run_reader_order_event_count(_h);
+    uint64_t n = lrvx_run_reader_order_event_count(_h);
     Napi::Array out = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; ++i)
     {
@@ -333,12 +333,12 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
       uint64_t oid = 0, pid = 0, reason_len = 0;
       uint32_t sid = 0, flags = 0;
       uint8_t kind = 0, side = 0, otype = 0;
-      flox_run_reader_order_event_header(_h, i, &run_ts, &feed_ts, &oid, &pid, &price, &qty, &sid,
+      lrvx_run_reader_order_event_header(_h, i, &run_ts, &feed_ts, &oid, &pid, &price, &qty, &sid,
                                          &kind, &side, &otype, &flags, &reason_len);
       std::string reason(reason_len, '\0');
       if (reason_len > 0)
       {
-        flox_run_reader_order_event_reason(_h, i, reason.data(), reason_len);
+        lrvx_run_reader_order_event_reason(_h, i, reason.data(), reason_len);
       }
       Napi::Object o = Napi::Object::New(env);
       o.Set("runTsNs", Napi::Number::New(env, static_cast<double>(run_ts)));
@@ -361,7 +361,7 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
   Napi::Value ReadAllFills(const Napi::CallbackInfo& info)
   {
     auto env = info.Env();
-    uint64_t n = flox_run_reader_fill_count(_h);
+    uint64_t n = lrvx_run_reader_fill_count(_h);
     Napi::Array out = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; ++i)
     {
@@ -369,7 +369,7 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
       uint64_t oid = 0, fid = 0;
       uint32_t sid = 0;
       uint8_t side = 0, liq = 0;
-      flox_run_reader_fill(_h, i, &run_ts, &feed_ts, &oid, &fid, &price, &qty, &fee, &sid, &side,
+      lrvx_run_reader_fill(_h, i, &run_ts, &feed_ts, &oid, &fid, &price, &qty, &fee, &sid, &side,
                            &liq);
       Napi::Object o = Napi::Object::New(env);
       o.Set("runTsNs", Napi::Number::New(env, static_cast<double>(run_ts)));
@@ -391,12 +391,12 @@ class TraceReaderWrap : public Napi::ObjectWrap<TraceReaderWrap>
   {
     if (_h)
     {
-      flox_run_reader_close(_h);
+      lrvx_run_reader_close(_h);
       _h = nullptr;
     }
   }
 
-  FloxRunReaderHandle _h{nullptr};
+  LrvxRunReaderHandle _h{nullptr};
 };
 
 inline void registerRunTrace(Napi::Env env, Napi::Object exports)
@@ -405,4 +405,4 @@ inline void registerRunTrace(Napi::Env env, Napi::Object exports)
   exports.Set("TraceReader", TraceReaderWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

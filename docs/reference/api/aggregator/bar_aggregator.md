@@ -31,8 +31,8 @@ flowchart TB
 ## Quick Start
 
 ```cpp
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bus/bar_bus.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
 
 // Create a 1-minute time bar aggregator
 BarBus bus;
@@ -203,7 +203,7 @@ any realistic configuration and about 40 MB with the default template
 arguments. Put it on the heap; a local declaration overflows the stack before
 the first line of the function body runs, and no compiler diagnostic warns
 about it. `BarMatrix<...>::kStorageBytes` gives the figure if you need it for a
-budget of your own, and an instantiation past `FLOX_BAR_MATRIX_MAX_BYTES`
+budget of your own, and an instantiation past `LRVX_BAR_MATRIX_MAX_BYTES`
 (256 MB by default) is a compile error.
 
 ```cpp
@@ -401,7 +401,7 @@ The implementation uses:
 - `PolicyTag` enum for runtime type discrimination
 - `PolicyStorage` union for type-safe storage without vtables
 - Single heap allocation for all slots (avoids stack overflow with large MaxTimeframes)
-- `FLOX_FORCE_INLINE` on hot path methods
+- `LRVX_FORCE_INLINE` on hot path methods
 
 ## Files
 

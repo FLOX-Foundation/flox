@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -16,14 +16,14 @@
 #include <optional>
 #include <string>
 
-#include "flox/risk/portfolio_risk.h"
+#include "lrvx/risk/portfolio_risk.h"
 
 namespace py = pybind11;
 
-namespace flox_py
+namespace lrvx
 {
 
-inline py::dict accountToDict(const flox::risk::StrategyAccount& a)
+inline py::dict accountToDict(const lrvx::risk::StrategyAccount& a)
 {
   py::dict d;
   d["name"] = a.name;
@@ -37,7 +37,7 @@ inline py::dict accountToDict(const flox::risk::StrategyAccount& a)
   return d;
 }
 
-inline py::dict breachToDict(const flox::risk::Breach& b)
+inline py::dict breachToDict(const lrvx::risk::Breach& b)
 {
   py::dict d;
   d["rule"] = b.rule;
@@ -47,7 +47,7 @@ inline py::dict breachToDict(const flox::risk::Breach& b)
   return d;
 }
 
-inline py::dict snapshotToDict(const flox::risk::PortfolioSnapshot& s)
+inline py::dict snapshotToDict(const lrvx::risk::PortfolioSnapshot& s)
 {
   py::dict d;
   d["total_realized_pnl"] = s.total_realized_pnl;
@@ -78,7 +78,7 @@ inline py::dict snapshotToDict(const flox::risk::PortfolioSnapshot& s)
 
 inline void bindPortfolioRisk(py::module_& m)
 {
-  using namespace flox::risk;
+  using namespace lrvx::risk;
 
   py::class_<RiskRules>(m, "_PortfolioRiskRules", "Internal C++-backed risk rules struct.")
       .def(py::init<>())
@@ -89,7 +89,7 @@ inline void bindPortfolioRisk(py::module_& m)
 
   py::class_<PortfolioRiskAggregator>(m, "_PortfolioRiskAggregator",
                                       "C++-backed aggregator. Public Python users go through "
-                                      "flox_py.portfolio_risk.PortfolioRiskAggregator which preserves "
+                                      "lrvx.portfolio_risk.PortfolioRiskAggregator which preserves "
                                       "the existing dataclass surface.")
       .def(py::init<RiskRules, double>(),
            py::arg("rules") = RiskRules{},
@@ -116,4 +116,4 @@ inline void bindPortfolioRisk(py::module_& m)
            { return snapshotToDict(self.snapshot()); });
 }
 
-}  // namespace flox_py
+}  // namespace lrvx

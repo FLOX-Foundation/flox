@@ -57,7 +57,7 @@ event payload for strategies that want finer granularity.
 === "Codon"
 
     ```python
-    from flox.strategy import Strategy
+    from lrvx.strategy import Strategy
 
     class Watcher(Strategy):
         def on_market_position_change(self, ctx, ev):

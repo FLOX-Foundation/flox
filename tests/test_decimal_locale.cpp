@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2026 FLOX Foundation
+ * Copyright (c) 2026 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -13,8 +13,8 @@
 // host configured for comma decimals every price and quantity left as
 // "60000,000000" and the venue rejected the order.
 
-#include <flox/common.h>
-#include <flox/util/base/decimal.h>
+#include <lrvx/common.h>
+#include <lrvx/util/base/decimal.h>
 
 #include <gtest/gtest.h>
 
@@ -22,7 +22,7 @@
 #include <locale>
 #include <string>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Flox venue order-entry SBE schema.
+  lrvx venue order-entry SBE schema.
 
-  Source of truth for flox-venue/sbe_order_entry_codec.h. Same SBE contract as
+  Source of truth for lrvx-venue/sbe_order_entry_codec.h. Same SBE contract as
   the market-data schema (venue/schema/md-sbe.xml): a fixed messageHeader
   composite (blockLength, templateId, schemaId, version) precedes every message,
   all encodings are little-endian, and a reader uses blockLength to skip trailing
@@ -63,7 +63,7 @@
 
   Version 8: new inbound QuoteLadder (7), a market maker's whole set of
   levels on one symbol in one message, replacing the prior set. The engine
-  command of the same name (venue/include/flox-venue/messages.h) is exactly
+  command of the same name (venue/include/lrvx-venue/messages.h) is exactly
   the K Quotes it stands for, so this is the order-entry wire for what a
   maker previously had to send as K separate replaces. The levels are a FIXED
   block of 8 slots with a `levels` count rather than an SBE repeating group:
@@ -113,11 +113,11 @@
   seqOffsetIn has its own version-gated branch for it.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
-                   package="flox.venue.oe"
+                   package="lrvx.venue.oe"
                    id="92"
                    version="10"
                    semanticVersion="1.0"
-                   description="Flox venue order entry + execution reports"
+                   description="lrvx venue order entry + execution reports"
                    byteOrder="littleEndian">
   <types>
     <composite name="messageHeader" description="SBE message header">
@@ -135,7 +135,7 @@
     <!-- Engine enum underlying value. The byte carries 256 values where the
          enum it stands for names at most eight, and the decoder refuses any
          value the enum does not name rather than casting it inward
-         (SbeOrderEntryCodec::decode -> inRange, flox-venue/messages.h). -->
+         (SbeOrderEntryCodec::decode -> inRange, lrvx-venue/messages.h). -->
     <type name="EnumU8"   primitiveType="uint8"/>
     <type name="Nanos"    primitiveType="int64"/>
     <type name="SeqNum"   primitiveType="uint64"/>  <!-- per-session exec-report sequence -->

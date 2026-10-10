@@ -1,4 +1,4 @@
-"""Tests for ``flox_py.archives.bitget`` — Bitget public archive converter.
+"""Tests for ``lrvx.archives.bitget`` — Bitget public archive converter.
 
 Synthetic CSV matching Bitget's column layout (`trade_id, price,
 size, side, timestamp_ms`) is built in memory and round-tripped
@@ -25,9 +25,9 @@ for cand in ("build/python", "build-py312/python"):
         sys.path.insert(0, str(p))
         break
 
-import flox_py  # noqa: E402
+import lrvx  # noqa: E402
 
-from flox_py.archives import ArchiveReader, bitget  # noqa: E402
+from lrvx.archives import ArchiveReader, bitget  # noqa: E402
 
 
 # Bitget columns: trade_id, price, size, side, timestamp_ms.
@@ -66,7 +66,7 @@ class BitgetConvertTests(unittest.TestCase):
     def _convert_zip(self) -> bitget.ConvertStats:
         z = self.tmp / "BTCUSDT-trades-2024-01-15.zip"
         _build_zip(z)
-        return bitget.trades_to_floxlog(
+        return bitget.trades_to_lrvx(
             z, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="umcbl",
         )
@@ -74,7 +74,7 @@ class BitgetConvertTests(unittest.TestCase):
     def test_round_trip_zip(self) -> None:
         stats = self._convert_zip()
         self.assertEqual(stats.trades_written, 3)
-        trades = flox_py.DataReader(str(self.tape)).read_trades()
+        trades = lrvx.DataReader(str(self.tape)).read_trades()
         self.assertEqual(int(trades.size), 3)
         sides = [int(t["side"]) for t in trades]
         self.assertEqual(sides, [0, 1, 0])
@@ -87,7 +87,7 @@ class BitgetConvertTests(unittest.TestCase):
     def test_round_trip_gz(self) -> None:
         g = self.tmp / "BTCUSDT-trades-2024-01-15.csv.gz"
         _build_gz(g)
-        stats = bitget.trades_to_floxlog(
+        stats = bitget.trades_to_lrvx(
             g, self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="umcbl",
         )
@@ -96,7 +96,7 @@ class BitgetConvertTests(unittest.TestCase):
     def test_dedup_on_rerun(self) -> None:
         first = self._convert_zip()
         self.assertEqual(first.trades_written, 3)
-        second = bitget.trades_to_floxlog(
+        second = bitget.trades_to_lrvx(
             self.tmp / "BTCUSDT-trades-2024-01-15.zip", self.tape,
             symbol_id=7, symbol_name="BTCUSDT", market="umcbl",
         )
@@ -117,7 +117,7 @@ class BitgetConvertTests(unittest.TestCase):
     def test_spot_market_metadata(self) -> None:
         z = self.tmp / "BTCUSDT-trades-2024-01-15.zip"
         _build_zip(z)
-        bitget.trades_to_floxlog(
+        bitget.trades_to_lrvx(
             z, self.tape, symbol_id=7,
             symbol_name="BTCUSDT", market="spot",
         )

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -26,15 +26,15 @@
 //      counted in tradeCount. Out-of-order trades that still belong to the live
 //      bucket are unaffected.
 
-#include "flox/aggregator/bar_aggregator.h"
-#include "flox/aggregator/bus/bar_bus.h"
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/aggregator/multi_timeframe_aggregator.h"
-#include "flox/aggregator/policies/renko_bar_policy.h"
-#include "flox/aggregator/policies/time_bar_policy.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/strategy/abstract_strategy.h"
+#include "lrvx/aggregator/bar_aggregator.h"
+#include "lrvx/aggregator/bus/bar_bus.h"
+#include "lrvx/aggregator/events/bar_event.h"
+#include "lrvx/aggregator/multi_timeframe_aggregator.h"
+#include "lrvx/aggregator/policies/renko_bar_policy.h"
+#include "lrvx/aggregator/policies/time_bar_policy.h"
+#include "lrvx/book/events/trade_event.h"
+#include "lrvx/common.h"
+#include "lrvx/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -43,7 +43,7 @@
 #include <cstdint>
 #include <vector>
 
-using namespace flox;
+using namespace lrvx;
 
 namespace
 {
@@ -413,7 +413,7 @@ TEST(RenkoGapBoundTest, TheCappedGapStillCarriesThePriceForward)
       << "after the capped gap the grid must sit at the new price level, not at 1.00";
 }
 
-#if defined(FLOX_RENKO_GAP_BOUND_API)
+#if defined(LRVX_RENKO_GAP_BOUND_API)
 // needs: static constexpr std::size_t RenkoBarPolicy::kMaxGapBricks
 // needs: BarCloseReason::Gap (or an equivalent marker on the bar that carries
 //        the remainder of a capped gap), so a consumer can tell a walked gap
@@ -507,7 +507,7 @@ TEST(RenkoGapBoundTest, TheBoundIsTheDocumentedNumberAndIsSpentExactly)
 
 // The reason byte is ABI and on-disk format at once: MmapBarWriter writes Bar
 // as a raw struct, and the C header documents the same four values for
-// FloxBarData::close_reason (capi/flox_capi.h). Every other test in this file
+// LrvxBarData::close_reason (capi/lrvx_capi.h). Every other test in this file
 // compares the symbolic enumerator, which stays true under any renumbering --
 // so the numbers themselves are pinned here. Gap sits on 1, the value left
 // free for it, and cannot slide onto Forced.
@@ -649,7 +649,7 @@ TEST(TimeBarLateTradeTest, MultiTimeframeAggregatorDropsTheLateTradeToo)
   EXPECT_EQ(result[0].tradeCount.raw(), 2);
 }
 
-#if defined(FLOX_LATE_TRADE_COUNTER_API)
+#if defined(LRVX_LATE_TRADE_COUNTER_API)
 // needs: std::uint64_t BarAggregator<Policy>::lateTradeCount() const noexcept
 // A dropped trade must be counted, not merely discarded: silently losing feed
 // data is exactly what a cross-venue merge produces, and an operator has to be

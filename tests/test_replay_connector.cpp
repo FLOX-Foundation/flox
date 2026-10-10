@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/replay/replay_connector.h"
-#include "flox/replay/writers/binary_log_writer.h"
+#include "lrvx/replay/replay_connector.h"
+#include "lrvx/replay/writers/binary_log_writer.h"
 
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/common.h"
-#include "flox/strategy/abstract_strategy.h"
-#include "flox/util/memory/pool.h"
+#include "lrvx/book/bus/book_update_bus.h"
+#include "lrvx/book/bus/trade_bus.h"
+#include "lrvx/common.h"
+#include "lrvx/strategy/abstract_strategy.h"
+#include "lrvx/util/memory/pool.h"
 
 #include <gtest/gtest.h>
 #include <atomic>
@@ -22,15 +22,15 @@
 #include <filesystem>
 #include <thread>
 
-using namespace flox;
-using namespace flox::replay;
+using namespace lrvx;
+using namespace lrvx::replay;
 
 class ReplayConnectorTest : public ::testing::Test
 {
  protected:
   void SetUp() override
   {
-    _test_dir = std::filesystem::temp_directory_path() / "flox_replay_test";
+    _test_dir = std::filesystem::temp_directory_path() / "lrvx_replay_test";
     std::filesystem::remove_all(_test_dir);
     std::filesystem::create_directories(_test_dir);
   }

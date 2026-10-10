@@ -1,19 +1,19 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/risk/portfolio_risk.h"
+#include "lrvx/risk/portfolio_risk.h"
 
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
-namespace flox::risk
+namespace lrvx::risk
 {
 
 PortfolioRiskAggregator::PortfolioRiskAggregator(RiskRules rules,
@@ -345,4 +345,4 @@ PortfolioSnapshot PortfolioRiskAggregator::buildSnapshotLocked() const
   return s;
 }
 
-}  // namespace flox::risk
+}  // namespace lrvx::risk

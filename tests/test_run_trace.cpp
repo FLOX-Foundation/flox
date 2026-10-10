@@ -1,17 +1,17 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
-#include "flox/run/trace_reader.h"
-#include "flox/run/trace_recorder.h"
+#include "lrvx/run/trace_reader.h"
+#include "lrvx/run/trace_recorder.h"
 
-#include "flox/replay/binary_format_v1.h"
-#include "flox/run/run_format_v1.h"
+#include "lrvx/replay/binary_format_v1.h"
+#include "lrvx/run/run_format_v1.h"
 
 #include <gtest/gtest.h>
 
@@ -25,7 +25,7 @@ namespace
 
 std::filesystem::path makeTmp(const std::string& tag)
 {
-  auto p = std::filesystem::temp_directory_path() / ("flox_run_test_" + tag);
+  auto p = std::filesystem::temp_directory_path() / ("lrvx_run_test_" + tag);
   std::filesystem::remove_all(p);
   return p;
 }
@@ -34,7 +34,7 @@ std::filesystem::path makeTmp(const std::string& tag)
 
 TEST(RunTrace, RoundTripsSignalsOrdersFills)
 {
-  using namespace flox::run;
+  using namespace lrvx::run;
   auto tmp = makeTmp("roundtrip");
 
   TraceRecorderOptions opts;
@@ -42,7 +42,7 @@ TEST(RunTrace, RoundTripsSignalsOrdersFills)
   opts.strategy_hash = "sha256:test";
   opts.run_started_ns = 1'700'000'000'000'000'000LL;
   TapeRef tref;
-  tref.path = "BTCUSDT.floxlog";
+  tref.path = "BTCUSDT.lrvx";
   tref.content_hash = "sha256:abc";
   tref.first_event_ns = 1'700'000'000'000'000'000LL;
   tref.last_event_ns = 1'700'000'000'500'000'000LL;
@@ -99,7 +99,7 @@ TEST(RunTrace, RoundTripsSignalsOrdersFills)
   EXPECT_EQ(m.format_version, 1u);
   EXPECT_EQ(m.strategy_id, "smoke");
   ASSERT_EQ(m.tape_refs.size(), 1u);
-  EXPECT_EQ(m.tape_refs[0].path, "BTCUSDT.floxlog");
+  EXPECT_EQ(m.tape_refs[0].path, "BTCUSDT.lrvx");
   EXPECT_EQ(m.run_ended_ns, 1'700'000'000'400'000'000LL);
 
   auto sigs = reader.readAllSignals();
@@ -111,14 +111,14 @@ TEST(RunTrace, RoundTripsSignalsOrdersFills)
   EXPECT_EQ(sigs[0].symbol_ids[1], 2u);
   EXPECT_EQ(std::string(sigs[0].payload.begin(), sigs[0].payload.end()),
             "{\"src\":\"ETH\",\"dst\":\"BTC\"}");
-  EXPECT_EQ(sigs[0].flags, flox::run::SignalFlags::Enter);
+  EXPECT_EQ(sigs[0].flags, lrvx::run::SignalFlags::Enter);
 
   auto orders = reader.readAllOrderEvents();
   ASSERT_EQ(orders.size(), 1u);
   EXPECT_EQ(orders[0].order_id, 7u);
   EXPECT_EQ(orders[0].parent_signal_id, 42u);
   EXPECT_EQ(orders[0].event_kind, OrderEventKind::Submit);
-  EXPECT_EQ(orders[0].flags, flox::run::OrderEventFlags::PostOnly);
+  EXPECT_EQ(orders[0].flags, lrvx::run::OrderEventFlags::PostOnly);
 
   auto fills = reader.readAllFills();
   ASSERT_EQ(fills.size(), 1u);
@@ -131,7 +131,7 @@ TEST(RunTrace, RoundTripsSignalsOrdersFills)
 
 TEST(RunTrace, EmptySegmentsAreOmitted)
 {
-  using namespace flox::run;
+  using namespace lrvx::run;
   auto tmp = makeTmp("empty");
   TraceRecorderOptions opts;
   opts.strategy_id = "empty";
@@ -150,7 +150,7 @@ TEST(RunTrace, EmptySegmentsAreOmitted)
 
 TEST(RunTrace, MultipleSignalsPreserveOrder)
 {
-  using namespace flox::run;
+  using namespace lrvx::run;
   auto tmp = makeTmp("order");
   TraceRecorderOptions opts;
   opts.strategy_id = "ord";
@@ -184,7 +184,7 @@ TEST(RunTrace, MultipleSignalsPreserveOrder)
 // Hostile bundles
 // ============================================================================
 //
-// A .floxrun bundle travels: it is the artifact you hand someone to reproduce
+// A .lrvxrun bundle travels: it is the artifact you hand someone to reproduce
 // a run. The reader used to take the record's own length fields at their
 // word, and those fields sit inside the bytes the CRC is taken over, so a
 // doctored file checksums clean. A 124-byte segment could ask for 60,000
@@ -208,7 +208,7 @@ template <typename Mutate>
 HostileBundle writeSignalBundle(const std::string& tag, Mutate&& mutate,
                                 const std::string& segmentName = "signals.seg")
 {
-  using namespace flox::run;
+  using namespace lrvx::run;
 
   auto root = makeTmp(tag);
   std::filesystem::create_directories(root);
@@ -223,10 +223,10 @@ HostileBundle writeSignalBundle(const std::string& tag, Mutate&& mutate,
   rec.signal_id = 1;
   mutate(rec);
 
-  flox::replay::FrameHeader fh{};
+  lrvx::replay::FrameHeader fh{};
   fh.size = sizeof(rec);
   fh.type = static_cast<uint8_t>(FrameType::Signal);
-  fh.crc32 = flox::replay::Crc32::compute(reinterpret_cast<const uint8_t*>(&rec), sizeof(rec));
+  fh.crc32 = lrvx::replay::Crc32::compute(reinterpret_cast<const uint8_t*>(&rec), sizeof(rec));
 
   auto segPath = root / segmentName;
   {
@@ -260,10 +260,10 @@ HostileBundle writeSignalBundle(const std::string& tag, Mutate&& mutate,
 
 TEST(RunTraceHostile, OversizedNameLengthIsRejected)
 {
-  auto bundle = writeSignalBundle("name_len", [](flox::run::SignalRecord& r)
+  auto bundle = writeSignalBundle("name_len", [](lrvx::run::SignalRecord& r)
                                   { r.name_len = 60000; });
 
-  flox::run::TraceReader reader(bundle.root.string());
+  lrvx::run::TraceReader reader(bundle.root.string());
   EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
 
   std::filesystem::remove_all(bundle.root);
@@ -271,10 +271,10 @@ TEST(RunTraceHostile, OversizedNameLengthIsRejected)
 
 TEST(RunTraceHostile, OversizedSymbolCountIsRejected)
 {
-  auto bundle = writeSignalBundle("symbol_count", [](flox::run::SignalRecord& r)
+  auto bundle = writeSignalBundle("symbol_count", [](lrvx::run::SignalRecord& r)
                                   { r.symbol_count = 65535; });
 
-  flox::run::TraceReader reader(bundle.root.string());
+  lrvx::run::TraceReader reader(bundle.root.string());
   EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
 
   std::filesystem::remove_all(bundle.root);
@@ -282,10 +282,10 @@ TEST(RunTraceHostile, OversizedSymbolCountIsRejected)
 
 TEST(RunTraceHostile, OversizedPayloadLengthIsRejected)
 {
-  auto bundle = writeSignalBundle("payload_len", [](flox::run::SignalRecord& r)
+  auto bundle = writeSignalBundle("payload_len", [](lrvx::run::SignalRecord& r)
                                   { r.payload_len = 2'000'000'000u; });
 
-  flox::run::TraceReader reader(bundle.root.string());
+  lrvx::run::TraceReader reader(bundle.root.string());
   EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
 
   std::filesystem::remove_all(bundle.root);
@@ -296,9 +296,9 @@ TEST(RunTraceHostile, OversizedPayloadLengthIsRejected)
 // back empty rather than throwing.
 TEST(RunTraceHostile, ZeroLengthsStillRead)
 {
-  auto bundle = writeSignalBundle("zero_len", [](flox::run::SignalRecord&) {});
+  auto bundle = writeSignalBundle("zero_len", [](lrvx::run::SignalRecord&) {});
 
-  flox::run::TraceReader reader(bundle.root.string());
+  lrvx::run::TraceReader reader(bundle.root.string());
   auto signals = reader.readAllSignals();
   ASSERT_EQ(signals.size(), 1u);
   EXPECT_TRUE(signals[0].name.empty());
@@ -313,16 +313,16 @@ TEST(RunTraceHostile, ZeroLengthsStillRead)
 // out of it.
 TEST(RunTraceHostile, SegmentNameCannotEscapeTheBundle)
 {
-  auto bundle = writeSignalBundle("escape_abs", [](flox::run::SignalRecord&) {}, "/etc/hosts");
+  auto bundle = writeSignalBundle("escape_abs", [](lrvx::run::SignalRecord&) {}, "/etc/hosts");
   {
-    flox::run::TraceReader reader(bundle.root.string());
+    lrvx::run::TraceReader reader(bundle.root.string());
     EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
   }
   std::filesystem::remove_all(bundle.root);
 
-  auto climb = writeSignalBundle("escape_rel", [](flox::run::SignalRecord&) {}, "../../etc/hosts");
+  auto climb = writeSignalBundle("escape_rel", [](lrvx::run::SignalRecord&) {}, "../../etc/hosts");
   {
-    flox::run::TraceReader reader(climb.root.string());
+    lrvx::run::TraceReader reader(climb.root.string());
     EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
   }
   std::filesystem::remove_all(climb.root);

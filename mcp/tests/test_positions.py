@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-from flox_mcp.tools import positions
+from lrvx_mcp.tools import positions
 
 
 def _sample_state(captured_at_ns: int = 1_700_000_000_000_000_000) -> dict:
@@ -79,7 +79,7 @@ class _SnapshotTestCase(unittest.TestCase):
     tools at it via the ``state_path`` arg."""
 
     def setUp(self) -> None:
-        fd, path = tempfile.mkstemp(prefix="flox-state-", suffix=".json")
+        fd, path = tempfile.mkstemp(prefix="lrvx-state-", suffix=".json")
         os.close(fd)
         self.path = path
         self._write(_sample_state())
@@ -127,7 +127,7 @@ class GetPositionsTests(_SnapshotTestCase):
         self.assertEqual(out["engine"], "not_running")
         self.assertEqual(out["data"], [])
         self.assertNotIn("error", out)
-        self.assertIn("flox engine sim", out["hint"])
+        self.assertIn("lrvx engine sim", out["hint"])
 
     def test_empty_snapshot_file_returns_idle_response(self) -> None:
         """An empty file is the same shape of 'engine hasn't written
@@ -244,25 +244,25 @@ class SnapshotAgeTests(_SnapshotTestCase):
 
 
 class EnvVarPathTests(unittest.TestCase):
-    """The FLOX_RUNTIME_STATE env var should be honored when no
+    """The LRVX_RUNTIME_STATE env var should be honored when no
     explicit state_path is passed."""
 
     def test_env_var_overrides_default(self) -> None:
-        fd, path = tempfile.mkstemp(prefix="flox-state-env-", suffix=".json")
+        fd, path = tempfile.mkstemp(prefix="lrvx-state-env-", suffix=".json")
         os.close(fd)
         try:
             with open(path, "w") as fh:
                 json.dump(_sample_state(), fh)
-            old = os.environ.get("FLOX_RUNTIME_STATE")
-            os.environ["FLOX_RUNTIME_STATE"] = path
+            old = os.environ.get("LRVX_RUNTIME_STATE")
+            os.environ["LRVX_RUNTIME_STATE"] = path
             try:
                 out = json.loads(positions.get_positions())
                 self.assertEqual(len(out["data"]), 2)
             finally:
                 if old is None:
-                    os.environ.pop("FLOX_RUNTIME_STATE", None)
+                    os.environ.pop("LRVX_RUNTIME_STATE", None)
                 else:
-                    os.environ["FLOX_RUNTIME_STATE"] = old
+                    os.environ["LRVX_RUNTIME_STATE"] = old
         finally:
             os.unlink(path)
 

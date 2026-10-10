@@ -7,7 +7,7 @@ Position tracking, group management, and order lifecycle tracking.
 Tracks net positions per symbol with configurable cost basis methods.
 
 ```python
-tracker = flox.PositionTracker(cost_basis="fifo")
+tracker = lrvx.PositionTracker(cost_basis="fifo")
 ```
 
 | Parameter | Type | Default | Description |
@@ -48,7 +48,7 @@ Total realized PnL across all symbols.
 Individual position management with grouping support. Track each trade as a separate position, organize into groups, and compute per-group metrics.
 
 ```python
-tracker = flox.PositionGroupTracker()
+tracker = lrvx.PositionGroupTracker()
 ```
 
 ### Methods
@@ -149,7 +149,7 @@ Remove closed positions from memory.
 Order lifecycle tracking: submitted, filled, canceled, rejected.
 
 ```python
-tracker = flox.OrderTracker()
+tracker = lrvx.OrderTracker()
 ```
 
 ### Methods

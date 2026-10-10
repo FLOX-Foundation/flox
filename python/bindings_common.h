@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -12,7 +12,7 @@
 // Small helpers shared across the pybind11 binding headers, pulled out
 // of indicator_bindings.h so aggregator_bindings.h, optimizer_bindings.h,
 // profile_bindings.h, book_bindings.h, and composite_book_bindings.h can
-// use them too without redefining the same function in flox_py.cpp's
+// use them too without redefining the same function in lrvx.cpp's
 // translation unit (every one of these headers opens an anonymous
 // namespace; within one .cpp file those are all the SAME namespace, so
 // two headers each defining `checkSameSize` would collide).
@@ -33,19 +33,19 @@
 
 #pragma once
 
-#include "flox/error/flox_error.h"
+#include "lrvx/error/lrvx_error.h"
 
 #include <cstddef>
 #include <cstring>
 
-// Deliberately an unnamed namespace, not `namespace flox_py`, to match
+// Deliberately an unnamed namespace, not `namespace lrvx`, to match
 // how the binding headers that need this already declare their other
 // file-local helpers (see aggregator_bindings.h, indicator_bindings.h).
 // An unnamed namespace is unique per translation unit, not per header,
 // so as long as every header that wants `checkSameSize` includes this
 // one -- and `#pragma once` keeps it a single definition even though
 // several headers include it -- plain unqualified `checkSameSize(...)`
-// resolves correctly from any of them inside flox_py.cpp, the one .cpp
+// resolves correctly from any of them inside lrvx.cpp, the one .cpp
 // file that pulls all of these headers together.
 namespace
 {
@@ -54,7 +54,7 @@ inline void checkSameSize(size_t a, size_t b, const char* msg)
 {
   if (a != b)
   {
-    throw flox::FloxError("E_LEN_001", msg);
+    throw lrvx::LrvxError("E_LEN_001", msg);
   }
 }
 

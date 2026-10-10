@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import unittest
 
-import flox_py as flox
+import lrvx
 
 
-class Recorder(flox.Strategy):
+class Recorder(lrvx.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self.seen: list[dict] = []
@@ -39,10 +39,10 @@ class Recorder(flox.Strategy):
 
 class SymbolContextQuotes(unittest.TestCase):
     def setUp(self):
-        self.registry = flox.SymbolRegistry()
+        self.registry = lrvx.SymbolRegistry()
         self.sym = self.registry.add_symbol("test", "ZERO", tick_size=0.01)
         self.strategy = Recorder([self.sym])
-        self.runner = flox.Runner(self.registry, lambda sig: None)
+        self.runner = lrvx.Runner(self.registry, lambda sig: None)
         self.runner.add_strategy(self.strategy)
         self.runner.start()
 

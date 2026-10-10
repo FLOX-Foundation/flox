@@ -8,19 +8,19 @@ drag the backtest module, the aggregator, or an exchange connector in behind
 it. The profile that claims to build without those is only as honest as its
 transitive closure.
 
-So this walks the closure of the list's `#include "flox/..."` and
-`#include "flox-venue/..."` edges -- `.inl` bodies included, since the
+So this walks the closure of the list's `#include "lrvx/..."` and
+`#include "lrvx-venue/..."` edges -- `.inl` bodies included, since the
 headers include them -- and fails when the closure reaches somewhere the
 profile forbids:
 
-  * flox/backtest/*      -- the profile builds with FLOX_ENABLE_BACKTEST=OFF
-  * flox/aggregator/*    -- the venue has no bars
-  * flox/connector/*     -- except flox/connector/fix/*, the initiator
-  * flox-connectors/*    -- the exchange connector module
+  * lrvx/backtest/*      -- the profile builds with LRVX_ENABLE_BACKTEST=OFF
+  * lrvx/aggregator/*    -- the venue has no bars
+  * lrvx/connector/*     -- except lrvx/connector/fix/*, the initiator
+  * lrvx-connectors/*    -- the exchange connector module
   * anything outside the allowed directories below
 
 Exit 0 prints the closure and its size. Exit 1 names each offending header
-and the include chain that reached it, because "flox/backtest/account.h is in
+and the include chain that reached it, because "lrvx/backtest/account.h is in
 the closure" without the path to it is not actionable.
 
 `--paths` prints the same closure as repository-relative file paths and
@@ -38,30 +38,30 @@ ROOTS = ["include", "venue/include"]
 SURFACE = os.path.join("venue", "lite_surface.txt")
 SURFACE_TU = os.path.join("venue", "tests", "support", "lite_surface.cpp")
 
-INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]((?:flox|flox-venue)/[^">]+)[>"]')
+INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]((?:lrvx|lrvx-venue)/[^">]+)[>"]')
 
 # Where the closure may go. A directory that is not here is a new dependency
 # direction, and the profile wants that decided in a review rather than
 # discovered by a consumer.
 ALLOWED = [
-    "flox-venue/",
-    "flox/book/",
-    "flox/clearing/",
-    "flox/common.h",
-    "flox/connector/fix/",
-    "flox/engine/",
-    "flox/execution/",
-    "flox/log/",
-    "flox/net/",
-    "flox/util/",
+    "lrvx-venue/",
+    "lrvx/book/",
+    "lrvx/clearing/",
+    "lrvx/common.h",
+    "lrvx/connector/fix/",
+    "lrvx/engine/",
+    "lrvx/execution/",
+    "lrvx/log/",
+    "lrvx/net/",
+    "lrvx/util/",
 ]
 
 # Checked before ALLOWED so the message says which rule was broken rather
 # than the generic one.
 FORBIDDEN = [
-    ("flox/backtest/", "the lite profile builds with FLOX_ENABLE_BACKTEST=OFF"),
-    ("flox/aggregator/", "venue subscribers do not carry bars"),
-    ("flox-connectors/", "exchange connectors are not in the lite profile"),
+    ("lrvx/backtest/", "the lite profile builds with LRVX_ENABLE_BACKTEST=OFF"),
+    ("lrvx/aggregator/", "venue subscribers do not carry bars"),
+    ("lrvx-connectors/", "exchange connectors are not in the lite profile"),
 ]
 
 
@@ -74,7 +74,7 @@ def resolve(path):
 
 
 def read_tu_includes(path):
-    """The flox / flox-venue includes of the surface translation unit.
+    """The lrvx / lrvx-venue includes of the surface translation unit.
 
     engine_surface.h is included by relative path and is not part of the
     consumer's list, so it does not match and is not counted.
@@ -102,8 +102,8 @@ def verdict(header):
     for prefix, why in FORBIDDEN:
         if header.startswith(prefix):
             return why
-    if header.startswith("flox/connector/") and not header.startswith(
-        "flox/connector/fix/"
+    if header.startswith("lrvx/connector/") and not header.startswith(
+        "lrvx/connector/fix/"
     ):
         return "only the FIX initiator is in the lite profile"
     for prefix in ALLOWED:
@@ -234,11 +234,11 @@ def main():
     for header in closure:
         print(header)
 
-    venue_side = sum(1 for h in closure if h.startswith("flox-venue/"))
+    venue_side = sum(1 for h in closure if h.startswith("lrvx-venue/"))
     print()
     print(
         "closure: %d headers from %d direct includes "
-        "(%d flox/, %d flox-venue/)"
+        "(%d lrvx/, %d lrvx-venue/)"
         % (len(closure), len(surface), len(closure) - venue_side, venue_side)
     )
 

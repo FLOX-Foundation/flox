@@ -32,4 +32,4 @@ bool configureOrderExecutionBusForPerformance(OrderExecutionBus& bus, bool enabl
 
 * Uses `ComponentType::EXECUTION` for CPU affinity configuration.
 * Dispatch is resolved via `EventDispatcher<OrderEvent>`, which calls `dispatchTo(listener)`.
-* Supports optional CPU affinity via `FLOX_CPU_AFFINITY_ENABLED`.
+* Supports optional CPU affinity via `LRVX_CPU_AFFINITY_ENABLED`.

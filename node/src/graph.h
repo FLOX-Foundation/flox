@@ -9,12 +9,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "flox/aggregator/bar.h"
-#include "flox/common.h"
-#include "flox/indicator/indicator_pipeline.h"
-#include "flox/indicator/streaming_graph.h"
+#include "lrvx/aggregator/bar.h"
+#include "lrvx/common.h"
+#include "lrvx/indicator/indicator_pipeline.h"
+#include "lrvx/indicator/streaming_graph.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
@@ -77,18 +77,18 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
     const double* v = fetch(4);
     const double* c = close.Data();
 
-    std::vector<flox::Bar> bars(n);
+    std::vector<lrvx::Bar> bars(n);
     for (size_t i = 0; i < n; ++i)
     {
-      bars[i].open = flox::Price::fromDouble(c[i]);
-      bars[i].high = flox::Price::fromDouble(h ? h[i] : c[i]);
-      bars[i].low = flox::Price::fromDouble(l ? l[i] : c[i]);
-      bars[i].close = flox::Price::fromDouble(c[i]);
-      bars[i].volume = v ? flox::Volume::fromDouble(v[i]) : flox::Volume{};
+      bars[i].open = lrvx::Price::fromDouble(c[i]);
+      bars[i].high = lrvx::Price::fromDouble(h ? h[i] : c[i]);
+      bars[i].low = lrvx::Price::fromDouble(l ? l[i] : c[i]);
+      bars[i].close = lrvx::Price::fromDouble(c[i]);
+      bars[i].volume = v ? lrvx::Volume::fromDouble(v[i]) : lrvx::Volume{};
     }
     _bars[symbol] = std::move(bars);
-    _graph.setBars(static_cast<flox::SymbolId>(symbol),
-                   std::span<const flox::Bar>(_bars[symbol]));
+    _graph.setBars(static_cast<lrvx::SymbolId>(symbol),
+                   std::span<const lrvx::Bar>(_bars[symbol]));
     return env.Undefined();
   }
 
@@ -111,8 +111,8 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
     Napi::Env fnEnv = env;
 
     _graph.addNode(name, std::move(deps),
-                   [fnRef, thisRef, fnEnv](flox::indicator::IndicatorGraph&,
-                                           flox::SymbolId sym) -> std::vector<double>
+                   [fnRef, thisRef, fnEnv](lrvx::indicator::IndicatorGraph&,
+                                           lrvx::SymbolId sym) -> std::vector<double>
                    {
                      Napi::HandleScope scope(fnEnv);
                      Napi::Value result = fnRef->Call(
@@ -130,7 +130,7 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
     std::string name = info[1].As<Napi::String>().Utf8Value();
     try
     {
-      const auto& v = _graph.require(static_cast<flox::SymbolId>(symbol), name);
+      const auto& v = _graph.require(static_cast<lrvx::SymbolId>(symbol), name);
       return vec2arr(info.Env(), v);
     }
     catch (const std::exception& e)
@@ -144,7 +144,7 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
   {
     uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
     std::string name = info[1].As<Napi::String>().Utf8Value();
-    const auto* v = _graph.get(static_cast<flox::SymbolId>(symbol), name);
+    const auto* v = _graph.get(static_cast<lrvx::SymbolId>(symbol), name);
     if (!v)
     {
       return info.Env().Null();
@@ -155,26 +155,26 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
   Napi::Value Close(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _graph.close(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _graph.close(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value High(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _graph.high(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _graph.high(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value Low(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _graph.low(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _graph.low(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value Volume(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _graph.volume(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _graph.volume(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value Invalidate(const Napi::CallbackInfo& info)
   {
-    _graph.invalidate(static_cast<flox::SymbolId>(info[0].As<Napi::Number>().Uint32Value()));
+    _graph.invalidate(static_cast<lrvx::SymbolId>(info[0].As<Napi::Number>().Uint32Value()));
     return info.Env().Undefined();
   }
   Napi::Value InvalidateAll(const Napi::CallbackInfo& info)
@@ -184,8 +184,8 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
   }
 
   Napi::Value _self;  // unused, kept to silence -Wunused-private-field issues
-  flox::indicator::IndicatorGraph _graph;
-  std::unordered_map<uint32_t, std::vector<flox::Bar>> _bars;
+  lrvx::indicator::IndicatorGraph _graph;
+  std::unordered_map<uint32_t, std::vector<lrvx::Bar>> _bars;
 };
 
 class StreamingIndicatorGraphWrap : public Napi::ObjectWrap<StreamingIndicatorGraphWrap>
@@ -240,8 +240,8 @@ class StreamingIndicatorGraphWrap : public Napi::ObjectWrap<StreamingIndicatorGr
     Napi::Env fnEnv = env;
 
     _sg.addNode(name, std::move(deps),
-                [fnRef, thisRef, fnEnv](flox::indicator::IndicatorGraph&,
-                                        flox::SymbolId sym) -> std::vector<double>
+                [fnRef, thisRef, fnEnv](lrvx::indicator::IndicatorGraph&,
+                                        lrvx::SymbolId sym) -> std::vector<double>
                 {
                   Napi::HandleScope scope(fnEnv);
                   Napi::Value result = fnRef->Call(
@@ -267,13 +267,13 @@ class StreamingIndicatorGraphWrap : public Napi::ObjectWrap<StreamingIndicatorGr
     double v = info.Length() > 4 && !info[4].IsUndefined() && !info[4].IsNull()
                    ? info[4].As<Napi::Number>().DoubleValue()
                    : 0.0;
-    flox::Bar bar;
-    bar.open = flox::Price::fromDouble(c);
-    bar.high = flox::Price::fromDouble(h);
-    bar.low = flox::Price::fromDouble(l);
-    bar.close = flox::Price::fromDouble(c);
-    bar.volume = flox::Volume::fromDouble(v);
-    _sg.step(static_cast<flox::SymbolId>(symbol), bar);
+    lrvx::Bar bar;
+    bar.open = lrvx::Price::fromDouble(c);
+    bar.high = lrvx::Price::fromDouble(h);
+    bar.low = lrvx::Price::fromDouble(l);
+    bar.close = lrvx::Price::fromDouble(c);
+    bar.volume = lrvx::Volume::fromDouble(v);
+    _sg.step(static_cast<lrvx::SymbolId>(symbol), bar);
     return env.Undefined();
   }
 
@@ -282,19 +282,19 @@ class StreamingIndicatorGraphWrap : public Napi::ObjectWrap<StreamingIndicatorGr
     uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
     std::string name = info[1].As<Napi::String>().Utf8Value();
     return Napi::Number::New(info.Env(),
-                             _sg.current(static_cast<flox::SymbolId>(symbol), name));
+                             _sg.current(static_cast<lrvx::SymbolId>(symbol), name));
   }
 
   Napi::Value BarCount(const Napi::CallbackInfo& info)
   {
     uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
     return Napi::Number::New(info.Env(),
-                             static_cast<double>(_sg.barCount(static_cast<flox::SymbolId>(symbol))));
+                             static_cast<double>(_sg.barCount(static_cast<lrvx::SymbolId>(symbol))));
   }
 
   Napi::Value Reset(const Napi::CallbackInfo& info)
   {
-    _sg.reset(static_cast<flox::SymbolId>(info[0].As<Napi::Number>().Uint32Value()));
+    _sg.reset(static_cast<lrvx::SymbolId>(info[0].As<Napi::Number>().Uint32Value()));
     return info.Env().Undefined();
   }
 
@@ -307,25 +307,25 @@ class StreamingIndicatorGraphWrap : public Napi::ObjectWrap<StreamingIndicatorGr
   Napi::Value Close(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _sg.batchGraph().close(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _sg.batchGraph().close(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value High(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _sg.batchGraph().high(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _sg.batchGraph().high(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value Low(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _sg.batchGraph().low(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _sg.batchGraph().low(static_cast<lrvx::SymbolId>(s)));
   }
   Napi::Value Volume(const Napi::CallbackInfo& info)
   {
     uint32_t s = info[0].As<Napi::Number>().Uint32Value();
-    return vec2arr(info.Env(), _sg.batchGraph().volume(static_cast<flox::SymbolId>(s)));
+    return vec2arr(info.Env(), _sg.batchGraph().volume(static_cast<lrvx::SymbolId>(s)));
   }
 
-  flox::indicator::StreamingIndicatorGraph _sg;
+  lrvx::indicator::StreamingIndicatorGraph _sg;
 };
 
 inline void registerGraph(Napi::Env env, Napi::Object exports)
@@ -334,4 +334,4 @@ inline void registerGraph(Napi::Env env, Napi::Object exports)
   exports.Set("StreamingIndicatorGraph", StreamingIndicatorGraphWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

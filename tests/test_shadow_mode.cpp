@@ -1,23 +1,23 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 #include <gtest/gtest.h>
 
-#include "flox/strategy/shadow.h"
+#include "lrvx/strategy/shadow.h"
 
-using flox::Price;
-using flox::Quantity;
-using flox::ShadowComparator;
-using flox::ShadowSignalHandler;
-using flox::Side;
-using flox::Signal;
-using flox::SignalType;
+using lrvx::Price;
+using lrvx::Quantity;
+using lrvx::ShadowComparator;
+using lrvx::ShadowSignalHandler;
+using lrvx::Side;
+using lrvx::Signal;
+using lrvx::SignalType;
 
 namespace
 {
@@ -33,7 +33,7 @@ Signal makeSignal(SignalType type, uint32_t symbol, Side side, double price, dou
   return s;
 }
 
-class CountingInner : public flox::ISignalHandler
+class CountingInner : public lrvx::ISignalHandler
 {
  public:
   void onSignal(const Signal&) override { ++count; }

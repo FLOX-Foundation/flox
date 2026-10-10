@@ -9,11 +9,11 @@ state at each step.
 
 from __future__ import annotations
 
-import flox_py
+import lrvx
 
 
 def test_strategy_class_exposes_helpers() -> None:
-    s = flox_py.Strategy(symbols=[1])
+    s = lrvx.Strategy(symbols=[1])
     # Without an engine bridge the helpers must return None / empty / 0
     # rather than crashing. This is the cold-start contract.
     assert s.last_closed_bar(1, 0, 60_000_000_000) is None
@@ -24,7 +24,7 @@ def test_strategy_class_exposes_helpers() -> None:
 def test_helpers_documented_on_strategy_class() -> None:
     # Doc strings are used by IDE autocomplete; basic sanity check that
     # the binding emitted them.
-    cls = flox_py.Strategy
+    cls = lrvx.Strategy
     assert "last_closed_bar" in dir(cls)
     assert "last_n_closed_bars" in dir(cls)
     assert "set_bar_ring_capacity" in dir(cls)

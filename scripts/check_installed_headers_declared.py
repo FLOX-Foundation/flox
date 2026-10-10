@@ -5,8 +5,8 @@
 gets from find_package. If one of them includes an external dependency the
 target does not link, the consumer finds out at their own link step, with
 undefined symbols and no indication of the cause. That is what
-venue/include/flox-venue/tls_gateway.h did: it included <openssl/ssl.h> while
-flox-venue linked no OpenSSL, and OpenSSL was found inside the tests block and
+venue/include/lrvx-venue/tls_gateway.h did: it included <openssl/ssl.h> while
+lrvx-venue linked no OpenSSL, and OpenSSL was found inside the tests block and
 attached to one test by name.
 
 Why this is a static check and not a link test: the header is entirely inline
@@ -28,8 +28,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 MODULES = [
     # (installed header root, the CMakeLists that declares that target)
-    (ROOT / "venue/include", ROOT / "venue/CMakeLists.txt", "flox-venue"),
-    (ROOT / "include", ROOT / "CMakeLists.txt", "${FLOX}"),
+    (ROOT / "venue/include", ROOT / "venue/CMakeLists.txt", "lrvx-venue"),
+    (ROOT / "include", ROOT / "CMakeLists.txt", "${LRVX}"),
 ]
 
 # Headers the install() rules leave out when their optional dependency is off.
@@ -37,13 +37,13 @@ MODULES = [
 # cannot hand anybody an undeclared dependency. Kept short and checked against
 # the CMakeLists below, so it cannot quietly grow into a list of exemptions.
 EXCLUDED_WHEN_OFF = {
-    "flox/ml/onnx_inference.h": "FLOX_ENABLE_ONNX",
-    "flox-venue/tls_gateway.h": "FLOX_VENUE_TLS",
+    "lrvx/ml/onnx_inference.h": "LRVX_ENABLE_ONNX",
+    "lrvx-venue/tls_gateway.h": "LRVX_VENUE_TLS",
 }
 
 # Includes that need no declaration: the standard library (no slash, no
 # extension, or <c...>), and this project's own prefixes.
-OWN_PREFIXES = ("flox/", "flox-venue/", "flox-connectors/")
+OWN_PREFIXES = ("lrvx/", "lrvx-venue/", "lrvx-connectors/")
 
 
 def is_external(inc: str) -> bool:

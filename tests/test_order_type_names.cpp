@@ -1,40 +1,40 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
 
 // Regression coverage for the shared order-type string<->code table
-// (include/flox/capi/order_type_names.hpp). Every language binding's
+// (include/lrvx/capi/order_type_names.hpp). Every language binding's
 // order-type decoder/encoder (Node's orderTypeName/orderToJs/signalToJs,
 // QuickJS's jsOrderTypeName, Python's pyOrderFromC/pySignalFromC) forwards
 // to these functions, so this file is the authoritative test for all of
 // them at once.
 
-#include "flox/capi/flox_capi.h"
-#include "flox/capi/order_type_names.hpp"
-#include "flox/common.h"
+#include "lrvx/capi/lrvx_capi.h"
+#include "lrvx/capi/order_type_names.hpp"
+#include "lrvx/common.h"
 
 #include <gtest/gtest.h>
 
-using flox::capi::kOrderTypeNameCount;
-using flox::capi::kSignalTypeNameCount;
-using flox::capi::orderTypeCodeFromName;
-using flox::capi::orderTypeNameLower;
-using flox::capi::orderTypeNameUpper;
-using flox::capi::signalTypeName;
+using lrvx::capi::kOrderTypeNameCount;
+using lrvx::capi::kSignalTypeNameCount;
+using lrvx::capi::orderTypeCodeFromName;
+using lrvx::capi::orderTypeNameLower;
+using lrvx::capi::orderTypeNameUpper;
+using lrvx::capi::signalTypeName;
 
-// ── Space A: flox::OrderType ────────────────────────────────────────
+// ── Space A: lrvx::OrderType ────────────────────────────────────────
 
 TEST(OrderTypeNames, SpaceACoversTheWholeEnum)
 {
-  // If this ever fails, flox::OrderType grew a member that
+  // If this ever fails, lrvx::OrderType grew a member that
   // order_type_names.hpp does not know about yet.
   EXPECT_EQ(kOrderTypeNameCount,
-            static_cast<std::size_t>(flox::OrderType::ICEBERG) + 1);
+            static_cast<std::size_t>(lrvx::OrderType::ICEBERG) + 1);
 }
 
 TEST(OrderTypeNames, SpaceAUpperNamesMatchTheEnum)
@@ -78,32 +78,32 @@ TEST(OrderTypeNames, SpaceAEncodeRoundTripsWithDecode)
   }
 }
 
-TEST(OrderTypeNames, SpaceAEncodeMatchesFloxOrderType)
+TEST(OrderTypeNames, SpaceAEncodeMatchesLrvxOrderType)
 {
   // This is the exact bug: Node's SubmitOrder used to encode "market" and
-  // "limit" in the FLOX_SIGNAL_TYPE_* space (market=0) and hand the result
-  // to a function that reads flox::OrderType (LIMIT=0). Pin the correct
+  // "limit" in the LRVX_SIGNAL_TYPE_* space (market=0) and hand the result
+  // to a function that reads lrvx::OrderType (LIMIT=0). Pin the correct
   // mapping explicitly.
   uint8_t code = 0xFF;
   ASSERT_TRUE(orderTypeCodeFromName("limit", &code));
-  EXPECT_EQ(code, static_cast<uint8_t>(flox::OrderType::LIMIT));
+  EXPECT_EQ(code, static_cast<uint8_t>(lrvx::OrderType::LIMIT));
   EXPECT_EQ(code, 0);
 
   ASSERT_TRUE(orderTypeCodeFromName("market", &code));
-  EXPECT_EQ(code, static_cast<uint8_t>(flox::OrderType::MARKET));
+  EXPECT_EQ(code, static_cast<uint8_t>(lrvx::OrderType::MARKET));
   EXPECT_EQ(code, 1);
 
   ASSERT_TRUE(orderTypeCodeFromName("stop_market", &code));
-  EXPECT_EQ(code, static_cast<uint8_t>(flox::OrderType::STOP_MARKET));
+  EXPECT_EQ(code, static_cast<uint8_t>(lrvx::OrderType::STOP_MARKET));
 
   ASSERT_TRUE(orderTypeCodeFromName("stop_limit", &code));
-  EXPECT_EQ(code, static_cast<uint8_t>(flox::OrderType::STOP_LIMIT));
+  EXPECT_EQ(code, static_cast<uint8_t>(lrvx::OrderType::STOP_LIMIT));
 
   ASSERT_TRUE(orderTypeCodeFromName("trailing_stop", &code));
-  EXPECT_EQ(code, static_cast<uint8_t>(flox::OrderType::TRAILING_STOP));
+  EXPECT_EQ(code, static_cast<uint8_t>(lrvx::OrderType::TRAILING_STOP));
 
   ASSERT_TRUE(orderTypeCodeFromName("iceberg", &code));
-  EXPECT_EQ(code, static_cast<uint8_t>(flox::OrderType::ICEBERG));
+  EXPECT_EQ(code, static_cast<uint8_t>(lrvx::OrderType::ICEBERG));
 }
 
 TEST(OrderTypeNames, SpaceAEncodeRejectsUnknownNames)
@@ -115,36 +115,36 @@ TEST(OrderTypeNames, SpaceAEncodeRejectsUnknownNames)
   EXPECT_EQ(code, 42) << "unrecognized name must not touch *out";
 }
 
-// ── Space B: FLOX_SIGNAL_TYPE_* ─────────────────────────────────────
+// ── Space B: LRVX_SIGNAL_TYPE_* ─────────────────────────────────────
 
 TEST(OrderTypeNames, SpaceBCoversAllDefinedCodes)
 {
   EXPECT_EQ(kSignalTypeNameCount,
-            static_cast<std::size_t>(FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY) + 1);
+            static_cast<std::size_t>(LRVX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY) + 1);
 }
 
 TEST(OrderTypeNames, SpaceBNamesMatchTheWireCodes)
 {
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_MARKET), "market");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_LIMIT), "limit");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_STOP_MARKET), "stop_market");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_STOP_LIMIT), "stop_limit");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET), "tp_market");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT), "tp_limit");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_TRAILING_STOP), "trailing_stop");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_CANCEL), "cancel");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_CANCEL_ALL), "cancel_all");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_MODIFY), "modify");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_MARKET), "market");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_LIMIT), "limit");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_STOP_MARKET), "stop_market");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_STOP_LIMIT), "stop_limit");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_TAKE_PROFIT_MARKET), "tp_market");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT), "tp_limit");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_TRAILING_STOP), "trailing_stop");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_CANCEL), "cancel");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_CANCEL_ALL), "cancel_all");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_MODIFY), "modify");
   // Code 10 used to fall outside a ten-element array (`< 10`) and come back
   // as "unknown".
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_ICEBERG), "iceberg");
-  EXPECT_EQ(FLOX_SIGNAL_TYPE_ICEBERG, 10);
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_ICEBERG), "iceberg");
+  EXPECT_EQ(LRVX_SIGNAL_TYPE_ICEBERG, 10);
   // The three that used to fall into the conversion switch's default and
   // reach the caller as a market order with two zeros.
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_OCO), "oco");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY), "provide_liquidity");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY), "withdraw_liquidity");
-  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY + 1), "unknown");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_OCO), "oco");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_PROVIDE_LIQUIDITY), "provide_liquidity");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY), "withdraw_liquidity");
+  EXPECT_STREQ(signalTypeName(LRVX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY + 1), "unknown");
   EXPECT_STREQ(signalTypeName(255), "unknown");
 }
 

@@ -1,8 +1,8 @@
 # Sockets across platforms
 
-`flox/net/socket.h` is the socket surface the venue perimeter and the FIX
+`lrvx/net/socket.h` is the socket surface the venue perimeter and the FIX
 initiator use, with the platforms' disagreements in one place instead of at
-sixty call sites. Nothing under `venue/` or `include/flox/connector/` reaches
+sixty call sites. Nothing under `venue/` or `include/lrvx/connector/` reaches
 a POSIX network header any more; the layer is the only thing that does.
 
 It is deliberately small. Anything the standard library already does
@@ -56,7 +56,7 @@ previous failing call left behind.
 ## Names
 
 `openSocket` and `closeSocket`, not `open` and `close`. A caller who writes
-`using namespace flox::net` and then `close(fd)` would otherwise get an
+`using namespace lrvx::net` and then `close(fd)` would otherwise get an
 ambiguity against the POSIX functions of those names, and the error would
 land in their file rather than in this header. The first version used the
 short names and the first test written against it did not compile.

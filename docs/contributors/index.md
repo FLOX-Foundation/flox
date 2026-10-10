@@ -1,13 +1,13 @@
 # Contributor Guide
 
-Internal architecture and workflow documentation for people *changing* FLOX (not consuming it). User-facing API docs live elsewhere — start at the top of [docs/](../index.md).
+Internal architecture and workflow documentation for people *changing* lrvx (not consuming it). User-facing API docs live elsewhere — start at the top of [docs/](../index.md).
 
 ## Start here
 
 | If you want to... | Read |
 |---|---|
 | Understand how the bindings fit together | [architecture-overview.md](architecture-overview.md) |
-| Add a function to `flox_capi.h` | [adding-a-c-api-export.md](adding-a-c-api-export.md) |
+| Add a function to `lrvx_capi.h` | [adding-a-c-api-export.md](adding-a-c-api-export.md) |
 | Add a callback hook (PnLTracker / Executor / etc.) | [extension-hook-pattern.md](extension-hook-pattern.md) |
 | Understand the cross-binding coverage gate | [parity-gate.md](parity-gate.md) |
 | Debug CI / understand which scripts regenerate what | [ci-pipeline.md](ci-pipeline.md) |
@@ -15,7 +15,7 @@ Internal architecture and workflow documentation for people *changing* FLOX (not
 
 ## Mental model in one paragraph
 
-FLOX is a C++ engine wrapped by a stable C ABI. The C ABI is generated from an IDL spec (`flox_capi_spec.hpp`). Codon and QuickJS bindings are auto-generated from the same spec. Python (pybind11) and Node (NAPI) bindings are **hand-written** so they can use language-idiomatic features (numpy zero-copy, async/await, native exception types) that auto-generation would lose. A coverage gate (`scripts/check_binding_parity.py`) catches "I added a C ABI export but forgot the pybind11/NAPI wrapper" at PR review time. CI is structured fast-fail: cheap checks (format, docs sync, parity) run first; the multi-OS build matrix only starts if those pass.
+lrvx is a C++ engine wrapped by a stable C ABI. The C ABI is generated from an IDL spec (`lrvx_capi_spec.hpp`). Codon and QuickJS bindings are auto-generated from the same spec. Python (pybind11) and Node (NAPI) bindings are **hand-written** so they can use language-idiomatic features (numpy zero-copy, async/await, native exception types) that auto-generation would lose. A coverage gate (`scripts/check_binding_parity.py`) catches "I added a C ABI export but forgot the pybind11/NAPI wrapper" at PR review time. CI is structured fast-fail: cheap checks (format, docs sync, parity) run first; the multi-OS build matrix only starts if those pass.
 
 ## When to update these docs
 

@@ -3,9 +3,9 @@
 #pragma once
 #include <napi.h>
 #include "data_ops.h"
-#include "flox/capi/flox_capi.h"
+#include "lrvx/capi/lrvx_capi.h"
 
-namespace node_flox
+namespace node_lrvx
 {
 
 class VolumeProfileWrap : public Napi::ObjectWrap<VolumeProfileWrap>
@@ -22,23 +22,23 @@ class VolumeProfileWrap : public Napi::ObjectWrap<VolumeProfileWrap>
                         InstanceMethod("clear", &VolumeProfileWrap::Clear)});
   }
   VolumeProfileWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<VolumeProfileWrap>(info),
-                                                      _h(flox_volume_profile_create(info[0].As<Napi::Number>().DoubleValue())) {}
+                                                      _h(lrvx_volume_profile_create(info[0].As<Napi::Number>().DoubleValue())) {}
   ~VolumeProfileWrap()
   {
     if (_h)
     {
-      flox_volume_profile_destroy(_h);
+      lrvx_volume_profile_destroy(_h);
     }
   }
 
  private:
-  void AddTrade(const Napi::CallbackInfo& info) { flox_volume_profile_add_trade(_h, info[0].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
-  Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_volume_profile_poc(_h)); }
-  Napi::Value Vah(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_volume_profile_vah(_h)); }
-  Napi::Value Val(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_volume_profile_val(_h)); }
-  Napi::Value TotalVol(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_volume_profile_total_volume(_h)); }
-  void Clear(const Napi::CallbackInfo&) { flox_volume_profile_clear(_h); }
-  FloxVolumeProfileHandle _h;
+  void AddTrade(const Napi::CallbackInfo& info) { lrvx_volume_profile_add_trade(_h, info[0].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
+  Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_volume_profile_poc(_h)); }
+  Napi::Value Vah(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_volume_profile_vah(_h)); }
+  Napi::Value Val(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_volume_profile_val(_h)); }
+  Napi::Value TotalVol(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_volume_profile_total_volume(_h)); }
+  void Clear(const Napi::CallbackInfo&) { lrvx_volume_profile_clear(_h); }
+  LrvxVolumeProfileHandle _h;
 };
 
 class MarketProfileWrap : public Napi::ObjectWrap<MarketProfileWrap>
@@ -58,27 +58,27 @@ class MarketProfileWrap : public Napi::ObjectWrap<MarketProfileWrap>
                         InstanceMethod("clear", &MarketProfileWrap::Clear)});
   }
   MarketProfileWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<MarketProfileWrap>(info),
-                                                      _h(flox_market_profile_create(info[0].As<Napi::Number>().DoubleValue(),
+                                                      _h(lrvx_market_profile_create(info[0].As<Napi::Number>().DoubleValue(),
                                                                                     info[1].As<Napi::Number>().Uint32Value(), toInt64Ns(info[2]))) {}
   ~MarketProfileWrap()
   {
     if (_h)
     {
-      flox_market_profile_destroy(_h);
+      lrvx_market_profile_destroy(_h);
     }
   }
 
  private:
-  void AddTrade(const Napi::CallbackInfo& info) { flox_market_profile_add_trade(_h, toInt64Ns(info[0]), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Boolean>().Value() ? 1 : 0); }
-  Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_poc(_h)); }
-  Napi::Value Vah(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_vah(_h)); }
-  Napi::Value Val(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_val(_h)); }
-  Napi::Value IbHigh(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_ib_high(_h)); }
-  Napi::Value IbLow(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_ib_low(_h)); }
-  Napi::Value PoorHigh(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_market_profile_is_poor_high(_h)); }
-  Napi::Value PoorLow(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_market_profile_is_poor_low(_h)); }
-  void Clear(const Napi::CallbackInfo&) { flox_market_profile_clear(_h); }
-  FloxMarketProfileHandle _h;
+  void AddTrade(const Napi::CallbackInfo& info) { lrvx_market_profile_add_trade(_h, toInt64Ns(info[0]), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Boolean>().Value() ? 1 : 0); }
+  Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_market_profile_poc(_h)); }
+  Napi::Value Vah(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_market_profile_vah(_h)); }
+  Napi::Value Val(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_market_profile_val(_h)); }
+  Napi::Value IbHigh(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_market_profile_ib_high(_h)); }
+  Napi::Value IbLow(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_market_profile_ib_low(_h)); }
+  Napi::Value PoorHigh(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_market_profile_is_poor_high(_h)); }
+  Napi::Value PoorLow(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), lrvx_market_profile_is_poor_low(_h)); }
+  void Clear(const Napi::CallbackInfo&) { lrvx_market_profile_clear(_h); }
+  LrvxMarketProfileHandle _h;
 };
 
 class FootprintBarWrap : public Napi::ObjectWrap<FootprintBarWrap>
@@ -94,22 +94,22 @@ class FootprintBarWrap : public Napi::ObjectWrap<FootprintBarWrap>
                         InstanceMethod("clear", &FootprintBarWrap::Clear)});
   }
   FootprintBarWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<FootprintBarWrap>(info),
-                                                     _h(flox_footprint_create(info[0].As<Napi::Number>().DoubleValue())) {}
+                                                     _h(lrvx_footprint_create(info[0].As<Napi::Number>().DoubleValue())) {}
   ~FootprintBarWrap()
   {
     if (_h)
     {
-      flox_footprint_destroy(_h);
+      lrvx_footprint_destroy(_h);
     }
   }
 
  private:
-  void AddTrade(const Napi::CallbackInfo& info) { flox_footprint_add_trade(_h, info[0].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
-  Napi::Value Delta(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_footprint_total_delta(_h)); }
-  Napi::Value Volume(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_footprint_total_volume(_h)); }
-  Napi::Value Levels(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_footprint_num_levels(_h)); }
-  void Clear(const Napi::CallbackInfo&) { flox_footprint_clear(_h); }
-  FloxFootprintHandle _h;
+  void AddTrade(const Napi::CallbackInfo& info) { lrvx_footprint_add_trade(_h, info[0].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
+  Napi::Value Delta(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_footprint_total_delta(_h)); }
+  Napi::Value Volume(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_footprint_total_volume(_h)); }
+  Napi::Value Levels(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), lrvx_footprint_num_levels(_h)); }
+  void Clear(const Napi::CallbackInfo&) { lrvx_footprint_clear(_h); }
+  LrvxFootprintHandle _h;
 };
 
 inline void registerProfiles(Napi::Env env, Napi::Object exports)
@@ -119,4 +119,4 @@ inline void registerProfiles(Napi::Env env, Napi::Object exports)
   exports.Set("FootprintBar", FootprintBarWrap::Init(env));
 }
 
-}  // namespace node_flox
+}  // namespace node_lrvx

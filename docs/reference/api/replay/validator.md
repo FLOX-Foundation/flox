@@ -162,7 +162,7 @@ struct DatasetValidationResult
 
 ```cpp
 SegmentValidator validator;
-auto result = validator.validate("/data/market.floxlog");
+auto result = validator.validate("/data/market.lrvx");
 
 if (result.hasErrors()) {
     for (const auto& issue : result.issues) {
@@ -224,11 +224,11 @@ public:
 
 ```cpp
 SegmentValidator validator;
-auto validation = validator.validate("/data/corrupted.floxlog");
+auto validation = validator.validate("/data/corrupted.lrvx");
 
 if (validation.hasErrors()) {
     SegmentRepairer repairer;
-    auto repair = repairer.repair("/data/corrupted.floxlog", validation);
+    auto repair = repairer.repair("/data/corrupted.lrvx", validation);
 
     if (repair.success) {
         for (const auto& action : repair.actions_taken) {
@@ -242,7 +242,7 @@ if (validation.hasErrors()) {
 
 ```cpp
 // Quick validation
-bool ok = replay::isValidSegment("/data/market.floxlog");
+bool ok = replay::isValidSegment("/data/market.lrvx");
 bool ok = replay::isValidDataset("/data/market");
 ```
 

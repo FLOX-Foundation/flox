@@ -33,15 +33,15 @@ files that carry them.
 
 2. The nanosecond BigInt / int64 convention has three published faces
    outside the two files above, and each was reverted on its own without
-   any test noticing: ``python/flox_py/_flox_py/__init__.pyi`` types
-   ``Engine.ts()``, ``quickjs/types/flox.d.ts`` types a bar's ``ts``, and
+   any test noticing: ``python/lrvx/_lrvx/__init__.pyi`` types
+   ``Engine.ts()``, ``quickjs/types/lrvx.d.ts`` types a bar's ``ts``, and
    ``docs/reference/quickjs/tools.md`` names the unit of the ``timeBars``
    / ``heikinBars`` interval. A stub or a reference table that contradicts
    the binding is what a reader believes, so each gets a check here.
 
-3. ``FloxBookSnapshot.bid_qty_raw`` / ``ask_qty_raw`` are filled from the
+3. ``LrvxBookSnapshot.bid_qty_raw`` / ``ask_qty_raw`` are filled from the
    book where the book can answer, and 0 otherwise. The struct in
-   ``include/flox/capi/flox_capi_spec.hpp`` documented only the two price
+   ``include/lrvx/capi/lrvx_capi_spec.hpp`` documented only the two price
    fields ("or 0 if absent") and left the two size fields bare, so a
    direct C-ABI or Codon consumer had nothing telling it what a 0 there
    meant. The size fields must carry that note too, in the words
@@ -58,9 +58,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BINDINGS_README = REPO_ROOT / "docs" / "bindings" / "README.md"
-CAPI_SPEC = REPO_ROOT / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
-PY_STUB = REPO_ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
-FLOX_D_TS = REPO_ROOT / "quickjs" / "types" / "flox.d.ts"
+CAPI_SPEC = REPO_ROOT / "include" / "lrvx" / "capi" / "lrvx_capi_spec.hpp"
+PY_STUB = REPO_ROOT / "python" / "lrvx" / "_lrvx" / "__init__.pyi"
+LRVX_D_TS = REPO_ROOT / "quickjs" / "types" / "lrvx.d.ts"
 QUICKJS_TOOLS_MD = REPO_ROOT / "docs" / "reference" / "quickjs" / "tools.md"
 
 PRESENT_MARKERS = {"yes", "y"}
@@ -155,9 +155,9 @@ class BookSnapshotSizeFieldsAreDocumented(unittest.TestCase):
     def setUp(self) -> None:
         text = CAPI_SPEC.read_text(encoding="utf-8")
         start = text.find("int64_t bid_price_raw;")
-        end = text.find("} FloxBookSnapshot;", start)
-        self.assertNotEqual(start, -1, "FloxBookSnapshot not found in the C API spec")
-        self.assertNotEqual(end, -1, "FloxBookSnapshot has no closing brace in the C API spec")
+        end = text.find("} LrvxBookSnapshot;", start)
+        self.assertNotEqual(start, -1, "LrvxBookSnapshot not found in the C API spec")
+        self.assertNotEqual(end, -1, "LrvxBookSnapshot has no closing brace in the C API spec")
         self.block = text[start:end]
 
     def test_size_fields_carry_a_comment(self) -> None:
@@ -187,9 +187,9 @@ class PublishedTypesMatchTheBindings(unittest.TestCase):
                          "a float64 annotation is the bug this fix removed")
 
     def test_quickjs_d_ts_types_bar_ts_as_bigint(self) -> None:
-        dts = FLOX_D_TS.read_text(encoding="utf-8")
+        dts = LRVX_D_TS.read_text(encoding="utf-8")
         start = dts.find("interface Bar {")
-        self.assertNotEqual(start, -1, "interface Bar is missing from flox.d.ts")
+        self.assertNotEqual(start, -1, "interface Bar is missing from lrvx.d.ts")
         end = dts.find("}", start)
         block = dts[start:end]
         line = next((ln for ln in block.splitlines() if "ts:" in ln), None)
@@ -201,7 +201,7 @@ class PublishedTypesMatchTheBindings(unittest.TestCase):
 
 
 class QuickJsToolsReferenceNamesTheIntervalUnit(unittest.TestCase):
-    """flox.timeBars/heikinBars take the interval in nanoseconds. The
+    """lrvx.timeBars/heikinBars take the interval in nanoseconds. The
     reference table said seconds, which is the misreading the fix exists
     to end."""
 
@@ -215,13 +215,13 @@ class QuickJsToolsReferenceNamesTheIntervalUnit(unittest.TestCase):
         return row
 
     def test_time_bars_interval_is_documented_in_nanoseconds(self) -> None:
-        row = self._row("flox.timeBars(")
+        row = self._row("lrvx.timeBars(")
         self.assertIn("nanosecond", row.lower(),
                       "the timeBars interval is nanoseconds")
         self.assertNotIn("in seconds", row.lower())
 
     def test_heikin_bars_interval_is_documented_in_nanoseconds(self) -> None:
-        row = self._row("flox.heikinBars(")
+        row = self._row("lrvx.heikinBars(")
         self.assertIn("nanosecond", row.lower(),
                       "heikinBars takes the same nanosecond interval as timeBars")
         self.assertNotIn("in seconds", row.lower())

@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
@@ -30,15 +30,15 @@
  *  - the same session layer runs over WebSocket (one FIX message per Text
  *    frame; FIX heartbeats replace the WS Ping probe).
  */
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/fix_session.h"
-#include "flox-venue/matching_book.h"
-#include "flox-venue/matching_engine.h"
-#include "flox-venue/session_registry.h"
-#include "flox-venue/tcp_gateway.h"
-#include "flox-venue/ws_gateway.h"
-#include "flox/util/transport.h"
-#include "flox/util/websocket.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/fix_session.h"
+#include "lrvx-venue/matching_book.h"
+#include "lrvx-venue/matching_engine.h"
+#include "lrvx-venue/session_registry.h"
+#include "lrvx-venue/tcp_gateway.h"
+#include "lrvx-venue/ws_gateway.h"
+#include "lrvx/util/transport.h"
+#include "lrvx/util/websocket.h"
 #include "support/tmp_path.h"
 
 #include <arpa/inet.h>
@@ -58,9 +58,9 @@
 #include <utility>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
-using flox::venue::test::tmpPath;
+using namespace lrvx;
+using namespace lrvx::venue;
+using lrvx::venue::test::tmpPath;
 
 namespace
 {

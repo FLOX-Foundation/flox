@@ -22,7 +22,7 @@ Two closures are involved, not one:
   decides which core `src/**/*.cpp` the lite profile compiles.
 * The venue module's *own* source -- its library, its tests, its benchmarks
   -- reaches further than that. A venue test that includes
-  `flox-venue/control_server.h` (perimeter admin surface) needs headers no
+  `lrvx-venue/control_server.h` (perimeter admin surface) needs headers no
   downstream consumer's 38-entry list ever mentions, because the consumer
   never uses that class. A first rehearsal of this cut (git filter-repo into
   a local copy, three runs) found this out by building: with only the
@@ -35,15 +35,15 @@ Two closures are involved, not one:
   venue/benchmarks actually `#include`. Both walks share one BFS and one
   direction gate (`lite_closure.resolve` / `lite_closure.verdict`), imported
   from scripts/lite_closure.py rather than re-implemented here, so the two
-  closures cannot silently disagree about what "reaches flox/backtest/" means.
+  closures cannot silently disagree about what "reaches lrvx/backtest/" means.
 
 `venue/include/` itself is copied whole, closure or not. Two headers there
-(`tape_recorder.h`, `liquidation_monitor.h`) reach `flox/replay/` and
-`flox/backtest/` respectively and are never included by anything the lite
+(`tape_recorder.h`, `liquidation_monitor.h`) reach `lrvx/replay/` and
+`lrvx/backtest/` respectively and are never included by anything the lite
 profile compiles -- their only includers are the two venue tests the profile
 already excludes (`test_venue_tape`, `test_venue_derivatives`, both dropped
 by the same rule venue/CMakeLists.txt uses). Leaving those two headers out of
-the mirror would make it a different, smaller module than the one flox ships;
+the mirror would make it a different, smaller module than the one lrvx ships;
 leaving their forbidden includes out of the *closure* is what keeps the
 direction gate meaningful. A venue test that reached a forbidden directory
 through some *other*, not-already-excluded path would be a real finding here
@@ -70,16 +70,16 @@ import lite_closure as lc  # noqa: E402  (path insert must run first)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The same three rules venue/CMakeLists.txt applies to FLOX_VENUE_TESTS in
-# the lite profile (FLOX_FIX_TLS off by default, FLOX_ENABLE_BACKTEST off,
-# FLOX_VENUE_LITE builds no replay writers) -- restated here because a test
+# The same three rules venue/CMakeLists.txt applies to LRVX_VENUE_TESTS in
+# the lite profile (LRVX_FIX_TLS off by default, LRVX_ENABLE_BACKTEST off,
+# LRVX_VENUE_LITE builds no replay writers) -- restated here because a test
 # file dropped from the *build* must also be dropped from what *seeds* the
 # mirror's header closure, or the closure would demand headers the lite
 # profile never actually needs to compile.
 DROP_PATTERNS = [
-    (re.compile(r"fix_tls_channel\.h"), "FLOX_FIX_TLS is off by default"),
-    (re.compile(r"flox/backtest/|liquidation_monitor\.h"), "FLOX_ENABLE_BACKTEST=OFF in the lite profile"),
-    (re.compile(r"flox/replay/|tape_recorder\.h"), "FLOX_VENUE_LITE builds no replay writers"),
+    (re.compile(r"fix_tls_channel\.h"), "LRVX_FIX_TLS is off by default"),
+    (re.compile(r"lrvx/backtest/|liquidation_monitor\.h"), "LRVX_ENABLE_BACKTEST=OFF in the lite profile"),
+    (re.compile(r"lrvx/replay/|tape_recorder\.h"), "LRVX_VENUE_LITE builds no replay writers"),
 ]
 
 # Top-level files copied whole. Directories copied whole are listed
@@ -186,15 +186,15 @@ def mirror_header_closure():
 def lite_cpp_sources(narrow_closure):
     """Core src/{clearing,engine,execution,log}/*.cpp the lite profile
     compiles -- the same filter the root CMakeLists.txt applies under
-    FLOX_VENUE_LITE: a .cpp is kept iff its own header (src/x/y.cpp ->
-    include/flox/x/y.h) is in the narrow, consumer-plus-link-requirements
+    LRVX_VENUE_LITE: a .cpp is kept iff its own header (src/x/y.cpp ->
+    include/lrvx/x/y.h) is in the narrow, consumer-plus-link-requirements
     closure. `narrow_closure` is scripts/lite_closure.py's closure (header
-    keys, e.g. "flox/clearing/account.h" -- not resolved paths).
+    keys, e.g. "lrvx/clearing/account.h" -- not resolved paths).
     """
     kept = []
     for rel_dir in ("src/clearing", "src/engine", "src/execution", "src/log"):
         for cpp in _files_under(rel_dir, (".cpp",)):
-            header_key = "flox/" + cpp[len("src/") :][: -len(".cpp")] + ".h"
+            header_key = "lrvx/" + cpp[len("src/") :][: -len(".cpp")] + ".h"
             if header_key in narrow_closure:
                 kept.append(cpp)
     return sorted(kept)

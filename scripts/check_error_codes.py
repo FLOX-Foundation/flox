@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """scripts/check_error_codes.py
 
-Cross-reference FLOX error codes between source code and documentation.
+Cross-reference lrvx error codes between source code and documentation.
 
 Two failure modes:
 1. A code is thrown from C++ / Python source but has no `docs/errors/<code>.md`.
@@ -27,10 +27,10 @@ from typing import Dict, Set
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_ERRORS = REPO_ROOT / "docs" / "errors"
 
-# Match the literal first arg to FloxError(...): a quoted string starting
-# with "E_". Catches both C++ (`flox::FloxError("E_SYM_001", ...)`) and
-# Python (FloxError("E_SYM_001", ...)) call sites.
-_CODE_LITERAL_RE = re.compile(r'FloxError\s*\(\s*"(E_[A-Z]+_\d{3,4})"')
+# Match the literal first arg to LrvxError(...): a quoted string starting
+# with "E_". Catches both C++ (`lrvx::LrvxError("E_SYM_001", ...)`) and
+# Python (LrvxError("E_SYM_001", ...)) call sites.
+_CODE_LITERAL_RE = re.compile(r'LrvxError\s*\(\s*"(E_[A-Z]+_\d{3,4})"')
 
 # Files to scan for code references. Engine + bindings + tests.
 _SOURCE_GLOBS = (
@@ -48,7 +48,7 @@ _FRONTMATTER_CODE_RE = re.compile(r"^code:\s*(E_[A-Z]+_\d{3,4})\s*$", re.MULTILI
 
 
 def _scan_source_codes(root: Path) -> Dict[str, Set[Path]]:
-    """Return {code: {paths}} for every FloxError("E_…") found in source."""
+    """Return {code: {paths}} for every LrvxError("E_…") found in source."""
     out: Dict[str, Set[Path]] = {}
     for pattern in _SOURCE_GLOBS:
         for path in root.glob(pattern):

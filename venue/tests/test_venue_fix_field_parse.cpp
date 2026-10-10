@@ -1,20 +1,20 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Unit tests for the strict FIX field parsers (flox-venue/fix_field_parse.h).
+ * Unit tests for the strict FIX field parsers (lrvx-venue/fix_field_parse.h).
  * test_venue_fix_codec_strictness.cpp holds the codec to what it does with
  * these answers; this file holds the answers themselves, including the cases
  * the codec has no wire value for -- every shape strtoull/strtoul used to
  * accept silently, and the calendar and timezone edges of the timestamp.
  */
-#include "flox-venue/fix_field_parse.h"
+#include "lrvx-venue/fix_field_parse.h"
 
-#include "flox/connector/fix/fix_wire.h"
+#include "lrvx/connector/fix/fix_wire.h"
 
 #include <gtest/gtest.h>
 
@@ -23,7 +23,7 @@
 #include <ctime>
 #include <string>
 
-using namespace flox::venue::fixfield;
+using namespace lrvx::venue::fixfield;
 
 namespace
 {
@@ -97,7 +97,7 @@ TEST(FixFieldParseTimestamp, IsTheInverseOfSendingTime)
   {
     int64_t ns = -1;
     ASSERT_TRUE(parseUtcTimestampNs(t, ns)) << t;
-    EXPECT_EQ(flox::fix::sendingTime(ns), std::string(t));
+    EXPECT_EQ(lrvx::fix::sendingTime(ns), std::string(t));
   }
 
   int64_t ns = -1;

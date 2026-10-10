@@ -1,8 +1,8 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
@@ -11,10 +11,10 @@
 
 #include <cstring>
 
-#include "flox/util/memory/large_arena.h"
+#include "lrvx/util/memory/large_arena.h"
 
-using flox::memory::ArenaBacked;
-using flox::memory::LargeArena;
+using lrvx::memory::ArenaBacked;
+using lrvx::memory::LargeArena;
 
 TEST(LargeArena, AllocatesRoundsUpAndIsWritable)
 {
@@ -79,7 +79,7 @@ TEST(LargeArena, ArenaBackedConstructsAndDestroysInPlace)
     EXPECT_EQ(obj->storage[sizeof(obj->storage) - 1], 2);
     // Object physically lives inside the arena region.
     const auto* base = static_cast<const unsigned char*>(
-        const_cast<flox::memory::LargeArena&>(obj.arena()).data());
+        const_cast<lrvx::memory::LargeArena&>(obj.arena()).data());
     const auto* objPtr = reinterpret_cast<const unsigned char*>(obj.get());
     EXPECT_GE(objPtr, base);
     EXPECT_LT(objPtr + sizeof(BigInline), base + obj.arena().size());

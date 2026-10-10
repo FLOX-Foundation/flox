@@ -1,11 +1,11 @@
 """Track volume tiers and compute realistic fees per fill."""
-import flox_py as flox
+import lrvx
 
 # Canned profile: Binance UM futures 10-tier ladder.
-sched = flox.FeeSchedule.binance_um_futures()
+sched = lrvx.FeeSchedule.binance_um_futures()
 
 # Or build manually:
-custom = flox.FeeSchedule()
+custom = lrvx.FeeSchedule()
 custom.add_tier(min_notional_30d=0,         maker_bps=2.0, taker_bps=4.0)
 custom.add_tier(min_notional_30d=1_000_000, maker_bps=1.0, taker_bps=3.0)
 custom.add_tier(min_notional_30d=10_000_000, maker_bps=-0.5, taker_bps=2.0)

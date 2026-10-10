@@ -1,16 +1,16 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ * lrvx Engine
+ * Developed by lrvx contributors (https://github.com/lrvx)
  *
- * Copyright (c) 2025 FLOX Foundation
+ * Copyright (c) 2025 lrvx contributors
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/fix_codec.h"
-#include "flox-venue/session.h"
-#include "flox-venue/session_registry.h"
-#include "flox-venue/tcp_gateway.h"
-#include "flox/util/transport.h"
+#include "lrvx-venue/fix_codec.h"
+#include "lrvx-venue/session.h"
+#include "lrvx-venue/session_registry.h"
+#include "lrvx-venue/tcp_gateway.h"
+#include "lrvx/util/transport.h"
 
 #include <gtest/gtest.h>
 
@@ -26,8 +26,8 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace flox;
-using namespace flox::venue;
+using namespace lrvx;
+using namespace lrvx::venue;
 
 namespace
 {
@@ -106,7 +106,7 @@ TEST(SessionPerimeter, EveryRefusalBeforeTheEngineNamesTheOrder)
   // Unauthenticated: the frame was never admitted, but it is still a frame
   // about an order and the refusal says which one.
   {
-    flox::RateLimitPolicy none;
+    lrvx::RateLimitPolicy none;
     GatewaySession s(kAccount, fixDecoder(), none);
     SessionReject rej{};
     RejectEcho echo{};
@@ -122,7 +122,7 @@ TEST(SessionPerimeter, EveryRefusalBeforeTheEngineNamesTheOrder)
 
   // RateLimited: the frame decoded, so the identity was in hand all along.
   {
-    flox::RateLimitPolicy limits;
+    lrvx::RateLimitPolicy limits;
     limits.addBucket("t", 1'000'000'000, 1);
     GatewaySession s(kAccount, fixDecoder(), limits);
     s.authenticate(true);
@@ -139,7 +139,7 @@ TEST(SessionPerimeter, EveryRefusalBeforeTheEngineNamesTheOrder)
   // DecodeError: nothing decoded, so there is no OrderID to give -- but the
   // ClOrdID is legible in the bytes and that is what the client reconciles on.
   {
-    flox::RateLimitPolicy none;
+    lrvx::RateLimitPolicy none;
     GatewaySession s(kAccount, fixDecoder(), none);
     s.authenticate(true);
     // Side (54) missing: the codec refuses rather than guessing a direction.
@@ -163,7 +163,7 @@ TEST(SessionPerimeter, EveryRefusalBeforeTheEngineNamesTheOrder)
 TEST(SessionPerimeter, AnUndecodableFrameIsRefusedWithTheClOrdIdItCarries)
 {
   constexpr uint64_t kClOrdId = 99001;
-  flox::RateLimitPolicy none;
+  lrvx::RateLimitPolicy none;
   GatewaySession s(7, fixDecoder(), none);
   s.authenticate(true);
 
