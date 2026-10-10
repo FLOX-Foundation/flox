@@ -48,9 +48,15 @@ node -e "
 #    the same source tree as the matching `lrvx` / npm package, so
 #    bundled data can never describe a surface the user doesn't have.
 perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/mcp/pyproject.toml"
+# The compatibility shims pin the exact lrvx / lrvx-mcp version this tree
+# builds; scripts/build_compat_shims.sh refuses to build when they drift.
+perl -i -pe "s/(\"lrvx==)[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/compat/flox-py/pyproject.toml"
+perl -i -pe "s/(\"lrvx-mcp==)[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/compat/flox-mcp/pyproject.toml"
 
 echo "Set version to ${VERSION} in:"
 echo "  CMakeLists.txt   ($(grep -E '^project\(lrvx VERSION' "$ROOT/CMakeLists.txt"))"
 echo "  pyproject        ($(grep -E '^version = ' "$ROOT/pyproject.toml"))"
 echo "  node/package     (\"version\": \"$(node -e "console.log(require('$ROOT/node/package.json').version)")\")"
 echo "  mcp/pyproject    ($(grep -E '^version = ' "$ROOT/mcp/pyproject.toml"))"
+echo "  compat/flox-py   ($(grep -E 'lrvx==' "$ROOT/compat/flox-py/pyproject.toml"))"
+echo "  compat/flox-mcp  ($(grep -E 'lrvx-mcp==' "$ROOT/compat/flox-mcp/pyproject.toml"))"

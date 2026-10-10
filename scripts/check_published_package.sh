@@ -100,7 +100,7 @@ check_npm_tarball() {
 
   echo "[npm-check] requiring the package and calling into the native addon..."
   if ! node -e "
-    const lrvx = require('$work/node_modules/lrvx');
+    const lrvx = require('$work/node_modules/@lrvx/lrvx');
     const reg = new lrvx.SymbolRegistry();
     const sym = reg.addSymbol('bybit', 'BTCUSDT', 0.01);
     if (sym === undefined || sym === null) {
