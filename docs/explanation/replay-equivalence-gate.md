@@ -10,7 +10,7 @@ Every push runs `scripts/replay_equivalence_gate.py`:
 2. Run every frozen scenario under `tests/replay-equivalence/scenarios/` through that tape against `lrvx.SimulatedExecutor`. Each scenario is a directory holding a `strategy.py` and its frozen `expected_output.json`.
 3. Compare each captured output (`trade_count`, `fill_count`, the fill sequence, `total_filled_quantity`) field-by-field with the scenario's frozen expectation.
 
-All scenarios match → exit 0. Any divergence → exit 1, with a per-field diff per scenario printed to stderr (nested structures produce paths like `fills[0].price: actual=100.0 expected=999.0`). The gate runs as a step of the `linux-gcc` CI job; divergence fails that job and blocks merge.
+All scenarios match → exit 0. Any divergence → exit 1, with a per-field diff per scenario printed to stderr (nested structures produce paths like `fills[0].price: actual=100.0 expected=999.0`). The gate runs as a step of the `linux-gcc` CI job; divergence fails that job.
 
 ## Scenarios
 

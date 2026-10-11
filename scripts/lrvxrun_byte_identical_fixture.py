@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Produce a deterministic .lrvxrun directory through the pybind11 binding.
+"""Write a fixed set of .lrvxrun records through the pybind11 binding.
 
-Used by `scripts/lrvxrun_byte_identical_gate.py` — every binding writes
-the same fixture, the gate hashes the segment files and asserts they
-match byte-for-byte.
+Used by `scripts/lrvxrun_byte_identical_gate.py`: every binding writes
+the same records, the gate reads each binding's output back through the
+pybind11 `TraceReader` and compares the decoded records field by field.
+The segment files are not compared byte for byte; each segment header
+carries the wall-clock `created_ns` of the moment it was opened.
 
 The fixture is intentionally small and uses fully explicit timestamps
 so the only knob that could cause divergence is the recorder's own

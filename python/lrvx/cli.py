@@ -1281,7 +1281,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_validate = bundle_sub.add_parser(
         "validate",
-        help="Replay a bundle and assert the output is byte-equal to expected. "
+        help="Replay a bundle and compare the result with its expected output "
+             "field by field: trade count, every fill's symbol, side, price "
+             "and quantity, total filled quantity, plus the strategy and tape "
+             "hashes and the engine version. "
              "Exit 0 on match, 1 on divergence (with diff printed). "
              "WARNING: this runs strategy/strategy.py from inside the bundle "
              "-- only validate bundles from a source you trust.",

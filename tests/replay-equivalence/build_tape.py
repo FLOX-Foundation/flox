@@ -1,9 +1,10 @@
 """Deterministic tape generator for the replay-equivalence gate.
 
 Writes a small `.lrvx` directory with a fixed sequence of synthetic
-trades. The output is fully deterministic for a given seed, so the
-expected_output.json frozen in this directory stays in sync as long
-as nobody edits this script.
+trades. The sequence is a constant in this file, nothing is drawn
+from a seed, so the output is the same on every run and the
+expected_output.json frozen next to each scenario stays in sync as
+long as nobody edits this script.
 """
 from __future__ import annotations
 

@@ -52,7 +52,7 @@ for (auto seconds : intervals) agg.addTimeInterval(seconds);
 
 ## Replay determinism
 
-Because the rule is registration order — not wall-clock arrival, not duration — replay produces the same dispatch sequence as the original run. The replay-equivalence gate exercises a multi-TF tied-close fixture; a regression that changes the iteration order in `MultiTimeframeAggregator::onTrade` (or in any `BarBus` fan-out) would surface there.
+Because the rule is registration order — not wall-clock arrival, not duration — replay produces the same dispatch sequence as the original run. `tests/test_bar_close_ordering.cpp` pins it: three time aggregators that close on the same trade must dispatch H4, H1, M5 when registered H4, H1, M5, and M5, H1, H4 when registered in reverse, so a regression that changes the iteration order in `MultiTimeframeAggregator::onTrade` fails that test. The bindings run the same two orders through `BarDispatchRecorder` (`python/tests/test_bar_close_ordering_parity.py`, `node/test/test_bar_close_ordering_parity.js`, `codon/examples/bar_close_ordering_parity_smoke.codon`, `quickjs/examples/bar_close_ordering_parity_smoke.js`). The [replay-equivalence gate](replay-equivalence-gate.md) does not cover this ordering: it replays seven trades through `SimulatedExecutor` with no aggregators and pins the fills of four order scenarios.
 
 ## See also
 

@@ -16,8 +16,8 @@ Every `codon/examples/*.codon` file must fall into exactly one of:
   2. Invoked directly by the "Run Codon examples" step (the small
      hand-picked list of full runs).
   3. Executed by a script outside ci.yml that this file knows about
-     (`EXTERNAL_EXECUTIONS` below) -- currently just the byte-identical
-     parity gate.
+     (`EXTERNAL_EXECUTIONS` below) -- the cross-binding .lrvxrun
+     parity gate is the only one.
   4. Named in `EXCEPTIONS` below with a reason. An explicit, reasoned
      exception is acceptable; silently building an example and never
      running it is the exact defect this script exists to catch.

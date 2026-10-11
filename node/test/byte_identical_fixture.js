@@ -1,6 +1,8 @@
-// Produce the same deterministic .lrvxrun directory through the NAPI
-// binding as scripts/lrvxrun_byte_identical_fixture.py. The
-// cross-binding gate hashes the segment files and asserts they match.
+// Write the same .lrvxrun records through the NAPI binding as
+// scripts/lrvxrun_byte_identical_fixture.py. The cross-binding gate reads
+// them back through the pybind11 TraceReader and compares the decoded
+// records field by field; timestamps pass through a JS Number here, so the
+// gate allows them up to 1024 ns of drift.
 
 const lrvx = require('..');
 

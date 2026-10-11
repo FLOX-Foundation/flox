@@ -1,11 +1,15 @@
 """Reproducibility bundle format — `lrvx bundle pack/replay/validate`.
 
 A bundle is a single self-contained tarball that encodes everything
-needed to reproduce a backtest result byte-for-byte on another
-machine: strategy code, the captured tape it ran against, the engine
-version it was built with, and the expected output it should
-reproduce. Packing captures the run; validating proves the next run
-matches.
+needed to reproduce a backtest result on another machine: strategy
+code, the captured tape it ran against, the engine version it was
+built with, and the expected output it should reproduce. Packing
+captures the run; validating replays it and compares the result with
+the expected output field by field (trade count, every fill's symbol,
+side, price and quantity, total filled quantity), along with the
+strategy and tape hashes, the engine version and, when the bundle
+ships an expected `.lrvxrun`, the trace's signal, order and fill
+counts.
 
 Bundle layout:
 
@@ -618,8 +622,7 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
         # `lrvxrun_present` out of both dicts entirely rather than
         # comparing "actual has a fresh one" against "expected never
         # had one" -- that pair always disagrees, which would fail
-        # every old bundle even when every other field matches
-        # byte-for-byte.
+        # every old bundle even when every other field matches.
 
         return BundleResult(
             actual=actual,

@@ -1,6 +1,6 @@
 # Add latency to a backtest
 
-Per-trade fills in lrvx work in instant mode by default: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
+A backtest runs in instant mode by default: no order latency. On tick and book replay an order is tried the moment it is submitted, against the market state the strategy is reacting to, so a market order sent from `on_trade` takes the book standing at that moment, or that trade's own price when the tape carries no book, not the next print. On bar replay an order sent from the bar callback is held and fills at that symbol's next bar open, because the simulator has already walked the bar the strategy was shown (see [Bar callbacks fill at the next open](../reference/api/backtest/backtest_runner.md#bar-callbacks-fill-at-the-next-open)). That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
 
 Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification).
 
@@ -225,4 +225,4 @@ Still open:
 
 - [Backtest with realistic fills](backtest-realistic-fills.md). Slippage and queue position, the companion knobs already wired into `SimulatedExecutor`.
 - [Reproducibility bundles](reproducibility-bundles.md). Seed the latency model from the bundle's manifest to make the draws part of the reproducibility contract.
-- [Replay-equivalence gate](../explanation/replay-equivalence-gate.md). Seed deterministically and the gate keeps holding even with latency on.
+- [Replay-equivalence gate](../explanation/replay-equivalence-gate.md). Pins the instant-mode fills of four order scenarios; it attaches no latency model.

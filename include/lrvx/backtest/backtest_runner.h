@@ -118,8 +118,8 @@ class BacktestRunner : public ISignalHandler
   ///
   /// This differs from setExecutor() in both directions: the runner
   /// FEEDS this executor market data (bars, trades, book updates) and
-  /// HARVESTS its fills into BacktestResult, so a venue stack no longer
-  /// has to be driven by hand. Order events are routed through the same
+  /// HARVESTS its fills into BacktestResult, so a venue stack does not
+  /// have to be driven by hand. Order events are routed through the same
   /// position tracker, PnL tracker and listener chain as the built-in
   /// executor.
   ///
@@ -127,24 +127,23 @@ class BacktestRunner : public ISignalHandler
   /// (VenueStack::clock()). The runner advances it in lockstep with its
   /// own, otherwise ack latency and queue timing would never progress.
   ///
-  /// What this DOES bring in from the stack: the execution mechanics its
-  /// executor was wired with — queue model and depth, iceberg refresh
-  /// latency, venue availability (downtime) and the rate-limit policy.
-  /// BacktestConfig is not applied to the executor, so those settings are
-  /// not overwritten.
+  /// What this DOES bring in from the stack:
+  ///   - The execution mechanics its executor was wired with — queue model
+  ///     and depth, iceberg refresh latency, venue availability (downtime)
+  ///     and the rate-limit policy. BacktestConfig is not applied to the
+  ///     executor, so those settings are not overwritten.
+  ///   - Fees. result() and extractResult() hand the executor's
+  ///     FeeSchedule to BacktestResult, which bills each fill at the tier
+  ///     the account's 30-day notional resolves to, maker or taker by
+  ///     Fill::isMaker. A ladder with no tiers falls back to BacktestConfig's
+  ///     flat rates, and BacktestConfig::usePercentageFee = false replaces
+  ///     both with fixedFeePerTrade.
   ///
-  /// What it does NOT bring in, and why:
-  ///   - Fees. BacktestResult computes them from BacktestConfig, not from
-  ///     the stack's FeeSchedule. Fill::isMaker now lets BacktestConfig
-  ///     charge makerFeeRate / takerFeeRate per side, which covers the flat
-  ///     part of a venue's schedule; what is still missing is its 30-day
-  ///     volume tiering, which the stack tracks and BacktestResult does not
-  ///     consult.
-  ///   - Funding and liquidation. Both are driven by explicit calls
-  ///     (FundingSchedule settlement, LiquidationEngine::onMarks), not by
-  ///     the replay loop.
-  /// Read the result as "this venue's fill mechanics", not "this venue's
-  /// full economics".
+  /// What it does NOT bring in: funding and liquidation. Both are driven
+  /// by explicit calls (FundingSchedule settlement,
+  /// LiquidationEngine::onMarks), not by the replay loop. Read the result
+  /// as "this venue's fill mechanics and fees", not "this venue's full
+  /// economics".
   ///
   /// Caller retains ownership. Pass (nullptr, nullptr) to revert to the
   /// built-in executor.

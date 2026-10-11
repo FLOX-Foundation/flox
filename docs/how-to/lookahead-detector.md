@@ -63,7 +63,7 @@ future_window = close[i:i+3]
 
 ### `open_upper_slice_in_callback`
 
-Inside a per-bar callback (`on_trade`, `on_bar`, `on_book`, `signal`, `compute`, `update`, etc), an open-upper slice off a variable lower bound spans every future row.
+Inside a per-bar callback (a function named `on_trade`, `on_bar`, `on_book`, `on_book_update`, `on_tick`, `on_quote`, `signal`, `should_enter`, `should_exit`, `compute` or `update`), an open-upper slice whose lower bound is a bare name spans every future row.
 
 ```python
 # bug
@@ -85,15 +85,17 @@ The same logic is exposed as the `validate_strategy_no_lookahead` MCP tool. Past
 
 The detector is intentionally narrow. It will miss:
 
+- An offset held in a variable rather than a literal. With `K = 1`, `df['close'].shift(-K)` is not flagged, and neither are `arr[i + n]` and `df.loc[t + delta]`. The lint resolves literals; it does not trace values.
+- A read inside a helper function. The open-upper-slice rule applies only inside functions named like a per-bar callback (the names listed above), so `def peek(self, i): return self.closes[i:]` passes even when `on_bar` calls it. The scoping is by name alone: any function named `update` or `compute` counts as a callback wherever it is defined.
+- An open-upper slice whose lower bound is not a bare name. Inside `on_bar`, `self.closes[i:]` is flagged; `self.closes[self.i:]` and `self.closes[i - 1:]` are not.
+- Function calls that peek at future state inside code the lint does not read: it parses one file and does not follow imports.
 - Indirect lookahead through external state (e.g. a global cache populated from a future bar).
 - Vectorised computations that read forward without index arithmetic (`np.where(df['close'] > df['close'].rolling(5).mean(), ...)` is fine; specific rolling-window misuse can still leak).
 - Boolean masks built from forward-looking data and applied to the current row.
-- Function calls that internally peek at future state.
-- A shift or index offset that only exists in a variable rather than a literal (`df.shift(-k)`, `arr[i + n]`). The lint resolves literals statically; it does not trace values.
 
 A file the lint cannot read at all — wrong encoding, deleted mid-scan, no read permission — surfaces as a `read_error` finding rather than crashing the process, the same way a syntax error does.
 
-A strategy that needs a hard guarantee should pair this lint with an integration test: run on a tape, then re-run on the same tape with the last K rows truncated, and confirm signals up to bar `T-K` are identical between both runs. The replay-equivalence gate already in CI is the spiritual cousin; both shipping side by side is the cheapest path to high confidence.
+A strategy that needs a hard guarantee should pair this lint with an integration test: run on a tape, then re-run on the same tape with the last K rows truncated, and confirm signals up to bar `T-K` are identical between both runs. lrvx does not ship that test; it belongs next to the strategy it protects.
 
 ## Wiring into CI
 
@@ -114,6 +116,6 @@ lookahead "$f"` (`lrvx` itself has no `__main__`).
 
 ## See also
 
-* [Replay-equivalence gate](../explanation/replay-equivalence-gate.md). The harder, slower companion check that proves bytes match across runs.
+* [Replay-equivalence gate](../explanation/replay-equivalence-gate.md). Pins the engine, not your strategy: four frozen order scenarios run on a seven-trade tape, and each scenario's trade count, fills and filled quantity are compared field by field with its frozen `expected_output.json`.
 * [Backtesting](backtest.md). The pipeline this lint protects.
 * [Reproducibility bundles](reproducibility-bundles.md). Bundle a strategy plus a tape plus the expected output and the bias becomes visible in the `validate` diff.

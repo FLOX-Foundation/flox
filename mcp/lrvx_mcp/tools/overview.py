@@ -160,8 +160,10 @@ Mutating tools:
 ## Reproducibility
 
 - `lrvx bundle pack` — deterministic archive of (tape + run + code
-  + config + dep hashes). `lrvx bundle replay` reruns it
-  byte-identically. `lrvx bundle validate` checks the archive.
+  + config + dep hashes). `lrvx bundle replay` reruns it and prints
+  actual vs expected. `lrvx bundle validate` compares the rerun with
+  the expected output field by field (trade count, fills, filled
+  quantity, strategy and tape hashes, engine version).
 - The venue-stack is bit-deterministic across runs (verified
   via `test_venue_stack_reproducibility.cpp`): identical inputs → identical
   engine state.

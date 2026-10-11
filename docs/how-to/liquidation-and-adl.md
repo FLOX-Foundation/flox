@@ -10,11 +10,14 @@ A real perpetual venue has a three-step liquidation pipeline:
    profitable opposite-side traders are force-closed at the
    bankruptcy price, ranked by their PnL ratio.
 
-lrvx's default backtest treats liquidation as a hard stop — the
-position disappears at the maintenance-margin-breach price. For
-research that needs to know whether a portfolio survives a 5%
-adverse move vs cascades INTO a -8% liquidation, that's a
-comforting fiction. `LiquidationEngine` models the full pipeline.
+lrvx's default backtest has no liquidation step. `BacktestRunner`
+books positions and PnL from fills and never checks margin, so a
+position stays open through any adverse move, however far past its
+maintenance margin, and a plain run cannot tell whether a portfolio
+survives a 5% adverse move or cascades into a -8% liquidation.
+`LiquidationEngine` models the full pipeline. The replay loop does not
+call it: the strategy or harness feeds it marks (`on_mark` /
+`on_marks`) as the run advances.
 
 ## Configure
 

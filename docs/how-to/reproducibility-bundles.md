@@ -1,6 +1,6 @@
 # Reproducibility bundles with `lrvx bundle`
 
-A bundle is a single tarball that encodes everything needed to reproduce a backtest result byte-for-byte on another machine: strategy code, the captured tape it ran against, the engine version, and the expected output. `lrvx bundle pack` captures a run; `lrvx bundle validate` proves the next run on the same inputs matches.
+A bundle is a single tarball that encodes everything needed to reproduce a backtest result on another machine: strategy code, the captured tape it ran against, the engine version, and the expected output. `lrvx bundle pack` captures a run; `lrvx bundle validate` replays it and compares the result with the expected output field by field (trade count, every fill's symbol, side, price and quantity, total filled quantity), along with the strategy and tape hashes and the engine version.
 
 **`lrvx bundle replay` and `lrvx bundle validate` run the strategy code shipped inside the bundle.** A bundle is designed to be shared, which is exactly why this matters: replaying one is the same as running any other code someone handed you. Only replay or validate a bundle from a source you trust. Nothing in the format authenticates who produced it.
 

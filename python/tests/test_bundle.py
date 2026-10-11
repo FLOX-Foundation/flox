@@ -394,7 +394,7 @@ class BundleIntegrityTests(unittest.TestCase):
     def test_bundle_without_lrvxrun_still_validates_on_matching_content(self) -> None:
         # Simulate a bundle packed before the .lrvxrun ride-along
         # landed: strip expected.lrvxrun/ entirely. Every other field
-        # still matches byte-for-byte, so this must still validate --
+        # still matches, so this must still validate --
         # comparing "actual has a fresh trace" against "expected never
         # had one" must not, on its own, fail the whole bundle.
         with tarfile.open(self.bundle_path, "r") as src:

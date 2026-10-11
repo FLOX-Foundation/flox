@@ -1228,12 +1228,14 @@ def build_server() -> Server:
                 description=(
                     "Static-analysis check for the most common backtest "
                     "bug: lookahead bias. Walks the strategy code's AST "
-                    "and flags negative .shift(N), forward-index "
-                    "arithmetic like df.iloc[i+1], open-upper slices "
-                    "inside per-bar callbacks, and attribute names that "
-                    "look future-dated (next_*, future_*, lookahead_*). "
-                    "Heuristic, not a proof — false negatives are "
-                    "possible. Run before trusting any backtest result."
+                    "and flags .shift(-N) and np.roll(a, -N), forward-index "
+                    "arithmetic like df.iloc[i+1], forward slices like "
+                    "close[i:i+3], open-upper slices inside per-bar "
+                    "callbacks, and attribute names that look future-dated "
+                    "(next_*, future_*, lookahead_*). Only literal offsets "
+                    "are resolved; an offset held in a variable is not "
+                    "flagged. Heuristic, not a proof. Run before trusting "
+                    "any backtest result."
                 ),
                 inputSchema={
                     "type": "object",

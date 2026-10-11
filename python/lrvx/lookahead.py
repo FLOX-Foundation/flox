@@ -4,22 +4,28 @@ Lookahead bias is the most common backtest bug in algorithmic
 trading: a strategy reads tomorrow's price by accident, claims a
 profit it could never have realized live, and quietly fails the
 moment it ships. This module catches the obvious patterns by walking
-the AST. It is a heuristic, not a proof; see *What it does not
-catch* at the bottom for the gap.
+the AST. It is a heuristic, not a proof; *What it does not catch* in
+docs/how-to/lookahead-detector.md lists the gap.
 
-Patterns that fire:
+Patterns that fire (N is always a positive integer literal):
 
-* ``df.shift(-N)`` and ``Series.shift(-N)`` where ``N`` is a
-  positive integer literal. Pandas / numpy shift by a negative
-  offset reads from the future.
-* ``df.iloc[i + N]``, ``arr[i + N]``, ``df.loc[t + delta]`` where
-  ``N`` is a positive integer literal. Index-arithmetic that walks
-  forward from the current bar peeks ahead.
-* Subscript slices like ``df[i:]`` inside a per-bar callback when
-  the upper bound is open and ``i`` is the current-bar index. (Open
-  upper bounds in a per-bar context include all future rows.)
-* Direct attribute access on names that look like future-dated
-  fields: ``trade.next_*``, ``bar.future_*``, ``ctx.lookahead_*``.
+* ``shift_negative``: ``x.shift(-N)``, with the amount given
+  positionally, as ``periods=-N`` or as ``**{"periods": -N}``, and
+  ``np.roll(a, -N)`` / ``np.roll(a, shift=-N)``.
+* ``forward_index_add``: a subscript read whose index, or one element
+  of a tuple index, is ``i + N`` or ``N + i`` (``df.iloc[i + 1]``,
+  ``arr[i + 5]``, ``df.iloc[i + 1, 0]``). Writes are not flagged.
+* ``forward_slice``: a slice whose upper bound is ``i + N``
+  (``close[i:i + 3]``), anywhere in the file.
+* ``open_upper_slice_in_callback``: ``seq[i:]`` with an open upper
+  bound and a bare name as the lower bound, inside a function named
+  like a per-bar callback (``_PER_BAR_CALLBACKS``). A literal lower
+  bound (``buf[1:]``, ``buf[-20:]``) is not flagged.
+* ``future_attr_name``: any attribute named ``next_*``, ``future_*``
+  or ``lookahead_*``.
+
+Offsets held in variables (``shift(-k)``, ``arr[i + n]``,
+``df.loc[t + delta]``) are not flagged: only literals are resolved.
 
 The detector returns a list of ``Finding`` objects; ``lrvx lint
 lookahead`` prints them, and ``validate_strategy_no_lookahead``

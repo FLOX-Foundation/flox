@@ -254,7 +254,7 @@ The layouts above are stable: existing offsets and sizes do not move within `for
 
 ## Worked example: a 7-trade tape
 
-The replay-equivalence CI gate (`scripts/replay_equivalence_gate.py`) writes a fixed 7-trade tape and asserts the captured replay output is byte-equal to a frozen JSON. The tape generator (`tests/replay-equivalence/build_tape.py`) is a 30-line example of how to build a tape from scratch using the Python reference encoder. Read it before writing your own implementation; everything important about the writer's calling convention is there.
+The replay-equivalence CI gate (`scripts/replay_equivalence_gate.py`) writes a fixed 7-trade tape, runs four frozen order scenarios against it, and compares each scenario's captured output with its frozen `expected_output.json` field by field over the parsed JSON, not byte for byte. The tape generator (`tests/replay-equivalence/build_tape.py`) builds a tape from scratch: it registers one symbol, plugs `lrvx.tape.make_recorder_hook` (the in-tree `BinaryLogWriter` behind `lrvx.BinaryLogRecorderHook`) into an `lrvx.Runner` as its market-data recorder, and feeds the seven trades, each with an explicit exchange timestamp, through `runner.on_trade`. Read it before writing your own implementation; everything important about the writer's calling convention is there.
 
 ## Compatibility commitments
 

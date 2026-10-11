@@ -7,7 +7,9 @@ Enters long on the first trade (fills at 100.00) and immediately
 arms a SELL take_profit_market at 101.30. The tape prints 101.25
 first (below the trigger — must not fire; pins the boundary), then
 101.50 >= 101.30 fires the take-profit, which converts to a market
-order and fills at 101.50.
+order and fills at 101.30: a conditional order fills no better than
+the trigger that armed it, so the sell books its trigger, not the
+101.50 print that fired it.
 """
 from __future__ import annotations
 

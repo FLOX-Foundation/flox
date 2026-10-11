@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """Cross-binding `.lrvxrun` parity gate.
 
-Runs the same fixture through every available binding (pybind11 / NAPI
-/ Codon), reads each emitted `.lrvxrun` directory back through
-`TraceReader`, and asserts the structured records (signals + order
-events + fills) are identical across bindings.
+Each binding (pybind11 / NAPI / Codon) runs its fixture, which writes the
+same hand-authored records (2 signals, 1 order event, 1 fill, explicit
+timestamps) through that binding's `TraceRecorder`. No strategy runs and
+no market data is replayed: the gate checks recorder serialization, not
+strategy behaviour.
 
-True byte-identical comparison is blocked by per-segment wall-clock
-metadata embedded in segment headers — that's a recorder-side
-deterministic-mode follow-up. Comparing the structured records is the
-strongest meaningful guarantee today: it proves every binding emits
-the same recorded content for the same input.
+Every binding's `.lrvxrun` directory is read back through the pybind11
+`TraceReader`, and the decoded records (signals, order events, fills) are
+compared field by field. Every field must be equal except the timestamps
+(`run_ts_ns`, `feed_ts_ns` and their camelCase forms), which may differ by
+up to 1024 ns because NAPI passes them through a JS `Number`. The segment
+files themselves are not compared: each segment header carries
+`created_ns`, the wall clock at the moment the segment was opened
+(src/run/trace_recorder.cpp), so two runs never produce the same bytes,
+even through one binding.
 
-Skips bindings whose runtime / build artefact is missing rather than
-failing — the gate is runnable on developer machines that build only
-a subset. Every leg reads from one build tree, ``build`` by default;
-``LRVX_BUILD_DIR=build-ci`` points all of them at another tree.
+A binding whose artefact is missing (no `lrvx` package in the build tree,
+no `node` on PATH, no Node addon, no Codon fixture binary) is skipped, so
+the gate runs on machines that build only a subset; it still needs two
+bindings to compare. A binding whose fixture exists but exits non-zero
+fails the gate with exit 1 and the fixture's stderr. Every leg reads from
+one build tree, ``build`` by default; ``LRVX_BUILD_DIR=build-ci`` points
+all of them at another tree.
 """
 from __future__ import annotations
 
@@ -69,17 +77,29 @@ def _normalize(record: Any) -> Dict[str, Any]:
     return out
 
 
+class FixtureFailed(Exception):
+    """A binding's fixture exists but exited non-zero."""
+
+    def __init__(self, res: subprocess.CompletedProcess) -> None:
+        output = (res.stderr or "").strip() or (res.stdout or "").strip()
+        how = (f"killed by signal {-res.returncode}" if res.returncode < 0
+               else f"exit {res.returncode}")
+        super().__init__(f"{how}: {output or '(no output)'}")
+
+
+def _check(res: subprocess.CompletedProcess) -> None:
+    if res.returncode != 0:
+        raise FixtureFailed(res)
+
+
 def run_python(out_dir: Path) -> Optional[Dict[str, List[Dict[str, Any]]]]:
     if not (BUILD_DIR / "python" / "lrvx").exists():
-        print("[skip] pybind11: build/python/lrvx missing")
+        print(f"[skip] pybind11: {BUILD_DIR / 'python' / 'lrvx'} missing")
         return None
     env = dict(os.environ)
     env["PYTHONPATH"] = str(BUILD_DIR / "python")
-    res = subprocess.run([sys.executable, str(PYTHON_FIXTURE), str(out_dir)],
-                          env=env, capture_output=True, text=True)
-    if res.returncode != 0:
-        print(f"[fail] pybind11: {res.stderr.strip()}", file=sys.stderr)
-        return None
+    _check(subprocess.run([sys.executable, str(PYTHON_FIXTURE), str(out_dir)],
+                          env=env, capture_output=True, text=True))
     return _read_via_pybind(out_dir)
 
 
@@ -90,11 +110,8 @@ def run_node(out_dir: Path) -> Optional[Dict[str, List[Dict[str, Any]]]]:
     if not (ROOT / "node" / "build" / "Release" / "lrvx_node.node").exists():
         print("[skip] node: build/Release/lrvx_node.node missing")
         return None
-    res = subprocess.run(["node", str(NODE_FIXTURE), str(out_dir)],
-                          capture_output=True, text=True)
-    if res.returncode != 0:
-        print(f"[fail] node: {res.stderr.strip()}", file=sys.stderr)
-        return None
+    _check(subprocess.run(["node", str(NODE_FIXTURE), str(out_dir)],
+                          capture_output=True, text=True))
     return _read_via_pybind(out_dir)
 
 
@@ -105,19 +122,16 @@ def run_codon(out_dir: Path) -> Optional[Dict[str, List[Dict[str, Any]]]]:
     env = dict(os.environ)
     env["DYLD_LIBRARY_PATH"] = str(CODON_LIB_DIR) + ":" + env.get("DYLD_LIBRARY_PATH", "")
     env["LD_LIBRARY_PATH"] = str(CODON_LIB_DIR) + ":" + env.get("LD_LIBRARY_PATH", "")
-    res = subprocess.run([str(CODON_FIXTURE_BIN), str(out_dir)],
-                          env=env, capture_output=True, text=True)
-    if res.returncode != 0:
-        print(f"[fail] codon: {res.stderr.strip()}", file=sys.stderr)
-        return None
+    _check(subprocess.run([str(CODON_FIXTURE_BIN), str(out_dir)],
+                          env=env, capture_output=True, text=True))
     return _read_via_pybind(out_dir)
 
 
-# NAPI converts ns-level int64 timestamps through JS `Number` (float64)
-# which loses bottom bits past Number.MAX_SAFE_INTEGER (~2^53). A real
-# fix is BigInt support in the NAPI write_* surface; until then the
+# NAPI converts ns-level int64 timestamps through JS `Number` (float64),
+# which loses the bottom bits past Number.MAX_SAFE_INTEGER (~2^53). The
 # gate tolerates timestamp drift of up to 1024 ns and asserts strict
-# equality on every other field. Tracked under a separate follow-up.
+# equality on every other field. A BigInt path through the NAPI write_*
+# surface would remove the drift and let this tolerance go to zero.
 _TIMESTAMP_TOLERANCE_NS = 1024
 _TIMESTAMP_FIELDS = {"run_ts_ns", "feed_ts_ns", "runTsNs", "feedTsNs"}
 
@@ -145,17 +159,25 @@ def _diff_records(name_a: str, recs_a: Dict[str, List[Dict[str, Any]]],
 
 
 def main() -> int:
+    # [ok]/[skip] go to stdout and [fail] to stderr; keep them in order.
+    sys.stdout.reconfigure(line_buffering=True)
     runners: List[Tuple[str, Any]] = [
         ("pybind11", run_python),
         ("napi", run_node),
         ("codon", run_codon),
     ]
     results: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+    failed: List[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         for name, runner in runners:
             out = Path(tmp) / name / "run.lrvxrun"
             out.parent.mkdir(parents=True, exist_ok=True)
-            recs = runner(out)
+            try:
+                recs = runner(out)
+            except FixtureFailed as exc:
+                failed.append(name)
+                print(f"[fail] {name}: {exc}", file=sys.stderr)
+                continue
             if recs is None:
                 continue
             results[name] = recs
@@ -163,6 +185,13 @@ def main() -> int:
                   f"{len(recs['signals'])} signal(s), "
                   f"{len(recs['orders'])} order(s), "
                   f"{len(recs['fills'])} fill(s)")
+
+    if failed:
+        print("\n::error::cross-binding .lrvxrun parity gate FAILED: the fixture "
+              f"for {', '.join(failed)} exists but exited non-zero (see [fail] "
+              "above). A missing artefact is a skip; a failing fixture is not.",
+              file=sys.stderr)
+        return 1
 
     if len(results) < 2:
         print("\nfewer than 2 bindings produced output — nothing to compare; "

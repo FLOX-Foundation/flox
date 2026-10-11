@@ -1,6 +1,7 @@
-# Produce the same deterministic .lrvxrun directory through Codon as
-# scripts/lrvxrun_byte_identical_fixture.py. The cross-binding gate
-# hashes the segment files and asserts they match.
+# Write the same .lrvxrun records through Codon as
+# scripts/lrvxrun_byte_identical_fixture.py. The cross-binding gate reads
+# them back through the pybind11 TraceReader and compares the decoded
+# records field by field.
 
 from lrvx.run_trace import (TraceRecorder,
                               SIGNAL_FLAG_ENTER, SIGNAL_FLAG_EXIT,

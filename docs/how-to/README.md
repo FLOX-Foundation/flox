@@ -84,7 +84,7 @@ Solve specific problems. Assumes you know the basics.
 | [Price and backtest DEX pools on Node](dex-on-node.md) | The same AMM surface from the Node binding |
 | [Inspect a running engine over MCP](mcp-runtime-inspection.md) | Read positions / PnL / kill-switch from a running engine via an AI client |
 | [Paper trading](paper-trading.md) | Drive a strategy off live data but route orders to a simulator |
-| [Reproducibility bundles](reproducibility-bundles.md) | Pack strategy + tape + expected output into a single tarball; replay byte-for-byte |
+| [Reproducibility bundles](reproducibility-bundles.md) | Pack strategy + tape + expected output into a single tarball; replay and compare the fills field by field |
 | [Control a running engine over MCP](mcp-control-plane.md) | Send place / cancel / flatten / kill-switch from an AI client over a token-scoped HTTP control plane |
 | [Live engine analytics over MCP](mcp-live-analytics.md) | Read-only introspection of a running engine: list strategies, walk causal chains, replay-with-overrides |
 | [Lookahead-bias detector](lookahead-detector.md) | Static-analysis lint that flags `.shift(-N)`, forward-index arithmetic, future-named attributes |

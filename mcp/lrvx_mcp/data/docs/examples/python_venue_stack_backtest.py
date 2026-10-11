@@ -4,12 +4,11 @@ The runner feeds the stack's executor market data and harvests its fills,
 so the run uses that venue's queue model and depth, iceberg refresh
 latency, venue availability and rate limits.
 
-Two things this does not change: fees still come from BacktestConfig
-rather than the stack's FeeSchedule (fills carry is_maker, so per-side
-rates work, but the schedule's 30-day volume tiering is not consulted),
-and funding and liquidation are driven by explicit calls rather than the
-replay loop. Read the result as "this venue's fill mechanics", not "this
-venue's full economics".
+Fees come from the stack's FeeSchedule: each fill is billed at the tier
+the account's 30-day notional resolves to, maker or taker by the fill's
+is_maker, not at the runner's fee_rate. Funding and liquidation are driven
+by explicit calls rather than the replay loop, so read the result as "this
+venue's fill mechanics and fees", not "this venue's full economics".
 """
 import pathlib
 from collections import deque
