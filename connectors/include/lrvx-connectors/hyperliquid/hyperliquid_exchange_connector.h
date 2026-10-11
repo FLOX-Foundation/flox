@@ -42,6 +42,15 @@ struct HyperliquidConfig
   // the instrument's liquidity, not of the venue, so there is no default the
   // connector can pick for you.
   int staleDataTimeoutMs{0};
+  // Subscribe the bbo channel next to l2Book. Hyperliquid throttles l2Book
+  // server-side to ~0.2 snapshots/s per coin; bbo pushes on every top-of-book
+  // change (~8/s on BTC, measured in production), so with this on the best
+  // bid/ask — and the staleness clock — tick about 40x faster. Each bbo frame
+  // is published as a one-level snapshot, which is exactly what top-of-book
+  // consumers (CompositeBookMatrix, cross-venue signals) want; a consumer
+  // that holds depth between l2Book snapshots (NLevelOrderBook) would see the
+  // book collapse to one level per side, so it stays off by default.
+  bool subscribeBbo{false};
 };
 
 class HyperliquidExchangeConnector : public IExchangeConnector

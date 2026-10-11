@@ -94,6 +94,18 @@ void HyperliquidExchangeConnector::start()
             _wsClient->send({buf.data(), static_cast<size_t>(n)});
           }
 
+          if (_config.subscribeBbo)
+          {
+            n = std::snprintf(
+                buf.data(), buf.size(),
+                R"({"method":"subscribe","subscription":{"type":"bbo","coin":"%.*s"}})",
+                static_cast<int>(coin.size()), coin.c_str());
+            if (n > 0 && n < static_cast<int>(buf.size()))
+            {
+              _wsClient->send({buf.data(), static_cast<size_t>(n)});
+            }
+          }
+
           // Add small delay after each batch of 5 symbols (10 subscriptions)
           if ((i + 1) % 5 == 0 && i + 1 < _config.symbols.size())
           {
@@ -326,6 +338,96 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         {
           _logger->error(
               "[Hyperliquid] Book update dropped: EventBus full. Increase EventBus capacity or "
+              "reduce number of subscriptions.");
+        }
+      }
+    }
+    else if (channel == "bbo")
+    {
+      // {"channel":"bbo","data":{"coin","time","bbo":[bid, ask]}}, each side
+      // {"px","sz","n"} or null when that side of the book is empty. Pushed
+      // on every top-of-book change, unlike the server-throttled l2Book.
+      auto evOpt = _bookPool.acquire();
+      if (!evOpt)
+      {
+        _logger->error(
+            "[Hyperliquid] Book pool exhausted, dropping bbo update. Increase "
+            "LRVX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
+            "enough.");
+        return;
+      }
+      auto& ev = *evOpt;
+
+      auto coinEl = dataEl["coin"];
+      if (coinEl.error())
+      {
+        return;
+      }
+
+      SymbolId sid = resolveSymbolId(coinEl.get_string().value());
+      markFeedActivity(sid, arrivedAt);
+
+      ev->update.symbol = sid;
+      ev->recvNs = MonoNanos::fromRaw(recvNs);
+      ev->sourceExchange = _exchangeId;
+      // One level per side, published as a snapshot: the frame IS the top of
+      // book the venue just confirmed, and a stale deeper level must not
+      // outrank it.
+      ev->update.type = BookUpdateType::SNAPSHOT;
+
+      auto timeEl = dataEl["time"];
+      if (!timeEl.error())
+      {
+        int64_t tsMs = timeEl.get_int64().value();
+        ev->update.exchangeTsNs = msToUnixNs(tsMs);
+      }
+
+      auto bboEl = dataEl["bbo"];
+      if (bboEl.error())
+      {
+        return;
+      }
+
+      size_t idx = 0;
+      for (auto lvl : bboEl.get_array())
+      {
+        auto pxEl = lvl["px"];
+        auto szEl = lvl["sz"];
+        if (pxEl.error() || szEl.error())
+        {
+          // null side: that side of the book is empty right now
+          idx++;
+          continue;
+        }
+
+        auto priceOpt = util::parsePrice(pxEl.get_string().value());
+        auto qtyOpt = util::parseQty(szEl.get_string().value());
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Hyperliquid] Invalid price/qty in bbo");
+          idx++;
+          continue;
+        }
+
+        if (idx == 0)
+        {
+          ev->update.bids.emplace_back(*priceOpt, *qtyOpt);
+        }
+        else
+        {
+          ev->update.asks.emplace_back(*priceOpt, *qtyOpt);
+        }
+        idx++;
+      }
+
+      if (!ev->update.bids.empty() || !ev->update.asks.empty())
+      {
+        ev->publishTsNs = nowMonoNanos();
+        auto [res, _] = _bookBus->tryPublish(std::move(ev));
+        if (res != BookUpdateBus::PublishResult::SUCCESS)
+        {
+          _logger->error(
+              "[Hyperliquid] bbo update dropped: EventBus full. Increase EventBus capacity or "
               "reduce number of subscriptions.");
         }
       }
