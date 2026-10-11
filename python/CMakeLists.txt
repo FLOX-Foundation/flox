@@ -76,6 +76,44 @@ add_custom_command(TARGET _lrvx POST_BUILD
     ${CMAKE_CURRENT_SOURCE_DIR}/lrvx/dex
     ${CMAKE_CURRENT_BINARY_DIR}/lrvx/dex
 )
+# The POST_BUILD copies above run only when the extension relinks. The
+# sync target below depends on the source files themselves, so editing a
+# .py, a template or a stub refreshes build/python on the next build
+# without touching the extension.
+file(GLOB_RECURSE LRVX_PY_SYNC_INPUTS CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/*.py"
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/*.pyi"
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/py.typed"
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/templates/*"
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/archives/*"
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/dex/*")
+set(LRVX_PY_SYNC_STAMP ${CMAKE_CURRENT_BINARY_DIR}/lrvx_py_sync.stamp)
+add_custom_command(OUTPUT ${LRVX_PY_SYNC_STAMP}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lrvx/_lrvx
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${LRVX_PY_REQUIRED_FILES}
+    ${CMAKE_CURRENT_BINARY_DIR}/lrvx/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/lrvx/templates
+    ${CMAKE_CURRENT_BINARY_DIR}/lrvx/templates
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/lrvx/archives
+    ${CMAKE_CURRENT_BINARY_DIR}/lrvx/archives
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/lrvx/dex
+    ${CMAKE_CURRENT_BINARY_DIR}/lrvx/dex
+  COMMAND ${CMAKE_COMMAND} -E touch ${LRVX_PY_SYNC_STAMP}
+  DEPENDS ${LRVX_PY_SYNC_INPUTS}
+  COMMENT "Syncing python/lrvx into ${CMAKE_CURRENT_BINARY_DIR}"
+  VERBATIM)
+foreach(opt_file IN LISTS LRVX_PY_OPTIONAL_ROOT_STUBS)
+  if(EXISTS ${opt_file})
+    set_property(SOURCE ${LRVX_PY_SYNC_STAMP} APPEND PROPERTY OBJECT_DEPENDS ${opt_file})
+  endif()
+endforeach()
+add_custom_target(lrvx_py_sync ALL DEPENDS ${LRVX_PY_SYNC_STAMP})
+add_dependencies(lrvx_py_sync _lrvx)
+
 foreach(opt_file IN LISTS LRVX_PY_OPTIONAL_ROOT_STUBS)
   if(EXISTS ${opt_file})
     add_custom_command(TARGET _lrvx POST_BUILD

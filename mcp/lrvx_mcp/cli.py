@@ -170,7 +170,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Back-compat: bare invocation = serve. That's what every MCP
     # client config in the wild does.
-    if not raw or raw[0] not in ("init", "serve"):
+    if raw and raw[0] in ("-h", "--help", "help"):
+        raw = ["--help"]
+    elif not raw or raw[0] not in ("init", "serve"):
         from lrvx_mcp.server import main as serve_main
         return serve_main() or 0
 

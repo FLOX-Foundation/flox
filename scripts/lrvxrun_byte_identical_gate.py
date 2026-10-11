@@ -14,7 +14,8 @@ the same recorded content for the same input.
 
 Skips bindings whose runtime / build artefact is missing rather than
 failing — the gate is runnable on developer machines that build only
-a subset.
+a subset. Every leg reads from one build tree, ``build`` by default;
+``LRVX_BUILD_DIR=build-ci`` points all of them at another tree.
 """
 from __future__ import annotations
 
@@ -27,17 +28,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
+# The build tree every leg reads from: the pybind11 package, the Codon
+# fixture binary and the C API library. LRVX_BUILD_DIR points the gate at
+# another tree (build-ci, build-codon, ...). The Node addon is built by
+# cmake-js under node/build and does not move.
+BUILD_DIR = Path(os.environ.get("LRVX_BUILD_DIR", ROOT / "build")).resolve()
 PYTHON_FIXTURE = ROOT / "scripts" / "lrvxrun_byte_identical_fixture.py"
 NODE_FIXTURE = ROOT / "node" / "test" / "byte_identical_fixture.js"
-CODON_FIXTURE_BIN = ROOT / "build" / "codon" / "codon_byte_identical_fixture"
-CODON_LIB_DIR = ROOT / "build" / "src" / "capi"
+CODON_FIXTURE_BIN = BUILD_DIR / "codon" / "codon_byte_identical_fixture"
+CODON_LIB_DIR = BUILD_DIR / "src" / "capi"
 
 
 def _read_via_pybind(out_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
     """Read records back through pybind11 TraceReader. Used as the
     canonical reader for every binding's output — the goal is to compare
     the records themselves, not the storage layout."""
-    sys.path.insert(0, str(ROOT / "build" / "python"))
+    sys.path.insert(0, str(BUILD_DIR / "python"))
     import lrvx  # type: ignore  # noqa: PLC0415
 
     reader = lrvx.TraceReader(str(out_dir))
@@ -64,11 +70,11 @@ def _normalize(record: Any) -> Dict[str, Any]:
 
 
 def run_python(out_dir: Path) -> Optional[Dict[str, List[Dict[str, Any]]]]:
-    if not (ROOT / "build" / "python" / "lrvx").exists():
+    if not (BUILD_DIR / "python" / "lrvx").exists():
         print("[skip] pybind11: build/python/lrvx missing")
         return None
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(ROOT / "build" / "python")
+    env["PYTHONPATH"] = str(BUILD_DIR / "python")
     res = subprocess.run([sys.executable, str(PYTHON_FIXTURE), str(out_dir)],
                           env=env, capture_output=True, text=True)
     if res.returncode != 0:

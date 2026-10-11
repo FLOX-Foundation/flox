@@ -232,5 +232,21 @@ class DispatcherTests(unittest.TestCase):
         self.assertIn("lrvx", json.loads(out.stdout)["mcpServers"])
 
 
+class CliHelpTests(unittest.TestCase):
+    def test_help_prints_usage_and_does_not_start_the_server(self) -> None:
+        import contextlib
+        import io
+
+        for flag in ("--help", "-h", "help"):
+            with self.subTest(flag=flag):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as exit_info:
+                    cli.main([flag])
+                self.assertEqual(exit_info.exception.code, 0)
+                self.assertIn("usage: lrvx-mcp", out.getvalue())
+                self.assertIn("init", out.getvalue())
+                self.assertIn("serve", out.getvalue())
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

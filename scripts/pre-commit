@@ -78,8 +78,7 @@ if echo "$FILES" | grep -qE '^python/[^/]+\.(h|cpp)$'; then
   echo "[pre-commit] regen .pyi stubs + _api_index.md..."
   python3 scripts/gen_pyi_stubs.py
   python3 scripts/gen_api_index.py
-  git add python/lrvx/__init__.pyi python/lrvx/_lrvx/__init__.pyi \
-          python/lrvx/_lrvx/targets.pyi \
+  git add python/lrvx/__init__.pyi python/lrvx/_lrvx/*.pyi \
           docs/reference/python/_api_index.md 2>/dev/null || true
   DOCS_TOUCHED=1
 fi
