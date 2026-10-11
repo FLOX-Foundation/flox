@@ -5,9 +5,7 @@
 
 ## lrvx
 
-lrvx is the new name of FLOX; the packages flox-py, flox-mcp and @flox-foundation/flox are deprecated in favour of lrvx, lrvx-mcp and @lrvx/lrvx.
-
-lrvx is an AI-native framework for building trading systems.
+lrvx is a framework for building trading systems.
 
 Strategies, backtests, paper trading, and live execution sit behind one toolkit. AI agents discover the surface and drive it end-to-end through an MCP control plane. One strategy class runs backtest, paper, and live. Bindings for Python, Node.js, Codon, embedded JavaScript, and a stable C API.
 

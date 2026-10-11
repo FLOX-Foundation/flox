@@ -1,6 +1,6 @@
 # lrvx
 
-**AI-native framework for building trading systems.**
+**Framework for building trading systems.**
 
 Strategies, backtests, paper trading, and live execution sit
 behind one toolkit. AI agents discover the surface and drive it

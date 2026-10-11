@@ -1,6 +1,6 @@
 # lrvx
 
-Python bindings for [lrvx](https://github.com/lrvx/lrvx) — an AI-native framework for building trading systems.
+Python bindings for [lrvx](https://github.com/lrvx/lrvx) — a framework for building trading systems.
 
 AI agents discover the surface and drive it end-to-end through an MCP control plane. One strategy class runs backtest, paper, and live.
 
