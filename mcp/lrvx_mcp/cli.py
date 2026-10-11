@@ -177,7 +177,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return serve_main() or 0
 
     p = argparse.ArgumentParser(prog="lrvx-mcp")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd", required=raw != ["--help"])
 
     init_p = sub.add_parser(
         "init",
@@ -216,6 +216,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.cmd == "serve":
         from lrvx_mcp.server import main as serve_main
         return serve_main() or 0
+    if args.cmd is None:  # only reachable via --help
+        p.print_help()
+        return 0
     return 0  # pragma: no cover
 
 
