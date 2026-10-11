@@ -1,0 +1,166 @@
+# Threaded Runner callbacks against Codon's garbage collector.
+#
+# Runner(threaded=True) delivers strategy and signal callbacks on the
+# engine's consumer threads, which the C++ library creates and the Codon
+# runtime never sees. Boehm aborts with "Collecting from unknown thread"
+# when a collection starts on a thread it has no record of, and it does
+# not scan the stack of such a thread when a collection starts elsewhere.
+# The binding registers the calling thread at the top of every trampoline
+# (_gc_register_thread in lrvx/dispatch.codon); this test is what fails
+# without that.
+#
+# The collection is forced, not waited for: on_trade and on_signal call
+# GC_gcollect() on the first event and every COLLECT_EVERY events after,
+# so an unregistered consumer thread aborts on the first trade instead of
+# whenever the allocator happens to cross a threshold. Every callback also
+# allocates, and the main thread allocates while it publishes, so the
+# collections run against live objects held only by the consumer stack.
+# The values read back afterwards check that none of them were freed.
+#
+# Two rounds run on two engines: the second one's consumer threads are
+# new threads, registered after the first round's threads unregistered on
+# exit, and the collection between the rounds runs with those exited
+# threads gone from the collector's thread table.
+#
+# Build and run (from the repository root, with a build tree configured
+# with -DLRVX_BUILD_CODON=ON):
+#
+#   (cd codon && LIBRARY_PATH=../build/src/capi CODON_PATH=. \
+#      codon build -o ../build/codon/codon_threaded_gc_stress \
+#      -l lrvx_capi tests/threaded_gc_stress.codon)
+#   DYLD_LIBRARY_PATH=build/src/capi:$HOME/.local/lib/codon \
+#     ./build/codon/codon_threaded_gc_stress
+#
+# (LD_LIBRARY_PATH on Linux.) Prints one "ok" line per check and exits
+# nonzero on the first failure.
+
+from sys import exit
+
+from C import GC_gcollect()
+from C import usleep(u32)
+from C import lrvx_registry_create() -> cobj
+from C import lrvx_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+
+from lrvx.runner import Runner, Signal
+from lrvx.strategy import Strategy, SymbolContext, TradeData
+
+N_TRADES = 20_000
+COLLECT_EVERY = 1_000
+BASE_PRICE = 50_000.0
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        exit(1)
+    print("ok: " + label)
+
+
+class AllocatingStrategy(Strategy):
+    prices: List[float]
+    labels: List[str]
+    seen: int
+
+    def __init__(self, symbols: List[int]):
+        super().__init__(symbols)
+        self.prices = []
+        self.labels = []
+        self.seen = 0
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        if self.seen % COLLECT_EVERY == 0:
+            GC_gcollect()
+        self.prices.append(trade.price.to_double())
+        self.labels.append("t" + str(self.seen))
+        self.market_buy(0.01)
+        self.seen += 1
+
+
+class SignalSink:
+    signals: List[Signal]
+    batches: List[List[Signal]]
+    seen: int
+
+    def __init__(self):
+        self.signals = []
+        self.batches = []
+        self.seen = 0
+
+    def take(self, sig: Signal):
+        if self.seen % COLLECT_EVERY == 0:
+            GC_gcollect()
+        self.signals.append(sig)
+        self.batches.append([sig, Signal(sig.order_id, sig.symbol, sig.side,
+                                         sig.order_type, sig.price,
+                                         sig.quantity, 0.0, 0.0, 0, 0.0,
+                                         0.0, 0.0, 0.0, 0.0)])
+        self.seen += 1
+
+
+def run_round(reg: cobj, sym: int, name: str):
+    sink = SignalSink()
+
+    def on_signal(sig: Signal):
+        sink.take(sig)
+
+    strat = AllocatingStrategy([sym])
+    engine = Runner(reg, on_signal, True)
+    engine.add_strategy(strat)
+    engine.start()
+
+    scratch: List[List[float]] = []
+    ts_ns = 1_700_000_000_000_000_000
+    for i in range(N_TRADES):
+        p = BASE_PRICE + float(i % 997)
+        scratch.append([p, float(i)])
+        if len(scratch) > 64:
+            scratch = []
+        engine.on_trade(sym, p, 0.1, i % 2 == 0, ts_ns)
+        ts_ns += 1_000_000
+
+    # The consumer drains on its own thread; give it a bounded wait.
+    waited = 0
+    while (strat.seen < N_TRADES or sink.seen < N_TRADES) and waited < 30_000:
+        usleep(u32(1_000))
+        waited += 1
+    engine.stop()
+
+    check(name + ": every trade reached on_trade", strat.seen == N_TRADES)
+    check(name + ": every signal reached on_signal", sink.seen == N_TRADES)
+
+    prices_ok = len(strat.prices) == N_TRADES
+    labels_ok = len(strat.labels) == N_TRADES
+    for i in range(N_TRADES if prices_ok and labels_ok else 0):
+        if strat.prices[i] != BASE_PRICE + float(i % 997):
+            prices_ok = False
+        if strat.labels[i] != "t" + str(i):
+            labels_ok = False
+    check(name + ": prices allocated on the consumer thread survived", prices_ok)
+    check(name + ": strings allocated on the consumer thread survived", labels_ok)
+
+    sigs_ok = len(sink.signals) == N_TRADES and len(sink.batches) == N_TRADES
+    for i in range(N_TRADES if sigs_ok else 0):
+        s = sink.signals[i]
+        b = sink.batches[i]
+        if (s.side != "buy" or s.order_type != "market"
+                or abs(s.quantity - 0.01) > 1e-9 or len(b) != 2
+                or b[1].order_id != s.order_id or b[1].side != "buy"):
+            sigs_ok = False
+    check(name + ": Signal objects allocated on the consumer thread survived",
+          sigs_ok)
+
+
+def main():
+    reg = lrvx_registry_create()
+    sym = int(lrvx_registry_add_symbol(
+        reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01))
+
+    run_round(reg, sym, "round 1")
+    GC_gcollect()
+    check("collection after the consumer threads exited", True)
+    run_round(reg, sym, "round 2")
+    GC_gcollect()
+    check("collection after the second engine stopped", True)
+
+
+main()

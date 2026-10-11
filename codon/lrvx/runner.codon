@@ -5,8 +5,10 @@
 #   Runner(reg, on_signal, threaded=True) — Disruptor-based consumer thread
 #
 # Both modes expose the same API: add_strategy / start / stop / on_trade.
-# threaded=True uses lock-free publish; strategy callbacks fire in a
-# background C++ thread. No GIL in Codon so this is safe.
+# threaded=True uses lock-free publish; strategy and signal callbacks fire
+# on background C++ consumer threads. Each callback registers its thread
+# with Codon's garbage collector before it runs and the thread unregisters
+# when it exits (see dispatch.codon), so callbacks there allocate freely.
 #
 # Usage:
 #   from lrvx.runner import Runner
@@ -102,6 +104,7 @@ from C import lrvx_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
 from lrvx.types import SCALE, Price, Quantity
 from lrvx.backtest import BacktestStats
 from lrvx.dispatch import bind_callbacks, _as_class, _report_callback_error
+from lrvx.dispatch import _gc_register_thread
 
 
 # Value type, not a reference class. @dataclass in Codon makes a reference
@@ -192,6 +195,9 @@ def _signal_from_c(s: Ptr[LrvxSignalC]) -> Signal:
 # are generic in the strategy type -- Runner carries the user's callback as
 # a generic field, so each callback type gives a different Runner type.
 def _signal_tramp(ud: cobj, sig: Ptr[LrvxSignalC], T: type):
+    # Under threaded=True this runs on an engine consumer thread and
+    # builds a Signal; see the engine-thread section of dispatch.codon.
+    _gc_register_thread()
     if ud == cobj() or sig == Ptr[LrvxSignalC]():
         return
     runner = _as_class(ud, T)
@@ -215,8 +221,9 @@ class Runner[F]:
     Runner(registry, on_signal)              — synchronous (default)
     Runner(registry, on_signal, threaded=True) — Disruptor, lock-free
 
-    Both modes expose the same API. threaded=True runs strategy callbacks
-    in a background C++ consumer thread; on_trade() returns immediately.
+    Both modes expose the same API. threaded=True runs strategy and
+    signal callbacks on background C++ consumer threads; on_trade()
+    returns immediately.
 
     Example::
 

@@ -46,6 +46,17 @@ from C import lrvx_strategy_replace_callbacks_p(cobj, cobj)
 from C import fwrite(cobj, int, int, cobj) -> int
 from C import fdopen(int, cobj) -> cobj
 
+# Boehm GC (Codon's collector, exported by libcodonrt) and the pthread key
+# that remembers which threads are registered with it. See
+# _gc_register_thread below.
+from C import GC_allow_register_threads()
+from C import GC_get_stack_base(cobj) -> i32
+from C import GC_register_my_thread(cobj) -> i32
+from C import GC_unregister_my_thread() -> i32
+from C import pthread_key_create(cobj, cobj) -> i32
+from C import pthread_getspecific(u64) -> cobj
+from C import pthread_setspecific(u64, cobj) -> i32
+
 
 # Reinterpret an opaque user_data pointer as a reference to a Codon class.
 # A reference class is already a pointer, so this is a bitcast and not a
@@ -56,6 +67,75 @@ from C import fdopen(int, cobj) -> cobj
 def _as_class(x: T, D: type, T: type) -> D:
     %y = bitcast {=T} %x to {=D}
     ret {=D} %y
+
+
+# An integer reinterpreted as a pointer, for the pthread key's value.
+# Ptr[byte](n) is not that: it allocates n bytes.
+@pure
+@llvm
+def _word_as_cobj(x: int) -> cobj:
+    %y = inttoptr i64 %x to ptr
+    ret ptr %y
+
+
+# ── Engine threads and the collector ─────────────────────────────────
+# Runner(threaded=True) calls the trampolines in this file and the signal
+# trampoline in runner.codon on the engine's consumer threads, which the
+# C++ library starts and the Codon runtime never sees. Boehm does not scan
+# the stack of a thread it has no record of, so an object held only there
+# can be freed under it, and a collection that starts on such a thread --
+# any allocation can start one -- aborts the process with "Collecting from
+# unknown thread". So every trampoline calls _gc_register_thread before it
+# allocates anything.
+#
+# The pthread key carries two things. Its value is the per-thread
+# "registered" flag, so every event after a thread's first costs one
+# pthread_getspecific and takes no lock. Its destructor runs when the
+# thread exits and unregisters it: Boehm requires an explicitly registered
+# thread to unregister before it exits, or the next collection goes on
+# signalling and scanning a thread that is gone.
+#
+# The value also says whether the registration is ours to undo. A thread
+# the collector already knew -- the main thread under a synchronous
+# Runner, an OpenMP worker -- gets GC_DUPLICATE back and stays registered
+# when its key is destroyed.
+#
+# pthread_key_t is an unsigned long on macOS and an unsigned int on Linux.
+# The key is held in a zeroed u64, which fits either, and passed as one:
+# both ABIs put it in a register whose low half is the int a Linux callee
+# reads.
+_GC_KEY: u64 = u64(0)
+_GC_REGISTERED_HERE = 1
+_GC_REGISTERED_ELSEWHERE = 2
+
+
+def _gc_on_thread_exit(mark: cobj):
+    if mark == _word_as_cobj(_GC_REGISTERED_HERE):
+        GC_unregister_my_thread()
+
+
+def _gc_register_thread():
+    if pthread_getspecific(_GC_KEY) != cobj():
+        return
+    # struct GC_stack_base is one pointer (two on IA-64). It lives on this
+    # stack because nothing may come from the collector until the thread
+    # is registered.
+    sb = __array__[cobj](2)
+    sb[0] = cobj()
+    sb[1] = cobj()
+    mark = _GC_REGISTERED_ELSEWHERE
+    if (GC_get_stack_base(cobj(sb.ptr)) == i32(0)
+            and GC_register_my_thread(cobj(sb.ptr)) == i32(0)):
+        mark = _GC_REGISTERED_HERE
+    pthread_setspecific(_GC_KEY, _word_as_cobj(mark))
+
+
+# GC_register_my_thread requires GC_allow_register_threads to have run on
+# a registered thread first. Codon's seq_init already calls it before
+# main; calling it again here, at import on the main thread, is a no-op
+# that keeps the precondition from resting on that.
+GC_allow_register_threads()
+pthread_key_create(cobj(__ptr__(_GC_KEY)), _gc_on_thread_exit.__raw__())
 
 
 # ── C struct offsets ──────────────────────────────────────────────────
@@ -187,6 +267,7 @@ def _ctx_for(s, ctx: cobj, sym: int, T: type) -> SymbolContext:
 # converts to a plain C function pointer.
 
 def _tramp_on_trade(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         trade = _build_trade(s, ctx, ev, T)
@@ -196,6 +277,7 @@ def _tramp_on_trade(ud: cobj, ctx: cobj, ev: cobj, T: type):
 
 
 def _tramp_on_book(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         s.on_book_update(_ctx_for(s, ctx, _ctx_symbol(ctx), T))
@@ -204,6 +286,7 @@ def _tramp_on_book(ud: cobj, ctx: cobj, ev: cobj, T: type):
 
 
 def _tramp_on_bar(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         bar = _build_bar(s, ctx, ev, T)
@@ -213,6 +296,7 @@ def _tramp_on_bar(ud: cobj, ctx: cobj, ev: cobj, T: type):
 
 
 def _tramp_on_start(ud: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     if s._suppress_start:
         return
@@ -223,6 +307,7 @@ def _tramp_on_start(ud: cobj, T: type):
 
 
 def _tramp_on_stop(ud: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         s.on_stop()
@@ -231,6 +316,7 @@ def _tramp_on_stop(ud: cobj, T: type):
 
 
 def _tramp_on_fill(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         event = _build_order_event(s, ev, T)
@@ -240,6 +326,7 @@ def _tramp_on_fill(ud: cobj, ctx: cobj, ev: cobj, T: type):
 
 
 def _tramp_on_order_update(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         event = _build_order_event(s, ev, T)
@@ -249,6 +336,7 @@ def _tramp_on_order_update(ud: cobj, ctx: cobj, ev: cobj, T: type):
 
 
 def _tramp_on_queue_position(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         event = _build_order_event(s, ev, T)
@@ -258,6 +346,7 @@ def _tramp_on_queue_position(ud: cobj, ctx: cobj, ev: cobj, T: type):
 
 
 def _tramp_on_market_position(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    _gc_register_thread()
     s = _as_class(ud, T)
     try:
         event = _build_order_event(s, ev, T)
