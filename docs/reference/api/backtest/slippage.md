@@ -1,6 +1,6 @@
 # Slippage
 
-The backtest engine applies slippage to market-style fills: market orders, triggered stop-market orders, and triggered trailing stops. Limit orders trade at their posted price; queue simulation handles their realism separately.
+The backtest engine applies slippage to market-style fills: market orders, triggered stop-market orders, triggered take-profit-market orders, and triggered trailing stops (`fillsAsMarket` in `simulated_executor.cpp`). Limit orders trade at their posted price; queue simulation handles their realism separately.
 
 Slippage is configured per `BacktestConfig` with a default profile and optional per-symbol overrides.
 

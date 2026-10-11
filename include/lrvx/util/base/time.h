@@ -202,6 +202,29 @@ inline TimePoint fromLrvxNs(int64_t lrvx_ns) noexcept
   return TimePoint(LrvxClock::duration(lrvx_ns));
 }
 
+inline int64_t lrvxNsToUnixNs(int64_t lrvx_ns) noexcept
+{
+  return lrvx_ns - unix_to_lrvx_offset_ns().load(std::memory_order_relaxed);
+}
+
+// Snaps `tp` down to the start of the `intervalNs` bucket it falls in,
+// with buckets counted from the Unix epoch, so a 60 s bucket starts on a
+// wall-clock minute. Snapping the TimePoint's own count would measure the
+// buckets from the steady clock's epoch instead, which sits a per-process
+// distance from any wall-clock boundary: every bar would start some
+// seconds into the minute, and a different number of seconds in the next
+// process.
+inline TimePoint alignToUnixInterval(TimePoint tp, int64_t intervalNs) noexcept
+{
+  const int64_t offset = unix_to_lrvx_offset_ns().load(std::memory_order_relaxed);
+  const int64_t lrvx_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(tp.time_since_epoch()).count();
+  const int64_t unix_ns = lrvx_ns - offset;
+  // Unix timestamps are non-negative, so truncation is the floor.
+  const int64_t snapped = (unix_ns / intervalNs) * intervalNs;
+  return fromLrvxNs(snapped + offset);
+}
+
 inline TimePoint fromUnixMs(int64_t ms_epoch) noexcept
 {
   return fromLrvxNs(unixMsToLrvxNs(ms_epoch));

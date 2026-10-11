@@ -90,10 +90,7 @@ class TimeBarPolicy
  private:
   TimePoint alignToInterval(TimePoint tp) const noexcept
   {
-    const auto epoch = tp.time_since_epoch();
-    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(epoch);
-    const auto snapped = (ns.count() / _interval.count()) * _interval.count();
-    return TimePoint(std::chrono::nanoseconds(snapped));
+    return alignToUnixInterval(tp, _interval.count());
   }
 
   std::chrono::nanoseconds _interval;

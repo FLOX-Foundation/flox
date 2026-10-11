@@ -62,6 +62,7 @@ add_lrvx_test(test_memory_profile)
 add_lrvx_test(test_large_arena)
 add_lrvx_test(test_live_rate_limit_budgeter)
 add_lrvx_test(test_bar_aggregator)
+add_lrvx_test(test_time_bar_alignment)
 add_lrvx_test(test_bar_aggregator_semantics)
 # The two guarded cases in that file assert against the interface the fix
 # introduces: RenkoBarPolicy::kMaxGapBricks with BarCloseReason::Gap on the

@@ -65,6 +65,10 @@ TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::seconds(60)), &bus);
 
 **Use cases**: Traditional OHLCV charts, backtesting, most strategies.
 
+Buckets are counted from the Unix epoch: a 60 s bar starts on a wall-clock minute and
+ends on the next one, whatever the process's own clock offset is, so the same trades give
+the same bars in every process. `tests/test_time_bar_alignment.cpp` pins that.
+
 A trade whose aligned bucket precedes the live bar is dropped and counted in `lateTradeCount()`
 rather than folded into the live bar; a trade that is merely out of order inside the live bucket
 is folded in as usual. See [Bar types](../../../explanation/bar-types.md).

@@ -27,7 +27,7 @@ batch function.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `start_time_ns` | `int64` | Bar open timestamp (unix ns) |
+| `start_time_ns` | `int64` | Bar open timestamp (unix ns); for time bars a multiple of the interval, so a 60 s bar starts on a wall-clock minute |
 | `end_time_ns` | `int64` | Bar close timestamp (unix ns) |
 | `open_raw` | `int64` | Open price * 10^8 |
 | `high_raw` | `int64` | High price * 10^8 |

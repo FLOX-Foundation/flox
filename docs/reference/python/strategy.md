@@ -285,6 +285,10 @@ Passed to the `on_signal` callback.
 
 Runs a strategy against historical CSV data.
 
+`fee_rate` defaults to `0.0004` here, a taker rate. `lrvx.BacktestResult` and the C++
+`BacktestConfig` default to `0.0001`, so pass the rate explicitly when a runner result is
+compared with a result scored by hand.
+
 ```python
 bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(strategy)

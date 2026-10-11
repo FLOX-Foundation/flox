@@ -846,6 +846,7 @@ struct PyStrategyHost
       pt.is_buy = trade->is_buy != 0;
       pt.side = pt.is_buy ? "buy" : "sell";
       pt.timestamp_ns = trade->exchange_ts_ns;
+      pt.exchange_ts_ns = trade->exchange_ts_ns;
 
       self->strategy.load(std::memory_order_acquire)->on_trade(pc, pt);
     };
