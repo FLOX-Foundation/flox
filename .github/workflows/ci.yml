@@ -527,6 +527,8 @@ jobs:
           ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_backtest_vs_live
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_threaded_gc_stress
 
     # These print "ok"/"FAIL" per check and most do not raise or exit
     # nonzero on a failed one, so checking only the process exit code is

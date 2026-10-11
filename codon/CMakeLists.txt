@@ -9,6 +9,12 @@ endif()
 message(STATUS "Found Codon compiler: ${CODON_COMPILER}")
 
 # Compile a Codon source file to a native executable
+# Every Codon executable compiles the binding in; a change under
+# codon/lrvx/ must rebuild them all, or a tree (or a CI cache) tests the
+# old binding.
+file(GLOB_RECURSE LRVX_CODON_BINDING_SOURCES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/lrvx/*.codon")
+
 function(add_codon_executable name source)
   set(OUTPUT_EXE ${CMAKE_CURRENT_BINARY_DIR}/${name})
   add_custom_command(
@@ -20,12 +26,17 @@ function(add_codon_executable name source)
         -o ${OUTPUT_EXE}
         -l lrvx_capi
         ${source}
-    DEPENDS ${source} lrvx_capi
+    DEPENDS ${source} ${LRVX_CODON_BINDING_SOURCES} lrvx_capi
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Compiling Codon: ${name}"
   )
   add_custom_target(build_${name} ALL DEPENDS ${OUTPUT_EXE})
 endfunction()
+
+# Engine threads allocate Codon objects in callbacks; this one forces the
+# collector to run on those threads and checks the objects survive.
+add_codon_executable(codon_threaded_gc_stress
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/threaded_gc_stress.codon)
 
 # Forces realization of the binding surface; see the file header.
 add_codon_executable(codon_binding_smoke
