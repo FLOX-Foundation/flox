@@ -65,6 +65,12 @@ runner.stop()
 
 ## 4. Backtest
 
+The repository ships a sample of 3,000 one-minute bars, `docs/examples/data/btcusdt_1m.csv`; fetch it into the working directory:
+
+```bash
+curl -O https://raw.githubusercontent.com/lrvx/lrvx/main/docs/examples/data/btcusdt_1m.csv
+```
+
 ```python
 bt = lrvx.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMACross([btc]))

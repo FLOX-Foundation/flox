@@ -71,6 +71,12 @@ runner.stop();
 
 ## 4. Backtest
 
+The repository ships a sample of 3,000 one-minute bars, `docs/examples/data/btcusdt_1m.csv`; fetch it into `./data/`:
+
+```bash
+mkdir -p data && curl -o data/btcusdt_1m.csv https://raw.githubusercontent.com/lrvx/lrvx/main/docs/examples/data/btcusdt_1m.csv
+```
+
 ```javascript
 const bt = new lrvx.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
