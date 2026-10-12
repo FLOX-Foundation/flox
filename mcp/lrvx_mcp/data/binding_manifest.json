@@ -18182,6 +18182,11 @@
         },
         {
           "kind": "method",
+          "name": "submitOrders",
+          "parent": "IOrderExecutor"
+        },
+        {
+          "kind": "method",
           "name": "validate",
           "parent": "IOrderValidator"
         },
@@ -18328,6 +18333,11 @@
         {
           "kind": "method",
           "name": "onSignal",
+          "parent": "ISignalHandler"
+        },
+        {
+          "kind": "method",
+          "name": "onSignalBatch",
           "parent": "ISignalHandler"
         },
         {
@@ -23447,6 +23457,16 @@
         },
         {
           "kind": "method",
+          "name": "onSignalBatch",
+          "parent": "ShadowSignalHandler"
+        },
+        {
+          "kind": "method",
+          "name": "record",
+          "parent": "ShadowSignalHandler"
+        },
+        {
+          "kind": "method",
           "name": "records",
           "parent": "ShadowSignalHandler"
         },
@@ -24433,6 +24453,11 @@
         {
           "kind": "method",
           "name": "emit",
+          "parent": "Strategy"
+        },
+        {
+          "kind": "method",
+          "name": "emitBatch",
           "parent": "Strategy"
         },
         {
@@ -25638,6 +25663,16 @@
         {
           "kind": "method",
           "name": "onSignal",
+          "parent": "TraceSignalHandler"
+        },
+        {
+          "kind": "method",
+          "name": "onSignalBatch",
+          "parent": "TraceSignalHandler"
+        },
+        {
+          "kind": "method",
+          "name": "record",
           "parent": "TraceSignalHandler"
         },
         {

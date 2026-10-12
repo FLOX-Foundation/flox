@@ -14,6 +14,12 @@ public:
   virtual ~IOrderExecutor() = default;
 
   virtual void submitOrder(const Order& order) {}
+
+  // Batch submit; the default walks the batch through submitOrder. A venue
+  // adapter with a real batch endpoint overrides this and advertises it via
+  // capabilities().supportsBatchSubmit.
+  virtual void submitOrders(std::span<const Order> orders);
+
   virtual void cancelOrder(OrderId orderId) {}
   virtual void cancelAllOrders(SymbolId symbol) {}
   virtual void replaceOrder(OrderId oldOrderId, const Order& newOrder) {}
@@ -35,6 +41,7 @@ public:
 | Method           | Description                                            |
 | ---------------- | ------------------------------------------------------ |
 | `submitOrder`    | Sends a new order to the execution venue or simulator. |
+| `submitOrders`   | Sends one tick's orders together. The default loops `submitOrder`; an adapter for a venue with a native batch endpoint coalesces them into one request and advertises `supportsBatchSubmit`. |
 | `cancelOrder`    | Cancels a previously submitted order by ID.            |
 | `cancelAllOrders`| Cancels all pending orders for a given symbol.         |
 | `replaceOrder`   | Replaces an existing order with new parameters.        |

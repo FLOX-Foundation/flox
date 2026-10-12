@@ -10,7 +10,9 @@
 #include <gtest/gtest.h>
 
 #include "lrvx/execution/abstract_executor.h"
+#include "lrvx/run/trace_handlers.h"
 #include "lrvx/strategy/abstract_signal_handler.h"
+#include "lrvx/strategy/shadow.h"
 
 #include <vector>
 
@@ -165,4 +167,38 @@ TEST(BatchSubmitHooks, OverridingHandlerSeesOneBatchNotNSingles)
   EXPECT_TRUE(handler.singles.empty());
   ASSERT_EQ(handler.batchSizes.size(), 1u);
   EXPECT_EQ(handler.batchSizes[0], 4u);
+}
+
+// The in-tree wrapper handlers sit between a strategy and its real handler.
+// If a wrapper fell back to the looping default, one coalesced submit would
+// reach the batching bridge behind it as N singles — silently, since every
+// signal still arrives.
+
+TEST(BatchSubmitHooks, TraceWrapperKeepsTheBatchWhole)
+{
+  BatchingHandler bridge;
+  run::TraceSignalHandler tracer(&bridge, /*recorder=*/nullptr);
+  std::vector<Signal> signals(3);
+
+  ISignalHandler& iface = tracer;
+  iface.onSignalBatch(signals);
+
+  EXPECT_TRUE(bridge.singles.empty());
+  ASSERT_EQ(bridge.batchSizes.size(), 1u);
+  EXPECT_EQ(bridge.batchSizes[0], 3u);
+}
+
+TEST(BatchSubmitHooks, ShadowWrapperRecordsEachAndForwardsTheBatchWhole)
+{
+  BatchingHandler bridge;
+  ShadowSignalHandler shadow(/*maxRecords=*/16, &bridge);
+  std::vector<Signal> signals(3);
+
+  ISignalHandler& iface = shadow;
+  iface.onSignalBatch(signals);
+
+  EXPECT_EQ(shadow.records().size(), 3u);
+  EXPECT_TRUE(bridge.singles.empty());
+  ASSERT_EQ(bridge.batchSizes.size(), 1u);
+  EXPECT_EQ(bridge.batchSizes[0], 3u);
 }

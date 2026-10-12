@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,36 @@ class ShadowSignalHandler : public ISignalHandler
 
   void onSignal(const Signal& signal) override
   {
+    record(signal);
+
+    if (_inner)
+    {
+      _inner->onSignal(signal);
+    }
+  }
+
+  // Recorded signal by signal, forwarded whole: a shadow (or canary) in
+  // front of a batching bridge must not split the batch it is observing.
+  void onSignalBatch(std::span<const Signal> signals) override
+  {
+    for (const auto& signal : signals)
+    {
+      record(signal);
+    }
+
+    if (_inner)
+    {
+      _inner->onSignalBatch(signals);
+    }
+  }
+
+  const std::deque<Record>& records() const noexcept { return _records; }
+  uint64_t evicted() const noexcept { return _evicted; }
+  void clear() { _records.clear(); }
+
+ private:
+  void record(const Signal& signal)
+  {
     Record r;
     r.tsNs = performance::monotonicNs();
     r.type = signal.type;
@@ -74,18 +105,8 @@ class ShadowSignalHandler : public ISignalHandler
       ++_evicted;
     }
     _records.push_back(r);
-
-    if (_inner)
-    {
-      _inner->onSignal(signal);
-    }
   }
 
-  const std::deque<Record>& records() const noexcept { return _records; }
-  uint64_t evicted() const noexcept { return _evicted; }
-  void clear() { _records.clear(); }
-
- private:
   size_t _maxRecords;
   ISignalHandler* _inner;
   std::deque<Record> _records;

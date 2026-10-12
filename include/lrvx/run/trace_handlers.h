@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <span>
 
 namespace lrvx::run
 {
@@ -45,21 +46,26 @@ class TraceSignalHandler : public ISignalHandler
 
   void onSignal(const Signal& signal) override
   {
-    if (_recorder)
-    {
-      SignalView view;
-      view.run_ts_ns = nowNs();
-      view.feed_ts_ns = _feed_ts_ns.load(std::memory_order_relaxed);
-      view.signal_id = static_cast<uint32_t>(signal.orderId);
-      view.flags = encodeFlags(signal);
-      view.strength_raw = 0;
-      view.symbol_ids = {static_cast<uint32_t>(signal.symbol)};
-      view.name = signalTypeName(signal.type);
-      _recorder->writeSignal(view);
-    }
+    record(signal);
     if (_inner)
     {
       _inner->onSignal(signal);
+    }
+  }
+
+  // A batch is traced signal by signal but handed to the inner handler
+  // whole: re-dispatching through onSignal would turn one coalesced submit
+  // into N singles downstream, which is exactly what the batch exists to
+  // avoid.
+  void onSignalBatch(std::span<const Signal> signals) override
+  {
+    for (const auto& signal : signals)
+    {
+      record(signal);
+    }
+    if (_inner)
+    {
+      _inner->onSignalBatch(signals);
     }
   }
 
@@ -67,6 +73,23 @@ class TraceSignalHandler : public ISignalHandler
   ISignalHandler* _inner;
   TraceRecorder* _recorder;
   std::atomic<int64_t> _feed_ts_ns{0};
+
+  void record(const Signal& signal)
+  {
+    if (!_recorder)
+    {
+      return;
+    }
+    SignalView view;
+    view.run_ts_ns = nowNs();
+    view.feed_ts_ns = _feed_ts_ns.load(std::memory_order_relaxed);
+    view.signal_id = static_cast<uint32_t>(signal.orderId);
+    view.flags = encodeFlags(signal);
+    view.strength_raw = 0;
+    view.symbol_ids = {static_cast<uint32_t>(signal.symbol)};
+    view.name = signalTypeName(signal.type);
+    _recorder->writeSignal(view);
+  }
 
   static int64_t nowNs() noexcept
   {

@@ -27,6 +27,10 @@ struct ExchangeCapabilities
   bool supportsReduceOnly{true};
   bool supportsClosePosition{false};
 
+  // Native batch submit: IOrderExecutor::submitOrders coalesces instead of
+  // looping.
+  bool supportsBatchSubmit{false};
+
   bool supports(OrderType type) const;
   bool supports(TimeInForce tif) const;
 
@@ -61,6 +65,7 @@ Each capability is an independent `bool`. There is no bitmask. No member functio
 | `supportsPostOnly` | `true` | `TimeInForce::POST_ONLY` |
 | `supportsReduceOnly` | `true` | `ExecutionFlags::reduceOnly` |
 | `supportsClosePosition` | `false` | `ExecutionFlags::closePosition` |
+| `supportsBatchSubmit` | `false` | Native batch endpoint behind `IOrderExecutor::submitOrders`; the looping default means every executor still accepts a batch |
 
 There is no field for `OrderType::LIMIT` or `OrderType::MARKET` — `supports()` returns `true` for
 both unconditionally.
@@ -89,7 +94,8 @@ bool canUseIOC = caps.supports(TimeInForce::IOC);
 ### `ExchangeCapabilities::all()`
 
 Default-constructs, then sets `supportsTrailingStop`, `supportsIceberg`, `supportsOCO`,
-`supportsGTD` and `supportsClosePosition` to `true`. Every capability is then enabled.
+`supportsGTD`, `supportsClosePosition` and `supportsBatchSubmit` to `true`. Every capability is
+then enabled.
 
 ### `ExchangeCapabilities::simulated()`
 
