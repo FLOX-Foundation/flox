@@ -48,6 +48,60 @@ TEST(SymbolRegistryTest, GetSymbolName)
   EXPECT_EQ(symbol, "BTCUSDT");
 }
 
+TEST(SymbolRegistryTest, StringRegistrationProducesSymbolInfo)
+{
+  SymbolRegistry registry;
+  auto id = registry.registerSymbol("bybit", "BTCUSDT");
+
+  // This returned nullopt: the name-based paths filled only the name maps,
+  // and the Strategy constructor threw on any symbol registered through them.
+  auto info = registry.getSymbolInfo(id);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->id, id);
+  EXPECT_EQ(info->exchange, "bybit");
+  EXPECT_EQ(info->symbol, "BTCUSDT");
+  EXPECT_EQ(info->exchangeId, InvalidExchangeId);      // "bybit" was never registered
+  EXPECT_EQ(info->tickSize, Price::fromDouble(0.01));  // defaulted
+}
+
+TEST(SymbolRegistryTest, ExchangeIdRegistrationProducesSymbolInfo)
+{
+  SymbolRegistry registry;
+  auto ex = registry.registerExchange("hyperliquid");
+  auto id = registry.registerSymbol(ex, "BTC");
+
+  auto info = registry.getSymbolInfo(id);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->id, id);
+  EXPECT_EQ(info->exchange, "hyperliquid");
+  EXPECT_EQ(info->symbol, "BTC");
+  EXPECT_EQ(info->exchangeId, ex);
+}
+
+TEST(SymbolRegistryTest, StringRegistrationResolvesAKnownExchange)
+{
+  SymbolRegistry registry;
+  auto ex = registry.registerExchange("binance");
+  auto id = registry.registerSymbol("binance", "ETHUSDT");
+
+  auto info = registry.getSymbolInfo(id);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->exchangeId, ex);
+  EXPECT_EQ(registry.getExchangeForSymbol(id), ex);
+}
+
+TEST(SymbolRegistryTest, ReregistrationKeepsTheExistingInfo)
+{
+  SymbolRegistry registry;
+  auto id1 = registry.registerSymbol("bybit", "BTCUSDT");
+  auto id2 = registry.registerSymbol("bybit", "BTCUSDT");
+
+  EXPECT_EQ(id1, id2);
+  auto info = registry.getSymbolInfo(id1);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->symbol, "BTCUSDT");
+}
+
 TEST(SymbolRegistryTest, ThreadSafety)
 {
   SymbolRegistry registry;

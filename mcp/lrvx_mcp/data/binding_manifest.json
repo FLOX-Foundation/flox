@@ -21622,12 +21622,22 @@
         },
         {
           "kind": "method",
+          "name": "findLocalIdByExchangeOrderId",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
           "name": "get",
           "parent": "OrderTracker"
         },
         {
           "kind": "method",
           "name": "getStatus",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
+          "name": "indexExchangeIdLocked",
           "parent": "OrderTracker"
         },
         {
@@ -21688,6 +21698,11 @@
         {
           "kind": "method",
           "name": "totalOrderCount",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
+          "name": "unindexExchangeIdLocked",
           "parent": "OrderTracker"
         },
         {
