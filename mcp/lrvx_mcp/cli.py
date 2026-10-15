@@ -170,12 +170,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Back-compat: bare invocation = serve. That's what every MCP
     # client config in the wild does.
-    if raw and raw[0] in ("-h", "--help", "help"):
-        raw = ["--help"]
-    elif not raw or raw[0] not in ("init", "serve"):
-        from lrvx_mcp.server import main as serve_main
-        return serve_main() or 0
-
     p = argparse.ArgumentParser(prog="lrvx-mcp")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -210,12 +204,27 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     sub.add_parser("serve", help="Start the MCP server over stdio.")
 
+    # `lrvx-mcp --help` returns 0 from here (rather than raising SystemExit
+    # from inside argparse) so embedders get a plain return value.
+    if raw == ["--help"]:
+        p.print_help()
+        return 0
+
+    # Back-compat: bare invocation = serve. That's what every MCP client
+    # config in the wild does.
+    if not raw or raw[0] not in ("init", "serve"):
+        from lrvx_mcp.server import main as serve_main
+        return serve_main() or 0
+
     args = p.parse_args(raw)
     if args.cmd == "init":
         return cmd_init(args)
     if args.cmd == "serve":
         from lrvx_mcp.server import main as serve_main
         return serve_main() or 0
+    if args.cmd is None:  # only reachable via --help
+        p.print_help()
+        return 0
     return 0  # pragma: no cover
 
 
