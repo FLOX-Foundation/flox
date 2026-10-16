@@ -246,7 +246,12 @@ void HyperliquidExchangeConnector::primeBookEvent(BookUpdateEvent& ev, const Coi
 
 void HyperliquidExchangeConnector::publishBookEvent(pool::Handle<BookUpdateEvent>&& ev)
 {
-  if (ev->update.bids.empty() && ev->update.asks.empty())
+  // An empty SNAPSHOT is dropped: a depth consumer would wipe its book on
+  // it, and this connector has always treated such frames as noise. An
+  // empty TOP_OF_BOOK is the venue saying the touch is gone on both sides,
+  // and must reach the matrix so it stops quoting a stale top.
+  if (ev->update.bids.empty() && ev->update.asks.empty() &&
+      ev->update.type != BookUpdateType::TOP_OF_BOOK)
   {
     return;
   }

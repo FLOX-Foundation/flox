@@ -168,6 +168,9 @@ constexpr const char* kBboAskOnlyFrame =
     R"({"channel":"bbo","data":{"coin":"BTC","time":1700000002000,"bbo":)"
     R"([null,{"px":"60009","sz":"2","n":1}]}})";
 
+constexpr const char* kBboBothNullFrame =
+    R"({"channel":"bbo","data":{"coin":"BTC","time":1700000004000,"bbo":[null,null]}})";
+
 constexpr const char* kBboInvalidPxFrame =
     R"({"channel":"bbo","data":{"coin":"BTC","time":1700000003000,"bbo":)"
     R"([{"px":"not-a-price","sz":"1","n":1},{"px":"60009","sz":"2","n":1}]}})";
@@ -282,6 +285,28 @@ TEST(HyperliquidBbo, NullSideZeroesTheMatrixSide)
   auto ask = f.matrix.bestAsk(*sym);
   ASSERT_TRUE(ask.valid);
   EXPECT_EQ(ask.priceRaw, Price::fromDouble(60009.0).raw());
+}
+
+TEST(HyperliquidBbo, BothSidesNullStillPublishesAndZeroesTheMatrix)
+{
+  FeedFixture f("hl_bbo_both_null.log");
+
+  f.connector->handleMessage(kL2BookFrame);
+  f.connector->handleMessage(kBboBothNullFrame);
+  f.bookBus.flush();
+
+  // Both sides null is the venue saying the touch is gone. Dropping the
+  // frame as "empty" would leave the l2Book top standing in the matrix.
+  const auto books = f.bookCapture.books();
+  ASSERT_EQ(books.size(), 2u);
+  EXPECT_TRUE(books[1].bids.empty());
+  EXPECT_TRUE(books[1].asks.empty());
+  EXPECT_EQ(books[1].type, BookUpdateType::TOP_OF_BOOK);
+
+  const auto sym = f.registry.getSymbolId("hyperliquid", "BTC");
+  ASSERT_TRUE(sym.has_value());
+  EXPECT_FALSE(f.matrix.bestBid(*sym).valid);
+  EXPECT_FALSE(f.matrix.bestAsk(*sym).valid);
 }
 
 TEST(HyperliquidBbo, InvalidSideDropsTheWholeFrame)
