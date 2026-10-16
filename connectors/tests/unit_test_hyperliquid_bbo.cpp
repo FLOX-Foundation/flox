@@ -6,27 +6,26 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Offline tests for the Hyperliquid bbo channel. The venue throttles l2Book
- * snapshots server-side to ~0.2/s per coin; bbo pushes on every top-of-book
- * change. Recorded frames go into the connector's public handleMessage seam,
- * no socket involved — the same technique unit_test_hyperliquid_fill_contract
- * uses.
+ * Offline tests for the Hyperliquid bbo channel. Recorded frames go into the
+ * connector's public handleMessage seam, no socket involved — the same
+ * technique unit_test_hyperliquid_fill_contract uses.
  *
  * What is pinned:
  *
- *  - A bbo frame becomes a one-level SNAPSHOT that carries recvNs and
- *    sourceExchange, so CompositeBookMatrix accepts it and its staleness
- *    sweep sees the venue ticking at bbo rate, not at l2Book rate.
+ *  - The subscription payloads follow the subscribeBbo flag, so turning the
+ *    flag off (or deleting the subscribe block) is visible to a test.
  *
- *  - Between two l2Book snapshots a bbo frame moves the cross-venue top of
- *    book. That is the point of the channel: without it the best bid/ask is
- *    up to ~5 seconds old.
+ *  - A bbo frame becomes a TOP_OF_BOOK event carrying recvNs, sourceExchange,
+ *    the venue timestamp and the instrument — every field a recycled pool
+ *    slot would otherwise inherit from its previous occupant.
  *
- *  - A null side in the bbo array (an empty book side) stays empty instead
- *    of becoming a parse error or a phantom level.
+ *  - Between two l2Book snapshots a bbo frame moves the cross-venue top, and
+ *    a null side (an empty book side) zeroes that side in the matrix instead
+ *    of leaving a stale quote standing.
  *
- *  - The subscription is opt-in: the default config does not enable it, so
- *    existing deployments keep their event mix.
+ *  - A present-but-unparseable side drops the whole frame. Publishing the
+ *    other side would zero this one downstream, indistinguishable from a
+ *    genuinely empty book side.
  */
 
 #include "lrvx-connectors/hyperliquid/hyperliquid_exchange_connector.h"
@@ -72,6 +71,7 @@ struct SeenBook
   uint64_t recvNs;
   ExchangeId sourceExchange;
   BookUpdateType type;
+  InstrumentType instrument;
   int64_t exchangeTsNs;
   std::vector<std::pair<int64_t, int64_t>> bids;  // (price raw, qty raw)
   std::vector<std::pair<int64_t, int64_t>> asks;
@@ -88,6 +88,7 @@ class BookCapture final : public IMarketDataSubscriber
     seen.recvNs = ev.recvNs.raw();
     seen.sourceExchange = ev.sourceExchange;
     seen.type = ev.update.type;
+    seen.instrument = ev.update.instrument;
     seen.exchangeTsNs = ev.update.exchangeTsNs.raw();
     for (const auto& lvl : ev.update.bids)
     {
@@ -151,24 +152,47 @@ constexpr const char* kL2BookFrame =
     R"({"channel":"l2Book","data":{"coin":"BTC","time":1700000000000,"levels":)"
     R"([[{"px":"60000","sz":"3","n":1}],[{"px":"60010","sz":"2","n":1}]]}})";
 
+constexpr const char* kL2BookInvalidFrame =
+    R"({"channel":"l2Book","data":{"coin":"BTC","time":1700000000000,"levels":)"
+    R"([[{"px":"garbage","sz":"3","n":1}],[{"px":"60010","sz":"2","n":1}]]}})";
+
 constexpr const char* kBboFrame =
     R"({"channel":"bbo","data":{"coin":"BTC","time":1700000001000,"bbo":)"
     R"([{"px":"60005","sz":"1.5","n":3},{"px":"60009","sz":"2","n":1}]}})";
+
+constexpr const char* kBboNoTimeFrame =
+    R"({"channel":"bbo","data":{"coin":"BTC","bbo":)"
+    R"([{"px":"60006","sz":"1","n":1},{"px":"60008","sz":"1","n":1}]}})";
 
 constexpr const char* kBboAskOnlyFrame =
     R"({"channel":"bbo","data":{"coin":"BTC","time":1700000002000,"bbo":)"
     R"([null,{"px":"60009","sz":"2","n":1}]}})";
 
+constexpr const char* kBboInvalidPxFrame =
+    R"({"channel":"bbo","data":{"coin":"BTC","time":1700000003000,"bbo":)"
+    R"([{"px":"not-a-price","sz":"1","n":1},{"px":"60009","sz":"2","n":1}]}})";
+
 }  // namespace
 
-TEST(HyperliquidBbo, SubscriptionIsOptIn)
+TEST(HyperliquidBbo, SubscriptionPayloadsFollowTheFlag)
 {
-  // Existing deployments keep their event mix: a one-level snapshot between
-  // l2Book snapshots collapses held depth, so nobody gets that silently.
-  EXPECT_FALSE(HyperliquidConfig{}.subscribeBbo);
+  HyperliquidConfig cfg;
+  EXPECT_TRUE(cfg.subscribeBbo);
+
+  auto on = HyperliquidExchangeConnector::subscriptionPayloads(cfg, "BTC");
+  ASSERT_EQ(on.size(), 3u);
+  EXPECT_EQ(on[0], R"({"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC"}})");
+  EXPECT_EQ(on[1], R"({"method":"subscribe","subscription":{"type":"trades","coin":"BTC"}})");
+  EXPECT_EQ(on[2], R"({"method":"subscribe","subscription":{"type":"bbo","coin":"BTC"}})");
+
+  cfg.subscribeBbo = false;
+  auto off = HyperliquidExchangeConnector::subscriptionPayloads(cfg, "BTC");
+  ASSERT_EQ(off.size(), 2u);
+  EXPECT_EQ(off[0], on[0]);
+  EXPECT_EQ(off[1], on[1]);
 }
 
-TEST(HyperliquidBbo, BboFrameIsAOneLevelSnapshotWithStamps)
+TEST(HyperliquidBbo, BboFrameIsTopOfBookWithEveryHeaderField)
 {
   FeedFixture f("hl_bbo_snapshot.log");
   const ExchangeId expected = f.registry.getExchangeId(f.connector->exchangeId());
@@ -181,7 +205,8 @@ TEST(HyperliquidBbo, BboFrameIsAOneLevelSnapshotWithStamps)
   ASSERT_EQ(books.size(), 1u);
   const auto& ev = books[0];
 
-  EXPECT_EQ(ev.type, BookUpdateType::SNAPSHOT);
+  EXPECT_EQ(ev.type, BookUpdateType::TOP_OF_BOOK);
+  EXPECT_EQ(ev.instrument, InstrumentType::Future);
   ASSERT_EQ(ev.bids.size(), 1u);
   ASSERT_EQ(ev.asks.size(), 1u);
   EXPECT_EQ(ev.bids[0].first, Price::fromDouble(60005.0).raw());
@@ -193,6 +218,24 @@ TEST(HyperliquidBbo, BboFrameIsAOneLevelSnapshotWithStamps)
   EXPECT_EQ(ev.sourceExchange, expected)
       << "sourceExchange must be the connector's exchange id; InvalidExchangeId makes "
          "CompositeBookMatrix drop the update";
+}
+
+TEST(HyperliquidBbo, RecycledSlotDoesNotInheritTheExchangeTimestamp)
+{
+  FeedFixture f("hl_bbo_recycled_slot.log");
+
+  // First frame stamps the slot with a venue time; the second carries none.
+  // The pool hands slots back LIFO, so without an unconditional write the
+  // second event would surface the first frame's timestamp.
+  f.connector->handleMessage(kBboFrame);
+  f.bookBus.flush();
+  f.connector->handleMessage(kBboNoTimeFrame);
+  f.bookBus.flush();
+
+  const auto books = f.bookCapture.books();
+  ASSERT_EQ(books.size(), 2u);
+  EXPECT_EQ(books[0].exchangeTsNs, 1700000001000LL * 1'000'000LL);
+  EXPECT_EQ(books[1].exchangeTsNs, 0);
 }
 
 TEST(HyperliquidBbo, BboMovesTheTopBetweenL2Snapshots)
@@ -217,16 +260,39 @@ TEST(HyperliquidBbo, BboMovesTheTopBetweenL2Snapshots)
   EXPECT_EQ(ask.priceRaw, Price::fromDouble(60009.0).raw());
 }
 
-TEST(HyperliquidBbo, NullSideStaysEmpty)
+TEST(HyperliquidBbo, NullSideZeroesTheMatrixSide)
 {
   FeedFixture f("hl_bbo_null_side.log");
 
+  f.connector->handleMessage(kL2BookFrame);
   f.connector->handleMessage(kBboAskOnlyFrame);
   f.bookBus.flush();
 
   const auto books = f.bookCapture.books();
-  ASSERT_EQ(books.size(), 1u);
-  EXPECT_TRUE(books[0].bids.empty());
-  ASSERT_EQ(books[0].asks.size(), 1u);
-  EXPECT_EQ(books[0].asks[0].first, Price::fromDouble(60009.0).raw());
+  ASSERT_EQ(books.size(), 2u);
+  EXPECT_TRUE(books[1].bids.empty());
+  ASSERT_EQ(books[1].asks.size(), 1u);
+
+  // The bbo frame is the venue's complete word on the touch: no bid side
+  // means no bids, and the l2Book bid from two frames ago must not keep
+  // standing in the cross-venue comparison.
+  const auto sym = f.registry.getSymbolId("hyperliquid", "BTC");
+  ASSERT_TRUE(sym.has_value());
+  EXPECT_FALSE(f.matrix.bestBid(*sym).valid);
+  auto ask = f.matrix.bestAsk(*sym);
+  ASSERT_TRUE(ask.valid);
+  EXPECT_EQ(ask.priceRaw, Price::fromDouble(60009.0).raw());
+}
+
+TEST(HyperliquidBbo, InvalidSideDropsTheWholeFrame)
+{
+  FeedFixture f("hl_bbo_invalid.log");
+
+  f.connector->handleMessage(kBboInvalidPxFrame);
+  f.connector->handleMessage(kL2BookInvalidFrame);
+  f.bookBus.flush();
+
+  // Neither frame may publish: a half-published frame would zero the broken
+  // side downstream, which is exactly what a genuine null side looks like.
+  EXPECT_TRUE(f.bookCapture.books().empty());
 }

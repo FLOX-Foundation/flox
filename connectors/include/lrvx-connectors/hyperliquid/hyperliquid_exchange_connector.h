@@ -18,9 +18,12 @@
 #include <lrvx/net/abstract_websocket_client.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace lrvx
@@ -43,14 +46,11 @@ struct HyperliquidConfig
   // connector can pick for you.
   int staleDataTimeoutMs{0};
   // Subscribe the bbo channel next to l2Book. Hyperliquid throttles l2Book
-  // server-side to ~0.2 snapshots/s per coin; bbo pushes on every top-of-book
-  // change (~8/s on BTC, measured in production), so with this on the best
-  // bid/ask — and the staleness clock — tick about 40x faster. Each bbo frame
-  // is published as a one-level snapshot, which is exactly what top-of-book
-  // consumers (CompositeBookMatrix, cross-venue signals) want; a consumer
-  // that holds depth between l2Book snapshots (NLevelOrderBook) would see the
-  // book collapse to one level per side, so it stays off by default.
-  bool subscribeBbo{false};
+  // server-side, so between snapshots the touch is only as fresh as the bbo
+  // stream. Frames are published as BookUpdateType::TOP_OF_BOOK: the
+  // cross-venue matrix consumes them, a depth book ignores them, so this is
+  // safe to leave on. Turn it off to shed the extra per-tick events.
+  bool subscribeBbo{true};
 };
 
 class HyperliquidExchangeConnector : public IExchangeConnector
@@ -74,9 +74,15 @@ class HyperliquidExchangeConnector : public IExchangeConnector
 
   SymbolId resolveSymbolId(std::string_view symbol);
 
-  // Public so the feed protocol handling (l2Book snapshots, trades) is
-  // testable offline by feeding raw frames without a live socket. Same seam
-  // BybitExchangeConnector exposes.
+  // The subscribe frames start() sends for one coin, in send order. Static
+  // and public so a test can pin the wire payloads — the WS client is built
+  // in the constructor, so start() itself is not observable offline.
+  static std::vector<std::string> subscriptionPayloads(const HyperliquidConfig& config,
+                                                       std::string_view coin);
+
+  // Public so the feed protocol handling (l2Book snapshots, bbo tops,
+  // trades) is testable offline by feeding raw frames without a live
+  // socket. Same seam BybitExchangeConnector exposes.
   void handleMessage(std::string_view payload);
 
   // Transport close. Called from the websocket onClose handler; public for
@@ -106,6 +112,33 @@ class HyperliquidExchangeConnector : public IExchangeConnector
 
   std::thread _pingThread;
   void pingLoop();
+
+  // coin → (symbol id, instrument), resolved once per coin so the message
+  // thread never takes the registry lock or builds a std::string per frame.
+  // Touched only from start() (before the socket exists) and from the WS
+  // message thread, so it needs no lock.
+  struct CoinRef
+  {
+    SymbolId id;
+    InstrumentType instrument;
+  };
+  struct TransparentStringHash
+  {
+    using is_transparent = void;
+    size_t operator()(std::string_view s) const noexcept
+    {
+      return std::hash<std::string_view>{}(s);
+    }
+  };
+  const CoinRef& coinRef(std::string_view coin);
+  std::unordered_map<std::string, CoinRef, TransparentStringHash, std::equal_to<>> _coins;
+
+  // Shared tail of every book path: header fields a recycled pool slot must
+  // have overwritten, and the publish itself. exchangeTsMs is 0 when the
+  // frame carried no time — written through regardless, never inherited.
+  void primeBookEvent(BookUpdateEvent& ev, const CoinRef& coin, BookUpdateType type,
+                      uint64_t recvNs, int64_t exchangeTsMs);
+  void publishBookEvent(pool::Handle<BookUpdateEvent>&& ev);
 
   pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> _bookPool;
 };

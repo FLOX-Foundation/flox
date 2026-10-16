@@ -16,9 +16,7 @@
 
 #include <simdjson.h>
 
-#include <array>
 #include <chrono>
-#include <cstdio>
 #include <cstdlib>
 
 namespace lrvx
@@ -67,46 +65,15 @@ void HyperliquidExchangeConnector::start()
       {
         LRVX_LOG("[Hyperliquid] WS open, sending subscriptions");
 
-        // Send subscriptions in batches with small delays to avoid overwhelming the server
-        // Hyperliquid seems to have issues when >40 messages are sent rapidly
-        constexpr size_t BATCH_SIZE = 10;  // 5 symbols worth of subscriptions per batch
-
         for (size_t i = 0; i < _config.symbols.size(); ++i)
         {
-          const auto& coin = _config.symbols[i];
-          std::array<char, 128> buf{};
-
-          int n = std::snprintf(
-              buf.data(), buf.size(),
-              R"({"method":"subscribe","subscription":{"type":"l2Book","coin":"%.*s"}})",
-              static_cast<int>(coin.size()), coin.c_str());
-          if (n > 0 && n < static_cast<int>(buf.size()))
+          for (const auto& payload : subscriptionPayloads(_config, _config.symbols[i]))
           {
-            _wsClient->send({buf.data(), static_cast<size_t>(n)});
+            _wsClient->send(payload);
           }
 
-          n = std::snprintf(
-              buf.data(), buf.size(),
-              R"({"method":"subscribe","subscription":{"type":"trades","coin":"%.*s"}})",
-              static_cast<int>(coin.size()), coin.c_str());
-          if (n > 0 && n < static_cast<int>(buf.size()))
-          {
-            _wsClient->send({buf.data(), static_cast<size_t>(n)});
-          }
-
-          if (_config.subscribeBbo)
-          {
-            n = std::snprintf(
-                buf.data(), buf.size(),
-                R"({"method":"subscribe","subscription":{"type":"bbo","coin":"%.*s"}})",
-                static_cast<int>(coin.size()), coin.c_str());
-            if (n > 0 && n < static_cast<int>(buf.size()))
-            {
-              _wsClient->send({buf.data(), static_cast<size_t>(n)});
-            }
-          }
-
-          // Add small delay after each batch of 5 symbols (10 subscriptions)
+          // Hyperliquid drops subscriptions when too many frames arrive at
+          // once; pause every few coins to stay under that.
           if ((i + 1) % 5 == 0 && i + 1 < _config.symbols.size())
           {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -130,11 +97,13 @@ void HyperliquidExchangeConnector::start()
 
   // Baseline for the staleness check: without it a feed that never delivers a
   // single frame has no stamp to age out from, which is the loudest failure
-  // of the two this check exists for.
+  // of the two this check exists for. coinRef() also fills the coin cache
+  // here, before the socket exists, so the message thread never resolves
+  // through the registry.
   const MonoNanos startedAt = nowMonoNanos();
   for (const auto& coin : _config.symbols)
   {
-    markFeedActivity(resolveSymbolId(coin), startedAt);
+    markFeedActivity(coinRef(coin).id, startedAt);
   }
 
   _wsClient->start();
@@ -218,6 +187,115 @@ SymbolId HyperliquidExchangeConnector::resolveSymbolId(std::string_view symbol)
   return _registry->registerSymbol(info);
 }
 
+std::vector<std::string> HyperliquidExchangeConnector::subscriptionPayloads(
+    const HyperliquidConfig& config, std::string_view coin)
+{
+  auto sub = [&](std::string_view channel)
+  {
+    std::string s{R"({"method":"subscribe","subscription":{"type":")"};
+    s += channel;
+    s += R"(","coin":")";
+    s += coin;
+    s += R"("}})";
+    return s;
+  };
+
+  std::vector<std::string> out{sub("l2Book"), sub("trades")};
+  if (config.subscribeBbo)
+  {
+    out.push_back(sub("bbo"));
+  }
+  return out;
+}
+
+const HyperliquidExchangeConnector::CoinRef& HyperliquidExchangeConnector::coinRef(
+    std::string_view coin)
+{
+  auto it = _coins.find(coin);
+  if (it != _coins.end())
+  {
+    return it->second;
+  }
+
+  // First sight of this coin — start() fills the cache for every configured
+  // one, so this is the fallback for an unexpected frame: resolve through
+  // the registry once and remember the answer.
+  SymbolId sid = resolveSymbolId(coin);
+  InstrumentType instrument = InstrumentType::Future;
+  if (const auto info = _registry->getSymbolInfo(sid))
+  {
+    instrument = info->type;
+  }
+  return _coins.emplace(std::string(coin), CoinRef{sid, instrument}).first->second;
+}
+
+void HyperliquidExchangeConnector::primeBookEvent(BookUpdateEvent& ev, const CoinRef& coin,
+                                                  BookUpdateType type, uint64_t recvNs,
+                                                  int64_t exchangeTsMs)
+{
+  // The pool recycles events and clear() resets only the level vectors, so
+  // every header field is written unconditionally — a field skipped here
+  // would carry the previous occupant's value.
+  ev.update.symbol = coin.id;
+  ev.update.instrument = coin.instrument;
+  ev.update.type = type;
+  ev.update.exchangeTsNs = msToUnixNs(exchangeTsMs);
+  ev.recvNs = MonoNanos::fromRaw(recvNs);
+  ev.sourceExchange = _exchangeId;
+}
+
+void HyperliquidExchangeConnector::publishBookEvent(pool::Handle<BookUpdateEvent>&& ev)
+{
+  if (ev->update.bids.empty() && ev->update.asks.empty())
+  {
+    return;
+  }
+  ev->publishTsNs = nowMonoNanos();
+  auto [res, _] = _bookBus->tryPublish(std::move(ev));
+  if (res != BookUpdateBus::PublishResult::SUCCESS)
+  {
+    _logger->error(
+        "[Hyperliquid] Book update dropped: EventBus full. Increase EventBus capacity or "
+        "reduce number of subscriptions.");
+  }
+}
+
+namespace
+{
+
+// {"px":"...","sz":"..."} → level. False when present but unparseable: the
+// caller must drop the whole frame, because a published side that silently
+// lost a level is indistinguishable downstream from a side that is
+// genuinely empty (the cross-venue matrix zeroes it).
+bool parseLevel(simdjson::dom::element lvl, BookLevel& out)
+{
+  auto pxEl = lvl["px"];
+  auto szEl = lvl["sz"];
+  if (pxEl.error() || szEl.error())
+  {
+    return false;
+  }
+  auto price = util::parsePrice(pxEl.get_string().value());
+  auto qty = util::parseQty(szEl.get_string().value());
+  if (!price || !qty)
+  {
+    return false;
+  }
+  out = BookLevel(*price, *qty);
+  return true;
+}
+
+// Frame time in ms, 0 when absent. Takes a dom::element or a
+// simdjson_result wrapping one — both expose operator[].
+template <typename Json>
+int64_t frameTimeMs(Json&& data)
+{
+  auto timeEl = data["time"];
+  return timeEl.error() ? 0 : timeEl.get_int64().value();
+}
+
+}  // namespace
+
 void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 {
   // Stamped before parsing, so it measures when the frame reached this
@@ -254,6 +332,20 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 
     if (channel == "l2Book")
     {
+      auto coinEl = dataEl["coin"];
+      if (coinEl.error())
+      {
+        return;
+      }
+      const CoinRef& coin = coinRef(coinEl.get_string().value());
+      markFeedActivity(coin.id, arrivedAt);
+
+      auto levelsEl = dataEl["levels"];
+      if (levelsEl.error())
+      {
+        return;
+      }
+
       auto evOpt = _bookPool.acquire();
       if (!evOpt)
       {
@@ -264,89 +356,47 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         return;
       }
       auto& ev = *evOpt;
+      primeBookEvent(*ev, coin, BookUpdateType::SNAPSHOT, recvNs, frameTimeMs(dataEl));
 
-      auto coinEl = dataEl["coin"];
-      if (coinEl.error())
-      {
-        return;
-      }
-
-      SymbolId sid = resolveSymbolId(coinEl.get_string().value());
-      markFeedActivity(sid, arrivedAt);
-
-      ev->update.symbol = sid;
-      ev->recvNs = MonoNanos::fromRaw(recvNs);
-      ev->sourceExchange = _exchangeId;
-      // Hyperliquid sends full book snapshots on each update
-      ev->update.type = BookUpdateType::SNAPSHOT;
-
-      // Parse timestamp (milliseconds)
-      auto timeEl = dataEl["time"];
-      if (!timeEl.error())
-      {
-        int64_t tsMs = timeEl.get_int64().value();
-        ev->update.exchangeTsNs = msToUnixNs(tsMs);
-      }
-
-      auto levelsEl = dataEl["levels"];
-      if (levelsEl.error())
-      {
-        return;
-      }
-
+      // levels = [bids, asks]. Hyperliquid sends full snapshots on each
+      // update; a level that fails to parse drops the whole frame.
       auto levels = levelsEl.get_array();
       size_t idx = 0;
       for (auto levelArr : levels)
       {
         for (auto lvl : levelArr.get_array())
         {
-          auto pxEl = lvl["px"];
-          auto szEl = lvl["sz"];
-          if (pxEl.error() || szEl.error())
+          BookLevel level;
+          if (!parseLevel(lvl, level))
           {
-            continue;
+            _logger->warn("[Hyperliquid] dropping l2Book frame: invalid level");
+            return;
           }
-
-          auto priceOpt = util::parsePrice(pxEl.get_string().value());
-          auto qtyOpt = util::parseQty(szEl.get_string().value());
-          if (!priceOpt || !qtyOpt)
-          {
-            _logger->warn("[Hyperliquid] Invalid price/qty in book level");
-            continue;
-          }
-
-          Price price = *priceOpt;
-          Quantity qty = *qtyOpt;
-
-          if (idx == 0)
-          {
-            ev->update.bids.emplace_back(price, qty);
-          }
-          else
-          {
-            ev->update.asks.emplace_back(price, qty);
-          }
+          (idx == 0 ? ev->update.bids : ev->update.asks).emplace_back(level.price, level.quantity);
         }
         idx++;
       }
 
-      if (!ev->update.bids.empty() || !ev->update.asks.empty())
-      {
-        ev->publishTsNs = nowMonoNanos();
-        auto [res, _] = _bookBus->tryPublish(std::move(ev));
-        if (res != BookUpdateBus::PublishResult::SUCCESS)
-        {
-          _logger->error(
-              "[Hyperliquid] Book update dropped: EventBus full. Increase EventBus capacity or "
-              "reduce number of subscriptions.");
-        }
-      }
+      publishBookEvent(std::move(ev));
     }
     else if (channel == "bbo")
     {
-      // {"channel":"bbo","data":{"coin","time","bbo":[bid, ask]}}, each side
-      // {"px","sz","n"} or null when that side of the book is empty. Pushed
-      // on every top-of-book change, unlike the server-throttled l2Book.
+      // {"coin","time","bbo":[bid, ask]}; a side is {"px","sz"} or null when
+      // that side of the book is empty.
+      auto coinEl = dataEl["coin"];
+      if (coinEl.error())
+      {
+        return;
+      }
+      const CoinRef& coin = coinRef(coinEl.get_string().value());
+      markFeedActivity(coin.id, arrivedAt);
+
+      auto bboEl = dataEl["bbo"];
+      if (bboEl.error())
+      {
+        return;
+      }
+
       auto evOpt = _bookPool.acquire();
       if (!evOpt)
       {
@@ -357,80 +407,26 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         return;
       }
       auto& ev = *evOpt;
+      primeBookEvent(*ev, coin, BookUpdateType::TOP_OF_BOOK, recvNs, frameTimeMs(dataEl));
 
-      auto coinEl = dataEl["coin"];
-      if (coinEl.error())
-      {
-        return;
-      }
-
-      SymbolId sid = resolveSymbolId(coinEl.get_string().value());
-      markFeedActivity(sid, arrivedAt);
-
-      ev->update.symbol = sid;
-      ev->recvNs = MonoNanos::fromRaw(recvNs);
-      ev->sourceExchange = _exchangeId;
-      // One level per side, published as a snapshot: the frame IS the top of
-      // book the venue just confirmed, and a stale deeper level must not
-      // outrank it.
-      ev->update.type = BookUpdateType::SNAPSHOT;
-
-      auto timeEl = dataEl["time"];
-      if (!timeEl.error())
-      {
-        int64_t tsMs = timeEl.get_int64().value();
-        ev->update.exchangeTsNs = msToUnixNs(tsMs);
-      }
-
-      auto bboEl = dataEl["bbo"];
-      if (bboEl.error())
-      {
-        return;
-      }
-
+      auto bbo = bboEl.get_array();
       size_t idx = 0;
-      for (auto lvl : bboEl.get_array())
+      for (auto lvl : bbo)
       {
-        auto pxEl = lvl["px"];
-        auto szEl = lvl["sz"];
-        if (pxEl.error() || szEl.error())
+        if (!lvl.is_null())
         {
-          // null side: that side of the book is empty right now
-          idx++;
-          continue;
-        }
-
-        auto priceOpt = util::parsePrice(pxEl.get_string().value());
-        auto qtyOpt = util::parseQty(szEl.get_string().value());
-        if (!priceOpt || !qtyOpt)
-        {
-          _logger->warn("[Hyperliquid] Invalid price/qty in bbo");
-          idx++;
-          continue;
-        }
-
-        if (idx == 0)
-        {
-          ev->update.bids.emplace_back(*priceOpt, *qtyOpt);
-        }
-        else
-        {
-          ev->update.asks.emplace_back(*priceOpt, *qtyOpt);
+          BookLevel level;
+          if (!parseLevel(lvl, level))
+          {
+            _logger->warn("[Hyperliquid] dropping bbo frame: invalid px/sz");
+            return;
+          }
+          (idx == 0 ? ev->update.bids : ev->update.asks).emplace_back(level.price, level.quantity);
         }
         idx++;
       }
 
-      if (!ev->update.bids.empty() || !ev->update.asks.empty())
-      {
-        ev->publishTsNs = nowMonoNanos();
-        auto [res, _] = _bookBus->tryPublish(std::move(ev));
-        if (res != BookUpdateBus::PublishResult::SUCCESS)
-        {
-          _logger->error(
-              "[Hyperliquid] bbo update dropped: EventBus full. Increase EventBus capacity or "
-              "reduce number of subscriptions.");
-        }
-      }
+      publishBookEvent(std::move(ev));
     }
     else if (channel == "trades")
     {
@@ -456,29 +452,18 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
           continue;
         }
 
-        SymbolId sid = resolveSymbolId(coinEl.get_string().value());
-        markFeedActivity(sid, arrivedAt);
+        const CoinRef& coin = coinRef(coinEl.get_string().value());
+        markFeedActivity(coin.id, arrivedAt);
 
         TradeEvent ev;
         ev.recvNs = MonoNanos::fromRaw(recvNs);
-        ev.trade.symbol = sid;
+        ev.trade.symbol = coin.id;
         ev.trade.price = *priceOpt;
         ev.trade.quantity = *qtyOpt;
+        ev.trade.instrument = coin.instrument;
         std::string_view side = sideEl.get_string().value();
         ev.trade.isBuy = (side == "B" || side == "buy");
-
-        // Parse timestamp (milliseconds)
-        auto timeEl = t["time"];
-        if (!timeEl.error())
-        {
-          int64_t tsMs = timeEl.get_int64().value();
-          ev.trade.exchangeTsNs = msToUnixNs(tsMs);
-        }
-
-        if (const auto info = _registry->getSymbolInfo(sid))
-        {
-          ev.trade.instrument = info->type;
-        }
+        ev.trade.exchangeTsNs = msToUnixNs(frameTimeMs(t));
 
         ev.publishTsNs = nowMonoNanos();
         auto [res, _] = _tradeBus->tryPublish(ev);
