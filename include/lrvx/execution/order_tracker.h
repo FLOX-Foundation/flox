@@ -6,6 +6,7 @@
 #include "lrvx/execution/order.h"
 
 #include <cstddef>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -70,6 +71,15 @@ class OrderTracker
 
   std::optional<OrderState> get(OrderId id) const;
 
+  /// The local id that onSubmitted / onReplaced recorded the given exchange
+  /// order id for. Venue WS reports are keyed by the venue's own id
+  /// (Hyperliquid `oid`, Binance `orderId`), so fill reconciliation needs
+  /// this direction; without it every adapter grows a parallel map. A
+  /// terminal entry still resolves until it is pruned — late fills on a
+  /// replaced order arrive keyed by the superseded id — and when a venue
+  /// reuses an id, the newest holder wins.
+  std::optional<OrderId> findLocalIdByExchangeOrderId(std::string_view exchangeOrderId) const;
+
   bool exists(OrderId id) const;
 
   bool isActive(OrderId id) const;
@@ -90,9 +100,31 @@ class OrderTracker
   bool makeRoomLocked();
   void pruneTerminalLocked();
 
+  /// Caller holds _mutex. Keep _byExchangeOrderId in step with _orders:
+  /// index on insert, un-index exactly when the entry is dropped.
+  void indexExchangeIdLocked(const std::string& exchangeOrderId, OrderId id);
+  void unindexExchangeIdLocked(const OrderState& state, OrderId id);
+
+  /// Heterogeneous lookup so a string_view query does not allocate a
+  /// temporary std::string on the fill path.
+  struct TransparentStringHash
+  {
+    using is_transparent = void;
+    size_t operator()(std::string_view s) const noexcept
+    {
+      return std::hash<std::string_view>{}(s);
+    }
+  };
+
   mutable std::mutex _mutex;
   size_t _capacity;
   std::unordered_map<OrderId, OrderState> _orders;
+
+  // exchangeOrderId -> local id. Bounded by the same capacity as _orders (at
+  // most one entry per tracked order) and pruned with it, so the memory
+  // bound the capacity promises still holds.
+  std::unordered_map<std::string, OrderId, TransparentStringHash, std::equal_to<>>
+      _byExchangeOrderId;
 };
 
 }  // namespace lrvx

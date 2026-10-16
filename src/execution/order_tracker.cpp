@@ -8,8 +8,38 @@ namespace lrvx
 OrderTracker::OrderTracker(size_t capacity) : _capacity(capacity)
 {
   // Sized once so the bound is also a memory bound: the map never rehashes
-  // past the configured capacity on the order path.
+  // past the configured capacity on the order path. The exchange-id index
+  // carries at most one entry per tracked order, so it shares the bound.
   _orders.reserve(capacity);
+  _byExchangeOrderId.reserve(capacity);
+}
+
+void OrderTracker::indexExchangeIdLocked(const std::string& exchangeOrderId, OrderId id)
+{
+  if (exchangeOrderId.empty())
+  {
+    // Pre-ack and paper submits carry no exchange id. Indexing them would
+    // collide every id-less order into one "" key.
+    return;
+  }
+  // When a venue reuses an id (or a replace keeps it), the newest holder
+  // owns the mapping.
+  _byExchangeOrderId.insert_or_assign(exchangeOrderId, id);
+}
+
+void OrderTracker::unindexExchangeIdLocked(const OrderState& state, OrderId id)
+{
+  if (state.exchangeOrderId.empty())
+  {
+    return;
+  }
+  auto it = _byExchangeOrderId.find(state.exchangeOrderId);
+  // Erase only our own mapping: a reused exchange id may already point at a
+  // newer order, and pruning the old holder must not take that entry out.
+  if (it != _byExchangeOrderId.end() && it->second == id)
+  {
+    _byExchangeOrderId.erase(it);
+  }
 }
 
 bool OrderTracker::makeRoomLocked()
@@ -32,6 +62,7 @@ void OrderTracker::pruneTerminalLocked()
   {
     if (it->second.isTerminal())
     {
+      unindexExchangeIdLocked(it->second, it->first);
       it = _orders.erase(it);
     }
     else
@@ -69,6 +100,7 @@ bool OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrde
   state.status = OrderEventStatus::SUBMITTED;
   state.createdAt = now();
   state.lastUpdate = state.createdAt;
+  indexExchangeIdLocked(state.exchangeOrderId, order.id);
   return true;
 }
 
@@ -242,6 +274,7 @@ bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
   state.status = OrderEventStatus::SUBMITTED;
   state.createdAt = now();
   state.lastUpdate = state.createdAt;
+  indexExchangeIdLocked(state.exchangeOrderId, newOrder.id);
   return true;
 }
 
@@ -253,6 +286,26 @@ std::optional<OrderState> OrderTracker::get(OrderId id) const
 
   auto it = _orders.find(id);
   if (it == _orders.end())
+  {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+std::optional<OrderId> OrderTracker::findLocalIdByExchangeOrderId(
+    std::string_view exchangeOrderId) const
+{
+  LRVX_PROFILE_SCOPE("OrderTracker::findLocalIdByExchangeOrderId");
+
+  if (exchangeOrderId.empty())
+  {
+    return std::nullopt;
+  }
+
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto it = _byExchangeOrderId.find(exchangeOrderId);
+  if (it == _byExchangeOrderId.end())
   {
     return std::nullopt;
   }

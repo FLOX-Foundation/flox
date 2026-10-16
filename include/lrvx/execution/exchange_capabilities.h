@@ -38,6 +38,13 @@ struct ExchangeCapabilities
   bool supportsReduceOnly{true};
   bool supportsClosePosition{false};
 
+  // Native batch submit: the venue takes several orders in one request and
+  // the executor's submitOrders() coalesces instead of looping. The looping
+  // default means every executor *accepts* a batch; this flag says whether
+  // handing one over actually saves round trips, so a caller can decide
+  // when grouping its submits is worth anything.
+  bool supportsBatchSubmit{false};
+
   bool supports(OrderType type) const
   {
     switch (type)
@@ -89,6 +96,7 @@ struct ExchangeCapabilities
     caps.supportsOCO = true;
     caps.supportsGTD = true;
     caps.supportsClosePosition = true;
+    caps.supportsBatchSubmit = true;
     return caps;
   }
 
@@ -112,6 +120,7 @@ struct ExchangeCapabilities
     caps.supportsPostOnly = false;
     caps.supportsReduceOnly = false;
     caps.supportsClosePosition = false;
+    caps.supportsBatchSubmit = false;
     return caps;
   }
 

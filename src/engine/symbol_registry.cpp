@@ -121,6 +121,18 @@ SymbolId SymbolRegistry::registerSymbol(ExchangeId exchange, std::string_view sy
   }
   _symbolToExchange[id] = exchange;
 
+  // A name-based registration used to fill only the name maps, so
+  // getSymbolInfo() returned nullopt for the id it had just handed out and
+  // the Strategy constructor threw on it. Store a defaulted SymbolInfo so
+  // every registration path answers every getter; a caller that knows tick
+  // size and scales uses the SymbolInfo overload.
+  SymbolInfo info;
+  info.id = id;
+  info.exchange = exchangeName;
+  info.symbol = std::string(symbol);
+  info.exchangeId = exchange;
+  _symbols[id] = std::move(info);
+
   return id;
 }
 
@@ -257,6 +269,29 @@ SymbolId SymbolRegistry::registerSymbol(const std::string& exchange, const std::
   SymbolId id = static_cast<SymbolId>(_reverse.size());
   _map[key] = id;
   _reverse.emplace_back(exchange, symbol);
+
+  // Same gap as the ExchangeId overload: without a SymbolInfo entry the id
+  // this function returns cannot be fed to getSymbolInfo() or a Strategy.
+  // The exchange is resolved when it happens to be registered, the same way
+  // the SymbolInfo overload resolves it.
+  ExchangeId exId = InvalidExchangeId;
+  if (auto exIt = _exchangeNameToId.find(exchange); exIt != _exchangeNameToId.end())
+  {
+    exId = exIt->second;
+  }
+  SymbolInfo info;
+  info.id = id;
+  info.exchange = exchange;
+  info.symbol = symbol;
+  info.exchangeId = exId;
+  _symbols[id] = std::move(info);
+
+  if (_symbolToExchange.size() <= id)
+  {
+    _symbolToExchange.resize(id + 1, InvalidExchangeId);
+  }
+  _symbolToExchange[id] = exId;
+
   return id;
 }
 

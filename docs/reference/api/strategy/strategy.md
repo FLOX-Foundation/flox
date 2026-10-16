@@ -142,6 +142,13 @@ All order methods return an `OrderId` for tracking:
 protected:
   void emit(const Signal& signal);
 
+  // One tick's signals handed to the handler together (see
+  // ISignalHandler::onSignalBatch), so a batching bridge can coalesce them
+  // into a single venue request. Takes fully-built signals: unlike the
+  // emit* helpers below, emitBatch does not assign order ids — the caller
+  // already has.
+  void emitBatch(std::span<const Signal> signals);
+
   // Market orders
   OrderId emitMarketBuy(SymbolId symbol, Quantity qty);
   OrderId emitMarketSell(SymbolId symbol, Quantity qty);

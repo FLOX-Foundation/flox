@@ -30,6 +30,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
@@ -338,6 +339,18 @@ class Strategy : public IStrategy
     if (_signalHandler)
     {
       _signalHandler->onSignal(signal);
+    }
+  }
+
+  // One tick's signals handed over together, so a handler that knows how to
+  // coalesce (see ISignalHandler::onSignalBatch) can turn a two-sided quote
+  // or a ladder requote into a single venue request. With the default
+  // handler this is exactly a loop over emit().
+  void emitBatch(std::span<const Signal> signals)
+  {
+    if (_signalHandler)
+    {
+      _signalHandler->onSignalBatch(signals);
     }
   }
 
